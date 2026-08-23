@@ -14,13 +14,16 @@ use super::{
     MemoryBindingPlan, WasmInterface,
 };
 
+mod manifest;
 #[cfg(test)]
 mod tests;
+use manifest::package_document;
 
 pub const DIRECT_WASM_BINDING_SCHEMA: &str = "hara.wasm-binding/0-alpha";
 pub const DIRECT_WASM_CONFORMANCE_SCHEMA: &str = "hara.wasm-conformance/0-alpha";
 pub const DIRECT_WASM_BUILD_PRODUCT_SCHEMA: &str = "hara.wasm-build-product/0-alpha";
 
+const PACKAGE_FILE: &str = "package.edn";
 const INTERFACE_FILE: &str = "interface.hal";
 const BINDINGS_FILE: &str = "bindings.edn";
 const BUILD_PRODUCT_FILE: &str = "hara.build-product.edn";
@@ -128,6 +131,7 @@ pub fn bind_package(
         &interface_digest,
         &binding_digest,
     )?;
+    let package_identity = package_identity(&interface.namespace);
     let build_product = build_product_document(
         &interface,
         target,
@@ -143,6 +147,8 @@ pub fn bind_package(
     files.insert(BUILD_PRODUCT_FILE.into(), build_product.into_bytes());
     files.insert(CONFORMANCE_FILE.into(), conformance.into_bytes());
     files.insert("project.edn".into(), project.into_bytes());
+    let package = package_document(&interface, target, &package_identity, &files)?;
+    files.insert(PACKAGE_FILE.into(), package.into_bytes());
     write_atomic_tree(output_root, &files)?;
 
     Ok(BoundPackage {
@@ -208,6 +214,10 @@ fn project_document(interface: &WasmInterface, target: BindingTarget) -> Result<
     .map(string_form)
     .collect();
     let extension = Form::Map(vec![
+        (
+            keyword_form("identity"),
+            string_form(&package_identity(&interface.namespace)),
+        ),
         (keyword_form("provider"), keyword_form("wasm")),
         (keyword_form("module"), string_form(&interface.module)),
         (keyword_form("abi"), keyword_form(target.as_keyword())),
@@ -361,6 +371,7 @@ fn build_product_document(
             keyword_form("product/files"),
             Form::Vector(
                 [
+                    PACKAGE_FILE,
                     "project.edn",
                     interface.module.as_str(),
                     INTERFACE_FILE,
@@ -586,6 +597,10 @@ fn generated_namespace(module: &str) -> String {
         component.push_str("module");
     }
     format!("generated.{component}")
+}
+
+fn package_identity(namespace: &str) -> String {
+    format!("generated/{}", namespace.replace('.', "-"))
 }
 
 fn digest(bytes: &[u8]) -> String {
