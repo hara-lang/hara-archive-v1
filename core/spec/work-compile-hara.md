@@ -72,10 +72,11 @@ lineage, dynamic-depth checks, cancellation behavior, and managed replay.
 ## Structural equivalence corpus
 
 The focused compiler corpus compares direct and generated-form execution for
-`step`, `chain`, `all`, `each`, `choose`, and `ensure`, in addition to graph
-construction and `bind`. Collection item identity/order and cleanup result
-behavior are asserted as values, not merely by checking that generated forms
-evaluate successfully.
+`step`, `chain`, `all`, `each`, `filter`, `fold`, `choose`, `ensure`, and
+`batch`, in addition to graph construction and `bind`. Collection item
+identity/order, fold accumulation, batch results, and cleanup result behavior
+are asserted as values, not merely by checking that generated forms evaluate
+successfully.
 
 ## Evidence
 

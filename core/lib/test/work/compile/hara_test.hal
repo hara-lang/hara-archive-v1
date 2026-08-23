@@ -192,4 +192,51 @@
       8 8
       5 5])
 
+^{:refer work.compile.hara/form :added "0.1"}
+(fact "generated ordinary forms preserve collection and batch operations"
+  (lowering/reset-closures)
+  (try
+    (let [filter-work
+          (work/filter
+           (work/pure :even? (fn [input context] (= 0 (mod input 2)))) )
+          fold-work
+          (work/fold
+           0
+           (work/pure :sum
+             (fn [input context]
+               (+ (:acc input) (:item/value input)))))
+          batch-work
+          (work/batch
+           {:list (work/pure :list (fn [input context] [1 2]))
+            :process (work/pure :process (fn [input context] (* input 2)))
+            :summarise
+            (work/pure :summary
+              (fn [input context] (count (:results input))))})
+          rebuilt-filter (eval (lowering/form filter-work))
+          rebuilt-fold (eval (lowering/form fold-work))
+          rebuilt-batch (eval (lowering/form batch-work))]
+      [(work/run filter-work [1 2 3 4])
+       (work/run rebuilt-filter [1 2 3 4])
+       (work/run fold-work [1 2 3 4])
+       (work/run rebuilt-fold [1 2 3 4])
+       (work/run batch-work :input)
+       (work/run rebuilt-batch :input)])
+    (finally
+      (lowering/reset-closures)))
+  => [[{:item/id 1 :item/value 2}
+       {:item/id 3 :item/value 4}]
+      [{:item/id 1 :item/value 2}
+       {:item/id 3 :item/value 4}]
+      10 10
+      {:items [{:item/id 0 :item/value 1}
+               {:item/id 1 :item/value 2}]
+       :results [{:item/id 0 :item/value 2}
+                 {:item/id 1 :item/value 4}]
+       :summary 2}
+      {:items [{:item/id 0 :item/value 1}
+               {:item/id 1 :item/value 2}]
+       :results [{:item/id 0 :item/value 2}
+                 {:item/id 1 :item/value 4}]
+       :summary 2}])
+
 (pr-str (run '[work.compile.hara-test]))
