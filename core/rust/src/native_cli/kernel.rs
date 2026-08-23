@@ -111,13 +111,18 @@ pub(super) fn kernel_call(
             ))
         }
         "package-build" => {
-            let input = std::path::Path::new(string_argument(arguments, 0, operation)?);
-            let output =
-                optional_string_argument(arguments, 1, operation)?.map(std::path::Path::new);
+            let input = string_argument(arguments, 0, operation)?.to_owned();
+            let output = optional_string_argument(arguments, 1, operation)?.map(str::to_owned);
+            let built = std::thread::spawn(move || {
+                crate::package::build_path(
+                    std::path::Path::new(&input),
+                    output.as_deref().map(std::path::Path::new),
+                )
+            })
+            .join()
+            .map_err(|_| format!("{operation}: package build thread panicked"))??;
             Ok(Value::String(
-                crate::package::build_path(input, output)?
-                    .to_string_lossy()
-                    .into_owned(),
+                built.to_string_lossy().into_owned(),
             ))
         }
         "package-inspect" => Ok(Value::String(crate::package::inspect_path(
