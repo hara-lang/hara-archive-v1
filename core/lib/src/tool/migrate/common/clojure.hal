@@ -517,6 +517,6 @@
 
 (defn run-unit
   ([unit]
-   (work/run migrate-source-unit unit))
+   (work/run work/default-host migrate-source-unit unit))
   ([runtime unit]
    (work/run runtime migrate-source-unit unit)))

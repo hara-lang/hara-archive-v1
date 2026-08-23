@@ -1,0 +1,19 @@
+(ns code.test.cli-test
+  (:use code.test)
+  (:require [code.test.cli :as cli]))
+
+^{:refer code.test.cli/handler}
+(fact "the code.test CLI handler reaches its implementation through the default host"
+  (let [message
+        (try
+          (cli/handler
+           {:request/cwd "/home/runner/work/hara/hara"
+            :request/arguments ["missing.txt"]})
+          :not-thrown
+          (catch Throwable error
+            (ex-message error)))]
+    [(not= :not-thrown message)
+     (str/includes? message "file/stat failed: file/not-found")])
+  => [true true])
+
+(pr-str (run '[code.test.cli-test]))
