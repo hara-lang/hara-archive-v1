@@ -62,6 +62,7 @@ pub enum LiveSessionOperation {
     Snapshot,
     Step,
     Run,
+    Call,
     Pause,
     Resume,
     Resolve,
@@ -78,6 +79,7 @@ impl LiveSessionOperation {
             Self::Snapshot => "snapshot",
             Self::Step => "step",
             Self::Run => "run",
+            Self::Call => "call",
             Self::Pause => "pause",
             Self::Resume => "resume",
             Self::Resolve => "resolve",
@@ -207,6 +209,10 @@ pub enum LiveSessionCommand {
     Run {
         boundary_limit: usize,
     },
+    Call {
+        function: u16,
+        arguments: Vec<JsonValue>,
+    },
     Pause,
     Resume {
         settlement: Option<LiveSettlement>,
@@ -232,6 +238,7 @@ impl LiveSessionCommand {
             Self::Snapshot => LiveSessionOperation::Snapshot,
             Self::Step => LiveSessionOperation::Step,
             Self::Run { .. } => LiveSessionOperation::Run,
+            Self::Call { .. } => LiveSessionOperation::Call,
             Self::Pause => LiveSessionOperation::Pause,
             Self::Resume { .. } => LiveSessionOperation::Resume,
             Self::Resolve { .. } => LiveSessionOperation::Resolve,

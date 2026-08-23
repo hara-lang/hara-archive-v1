@@ -260,6 +260,12 @@ class BrowserLiveSession {
           100_000,
         )]);
         break;
+      case "call":
+        payload = this.callRequired("call", [
+          field(request.payload, "function"),
+          field(request.payload, "arguments") ?? [],
+        ]);
+        break;
       case "pause":
         payload = this.callRequired("pause");
         break;

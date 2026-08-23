@@ -11,6 +11,7 @@ const LIVE_OPERATIONS = new Set([
   "snapshot",
   "step",
   "run",
+  "call",
   "pause",
   "resume",
   "resolve",

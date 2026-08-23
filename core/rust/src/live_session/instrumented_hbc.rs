@@ -54,6 +54,15 @@ impl HbcRuntimeContext {
         })
     }
 
+    fn program_from_artifact(
+        &self,
+        artifact: &[u8],
+    ) -> Result<Rc<crate::vm::Program>, LiveSessionError> {
+        crate::vm::decode_program(artifact)
+            .map(Rc::new)
+            .map_err(backend_error)
+    }
+
     fn run<T>(&self, operation: impl FnOnce() -> T) -> T {
         let registry = self.namespace_registry.clone();
         let protocols = self.protocols.clone();
@@ -83,6 +92,7 @@ pub(crate) struct InstrumentedHbcLiveSession {
     target_handle: Option<TargetHandle>,
     lease: Option<ControlLease>,
     target: Option<HbcTarget>,
+    program: Option<Rc<crate::vm::Program>>,
 }
 
 impl InstrumentedHbcLiveSession {
@@ -91,6 +101,28 @@ impl InstrumentedHbcLiveSession {
         owner_session_id: impl Into<String>,
         session_id: impl Into<String>,
         source: LiveSource,
+    ) -> Result<Self, LiveSessionError> {
+        Self::start_with_program(runtime, owner_session_id, session_id, source, None)
+    }
+
+    pub(crate) fn start_from_artifact(
+        runtime: &Runtime,
+        owner_session_id: impl Into<String>,
+        session_id: impl Into<String>,
+        source: LiveSource,
+        artifact: &[u8],
+    ) -> Result<Self, LiveSessionError> {
+        let context = HbcRuntimeContext::from_runtime(runtime);
+        let program = context.program_from_artifact(artifact)?;
+        Self::start_with_program(runtime, owner_session_id, session_id, source, Some(program))
+    }
+
+    fn start_with_program(
+        runtime: &Runtime,
+        owner_session_id: impl Into<String>,
+        session_id: impl Into<String>,
+        source: LiveSource,
+        program: Option<Rc<crate::vm::Program>>,
     ) -> Result<Self, LiveSessionError> {
         let owner_session_id = required_text(owner_session_id.into(), "owner session id")?;
         let session_id = required_text(session_id.into(), "session id")?;
@@ -117,6 +149,7 @@ impl InstrumentedHbcLiveSession {
             target_handle: None,
             lease: None,
             target: None,
+            program,
         };
         if let Err(error) = session.install_target() {
             session.detach_instrument();
@@ -174,7 +207,10 @@ impl InstrumentedHbcLiveSession {
             .borrow_mut()
             .register_target(descriptor)
             .map_err(instrumentation_error)?;
-        let machine = self.context.machine(self.source.source())?;
+        let machine = match self.program.clone() {
+            Some(program) => Machine::entry(program),
+            None => self.context.machine(self.source.source())?,
+        };
         let target = {
             let hub = self.hub.borrow();
             HbcTarget::new(&hub, handle.clone(), self.source.source_id(), machine)
@@ -228,6 +264,7 @@ impl InstrumentedHbcLiveSession {
     fn restart(&mut self, source: LiveSource) -> Result<JsonValue, LiveSessionError> {
         self.remove_target();
         self.source = source;
+        self.program = None;
         self.pending_source = None;
         self.generation = self.generation.saturating_add(1);
         self.sequence = 0;
@@ -498,6 +535,10 @@ impl LiveSession for InstrumentedHbcLiveSession {
                 payload["steps"] = JsonValue::from(executed as u64);
                 Ok(payload)
             }
+            LiveSessionCommand::Call { .. } => Err(LiveSessionError::new(
+                "live-session/unsupported-operation",
+                "HBC backend does not support direct function calls",
+            )),
             LiveSessionCommand::Pause => {
                 self.request_directive(InstrumentDirective::Suspend)?;
                 self.step_target()?;

@@ -177,6 +177,10 @@ impl LiveSession for InterpreterLiveSession {
                 "op": "run",
                 "boundaryLimit": boundary_limit,
             })),
+            LiveSessionCommand::Call { .. } => Err(LiveSessionError::new(
+                "live-session/unsupported-operation",
+                "interpreter backend does not support direct function calls",
+            )),
             LiveSessionCommand::Pause => Err(LiveSessionError::new(
                 "live-session/unsupported-operation",
                 "interpreter backend does not support pause",

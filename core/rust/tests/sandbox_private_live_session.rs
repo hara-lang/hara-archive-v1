@@ -142,6 +142,44 @@ fn live_session_identity_cannot_be_reused_inside_one_owner() {
     );
 }
 
+#[cfg(all(feature = "whole-wasm", not(target_arch = "wasm32")))]
+#[test]
+fn private_owner_hosts_whole_wasm_from_an_artifact() {
+    use hara_wasm::vm::compile_source;
+    use hara_wasm::whole_wasm::compile_artifact;
+
+    let mut owner = restricted_sandbox_session("user");
+    let program = compile_source("(+ 19 23)").unwrap();
+    let artifact = compile_artifact(&program).unwrap();
+    let started = owner
+        .start_whole_wasm_live_session_from_artifact(
+            "sandbox/live-whole-wasm",
+            source("whole-wasm.hal", "sha256:whole-wasm", "(+ 19 23)"),
+            &artifact,
+        )
+        .unwrap();
+    let capabilities = owner
+        .live_session_capabilities("sandbox/live-whole-wasm")
+        .unwrap();
+    assert!(capabilities.supports(LiveSessionOperation::Run));
+    assert!(capabilities.supports(LiveSessionOperation::Call));
+    assert!(!capabilities.supports(LiveSessionOperation::Step));
+
+    let run = owner
+        .dispatch_live_session(request(
+            "run-whole-wasm",
+            &started,
+            LiveSessionCommand::Run {
+                boundary_limit: 1_000,
+            },
+        ))
+        .unwrap();
+    assert_eq!(run.payload["result"], 42);
+
+    owner.stop();
+    assert_eq!(owner.live_session_count(), 0);
+}
+
 #[cfg(feature = "bytecode-observation")]
 #[test]
 fn private_owner_hosts_hbc_through_the_same_session_contract() {
