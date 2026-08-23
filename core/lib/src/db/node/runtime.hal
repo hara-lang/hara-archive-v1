@@ -28,11 +28,13 @@
     (string? lookup-key)
     (or (get value (keyword lookup-key))
         (get value (keyword (str/replace lookup-key "_" "-")))
+        (get value (keyword (str/replace lookup-key "-" "_")))
         (get value (str/replace lookup-key "-" "_")))
     (keyword? lookup-key)
     (or (get value (name lookup-key))
         (get value (str/replace (name lookup-key) "-" "_"))
-        (get value (keyword (str/replace (name lookup-key) "_" "-"))))
+        (get value (keyword (str/replace (name lookup-key) "_" "-")))
+        (get value (keyword (str/replace (name lookup-key) "-" "_"))))
     :else nil))
 
 (defn- call-promise

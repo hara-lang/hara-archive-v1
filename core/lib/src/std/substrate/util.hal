@@ -36,9 +36,7 @@
     (if (nil? transport)
       (throw (ex :not-found {:transport-id transport-id} :ex/message (str "transport not found - " transport-id)))
       (let [send-function
-            (or (get transport "send_fn")
-                (get transport :send-fn)
-                (get transport :send_fn))]
+            (option-value transport "send_fn" :send-fn)]
         (if (nil? send-function)
           (throw (ex :not-found {:transport-id transport-id} :ex/message (str "transport missing send_fn - " transport-id)))
           (request/ensure-promise (send-function outgoing)))))))
