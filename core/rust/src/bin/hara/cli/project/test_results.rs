@@ -15,7 +15,7 @@ fn form_count(form: &Form, name: &str, fallback: usize) -> Result<usize, String>
         Some(Form::Number(value)) => usize::try_from(*value)
             .map_err(|_| format!("test summary :{name} must be non-negative")),
         Some(Form::BigInteger(value)) => value
-            .parse::<usize>()
+            .try_into()
             .map_err(|_| format!("test summary :{name} is outside usize range")),
         Some(_) => Err(format!("test summary :{name} must be an integer")),
         None => Ok(fallback),

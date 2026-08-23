@@ -57,11 +57,14 @@ public class HaraNumericInteropTest {
       assertTrue(integer.isNumber());
       assertEquals(Long.MAX_VALUE, integer.asLong());
 
-      PolyglotException large =
-          assertThrows(
-              PolyglotException.class,
-              () -> context.eval(HaraLanguage.ID, LARGE_INTEGER.toString()));
-      assertTrue(large.getMessage().contains("Invalid number"));
+      Value large = context.eval(HaraLanguage.ID, LARGE_INTEGER.toString());
+      assertTrue(large.isNumber());
+      assertTrue(large.fitsInBigInteger());
+      assertFalse(large.fitsInLong());
+      assertEquals(LARGE_INTEGER, large.as(BigInteger.class));
+
+      Value belowLong = context.eval(HaraLanguage.ID, BigInteger.valueOf(Long.MIN_VALUE).subtract(BigInteger.ONE).toString());
+      assertEquals(BigInteger.valueOf(Long.MIN_VALUE).subtract(BigInteger.ONE), belowLong.as(BigInteger.class));
 
       Value floating = context.eval(HaraLanguage.ID, "1.2300");
       assertTrue(floating.isNumber());

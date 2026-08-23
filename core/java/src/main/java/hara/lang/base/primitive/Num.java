@@ -740,6 +740,13 @@ public interface Num {
   }
 
   public static Number num(Object x) {
+    if (x instanceof Byte
+        || x instanceof Short
+        || x instanceof Integer
+        || x instanceof Long
+        || x instanceof BigInteger) {
+      return NumUtils.normalizeInteger(NumUtils.toBigInteger(x));
+    }
     return (Number) x;
   }
 

@@ -2,6 +2,7 @@
 
 use crate::core::{Promise, Value};
 use hara_abi::{Error, NativeModule, TaskEvent};
+use num_bigint::BigInt;
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
@@ -119,7 +120,7 @@ fn to_abi(value: &Value) -> Result<hara_abi::Value, String> {
         Value::Nil => Abi::Nil,
         Value::Bool(value) => Abi::Boolean(*value),
         Value::Number(value) => Abi::Integer(*value),
-        Value::BigInteger(value) => Abi::BigInteger(value.clone()),
+        Value::BigInteger(value) => Abi::BigInteger(value.to_string()),
         Value::Float(value) => Abi::Float(*value),
         Value::String(value) => Abi::String(value.clone()),
         Value::Bytes(value) => Abi::Bytes(value.clone()),
@@ -161,7 +162,11 @@ fn from_abi(value: hara_abi::Value) -> Result<Value, String> {
         Abi::Nil => Value::Nil,
         Abi::Boolean(value) => Value::Bool(value),
         Abi::Integer(value) => Value::Number(value),
-        Abi::BigInteger(value) => Value::BigInteger(value),
+        Abi::BigInteger(value) => {
+            let value = BigInt::parse_bytes(value.as_bytes(), 10)
+                .ok_or_else(|| "native-module/value-invalid: big integer".to_string())?;
+            crate::numeric::compact_integer(value)
+        }
         Abi::Float(value) => Value::Float(value),
         Abi::String(value) => Value::String(value),
         Abi::Bytes(value) => Value::Bytes(value),
@@ -243,7 +248,9 @@ mod tests {
             .invoke(
                 "test.echo".into(),
                 "echo".into(),
-                vec![Value::BigInteger("9223372036854775808".into())],
+                vec![Value::BigInteger(
+                    BigInt::parse_bytes(b"9223372036854775808", 10).unwrap(),
+                )],
             )
             .unwrap()
         else {
@@ -252,7 +259,7 @@ mod tests {
         assert!(matches!(
             promise.state(),
             crate::core::PromiseState::Fulfilled(Value::BigInteger(value))
-                if value == "9223372036854775808"
+                if value == BigInt::parse_bytes(b"9223372036854775808", 10).unwrap()
         ));
     }
 }

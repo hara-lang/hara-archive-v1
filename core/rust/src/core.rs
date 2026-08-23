@@ -24,6 +24,7 @@ use crate::numeric::{self, ArithmeticOp};
 pub use crate::task::{
     LocalPromiseProvider, Promise, PromiseProvider, PromiseRejection, PromiseState,
 };
+use num_bigint::BigInt;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 

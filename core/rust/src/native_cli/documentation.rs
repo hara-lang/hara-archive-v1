@@ -26,9 +26,8 @@ fn value(metadata: &MetadataValue) -> DocumentationValue {
         MetadataValue::Boolean(value) => DocumentationValue::Boolean(*value),
         MetadataValue::Number(value) => DocumentationValue::Integer(*value),
         MetadataValue::Float(value) => DocumentationValue::String(value.to_string()),
-        MetadataValue::BigInteger(value) | MetadataValue::Regex(value) => {
-            DocumentationValue::String(value.clone())
-        }
+        MetadataValue::BigInteger(value) => DocumentationValue::String(value.to_string()),
+        MetadataValue::Regex(value) => DocumentationValue::String(value.clone()),
         MetadataValue::Character(value) => DocumentationValue::String(value.to_string()),
         MetadataValue::Tagged(tag, tagged) => {
             DocumentationValue::Array(vec![DocumentationValue::String(tag.clone()), value(tagged)])

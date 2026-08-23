@@ -4,7 +4,7 @@ pub enum Form {
     Bool(bool),
     Number(i64),
     Float(f64),
-    BigInteger(String),
+    BigInteger(BigInt),
     Character(char),
     Regex(String),
     Tagged(String, Box<Form>),
@@ -73,7 +73,7 @@ impl std::fmt::Display for Form {
             Self::Float(value) if *value == f64::NEG_INFINITY => "##-Inf".into(),
             Self::Float(value) if value.fract() == 0.0 => format!("(double {value:.1})"),
             Self::Float(value) => format!("(double {value})"),
-            Self::BigInteger(value) => value.clone(),
+            Self::BigInteger(value) => value.to_string(),
             Self::Character('\n') => "\\newline".into(),
             Self::Character(' ') => "\\space".into(),
             Self::Character('\t') => "\\tab".into(),
@@ -143,3 +143,4 @@ mod tests {
         assert_eq!(parse(&metadata.to_string()).unwrap(), parse("[1]").unwrap());
     }
 }
+use num_bigint::BigInt;

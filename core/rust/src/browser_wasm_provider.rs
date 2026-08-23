@@ -148,6 +148,11 @@ impl WasmExtensionProvider for BrowserWasmProvider {
         for (wire, argument) in specification.arguments.iter().zip(arguments) {
             args.push(&match (wire.as_str(), argument) {
                 ("i64", Value::Number(value)) => js_sys::BigInt::from(*value).into(),
+                ("i64", Value::BigInteger(_)) => {
+                    return Err(format!(
+                        "native/integer-overflow: {export} expects signed 64-bit integer"
+                    ));
+                }
                 ("i32", Value::Number(value)) if i32::try_from(*value).is_ok() => {
                     JsValue::from_f64(*value as f64)
                 }
@@ -163,7 +168,11 @@ impl WasmExtensionProvider for BrowserWasmProvider {
             "void" if result.is_undefined() => Ok(Value::Nil),
             "i64" if result.is_bigint() => i64::try_from(result.unchecked_into::<js_sys::BigInt>())
                 .map(Value::Number)
-                .map_err(|_| format!("native/result-out-of-range: {export}")),
+                .map_err(|_| {
+                    format!(
+                        "native/integer-overflow: {export} result is outside signed 64-bit range"
+                    )
+                }),
             "i32" => result
                 .as_f64()
                 .map(|value| Value::Number(value as i32 as i64))
@@ -403,6 +412,9 @@ fn scalar_argument(
             Ok(JsValue::from_f64(i32::from(*value) as f64))
         }
         (HaraValueType::I64, Value::Number(value)) => Ok(js_sys::BigInt::from(*value).into()),
+        (HaraValueType::I64, Value::BigInteger(_)) => Err(format!(
+            "native/integer-overflow: {export} expects signed 64-bit integer"
+        )),
         (HaraValueType::F32 | HaraValueType::F64, Value::Float(value)) => {
             Ok(JsValue::from_f64(*value))
         }
@@ -493,7 +505,11 @@ fn scalar_result(export: &str, expected: &HaraValueType, raw: JsValue) -> Result
         HaraValueType::I64 if raw.is_bigint() => {
             i64::try_from(raw.unchecked_into::<js_sys::BigInt>())
                 .map(Value::Number)
-                .map_err(|_| format!("native/result-out-of-range: {export}"))
+                .map_err(|_| {
+                    format!(
+                        "native/integer-overflow: {export} result is outside signed 64-bit range"
+                    )
+                })
         }
         HaraValueType::F32 | HaraValueType::F64 => raw
             .as_f64()

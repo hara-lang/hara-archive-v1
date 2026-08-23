@@ -49,6 +49,36 @@ impl WholeWasmHost {
     pub fn unbox_i64(&self, handle: i64) -> Result<i64, JsValue> {
         match self.get(handle)? {
             Value::Number(value) => Ok(value),
+            Value::BigInteger(_) => Err(js_error(
+                "whole-Wasm integer overflow: value is outside signed 64-bit range".into(),
+            )),
+            _ => Err(js_error("whole-Wasm value is not an integer".into())),
+        }
+    }
+
+    #[wasm_bindgen(js_name = boxBigInt)]
+    pub fn box_big_int(&mut self, value: JsValue) -> Result<i64, JsValue> {
+        if !value.is_bigint() {
+            return Err(js_error("whole-Wasm BigInt value expected".into()));
+        }
+        let value: js_sys::BigInt = value.unchecked_into();
+        let text = value
+            .to_string(10)
+            .map_err(|error| js_error(format!("whole-Wasm BigInt is invalid: {error:?}")))?
+            .as_string()
+            .ok_or_else(|| js_error("whole-Wasm BigInt has no decimal representation".into()))?;
+        let value = num_bigint::BigInt::parse_bytes(text.as_bytes(), 10)
+            .ok_or_else(|| js_error("whole-Wasm BigInt is invalid".into()))?;
+        self.insert(crate::numeric::compact_integer(value))
+    }
+
+    #[wasm_bindgen(js_name = unboxBigInt)]
+    pub fn unbox_big_int(&self, handle: i64) -> Result<JsValue, JsValue> {
+        match self.get(handle)? {
+            Value::Number(value) => Ok(js_sys::BigInt::from(value).into()),
+            Value::BigInteger(value) => js_sys::BigInt::new(&JsValue::from_str(&value.to_string()))
+                .map(Into::into)
+                .map_err(|error| js_error(format!("whole-Wasm BigInt is invalid: {error:?}"))),
             _ => Err(js_error("whole-Wasm value is not an integer".into())),
         }
     }
@@ -94,7 +124,10 @@ impl WholeWasmHost {
 
     #[wasm_bindgen(js_name = isNumber)]
     pub fn is_number(&self, value: i64) -> Result<i64, JsValue> {
-        Ok(i64::from(matches!(self.get(value)?, Value::Number(_))))
+        Ok(i64::from(matches!(
+            self.get(value)?,
+            Value::Number(_) | Value::BigInteger(_)
+        )))
     }
 
     pub fn count(&self, collection: i64) -> Result<i64, JsValue> {
@@ -126,6 +159,9 @@ impl WholeWasmHost {
             .map_err(js_error)?
         {
             Value::Number(value) => Ok(value),
+            Value::BigInteger(_) => Err(js_error(
+                "whole-Wasm integer overflow: value is outside signed 64-bit range".into(),
+            )),
             _ => Err(js_error("get returned a non-integer".into())),
         }
     }
@@ -153,6 +189,9 @@ impl WholeWasmHost {
             .map_err(js_error)?
         {
             Value::Number(value) => Ok(value),
+            Value::BigInteger(_) => Err(js_error(
+                "whole-Wasm integer overflow: value is outside signed 64-bit range".into(),
+            )),
             _ => Err(js_error("nested get returned a non-integer".into())),
         }
     }

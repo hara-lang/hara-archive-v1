@@ -1,9 +1,7 @@
-use std::cmp::Ordering;
-use std::str::FromStr;
-
 use num_bigint::BigInt;
 use num_integer::Integer;
 use num_traits::{Signed, ToPrimitive, Zero};
+use std::cmp::Ordering;
 
 use crate::core::Value;
 use crate::lang::hash::{canonical_decimal_str_hash, hash_double};
@@ -11,14 +9,14 @@ use crate::lang::hash::{canonical_decimal_str_hash, hash_double};
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum CanonicalInteger {
     Small(i64),
-    Big(String),
+    Big(BigInt),
 }
 
 impl CanonicalInteger {
     pub(crate) fn from_bigint(value: BigInt) -> Self {
         match value.to_i64() {
             Some(value) => Self::Small(value),
-            None => Self::Big(value.to_string()),
+            None => Self::Big(value),
         }
     }
 }
@@ -33,14 +31,6 @@ pub(crate) fn parse_integer_digits(
         value = -value;
     }
     Some(CanonicalInteger::from_bigint(value))
-}
-
-pub(crate) fn parse_big_integer(value: &str) -> Result<BigInt, String> {
-    BigInt::from_str(value).map_err(|_| format!("invalid integer representation: {value}"))
-}
-
-pub(crate) fn canonical_big_integer(value: &str) -> Result<String, String> {
-    Ok(parse_big_integer(value)?.to_string())
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -58,13 +48,16 @@ pub(crate) fn is_integer_value(value: &Value) -> bool {
 }
 
 pub(crate) fn is_numeric_value(value: &Value) -> bool {
-    matches!(value, Value::Number(_) | Value::BigInteger(_) | Value::Float(_))
+    matches!(
+        value,
+        Value::Number(_) | Value::BigInteger(_) | Value::Float(_)
+    )
 }
 
 pub(crate) fn integer_value(value: &Value) -> Result<BigInt, String> {
     match value {
         Value::Number(value) => Ok(BigInt::from(*value)),
-        Value::BigInteger(value) => parse_big_integer(value),
+        Value::BigInteger(value) => Ok(value.clone()),
         _ => Err("expected an integer".into()),
     }
 }
@@ -80,7 +73,7 @@ fn float_value(value: &Value) -> Result<f64, String> {
     match value {
         Value::Float(value) => Ok(*value),
         Value::Number(value) => Ok(*value as f64),
-        Value::BigInteger(value) => parse_big_integer(value)?
+        Value::BigInteger(value) => value
             .to_f64()
             .filter(|value| value.is_finite())
             .ok_or_else(|| "numeric value is outside double range".to_string()),
@@ -215,13 +208,9 @@ pub(crate) fn numeric_compare(left: &Value, right: &Value) -> Result<Option<Orde
     }
     match (left, right) {
         (Value::Float(left), Value::Float(right)) => Ok(left.partial_cmp(right)),
-        (Value::Float(left), _) => Ok(
-            compare_integer_to_float(&integer_value(right)?, *left)
-                .map(|ordering| ordering.reverse()),
-        ),
-        (_, Value::Float(right)) => {
-            Ok(compare_integer_to_float(&integer_value(left)?, *right))
-        }
+        (Value::Float(left), _) => Ok(compare_integer_to_float(&integer_value(right)?, *left)
+            .map(|ordering| ordering.reverse())),
+        (_, Value::Float(right)) => Ok(compare_integer_to_float(&integer_value(left)?, *right)),
         _ => Ok(Some(integer_value(left)?.cmp(&integer_value(right)?))),
     }
 }
@@ -257,7 +246,7 @@ pub(crate) fn numeric_total_compare(left: &Value, right: &Value) -> Option<Order
 pub(crate) fn numeric_hash(value: &Value) -> Option<i32> {
     Some(match value {
         Value::Number(value) => canonical_decimal_str_hash(&value.to_string()),
-        Value::BigInteger(value) => canonical_decimal_str_hash(value),
+        Value::BigInteger(value) => canonical_decimal_str_hash(&value.to_string()),
         Value::Float(value) => hash_double(*value),
         _ => return None,
     })
@@ -267,9 +256,9 @@ pub(crate) fn numeric_negate(value: &Value) -> Result<Value, String> {
     match value {
         Value::Number(value) => match value.checked_neg() {
             Some(value) => Ok(Value::Number(value)),
-            None => Ok(Value::BigInteger(BigInt::from(*value).abs().to_string())),
+            None => Ok(Value::BigInteger(BigInt::from(*value).abs())),
         },
-        Value::BigInteger(value) => Ok(compact_integer(-parse_big_integer(value)?)),
+        Value::BigInteger(value) => Ok(compact_integer(-value.clone())),
         Value::Float(value) => Ok(Value::Float(-value)),
         _ => Err("expected a numeric value".into()),
     }
@@ -279,9 +268,9 @@ pub(crate) fn numeric_abs(value: &Value) -> Result<Value, String> {
     match value {
         Value::Number(value) => match value.checked_abs() {
             Some(value) => Ok(Value::Number(value)),
-            None => Ok(Value::BigInteger(BigInt::from(*value).abs().to_string())),
+            None => Ok(Value::BigInteger(BigInt::from(*value).abs())),
         },
-        Value::BigInteger(value) => Ok(compact_integer(parse_big_integer(value)?.abs())),
+        Value::BigInteger(value) => Ok(compact_integer(value.clone().abs())),
         Value::Float(value) => Ok(Value::Float(value.abs())),
         _ => Err("expected a numeric value".into()),
     }
@@ -338,7 +327,11 @@ fn f64_to_bigint_exact(value: f64) -> Option<BigInt> {
     let mantissa = bits & 0xfffffffffffff;
     if exponent == -1023 {
         // Subnormal: only zero is an integer.
-        return if mantissa == 0 { Some(BigInt::zero()) } else { None };
+        return if mantissa == 0 {
+            Some(BigInt::zero())
+        } else {
+            None
+        };
     }
     let mantissa = BigInt::from(mantissa | (1 << 52));
     let exponent = exponent - 52;
@@ -361,7 +354,7 @@ fn f64_to_bigint_exact(value: f64) -> Option<BigInt> {
 fn boundary_integer(value: &Value) -> Result<BigInt, String> {
     match value {
         Value::Number(value) => Ok(BigInt::from(*value)),
-        Value::BigInteger(value) => parse_big_integer(value),
+        Value::BigInteger(value) => Ok(value.clone()),
         Value::Float(value) if value.is_finite() => f64_to_bigint_exact(*value)
             .ok_or_else(|| "floating-point value is not an exact integer".to_string()),
         Value::Float(_) => Err("floating-point value is not an exact integer".into()),
@@ -378,7 +371,7 @@ pub(crate) fn to_i64_exact(value: &Value) -> Result<i64, String> {
 pub(crate) fn to_i64_truncating(value: &Value) -> Result<i64, String> {
     let integer = match value {
         Value::Number(value) => return Ok(*value),
-        Value::BigInteger(value) => parse_big_integer(value)?,
+        Value::BigInteger(value) => value.clone(),
         Value::Float(value) if value.is_finite() => f64_to_bigint_exact(value.trunc())
             .ok_or_else(|| "floating-point value is outside signed 64-bit range".to_string())?,
         Value::Float(_) => return Err("floating-point value is not finite".into()),
@@ -443,7 +436,7 @@ mod tests {
     #[test]
     fn equal_numeric_representations_share_order_hash_and_keys() {
         let compact = Value::Number(42);
-        let promoted = Value::BigInteger("42".into());
+        let promoted = Value::BigInteger(BigInt::from(42));
         let floating = Value::Float(42.0);
 
         for value in [&promoted, &floating] {
@@ -464,13 +457,21 @@ mod tests {
     #[test]
     fn compares_large_integers_to_floats_without_rounding() {
         let floating = Value::Float(9_007_199_254_740_992.0);
-        let exact = Value::BigInteger("9007199254740992".into());
-        let next = Value::BigInteger("9007199254740993".into());
+        let exact = Value::BigInteger(BigInt::from(9007199254740992_i64));
+        let next = Value::BigInteger(BigInt::from(9007199254740993_i64));
 
-        assert_eq!(numeric_compare(&exact, &floating).unwrap(), Some(Ordering::Equal));
-        assert_eq!(numeric_compare(&next, &floating).unwrap(), Some(Ordering::Greater));
+        assert_eq!(
+            numeric_compare(&exact, &floating).unwrap(),
+            Some(Ordering::Equal)
+        );
+        assert_eq!(
+            numeric_compare(&next, &floating).unwrap(),
+            Some(Ordering::Greater)
+        );
         assert_ne!(next, floating);
-        assert_eq!(numeric_compare(&floating, &next).unwrap(), Some(Ordering::Less));
+        assert_eq!(
+            numeric_compare(&floating, &next).unwrap(),
+            Some(Ordering::Less)
+        );
     }
-
 }

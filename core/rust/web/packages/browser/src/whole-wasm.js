@@ -78,6 +78,7 @@ export async function instantiateWholeWasm(artifact, Host) {
     throw new Error("whole-Wasm module has no hara_entry function");
   }
   return Object.freeze({
+    host,
     module,
     instance,
     call(...arguments_) {

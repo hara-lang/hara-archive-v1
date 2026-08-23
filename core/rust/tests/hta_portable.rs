@@ -1,6 +1,7 @@
 use hara_abi::Value as PortableValue;
 use hara_wasm::core::Value;
 use hara_wasm::hta;
+use num_bigint::BigInt;
 use std::collections::BTreeMap;
 
 fn runtime_record(entries: impl IntoIterator<Item = (&'static str, Value)>) -> Value {
@@ -31,7 +32,10 @@ fn portable_codec_matches_the_runtime_codec_byte_for_byte() {
             Value::Vector(vec![Value::Bool(true), Value::Nil].into()),
         ),
         ("b", Value::Number(2)),
-        ("big", Value::BigInteger("9223372036854775808".into())),
+        (
+            "big",
+            Value::BigInteger(BigInt::parse_bytes(b"9223372036854775808", 10).unwrap()),
+        ),
         ("bytes", Value::Bytes(vec![0, 1, 255].into())),
         ("float", Value::Float(0.28)),
         ("keyword", Value::Keyword("profile.primary".into())),

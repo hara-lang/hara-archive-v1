@@ -1,4 +1,5 @@
 use crate::core::{ResultValue, Value};
+use num_bigint::BigInt;
 #[cfg(test)]
 use crate::lang::data::{Tuple as PTuple, Vector as PVector};
 use crate::lang::protocol::INamespaced;
@@ -95,7 +96,7 @@ fn encode_bare(value: &Value, output: &mut Vec<u8>, depth: usize) -> Result<(), 
         }
         Value::BigInteger(value) => {
             output.push(BIG_INTEGER);
-            encode_bytes(value.as_bytes(), output)?;
+            encode_bytes(value.to_string().as_bytes(), output)?;
         }
         Value::Regex(value) => {
             output.push(REGEX);
@@ -408,10 +409,13 @@ impl Reader<'_> {
                     .map(Value::Character)
                     .ok_or_else(|| "hta/value-malformed: invalid character scalar".into())
             }
-            BIG_INTEGER => Ok(Value::BigInteger(
-                String::from_utf8(self.data()?.to_vec())
-                    .map_err(|_| "hta/value-malformed: invalid big integer")?,
-            )),
+            BIG_INTEGER => {
+                let text = String::from_utf8(self.data()?.to_vec())
+                    .map_err(|_| "hta/value-malformed: invalid big integer")?;
+                let value = BigInt::parse_bytes(text.as_bytes(), 10)
+                    .ok_or_else(|| "hta/value-malformed: invalid big integer".to_string())?;
+                Ok(crate::numeric::compact_integer(value))
+            }
             REGEX => Ok(Value::Regex(
                 String::from_utf8(self.data()?.to_vec())
                     .map_err(|_| "hta/value-malformed: invalid regex")?,
@@ -761,7 +765,7 @@ mod tests {
     fn portable_language_scalars_round_trip() {
         for value in [
             Value::Character('雪'),
-            Value::BigInteger("123456789012345678901234567890".into()),
+            Value::BigInteger(BigInt::parse_bytes(b"123456789012345678901234567890", 10).unwrap()),
             Value::Float(1.25),
             Value::Regex("^[a-z]+$".into()),
         ] {

@@ -1,5 +1,6 @@
 use super::{parse_forms, read_forms};
 use crate::kernel::Form;
+use num_bigint::BigInt;
 use std::fs;
 #[test]
 fn tracks_spans_comments_commas_and_reader_macros() {
@@ -57,7 +58,7 @@ fn matches_canonical_numbers_characters_and_duplicate_errors() {
             Form::Float(123.45),
             Form::Number(255),
             Form::Number(10),
-            Form::BigInteger("9223372036854775808".into()),
+            Form::BigInteger(BigInt::parse_bytes(b"9223372036854775808", 10).unwrap()),
             Form::Float(123.0),
         ]
     );
@@ -161,7 +162,9 @@ fn expands_anonymous_function_reader_arguments() {
 fn matches_extended_canonical_reader_categories() {
     assert_eq!(
         parse_forms("9223372036854775808").unwrap(),
-        vec![Form::BigInteger("9223372036854775808".into())]
+        vec![Form::BigInteger(
+            BigInt::parse_bytes(b"9223372036854775808", 10,).unwrap()
+        )]
     );
     assert!(parse_forms("1/2")
         .unwrap_err()

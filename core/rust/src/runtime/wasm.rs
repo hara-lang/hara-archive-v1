@@ -39,6 +39,9 @@ fn value_to_js(value: &core::Value) -> Result<JsValue, String> {
             Ok(JsValue::from_f64(*number as f64))
         }
         core::Value::Number(number) => Ok(js_sys::BigInt::from(*number).into()),
+        core::Value::BigInteger(number) => js_sys::BigInt::new(&JsValue::from_str(&number.to_string()))
+            .map(Into::into)
+            .map_err(|error| format!("std.native.Host/call integer-invalid: {}", js_error_string(error.into()))),
         core::Value::Float(number) => Ok(JsValue::from_f64(*number)),
         core::Value::String(text) => Ok(JsValue::from_str(text)),
         core::Value::Keyword(keyword) => Ok(JsValue::from_str(keyword.as_str())),
@@ -92,9 +95,17 @@ fn js_to_value(value: &JsValue) -> Result<core::Value, String> {
     }
     if value.is_bigint() {
         let integer: js_sys::BigInt = value.clone().unchecked_into();
-        return i64::try_from(integer)
-            .map(core::Value::Number)
-            .map_err(|_| "std.native.Host/call bigint is outside the signed 64-bit range".into());
+        if let Ok(value) = i64::try_from(integer.clone()) {
+            return Ok(core::Value::Number(value));
+        }
+        let text = integer
+            .to_string(10)
+            .map_err(|error| format!("std.native.Host/call bigint is invalid: {error:?}"))?
+            .as_string()
+            .ok_or("std.native.Host/call bigint has no decimal representation")?;
+        let value = num_bigint::BigInt::parse_bytes(text.as_bytes(), 10)
+            .ok_or("std.native.Host/call bigint is invalid")?;
+        return Ok(crate::numeric::compact_integer(value));
     }
     if let Some(number) = value.as_f64() {
         if number.fract() == 0.0
