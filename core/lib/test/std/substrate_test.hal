@@ -32,13 +32,13 @@
         transport
         (substrate/transport-create
          "peer"
-         {:send_fn (fn [frame]
+         {:send-fn (fn [frame]
                      (reset! sent (substrate/frame-id frame))
                      frame)
-          :start_fn (fn [listener]
+          :start-fn (fn [listener]
                       (reset! started true)
                       listener)
-          :stop_fn (fn [listener]
+          :stop-fn (fn [listener]
                      (reset! stopped (fn? listener))
                      true)})]
     (promise/value (substrate/attach-transport node "peer" transport))
@@ -60,15 +60,15 @@
     (promise/value
      (substrate/attach-transport
       client "server"
-      {:send_fn
+      {:send-fn
        (fn [frame]
-         (substrate/receive-frame server frame {:transport_id "client"}))}))
+         (substrate/receive-frame server frame {:transport-id "client"}))}))
     (promise/value
      (substrate/attach-transport
       server "client"
-      {:send_fn
+      {:send-fn
        (fn [frame]
-         (substrate/receive-frame client frame {:transport_id "server"}))}))
+         (substrate/receive-frame client frame {:transport-id "server"}))}))
     (promise/value
      (substrate/request client "main" "sum" [19 23] {})))
   => 42)
@@ -80,37 +80,37 @@
     (promise/value
      (substrate/attach-transport
       node "peer-a"
-      {:send_fn (fn [frame]
+      {:send-fn (fn [frame]
                   (reset! peer-a (conj @peer-a (substrate/frame-id frame)))
                   frame)}))
     (promise/value
      (substrate/attach-transport
       node "peer-b"
-      {:send_fn (fn [frame]
+      {:send-fn (fn [frame]
                   (reset! peer-b (conj @peer-b (substrate/frame-id frame)))
                   frame)}))
     (promise/value
      (substrate/receive-frame
       node
       (promise/value (substrate/subscribe node "main" "changed" "sub-a"
-                                          {:transport_id "peer-a"}))
-      {:transport_id "peer-a"}))
+                                          {:transport-id "peer-a"}))
+      {:transport-id "peer-a"}))
     (promise/value
      (substrate/receive-frame
       node
       (promise/value (substrate/subscribe node "main" "changed" "sub-b"
-                                          {:transport_id "peer-b"}))
-      {:transport_id "peer-b"}))
+                                          {:transport-id "peer-b"}))
+      {:transport-id "peer-b"}))
     (promise/value
      (substrate/receive-frame
       node
       (substrate/stream-frame "main" "changed" 42 {:id "evt-in"} nil)
-      {:transport_id "peer-a"}))
+      {:transport-id "peer-a"}))
     [@peer-a @peer-b
      (substrate/list-subscriptions node "main" "changed")])
   => [["sub-a"] ["sub-b" "evt-in"] ["peer-a" "peer-b"]])
 
-(fact "ignores kebab-case transport callback keys"
+(fact "accepts kebab-case transport callback keys"
   (let [transport
        (substrate/transport-create
         "peer"
@@ -120,6 +120,6 @@
    [(get transport "send_fn")
     (get transport "start_fn")
     (get transport "stop_fn")])
-  => [nil nil nil])
+  => [identity identity identity])
 
 (pr-str (run '[std.substrate-test]))

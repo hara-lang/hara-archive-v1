@@ -11,8 +11,13 @@
 
 (defn option-value
   [options string-key keyword-key]
-  (or (get (or options {}) string-key)
-      (get (or options {}) keyword-key)))
+  (let [options (or options {})
+        kebab-key (str/replace string-key "_" "-")]
+    (or (get options string-key)
+        (get options keyword-key)
+        (get options kebab-key)
+        (get options (keyword string-key))
+        (get options (keyword kebab-key)))))
 
 (defn transport-get
   "Gets an attached transport."
@@ -29,12 +34,13 @@
   [node transport-id outgoing]
   (let [transport (transport-get node transport-id)]
     (if (nil? transport)
-      (throw (ex :not-found {:transport_id transport-id} :ex/message (str "transport not found - " transport-id)))
+      (throw (ex :not-found {:transport-id transport-id} :ex/message (str "transport not found - " transport-id)))
       (let [send-function
             (or (get transport "send_fn")
+                (get transport :send-fn)
                 (get transport :send_fn))]
         (if (nil? send-function)
-          (throw (ex :not-found {:transport_id transport-id} :ex/message (str "transport missing send_fn - " transport-id)))
+          (throw (ex :not-found {:transport-id transport-id} :ex/message (str "transport missing send_fn - " transport-id)))
           (request/ensure-promise (send-function outgoing)))))))
 
 (defn transport-broadcast-loop
@@ -57,7 +63,7 @@
   (let [meta (or meta {})]
     (if (option-value meta "local" :local)
       nil
-      (or (option-value meta "transport_id" :transport_id)
+      (or (option-value meta "transport_id" :transport-id)
           (first (transport-list node))))))
 
 (defn stream-route-loop
@@ -99,7 +105,7 @@
 
 (defn context-transport-id
   [context]
-  (option-value context "transport_id" :transport_id))
+  (option-value context "transport_id" :transport-id))
 
 (defn request-context-merge
   "Merges transport context into request metadata and returns a new frame."
@@ -114,7 +120,7 @@
 (defn response-target
   [incoming context]
   (or (context-transport-id context)
-      (option-value (get incoming "meta") "transport_id" :transport_id)))
+      (option-value (get incoming "meta") "transport_id" :transport-id)))
 
 (defn response-ok
   "Constructs and optionally sends a successful response."
@@ -151,12 +157,12 @@
     (map? config)
     (let [configured-id (or (get config "id") (get config :id))]
       (if (and configured-id (not= configured-id space-id))
-        (throw (ex :generic {:space_id space-id :config config} :ex/message (str "space id mismatch - " space-id)))
+        (throw (ex :generic {:space-id space-id :config config} :ex/message (str "space id mismatch - " space-id)))
         {"state" (or (get config "state") (get config :state))
          "meta" (or (get config "meta") (get config :meta) {})}))
 
     :else
-    (throw (ex :argument {:space_id space-id :config config} :ex/message (str "invalid space config - " space-id)))))
+    (throw (ex :argument {:space-id space-id :config config} :ex/message (str "invalid space config - " space-id)))))
 
 (defn config-normalize-handler
   "Normalises handler config from a function or declarative entry."
@@ -257,7 +263,7 @@
       (promise/new
        (fn [resolve reject]
          (request/add-pending
-          node outgoing resolve reject {"transport_id" target})
+          node outgoing resolve reject {:transport-id target})
          (try
            (promise/catch
             (transport-send node target outgoing)
@@ -277,7 +283,7 @@
          space signal data meta
          (or (get meta "cause") (get meta :cause)))
         exclude-id
-        (option-value meta "transport_id" :transport_id)]
+        (option-value meta "transport_id" :transport-id)]
     (promise/then
      (pubsub/receive-publish node stream)
      (fn [_]

@@ -36,8 +36,13 @@
 
 (defn option-value
   [options string-key keyword-key]
-  (or (get (or options {}) string-key)
-      (get (or options {}) keyword-key)))
+  (let [options (or options {})
+        kebab-key (str/replace string-key "_" "-")]
+    (or (get options string-key)
+        (get options keyword-key)
+        (get options kebab-key)
+        (get options (keyword string-key))
+        (get options (keyword kebab-key)))))
 
 (defn map-each
   [entries function]
@@ -96,9 +101,9 @@
      "id" transport-id
      "listener" nil
      "meta" (or (option-value implementation "meta" :meta) {})
-     "send_fn" (option-value implementation "send_fn" :send_fn)
-     "start_fn" (option-value implementation "start_fn" :start_fn)
-     "stop_fn" (option-value implementation "stop_fn" :stop_fn)}))
+     "send_fn" (option-value implementation "send_fn" :send-fn)
+     "start_fn" (option-value implementation "start_fn" :start-fn)
+     "stop_fn" (option-value implementation "stop_fn" :stop-fn)}))
 
 (defn get-services
   [node]
@@ -331,7 +336,7 @@
                  context
                  (if (router/context-transport-id context)
                    context
-                   (assoc context "transport_id" transport-id))]
+                   (assoc context :transport-id transport-id))]
              (receive-frame node event context)))))
        (fn [listener]
          (let [started (assoc transport "listener" listener)]

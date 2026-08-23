@@ -34,7 +34,7 @@
 (defn get-transport-id
   "Resolves a transport from options, node default or first attached transport."
   [node options]
-  (or (option options :transport_id :transport_id)
+  (or (option options :transport-id :transport_id)
       (get-default-transport node)
       (first (substrate/transport-list node))))
 
@@ -47,7 +47,7 @@
         metadata (or (compatible-get options :meta) {})
         base {:meta metadata}
         with-transport (if transport-id
-                         (assoc base :transport_id transport-id)
+                         (assoc base :transport-id transport-id)
                          base)
         with-timeout (if timeout-ms
                        (assoc with-transport :timeout-ms timeout-ms)
@@ -73,7 +73,7 @@
   (let [request-options (request-options node options)]
     (if (substrate/get-handler node action)
       (substrate/request node nil action args (assoc request-options :local true))
-      (if (get request-options :transport_id)
+      (if (get request-options :transport-id)
         (substrate/request node nil action args request-options)
         (throw (ex :database {:action action
                          :transports (substrate/transport-list node)} :ex/message "No database runtime transport is attached"))))))

@@ -72,7 +72,7 @@
   (let [node (substrate/node-create {:id "node/transport-error"})
         output
         (substrate/request-result
-         node "room/a" "sum" [] {:transport_id "missing"})
+         node "room/a" "sum" [] {:transport-id "missing"})
         result (promise/value output)]
     [(promise/state output)
      (Result/error? result)

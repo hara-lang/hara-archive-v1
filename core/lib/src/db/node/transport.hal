@@ -17,8 +17,14 @@
   (cond
     (not (map? value)) nil
     (has? value lookup-key) (get value lookup-key)
-    (string? lookup-key) (get value (keyword lookup-key))
-    (keyword? lookup-key) (get value (name lookup-key))
+    (string? lookup-key)
+    (or (get value (keyword lookup-key))
+        (get value (keyword (str/replace lookup-key "_" "-")))
+        (get value (str/replace lookup-key "-" "_")))
+    (keyword? lookup-key)
+    (or (get value (name lookup-key))
+        (get value (str/replace (name lookup-key) "-" "_"))
+        (get value (keyword (str/replace (name lookup-key) "_" "-"))))
     :else nil))
 
 (defn- wire-name
@@ -182,7 +188,7 @@
    (or (db.node.transport/wire->value (compatible-get message :meta)) {})
    (compatible-get message :action)
    (or (db.node.transport/wire->value (compatible-get message :args)) [])
-   (compatible-get message :reply_to)
+   (compatible-get message :reply-to)
    (wire-keyword (compatible-get message :status))
    (db.node.transport/wire->value (compatible-get message :data))
    (db.node.transport/wire->value (compatible-get message :error))
@@ -196,7 +202,7 @@
 
 (defn- receive-endpoint-frame
   [node transport-id frame]
-  (substrate/receive-frame node frame {:transport_id transport-id}))
+  (substrate/receive-frame node frame {:transport-id transport-id}))
 
 (defn attach-endpoint
   "Attaches an endpoint as a Substrate transport.
@@ -223,7 +229,7 @@
          (when control-listener
            (control-listener message)))))
     {:node node
-     :transport_id transport-id
+     :transport-id transport-id
      :endpoint endpoint}))
 
 (defn message-adapter

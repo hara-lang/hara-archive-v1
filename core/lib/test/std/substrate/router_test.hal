@@ -84,11 +84,11 @@
         unsubscribe (router/unsubscribe-frame
                      "room/a" "event/ping" "sub-a" nil)]
     (promise/value
-     (router/receive-subscribe node subscribe {"transport_id" "peer-a"}))
+     (router/receive-subscribe node subscribe {:transport-id "peer-a"}))
     (let [before (router/list-subscriptions node "room/a" "event/ping")]
       (promise/value
        (router/receive-unsubscribe node unsubscribe
-                                   {"transport_id" "peer-a"}))
+                                   {:transport-id "peer-a"}))
       [before
        (router/list-subscriptions node "room/a" "event/ping")]))
   => [["peer-a"] []])
