@@ -1,0 +1,38 @@
+(defn stack-safety-conformance-run-case
+  [test-case]
+  (let [expected (:expect test-case)
+        outcome (try
+                  {:status :value
+                   :value (eval (read-string (:source test-case)))}
+                  (catch error
+                    {:status :error
+                     :message (str error)}))
+        passed? (if (:error expected)
+                  (and (= :error (:status outcome))
+                       (or (nil? (:message expected))
+                           (str/includes? (:message outcome)
+                                          (:message expected))))
+                  (and (= :value (:status outcome))
+                       (= (:value expected) (:value outcome))))]
+    {:id (:id test-case)
+     :status (if passed? :passed :failed)}))
+
+(defn stack-safety-conformance-results
+  [document]
+  (loop [remaining (:cases document)
+         output []]
+    (if (empty? remaining)
+      output
+      (recur (rest remaining)
+             (conj output
+                   (stack-safety-conformance-run-case (first remaining)))))))
+
+(defn stack-safety-conformance-run
+  [corpus-source]
+  (let [results (stack-safety-conformance-results (read-string corpus-source))]
+    (if (every? #(= :passed (:status %)) results) 42 0)))
+
+(defn stack-safety-conformance-failure
+  [document]
+  (first (filter #(= :failed (:status %))
+                (stack-safety-conformance-results document))))

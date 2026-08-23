@@ -1,0 +1,243 @@
+;; Shared source-level stack/work conformance runner.
+(ns work.verify.stack-safety
+  (:config {:role :internal})
+  (:require [code.project :as project]
+            [tool.sh :as sh]
+            [work.base :as work :refer [def.work]]))
+
+(def +languages+ [:rust :jvm :bytecode :wasm])
+(def +corpus-relative-path+
+  "01-lang/001-language/draft/conformance/stack-safety.edn")
+(def +report-relative-paths+
+  {:rust "core/target/conformance/rust/stack-safety.edn"
+   :jvm "core/target/conformance/jvm/stack-safety.edn"
+   :bytecode "core/target/conformance/bytecode/stack-safety.edn"
+   :wasm "core/target/conformance/wasm/stack-safety.edn"})
+(def +runtime-commands+
+  {:rust ["cargo" "test" "-q" "--manifest-path" "core/rust/Cargo.toml"
+          "shared_stack_safety_corpus_runs_on_the_native_runtime" "--" "--nocapture"]
+   :jvm ["mvn" "-q" "-f" "core/java/pom.xml" "-Ptruffle"
+         "-Dtest=hara.truffle.HaraStackSafetyConformanceTest" "test"]
+   :bytecode ["cargo" "test" "-q" "--manifest-path" "core/rust/Cargo.toml"
+              "--features" "bytecode-vm"
+              "shared_stack_safety_corpus_runs_on_the_bytecode_runtime" "--" "--nocapture"]
+   :wasm ["npm" "--prefix" "core/rust/web" "run" "test:stack-safety"]})
+
+(defn project-root
+  [input]
+  (or (:project/root input) "."))
+
+(defn registry-root
+  [input]
+  (or (:registry/root input)
+      "../hara-specs-registry"))
+
+(defn join-path
+  [root path]
+  (if (str/starts-with? path "/") path (File/join root path)))
+
+(defn host-path
+  [root path]
+  (if (str/starts-with? path "/") path (str root "/" path)))
+
+(defn host-read
+  [path]
+  (:stdout (sh/run-checked ["/bin/cat" path])))
+
+(defn read-corpus
+  [input]
+  (or (:corpus input)
+      (Edn/read
+       (host-read
+        (host-path (registry-root input) +corpus-relative-path+)))))
+
+(defn normalize-error-category
+  [message]
+  (if (or (str/includes? message "StackOverflow")
+          (str/includes? message "stack overflow")
+          (str/includes? message "stack-work-exhausted"))
+    :resource/stack-work-exhausted
+    :runtime/error))
+
+(defn case-result
+  [test-case]
+  (let [expected (:expect test-case)
+        outcome (try
+                  {:status :value
+                   :value (eval (read-string (:source test-case)))}
+                  (catch error
+                    {:status :error
+                     :message (str error)}))
+        expected-error (:error expected)
+        passed? (if expected-error
+                  (and (= :error (:status outcome))
+                       (or (nil? (:message expected))
+                           (str/includes? (:message outcome)
+                                          (:message expected))))
+                  (and (= :value (:status outcome))
+                       (= (:value expected) (:value outcome))))]
+    {:id (:id test-case)
+     :class (:class test-case)
+     :status (if passed? :passed :failed)
+     :expected expected
+     :actual (if (= :value (:status outcome))
+               (:value outcome)
+               nil)
+     :error/category (if (= :error (:status outcome))
+                       (normalize-error-category (:message outcome))
+                       nil)
+     :error/message (if (= :error (:status outcome))
+                      (:message outcome)
+                      nil)}))
+
+(defn run-document
+  [document]
+  (let [results (vec (map case-result (:cases document)))
+        passed (count (filter #(= :passed (:status %)) results))]
+    {:report/schema :hara.conformance.runtime/0-alpha
+     :report/suite :hal/stack-safety
+     :report/status (if (= passed (count results)) :passed :failed)
+     :report/passed passed
+     :report/total (count results)
+     :report/cases results}))
+
+(defn run-corpus
+  [source]
+  (run-document (Edn/read source)))
+
+(defn first-failure
+  [report]
+  (first (filter #(= :failed (:status %)) (:report/cases report))))
+
+(defn read-report
+  [root language]
+  (let [relative (get +report-relative-paths+ language)]
+    (if (nil? relative)
+      {:report/runtime language
+       :report/status :not-implemented
+       :report/error "runtime report path is not configured"}
+      (let [path (host-path root relative)]
+        (try
+          (let [report (Edn/read (host-read path))]
+            (if (and (map? report)
+                     (= :hara.conformance.runtime/0-alpha (:report/schema report)))
+              report
+              {:report/runtime language
+               :report/status :not-implemented
+               :report/error "runtime report has an invalid schema"}))
+          (catch error
+            {:report/runtime language
+             :report/status :not-implemented
+             :report/error (str error)}))))))
+
+(defn command-result
+  [language root]
+  (try
+    (sh/run (get +runtime-commands+ language) {:cwd root})
+    (catch error
+      {:exit -1
+       :stdout ""
+       :stderr (str error)})))
+
+(defn runtime-report
+  [subject context]
+  (let [language (:language subject)
+        supplied (:report subject)]
+    {:data
+     (if (map? supplied)
+       (assoc supplied :language (or (:language supplied) language))
+       (let [root (:project/root subject)
+             command (command-result language root)
+             report (read-report root language)]
+         (assoc report
+                :language language
+                :report/runtime language
+                :report/command (get +runtime-commands+ language)
+                :report/exit (:exit command)
+                :report/stdout (:stdout command)
+                :report/stderr (:stderr command))))}))
+
+(defn runtime-items
+  [input context]
+  (let [languages (vec (or (:languages input) +languages+))
+        reports (or (:reports input) {})]
+    (vec
+     (map
+      (fn [language]
+        {:item/id language
+         :item/value {:language language
+                      :report (get reports language)
+                      :project/root (project-root input)}})
+      languages))))
+
+(defn runtime-counts
+  [report]
+  {:passed (or (:report/passed report) 0)
+   :total (or (:report/total report) 0)
+   :failed (count (filter #(= :failed (:status %))
+                          (or (:report/cases report) [])))})
+
+(defn task-summary
+  [summary records results]
+  (let [reports (vec (map :data results))
+        counts (reduce
+                (fn [output report]
+                  (merge-with + output (runtime-counts report)))
+                {:passed 0 :total 0 :failed 0}
+                reports)]
+    (merge summary counts
+           {:languages (count reports)
+            :status (cond
+                      (< 0 (:failed counts)) :failed
+                      (some #(= :not-implemented (:report/status %)) reports)
+                      :partial
+                      :else :passed)})))
+
+(defn status-label
+  [status]
+  (case status
+    :passed "PASS"
+    :failed "FAIL"
+    :not-implemented "NOT-IMPLEMENTED"
+    :partial "PARTIAL"
+    (str (name status))))
+
+(defn task-status
+  [summary bundle]
+  (case (:status summary)
+    :failed :failed
+    :partial :warning
+    :completed))
+
+(def.work ^{:public true} stack-safety
+  [:task]
+  {:item {:list runtime-items
+          :list-mode :input-context
+          :display (fn [report]
+                     (let [counts (runtime-counts report)]
+                       (str (name (:language report)) " "
+                            (status-label (:report/status report)) " "
+                            (:passed counts) "/" (:total counts) " cases")))
+          :run runtime-report}
+   :execution {:order :input :parallel false :fail-fast false}
+   :result {:keys
+            [[:runtime (fn [report] (:language report))]
+             [:runtime-status (fn [report] (status-label (:report/status report)))]
+             [:passed (fn [report] (:passed (runtime-counts report)))]
+             [:total (fn [report] (:total (runtime-counts report)))]
+             [:failed (fn [report] (:failed (runtime-counts report)))]]
+            :columns
+            [{:key :runtime :label "RUNTIME"}
+             {:key :runtime-status :label "STATUS"}
+             {:key :passed :label "CASES OK" :align :right}
+             {:key :total :label "CASES" :align :right}
+             {:key :failed :label "FAILED" :align :right}]}
+   :summary {:finalise task-summary
+             :fields [:items :results :languages :passed :total :failed :elapsed]}
+   :report {:title "HAL STACK-SAFETY CONFORMANCE"
+            :sections [:items :results :summary]
+            :labels {:items "RUNTIMES"
+                     :results "RUNTIME REPORTS"
+                     :summary "OVERALL"}
+            :status task-status}
+   :return {:select :all}})

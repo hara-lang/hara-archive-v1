@@ -1080,13 +1080,16 @@
    :conformance/runtimes
    {:rust {:runtime/id :rust
            :runtime/adapter :registry-hara-test
+           :runtime/report-path "core/target/conformance/libraries/rust.edn"
            :runtime/command ["scripts/runtime/run-lib-tests"]}
     :jvm {:runtime/id :jvm
           :runtime/adapter :registry-jvm-hara-test
+          :runtime/report-path "core/target/conformance/libraries/jvm.edn"
           :runtime/command ["mvn" "-q" "-f" "core/java/pom.xml" "-Ptruffle"
                             "-Dtest=LibraryConformanceTest" "test"]}
     :wasm {:runtime/id :wasm
            :runtime/adapter :registry-wasm-hara-test
+           :runtime/report-path "core/target/conformance/libraries/wasm.edn"
            :runtime/command ["npm" "--prefix" "core/rust/web"
                              "run" "test:library-conformance"]}}
    :conformance/families

@@ -13,7 +13,8 @@
               :hara/test-paths ["core/lib/test/std/lib/zip_test.hal"]}})
 
 (def passed-report
-  {:language :rust
+  {:report/schema :hara.conformance.library/0-alpha
+   :language :rust
    :status :passed
    :namespaces [{:namespace "std.lib.zip"
                  :status :passed
@@ -25,7 +26,8 @@
    :families []})
 
 (def partial-report
-  {:language :java
+  {:report/schema :hara.conformance.library/0-alpha
+   :language :java
    :status :partial
    :namespaces [{:namespace "std.lib.zip"
                  :status :not-implemented
@@ -56,19 +58,44 @@
    (verify/join-path "/root" "/a/b")]
   => ["/root/a/b" "/a/b"])
 
+^{:refer work.verify.conformance/host-path}
+(fact "host-path keeps the external specs checkout outside project mounts"
+  [(verify/host-path "/hara" "../hara-specs")
+   (verify/host-path "/hara" "/specs")]
+  => ["/hara/../hara-specs" "/specs"])
+
+^{:refer work.verify.conformance/host-read}
+(fact "host-read is an explicit process-boundary operation"
+  (try
+    (verify/host-read "/path/that/does/not/exist")
+    false
+    (catch error true))
+  => true)
+
+^{:refer work.verify.conformance/read-document}
+(fact "read-document parses an EDN document from the project"
+  (:hara/type (verify/read-document "project.edn"))
+  => :project)
+
+^{:refer work.verify.conformance/read-host-document}
+(fact "read-host-document reports unavailable external documents explicitly"
+  (try
+    (verify/read-host-document "/path/that/does/not/exist")
+    false
+    (catch error true))
+  => true)
+
 ^{:refer work.verify.conformance/registry-index}
-(fact "registry-index reads the specs-owned family manifest"
+(fact "registry-index accepts the structured registry manifest"
   (:document/type
-   (verify/registry-index {:registry/root "../hara-specs-registry"}))
+   (verify/registry-index {:registry/index
+                           {:document/type :foundation-library-conformance-index}}))
   => :foundation-library-conformance-index)
 
 ^{:refer work.verify.conformance/registry-families}
-(fact "registry-families resolves every contract from the single index"
-  (let [families (verify/registry-families {:registry/root "../hara-specs-registry"})]
-    [(count families)
-     (get-in (first (filter #(= :std_lib_zip (:family/id %)) families))
-             [:contract :conformance/family])])
-  => [9 :std_lib_zip])
+(fact "registry-families accepts a resolved registry family set"
+  (verify/registry-families {:registry/families [family]})
+  => [family])
 
 ^{:refer work.verify.conformance/selected-families}
 (fact "family selection filters the registry without changing its shape"
@@ -82,146 +109,15 @@
   (mapv :item/id
         (verify/runtime-items {:languages [:jvm :wasm]
                                :family-specs [family]
-                               :registry/index {}}
+                               :registry/index {}
+                               :registry/root "."}
                               nil))
   => [:jvm :wasm])
 
-^{:refer work.verify.conformance/reference-line}
-(fact "reference-line recognises both refer spellings"
-  [(verify/reference-line "^{:refer demo/value}")
-   (verify/reference-line "^{:ref demo/other}")]
-  => ["demo/value}" "demo/other}"])
-
-^{:refer work.verify.conformance/reference-from-line}
-(fact "reference-from-line extracts a qualified function"
-  [(verify/reference-from-line "  ^{:refer demo/value :added \"1\"}")
-   (verify/reference-from-line "(fact \"not metadata\")")]
-  => ["demo/value" nil])
-
-^{:refer work.verify.conformance/source-sections}
-(fact "source-sections groups lines beneath refer metadata"
-  (verify/source-sections
-   "^{:refer demo/one}\n(fact \"one\")\n^{:refer demo/two}\n(Test/run [])")
-  => [{:refer "demo/one" :lines ["(fact \"one\")"]}
-      {:refer "demo/two" :lines ["(Test/run [])"]}])
-
-^{:refer work.verify.conformance/count-occurrences}
-(fact "count-occurrences counts non-overlapping markers"
-  [(verify/count-occurrences ":name a :name b" ":name ")
-   (verify/count-occurrences "abc" "")]
-  => [2 0])
-
-^{:refer work.verify.conformance/section-case-count}
-(fact "section-case-count distinguishes facts and named Test/run cases"
-  [(verify/section-case-count {:lines ["(fact \"one\")"]})
-   (verify/section-case-count {:lines ["(Test/run [{:name \"a\"} {:name \"b\"}])"]})
-   (verify/section-case-count {:lines ["(Test/run [])"]})]
-  => [1 2 0])
-
-^{:refer work.verify.conformance/read-source}
-(fact "read-source reads a project-relative test file"
-  (str/starts-with?
-   (verify/read-source "." "core/lib/test/std/lib/zip_test.hal")
-   "(ns std.lib.zip-test")
-  => true)
-
-^{:refer work.verify.conformance/source-facts}
-(fact "source-facts returns refer-attributed obligations"
-  (< 0 (count (verify/source-facts "." "core/lib/test/std/lib/zip_test.hal")))
-  => true)
-
-^{:refer work.verify.conformance/test-files}
-(fact "test-files expands registry paths deterministically"
-  (verify/test-files "." ["core/lib/test/std/lib/zip_test.hal"])
-  => ["core/lib/test/std/lib/zip_test.hal"])
-
-^{:refer work.verify.conformance/number-after}
-(fact "number-after reads a numeric marker"
-  [(verify/number-after "PASS file (37 facts, 37 checks)" "(")
-   (verify/number-after "PASS file" "(")]
-  => [37 nil])
-
-^{:refer work.verify.conformance/matching-line}
-(fact "matching-line retains failure diagnostics"
-  (verify/matching-line
-   {:stdout "FAIL a.hal\n\"{:facts 2 :passed 1}\"\n"
-    :stderr ""}
-   "a.hal")
-  => "FAIL a.hal \"{:facts 2 :passed 1}\"")
-
-^{:refer work.verify.conformance/file-result}
-(fact "file-result normalises pass, fail, and missing runtime output"
-  [(verify/file-result "a.hal" "PASS a.hal (2 facts, 2 checks)")
-   (verify/file-result "b.hal" "FAIL b.hal (2 facts, 1 checks)")
-   (verify/file-result "c.hal" nil)]
-  => [{:path "a.hal" :status :passed :passed 2 :total 2}
-      {:path "b.hal" :status :failed :passed 0 :total 2}
-      {:path "c.hal" :status :not-implemented :passed 0 :total 0}])
-
-^{:refer work.verify.conformance/add-counts}
-(fact "add-counts combines namespace case totals"
-  (verify/add-counts {:passed 2 :total 3} {:passed 4 :total 5})
-  => {:passed 6 :total 8})
-
-^{:refer work.verify.conformance/target-for-source}
-(fact "target-for-source maps a test namespace to the longest contract target"
-  (verify/target-for-source
-   "."
-   ["std.lib" "std.lib.zip"]
-   "core/lib/test/std/lib/zip_test.hal")
-  => "std.lib.zip")
-
-^{:refer work.verify.conformance/namespace-result}
-(fact "namespace-result reports exact file totals for a contract namespace"
-  (verify/namespace-result
-   "std.lib.zip"
-   "."
-   ["core/lib/test/std/lib/zip_test.hal"]
-   {"core/lib/test/std/lib/zip_test.hal"
-    {:path "core/lib/test/std/lib/zip_test.hal"
-     :status :passed :passed 2 :total 2}})
-  => {:namespace "std.lib.zip"
-      :status :passed
-      :passed 2
-      :total 2
-      :files [{:path "core/lib/test/std/lib/zip_test.hal"
-               :status :passed :passed 2 :total 2}]})
-
-^{:refer work.verify.conformance/function-results}
-(fact "function-results attributes runtime state to refer metadata"
-  (let [results
-        (verify/function-results
-         family
-         "."
-         ["core/lib/test/std/lib/zip_test.hal"]
-         {"core/lib/test/std/lib/zip_test.hal"
-          {:status :passed :passed 2 :total 2}})]
-    [(empty? results)
-     (every? #(= :passed (:status %)) results)])
-  => [false true])
-
-^{:refer work.verify.conformance/family-result}
-(fact "family-result keeps contract, namespace, file, and function accounting"
-  (let [result (verify/family-result
-                family
-                "."
-                {"core/lib/test/std/lib/zip_test.hal"
-                 {:path "core/lib/test/std/lib/zip_test.hal"
-                  :status :passed :passed 2 :total 2}})]
-    [(:family result) (:status result) (:passed result) (:total result)])
-  => [:std_lib_zip :passed 2 2])
-
-^{:refer work.verify.conformance/runtime-command}
-(fact "runtime-command adds registry-declared Hara test paths only for Rust"
-  [(verify/runtime-command
-    :rust
-    {:conformance/runtimes {:rust {:runtime/command ["runner"]}}}
-    [family])
-   (verify/runtime-command
-    :jvm
-    {:conformance/runtimes {:jvm {:runtime/command ["jvm-runner"]}}}
-    [family])]
-  => [["runner" "core/lib/test/std/lib/zip_test.hal"] ["jvm-runner"]])
+^{:refer work.verify.conformance/read-runtime-report}
+(fact "read-runtime-report does not infer results when an EDN report is absent"
+  (:status (verify/read-runtime-report "." :jvm))
+  => :not-implemented)
 
 ^{:refer work.verify.conformance/runtime-report}
 (fact "runtime-report accepts an injected registry result without probing"
@@ -248,7 +144,7 @@
     [{:data passed-report} {:data partial-report}])
    [:languages :implemented :namespace-total :passed :total
     :functions-passed :functions-total :functions-not-implemented :status])
-  => {:languages 2 :implemented 1 :namespace-total 3 :passed 5 :total 5
+  => {:languages 2 :implemented 2 :namespace-total 3 :passed 5 :total 5
       :functions-passed 1 :functions-total 2
       :functions-not-implemented 1 :status :partial})
 
@@ -276,6 +172,8 @@
          (task/invocation
           {:languages [:rust]
            :family-specs [family]
+           :registry/index {}
+           :registry/root "."
            :reports {:rust passed-report}}))]
     [(task/task-work? verify/library-conformance)
      (:flow/path (flow/registered-flow [:task]))

@@ -15,6 +15,7 @@
     "test:sqlite-provider": "node --test packages/db-sqlite/opfs-lock.test.mjs",
     "test:hta": "node --test hta.test.js hta.test.mjs hta-sandbox.test.mjs",
     "test:exceptions": "node --test exception-conformance.test.mjs",
+    "test:stack-safety": "node --test stack-safety-conformance.test.mjs",
     "test:hta:pack": "node test-packed-hta.mjs",
     "test:wasm-runtime": "node --test portable-code-test.test.mjs",
     "test:pong": "node --test pong-canvas-runtime.test.mjs",

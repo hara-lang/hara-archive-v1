@@ -30,6 +30,8 @@ public class HalSpecificationContractTest {
       specsRegistry().resolve("01-lang/001-language/draft/conformance/reader.edn");
   private static final Path MODULE_CORPUS =
       specsRegistry().resolve("01-lang/001-language/draft/conformance/modules.edn");
+  private static final Path STACK_SAFETY_CORPUS =
+      specsRegistry().resolve("01-lang/001-language/draft/conformance/stack-safety.edn");
 
   @Test
   public void languageDraftHasResolvableIdentityStructureAndEvidence() throws Exception {
@@ -73,7 +75,9 @@ public class HalSpecificationContractTest {
             Keyword.create("hal", "reader"), caseIds(READER_CORPUS),
             Keyword.create("hal", "core"), caseIds(CORE_LANGUAGE_CORPUS),
             Keyword.create("hal", "exceptions"), caseIds(EXCEPTION_CORPUS),
-            Keyword.create("hal", "modules"), caseIds(MODULE_CORPUS));
+            Keyword.create("hal", "modules"), caseIds(MODULE_CORPUS),
+            Keyword.create("hal", "stack-safety"), caseIds(STACK_SAFETY_CORPUS),
+            Keyword.create("hal", "native"), nativeCaseIds());
     Set<Object> requirementIds = new HashSet<>();
     collectRequirements(
         linear(langspec, key("spec", "invariants")), requirementIds, suiteCases);
@@ -156,6 +160,11 @@ public class HalSpecificationContractTest {
   private static Set<Object> caseIds(Path corpusPath) throws Exception {
     ILinearType cases = linear(readMap(corpusPath), Keyword.create("cases"));
     return index(cases, Keyword.create("id")).keySet();
+  }
+
+  private static Set<Object> nativeCaseIds() {
+    return Set.of(
+        Keyword.create("result-deref-success"), Keyword.create("result-deref-error"));
   }
 
   private static void collectRequirements(

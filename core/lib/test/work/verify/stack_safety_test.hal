@@ -1,0 +1,157 @@
+(ns work.verify.stack-safety-test
+  (:use code.test)
+  (:require [work.flow.task :as task]
+            [work.verify.stack-safety :as verify]))
+
+^{:refer work.verify.stack-safety/project-root}
+(fact "project-root accepts an explicit checkout"
+  (verify/project-root {:project/root "/hara"})
+  => "/hara")
+
+^{:refer work.verify.stack-safety/registry-root}
+(fact "registry-root accepts an explicit specs checkout"
+  (verify/registry-root {:registry/root "/specs"})
+  => "/specs")
+
+^{:refer work.verify.stack-safety/join-path}
+(fact "join-path preserves absolute paths and joins relative paths"
+  [(verify/join-path "/root" "a/b")
+   (verify/join-path "/root" "/a/b")]
+  => ["/root/a/b" "/a/b"])
+
+^{:refer work.verify.stack-safety/host-path}
+(fact "host-path preserves sibling checkout paths for the process boundary"
+  [(verify/host-path "/hara" "../hara-specs")
+   (verify/host-path "/hara" "/specs")]
+  => ["/hara/../hara-specs" "/specs"])
+
+^{:refer work.verify.stack-safety/host-read}
+(fact "host-read is the explicit process boundary for external EDN"
+  (let [result (try
+                 {:status :available
+                  :value (verify/host-read "/path/that/does/not/exist")}
+                 (catch error
+                   {:status :unavailable
+                    :error (str error)}))]
+    (has? #{:available :unavailable} (:status result)))
+  => true)
+
+^{:refer work.verify.stack-safety/read-corpus}
+(fact "read-corpus reads the specs-owned stack corpus"
+  (count (:cases (verify/read-corpus {:corpus {:cases [1 2 3]}})))
+  => 3)
+
+^{:refer work.verify.stack-safety/normalize-error-category}
+(fact "normalize-error-category separates stack exhaustion from ordinary errors"
+  [(verify/normalize-error-category "StackOverflowError")
+   (verify/normalize-error-category "unbound symbol")]
+  => [:resource/stack-work-exhausted :runtime/error])
+
+^{:refer work.verify.stack-safety/case-result}
+(fact "case-result records exact values and expected reader failures"
+  [(select-keys
+    (verify/case-result
+     {:id :value
+      :class :evaluator
+      :source "42"
+      :expect {:value 42}})
+    [:id :status :actual])
+   (:status
+    (verify/case-result
+     {:id :error
+      :class :reader
+      :source "(read-string \"(\")"
+      :expect {:error :reader/eof :message "EOF while reading"}}))]
+  => [{:id :value :status :passed :actual 42} :passed])
+
+^{:refer work.verify.stack-safety/run-document}
+(fact "run-document returns a structured per-case report"
+  (select-keys
+   (verify/run-document
+    {:cases [{:id :a :class :evaluator :source "1" :expect {:value 1}}
+             {:id :b :class :evaluator :source "2" :expect {:value 2}}]})
+   [:report/status :report/passed :report/total])
+  => {:report/status :passed :report/passed 2 :report/total 2})
+
+^{:refer work.verify.stack-safety/run-corpus}
+(fact "run-corpus accepts an EDN document source"
+  (:report/total
+   (verify/run-corpus
+    "{:cases [{:id :a :class :evaluator :source \"1\" :expect {:value 1}}]}"))
+  => 1)
+
+^{:refer work.verify.stack-safety/first-failure}
+(fact "first-failure returns the first failed case"
+  (verify/first-failure
+   {:report/cases [{:id :a :status :passed}
+                   {:id :b :status :failed}
+                   {:id :c :status :failed}]})
+  => {:id :b :status :failed})
+
+^{:refer work.verify.stack-safety/read-report}
+(fact "read-report classifies an unavailable runtime report"
+  (:report/status (verify/read-report "." :missing))
+  => :not-implemented)
+
+^{:refer work.verify.stack-safety/command-result}
+(fact "command-result returns a structured process failure"
+  (:exit (verify/command-result :missing "."))
+  => -1)
+
+^{:refer work.verify.stack-safety/runtime-report}
+(fact "runtime-report preserves an injected structured report"
+  (verify/runtime-report
+   {:language :rust
+    :project/root "."
+    :report {:report/status :passed :report/passed 1 :report/total 1}}
+   nil)
+  => {:data {:language :rust
+             :report/status :passed :report/passed 1 :report/total 1}})
+
+^{:refer work.verify.stack-safety/runtime-items}
+(fact "runtime-items creates one item for each requested runtime"
+  (mapv :item/id
+        (verify/runtime-items {:languages [:rust :jvm]
+                               :reports {}}
+                              nil))
+  => [:rust :jvm])
+
+^{:refer work.verify.stack-safety/runtime-counts}
+(fact "runtime-counts aggregates structured case results"
+  (verify/runtime-counts
+   {:report/passed 2
+    :report/total 3
+    :report/cases [{:status :passed}
+                   {:status :passed}
+                   {:status :failed}]})
+  => {:passed 2 :total 3 :failed 1})
+
+^{:refer work.verify.stack-safety/task-summary}
+(fact "task-summary marks unavailable runtimes as partial"
+  (:status
+   (verify/task-summary
+    {:items 2 :results 2}
+    []
+    [{:data {:report/status :passed :report/passed 2 :report/total 2}}
+     {:data {:report/status :not-implemented}}]))
+  => :partial)
+
+^{:refer work.verify.stack-safety/status-label}
+(fact "status-label renders stable labels"
+  [(verify/status-label :passed)
+   (verify/status-label :not-implemented)]
+  => ["PASS" "NOT-IMPLEMENTED"])
+
+^{:refer work.verify.stack-safety/task-status}
+(fact "task-status maps summary status to workflow status"
+  [(verify/task-status {:status :failed} nil)
+   (verify/task-status {:status :partial} nil)
+   (verify/task-status {:status :passed} nil)]
+  => [:failed :warning :completed])
+
+^{:refer work.verify.stack-safety/stack-safety}
+(fact "stack-safety is a registered work task"
+  (task/task-work? verify/stack-safety)
+  => true)
+
+(pr-str (run {:namespace "work.verify.stack-safety-test"}))

@@ -442,11 +442,16 @@
                   conformance/+baseline+
                   [descriptor])]
     [(get-in document [:conformance/runtimes :rust :runtime/adapter])
+     (get-in document [:conformance/runtimes :rust :runtime/report-path])
      (get-in document [:conformance/runtimes :jvm :runtime/adapter])
+     (get-in document [:conformance/runtimes :jvm :runtime/report-path])
      (get-in document [:conformance/runtimes :wasm :runtime/adapter])
+     (get-in document [:conformance/runtimes :wasm :runtime/report-path])
      (get-in document [:conformance/families 0 :family/path])])
-  => [:registry-hara-test :registry-jvm-hara-test
-      :registry-wasm-hara-test "std_lib_zip"])
+  => [:registry-hara-test "core/target/conformance/libraries/rust.edn"
+      :registry-jvm-hara-test "core/target/conformance/libraries/jvm.edn"
+      :registry-wasm-hara-test "core/target/conformance/libraries/wasm.edn"
+      "std_lib_zip"])
 
 ^{:refer tool.migrate.conformance/foundation-test-paths}
 (fact "foundation discovery selects only the pinned family test paths"

@@ -596,6 +596,196 @@ mod tests {
         }
     }
 
+    #[test]
+    fn shared_stack_safety_corpus_runs_on_the_native_runtime() {
+        let Some(corpus) = repo_text("01-lang/001-language/draft/conformance/stack-safety.edn")
+        else {
+            return;
+        };
+        let document = kernel::parse_forms(&corpus)
+            .expect("stack-safety corpus must parse")
+            .remove(0);
+        let Form::Map(document) = document else {
+            panic!("stack-safety corpus must be a map");
+        };
+        let Form::Vector(cases) = conformance_entry(&document, "cases") else {
+            panic!("stack-safety corpus must contain :cases");
+        };
+        assert!(!cases.is_empty());
+
+        let mut passed = 0;
+        let mut results = Vec::new();
+        let mut failures = Vec::new();
+        for raw_case in cases {
+            let Form::Map(test_case) = raw_case else {
+                panic!("stack-safety cases must be maps");
+            };
+            let id = conformance_entry(test_case, "id").to_string();
+            let Form::String(source) = conformance_entry(test_case, "source") else {
+                panic!("stack-safety case {id} must contain a string :source");
+            };
+            let Form::Map(expect) = conformance_entry(test_case, "expect") else {
+                panic!("stack-safety case {id} must contain an :expect map");
+            };
+            let expected_error = expect.iter().find_map(|(key, value)| {
+                matches!(key, Form::Keyword(name) if name == "error").then_some(value)
+            });
+            let expected_message = expect.iter().find_map(|(key, value)| {
+                matches!(key, Form::Keyword(name) if name == "message").then_some(value)
+            });
+            let mut runtime = Runtime::new();
+            match runtime.eval_text(source) {
+                Ok(actual) if expected_error.is_none() => {
+                    let expected = conformance_entry(expect, "value").to_string();
+                    if actual == expected {
+                        passed += 1;
+                        results.push(format!("{{:id {id} :status :passed}}"));
+                    } else {
+                        failures.push(format!("{id}: expected {expected}, got {actual}"));
+                        results.push(format!("{{:id {id} :status :failed}}"));
+                    }
+                }
+                Ok(_) => {
+                    failures.push(format!("{id}: expected an error"));
+                    results.push(format!("{{:id {id} :status :failed}}"));
+                }
+                Err(error) if expected_error.is_some() => {
+                    let message = error.to_string();
+                    if expected_message.is_some_and(|expected| {
+                        matches!(expected, Form::String(value) if message.contains(value))
+                    }) {
+                        passed += 1;
+                        results.push(format!("{{:id {id} :status :passed}}"));
+                    } else {
+                        failures.push(format!("{id}: unexpected error {message}"));
+                        results.push(format!("{{:id {id} :status :failed}}"));
+                    }
+                }
+                Err(error) => {
+                    failures.push(format!("{id}: {error}"));
+                    results.push(format!("{{:id {id} :status :failed}}"));
+                }
+            }
+        }
+
+        let root = std::env::var_os("HARA_CONFORMANCE_REPORT_DIR")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| {
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("..")
+                    .join("target")
+                    .join("conformance")
+            });
+        let directory = root.join("rust");
+        std::fs::create_dir_all(&directory).expect("create Rust conformance report directory");
+        let status = if failures.is_empty() { ":passed" } else { ":failed" };
+        let report = format!(
+            "{{:report/schema :hara.conformance.runtime/0-alpha :report/suite :hal/stack-safety :report/runtime :rust :report/status {status} :report/passed {} :report/total {} :report/cases [{}]}}\n",
+            passed,
+            cases.len(),
+            results.join(" ")
+        );
+        std::fs::write(directory.join("stack-safety.edn"), report)
+            .expect("write Rust conformance report");
+        assert!(failures.is_empty(), "stack-safety failures: {failures:?}");
+    }
+
+    #[cfg(feature = "bytecode-vm")]
+    #[test]
+    fn shared_stack_safety_corpus_runs_on_the_bytecode_runtime() {
+        let Some(corpus) = repo_text("01-lang/001-language/draft/conformance/stack-safety.edn")
+        else {
+            return;
+        };
+        let document = kernel::parse_forms(&corpus)
+            .expect("stack-safety corpus must parse")
+            .remove(0);
+        let Form::Map(document) = document else {
+            panic!("stack-safety corpus must be a map");
+        };
+        let Form::Vector(cases) = conformance_entry(&document, "cases") else {
+            panic!("stack-safety corpus must contain :cases");
+        };
+        assert!(!cases.is_empty());
+
+        let mut passed = 0;
+        let mut results = Vec::new();
+        let mut failures = Vec::new();
+        for raw_case in cases {
+            let Form::Map(test_case) = raw_case else {
+                panic!("stack-safety cases must be maps");
+            };
+            let id = conformance_entry(test_case, "id").to_string();
+            let Form::String(source) = conformance_entry(test_case, "source") else {
+                panic!("stack-safety case {id} must contain a string :source");
+            };
+            let Form::Map(expect) = conformance_entry(test_case, "expect") else {
+                panic!("stack-safety case {id} must contain an :expect map");
+            };
+            let expected_error = expect.iter().find_map(|(key, value)| {
+                matches!(key, Form::Keyword(name) if name == "error").then_some(value)
+            });
+            let expected_message = expect.iter().find_map(|(key, value)| {
+                matches!(key, Form::Keyword(name) if name == "message").then_some(value)
+            });
+            let mut runtime = Runtime::new();
+            match runtime.eval_bytecode_native(source) {
+                Ok(actual) if expected_error.is_none() => {
+                    let expected = conformance_entry(expect, "value").to_string();
+                    if actual == expected {
+                        passed += 1;
+                        results.push(format!("{{:id {id} :status :passed}}"));
+                    } else {
+                        failures.push(format!("{id}: expected {expected}, got {actual}"));
+                        results.push(format!("{{:id {id} :status :failed}}"));
+                    }
+                }
+                Ok(_) => {
+                    failures.push(format!("{id}: expected an error"));
+                    results.push(format!("{{:id {id} :status :failed}}"));
+                }
+                Err(error) if expected_error.is_some() => {
+                    let message = error.to_string();
+                    if expected_message.is_some_and(|expected| {
+                        matches!(expected, Form::String(value) if message.contains(value))
+                    }) {
+                        passed += 1;
+                        results.push(format!("{{:id {id} :status :passed}}"));
+                    } else {
+                        failures.push(format!("{id}: unexpected error {message}"));
+                        results.push(format!("{{:id {id} :status :failed}}"));
+                    }
+                }
+                Err(error) => {
+                    failures.push(format!("{id}: {error}"));
+                    results.push(format!("{{:id {id} :status :failed}}"));
+                }
+            }
+        }
+
+        let root = std::env::var_os("HARA_CONFORMANCE_REPORT_DIR")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| {
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("..")
+                    .join("target")
+                    .join("conformance")
+            });
+        let directory = root.join("bytecode");
+        std::fs::create_dir_all(&directory)
+            .expect("create bytecode conformance report directory");
+        let status = if failures.is_empty() { ":passed" } else { ":failed" };
+        let report = format!(
+            "{{:report/schema :hara.conformance.runtime/0-alpha :report/suite :hal/stack-safety :report/runtime :bytecode :report/status {status} :report/passed {} :report/total {} :report/cases [{}]}}\n",
+            passed,
+            cases.len(),
+            results.join(" ")
+        );
+        std::fs::write(directory.join("stack-safety.edn"), report)
+            .expect("write bytecode conformance report");
+        assert!(failures.is_empty(), "stack-safety failures: {failures:?}");
+    }
+
     fn foundation_behavior_sources() -> Option<(String, String)> {
         let corpus = repo_text(
             "01-lang/004-foundation/draft/conformance/fixtures/foundation_behavioral.hal",
