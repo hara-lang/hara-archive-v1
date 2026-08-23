@@ -6,7 +6,7 @@ use std::rc::Rc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use wasmtime::{
-    Caller, Config, Extern, Func, Instance, Linker, Memory, Module, Store, StoreLimits,
+    Caller, Config, Engine, Extern, Func, Instance, Linker, Memory, Module, Store, StoreLimits,
     StoreLimitsBuilder, Val, ValType,
 };
 
@@ -371,9 +371,9 @@ impl HtaProviderState {
         let instance = linker
             .instantiate(&mut store, &self.module)
             .map_err(|error| format!("extension/module-invalid: {error}"))?;
-        let memory = require_export(&instance, &mut store, "memory")?
-            .into_memory()
-            .ok_or_else(|| "extension/malformed: HTA module memory export is not a memory".into())?;
+        let memory = instance
+            .get_memory(&mut store, "memory")
+            .ok_or_else(|| "extension/malformed: module has no export memory".to_owned())?;
         let allocator = require_export(&instance, &mut store, "hta_alloc")?;
         let deallocator = require_export(&instance, &mut store, "hta_dealloc")?;
         let abi_version = require_export(&instance, &mut store, "hta_abi_version")?;
@@ -470,9 +470,10 @@ impl HtaProviderState {
     ) -> Result<Value, String> {
         let promise = Promise::new();
         let task = {
-            let mut session = self
-                .session
-                .borrow_mut();
+            let mut session_ref = self.session.borrow_mut();
+            let session = session_ref
+                .as_mut()
+                .ok_or_else(|| "hta/session-closed".to_owned())?;
             let request = hta::encode(&Value::Vector(
                 vec![
                     Value::String(export.to_owned()),
@@ -480,7 +481,7 @@ impl HtaProviderState {
                 ]
                 .into(),
             ))?;
-            let task = execute_start(&mut session, &request)?;
+            let task = execute_start(session, &request)?;
             if task <= 0 {
                 return Err(format!("hta/start-failed: {}", manifest.namespace));
             }
