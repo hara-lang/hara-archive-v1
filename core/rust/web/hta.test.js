@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { BrowserPromiseProvider, decodeHta, encodeHta, HtaContext, HtaDeque, HtaHandle, HtaKeyword, HtaPriorityMap, HtaQueue, HtaSortedMap, HtaTagged, HtaSymbol, loadHtaExtension, parseHtaManifest } from "./packages/hta/index.js";
 
@@ -24,6 +25,25 @@ test("manifest parser validates compact public tags",()=>{const manifest=parseHt
 test("manifest parser preserves export and host-call policy",()=>{const manifest=parseHtaManifest(hostDescriptor);assert.deepEqual(manifest.exports,["open"]);assert.deepEqual(manifest.hostCalls,{store:["get"]});assert.throws(()=>parseHtaManifest(hostDescriptor.replace("[\"get\"]","[\"get/x\"]")),/invalid host-call/);});
 test("descriptor loader resolves wasm and applies handle tags",async()=>{const worker=new FakeWorker();const context=await loadHtaExtension({worker,descriptor:tensorDescriptor,packageUrl:"https://example.test/extensions/math/"});assert.equal(worker.sent[0].moduleUrl,"https://example.test/extensions/math/tensor.wasm");worker.emit({type:"ready"});const result=context.call("open",[]);await Promise.resolve();const call=worker.sent.find(message=>message.type==="call");worker.emit({type:"result",id:call.id,ok:true,frame:encodeHta(new HtaHandle("math.tensor","tensor",42n))});assert.equal(String(await result),"#math[:tensor 42]");context.close();});
 test("descriptor loader resolves the wrapped library for generated adapters",async()=>{const worker=new FakeWorker();const context=await loadHtaExtension({worker,descriptor:adapterDescriptor,packageUrl:"https://example.test/extensions/math/"});assert.equal(worker.sent[0].moduleUrl,"https://example.test/extensions/math/adapter.wasm");assert.equal(worker.sent[0].libraryUrl,"https://example.test/extensions/math/modules/math.wasm");context.close();});
+test("worker composes a generated HTA adapter with its wrapped library",async()=>{
+  const adapterBytes=new Uint8Array(await readFile(new URL("./test-fixtures/hta-adapter/adapter.wasm",import.meta.url)));
+  const libraryBytes=new Uint8Array(await readFile(new URL("./test-fixtures/hta-adapter/library.wasm",import.meta.url)));
+  const messages=[],listeners=new Map(),previousSelf=globalThis.self;
+  globalThis.self={addEventListener:(type,handler)=>listeners.set(type,handler),postMessage:message=>messages.push(message),close:()=>{}};
+  try{
+    await import(`./packages/hta/worker.js?hta-composition=${Date.now()}`);
+    const message=listeners.get("message");
+    await message({data:{type:"init",moduleBytes:adapterBytes,libraryBytes}});
+    assert.deepEqual(messages,[{type:"ready"}]);
+    await message({data:{type:"call",id:1,frame:encodeHta(["sum",[19,23]])}});
+    const result=messages.find(item=>item.type==="result");
+    assert.equal(result.id,1);
+    assert.equal(result.ok,true);
+    assert.equal(decodeHta(result.frame),42);
+  }finally{
+    if(previousSelf===undefined)delete globalThis.self;else globalThis.self=previousSelf;
+  }
+});
 test("descriptor loader fetches EDN when given its URL",async()=>{const worker=new FakeWorker(),descriptorUrl=`data:text/plain,${encodeURIComponent(tensorDescriptor)}`;const context=await loadHtaExtension({worker,descriptorUrl,moduleBytes:new Uint8Array()});assert.deepEqual(context.manifest.handleTags,{tensor:"math"});assert.ok(worker.sent[0].moduleBytes instanceof Uint8Array);context.close();});
 test("context releases bound handles once and rejects later use",async()=>{const worker=new FakeWorker();const context=new HtaContext({worker,moduleUrl:"runtime.wasm"});worker.emit({type:"ready"});const result=context.call("open",[]);await Promise.resolve();const call=worker.sent.find(message=>message.type==="call");worker.emit({type:"result",id:call.id,ok:true,frame:encodeHta(new HtaHandle("runtime","cursor",42n))});const handle=await result;handle.release();handle.release();const releases=worker.sent.filter(message=>message.type==="release");assert.equal(releases.length,1);const released=decodeHta(releases[0].frame);assert.equal(released.id,42n);await assert.rejects(context.call("use",[handle]),/hta\/handle-released/);context.close();});
 test("context exposes worker results as promises",async()=>{const worker=new FakeWorker();const context=new HtaContext({worker,moduleUrl:"runtime.wasm"});worker.emit({type:"ready"});const result=context.call("eval",["(+ 1 2)"]);await Promise.resolve();const call=worker.sent.find(message=>message.type==="call");worker.emit({type:"result",id:call.id,ok:true,frame:encodeHta(3)});assert.equal(await result,3);context.close();});
