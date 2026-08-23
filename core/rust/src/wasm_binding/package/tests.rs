@@ -119,6 +119,19 @@ fn direct_package_loads_through_the_native_import_route() {
         .eval_text("(ns rejected (:import math.scalar))")
         .unwrap_err();
     assert!(error.starts_with("package/digest-mismatch:"), "{error}");
+
+    fs::write(package_root.join("modules/math.wasm"), ADD).unwrap();
+    let mut project = fs::OpenOptions::new()
+        .append(true)
+        .open(package_root.join("project.edn"))
+        .unwrap();
+    std::io::Write::write_all(&mut project, b"\n").unwrap();
+    let mut rejected = crate::Runtime::new();
+    rejected.add_extension_root(package_root.clone());
+    let error = rejected
+        .eval_text("(ns rejected-project (:import math.scalar))")
+        .unwrap_err();
+    assert!(error.starts_with("package/digest-mismatch:"), "{error}");
     fs::remove_dir_all(root).unwrap();
 }
 
