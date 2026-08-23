@@ -350,7 +350,8 @@
          :kind (definition-kind head)
          :family-id (:id family)
          :language (:language family)
-         :public (not private)
+         :reachable (not private)
+         :public (= true (:public metadata-value))
          :private private
          :line (:line name-position)
          :column (:column name-position)
@@ -439,6 +440,7 @@
    :kind (:kind definition)
    :family-id (:family-id definition)
    :language (:language definition)
+   :reachable (:reachable definition)
    :generated (if (:generated definition) true false)
    :public (:public definition)
    :private (:private definition)
