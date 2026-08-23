@@ -215,7 +215,7 @@ export function createSqliteProvider(sqlite3InitModule, providerOptions = {}) {
 
   async function mutate(value, operation) {
     const before = value.storage === "filesystem" ? exportDatabase(value) : null;
-    const result = operation();
+    const result = await operation();
     await persist(value, before);
     return result;
   }
