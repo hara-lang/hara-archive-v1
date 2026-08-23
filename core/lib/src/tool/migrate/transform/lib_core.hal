@@ -2,7 +2,8 @@
   (:require [std.foundation :refer :all]
             [std.block :as block]
             [std.block.parse :as parse]
-            [std.block.navigate :as navigate]))
+            [std.block.navigate :as navigate]
+            [code.framework.source :as framework-source]))
 
 (def +lib-core-ex-info-codes+
   {"subvec" :foundation/invalid-subvec-bounds
@@ -368,3 +369,58 @@
                               (definition-name value)
                               code-or-resolver))]
          (recur end (conj output replacement)))))))
+
+(defn foundation-ex-info-transform
+  "Returns a managed dry-run transform for the reviewed Foundation sites.
+
+   Matching is based on parsed block ranges and the enclosing definition, not
+   literal source replacement. Approved outer forms are rewritten through the
+   existing structural migration; nested causes are covered by their outer
+   edit. Unreviewed forms remain unchanged and are reported for a later batch.
+   The result is suitable for code.manage/transform-code."
+  [source]
+  (let [path "core/lib/src/std/foundation.hal"
+        records (catalog-ex-info-source source path)
+        matched (vec (filter (fn [record]
+                               (= :approved (:review/status record)))
+                             records))
+        unmatched (vec (filter (fn [record]
+                                 (not= :approved (:review/status record)))
+                               records))
+        outermost
+        (vec
+         (filter
+          (fn [record]
+            (not
+             (some
+              (fn [other]
+                (let [outer-range (:source/range other)
+                      inner-range (:source/range record)]
+                  (and (< (:start-offset outer-range)
+                          (:start-offset inner-range))
+                       (> (:end-offset outer-range)
+                          (:end-offset inner-range)))))
+              matched)))
+          matched))
+        edits
+        (vec
+         (map
+          (fn [record]
+            (let [range (:source/range record)]
+              {:start (:start-offset range)
+               :end (:end-offset range)
+               :text
+               (migrate-ex-info-block
+                (:source/form record)
+                (fn [_]
+                  {:ex/code (:ex/code record)
+                   :ex/class (:ex/class record)}))}))
+          outermost))
+        after (framework-source/apply-edits source edits)]
+    {:after after
+     :rules/matched (vec (map (fn [record] (:site/id record)) matched))
+     :rules/applied (vec (map (fn [record] (:site/id record)) outermost))
+     :rules/unmatched (vec (map (fn [record] (:site/id record)) unmatched))
+     :migration/summary {:matched (count matched)
+                         :changed (count outermost)
+                         :unmatched (count unmatched)}}))
