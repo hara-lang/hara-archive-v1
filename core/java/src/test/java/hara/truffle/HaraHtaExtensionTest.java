@@ -4,6 +4,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assume.assumeTrue;
 
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.graalvm.polyglot.Context;
@@ -64,6 +65,47 @@ public class HaraHtaExtensionTest {
   }
 
   @Test
+  public void generatedAdapterLinksTheWrappedLibraryThroughHaraLibraryImports() throws Exception {
+    Path root = Files.createTempDirectory("hara-hta-adapter-");
+    Path extension = root.resolve("math/async");
+    Files.createDirectories(extension);
+    HaraExtensionTestProject.write(
+        extension,
+        "{:namespace \"math.async\" :version \"1.0.0\" :provider :wasm "
+            + ":module \"adapter.wasm\" :abi :hta.v1 "
+            + ":exports {\"sum\" {:args [:i64 :i64] :returns :i64 :async true}} "
+            + ":assets [\"library.wasm\"] :capabilities []}");
+    Files.write(extension.resolve("adapter.wasm"), resource("adapter.wasm"));
+    Files.write(extension.resolve("library.wasm"), resource("library.wasm"));
+    String previous = System.getProperty("hara.extensions.path");
+    System.setProperty("hara.extensions.path", root.toString());
+    try (Context context = Context.newBuilder(HaraLanguage.ID).build()) {
+      assertEquals(
+          42,
+          context
+              .eval(
+                  HaraLanguage.ID,
+                  "(ns app (:require [math.async :as math])) "
+                      + "(deref (math/sum 19 23))")
+              .asLong());
+    } finally {
+      if (previous == null) System.clearProperty("hara.extensions.path");
+      else System.setProperty("hara.extensions.path", previous);
+      try (var paths = Files.walk(root)) {
+        paths
+            .sorted(java.util.Comparator.reverseOrder())
+            .forEach(
+                path -> {
+                  try {
+                    Files.deleteIfExists(path);
+                  } catch (Exception ignored) {
+                  }
+                });
+      }
+    }
+  }
+
+  @Test
   public void rejectedPendingDerefFlowsThroughCatch() throws Exception {
     withExtension(
         "",
@@ -110,5 +152,13 @@ public class HaraHtaExtensionTest {
 
   private interface CheckedConsumer {
     void accept(Context context) throws Exception;
+  }
+
+  private static byte[] resource(String name) throws Exception {
+    try (InputStream input =
+        HaraHtaExtensionTest.class.getResourceAsStream("/hta-adapter/" + name)) {
+      assertTrue("missing HTA adapter fixture " + name, input != null);
+      return input.readAllBytes();
+    }
   }
 }
