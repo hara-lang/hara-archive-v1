@@ -1218,10 +1218,7 @@ fn native_promise_values(method: &str, arguments: Vec<Value>) -> Result<Value, S
             let rejecting = promise.clone();
             let reject = native_function("promise-reject", 1, move |mut values| {
                 let value = values.remove(0);
-                rejecting.reject(match &value {
-                    Value::String(error) => error.clone(),
-                    value => value.display(),
-                });
+                rejecting.reject_value(value.clone());
                 Ok(value)
             });
             if let Err(error) = call_function(function, vec![resolve, reject]) {

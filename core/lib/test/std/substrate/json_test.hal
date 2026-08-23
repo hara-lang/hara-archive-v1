@@ -42,17 +42,20 @@
      "space" "room/a"})]
   => [true true true false false])
 
+^{:refer std.substrate.json/normalize-error}
 (fact "normalises arbitrary errors into JSON-safe maps"
   [(substrate-json/normalize-error nil)
    (substrate-json/normalize-error "broken")
    (substrate-json/normalize-error {"error" "denied"})
    (substrate-json/normalize-error {"status" "error"})
-   (substrate-json/normalize-error 42)]
+   (substrate-json/normalize-error 42)
+   (substrate-json/normalize-error (ex-info "denied" {:code :app/denied}))]
   => [nil
       {"message" "broken"}
       {"error" "denied" "message" "denied"}
       {"status" "error" "message" "error"}
-      {"message" "42"}])
+      {"message" "42"}
+      {"message" "denied"}])
 
 (fact "normalises response error payloads before emission"
   [(substrate-json/normalize-frame

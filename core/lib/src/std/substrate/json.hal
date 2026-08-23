@@ -156,7 +156,10 @@
       (assoc error "message" message))
 
     :else
-    {"message" (str error)}))
+    (try
+      {"message" (or (ex-message error) (str error))}
+      (catch Throwable ignored
+        {"message" (str error)}))))
 
 (defn normalize-frame
   "Converts a canonical frame into the exact substrate.v1 browser wire map."

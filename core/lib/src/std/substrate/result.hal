@@ -1,8 +1,9 @@
 (ns std.substrate.result
+  (:config {:role :internal})
   (:require [std.substrate.frame :as frame]
             [std.substrate.util :as util]))
 
-(defn- result-context
+(defn result-context
   [space action transport-id failure response]
   (let [details {"space" (or space frame/SPACE_NODE)
                  "action" action}
@@ -18,7 +19,7 @@
                   details)]
     {"substrate" details}))
 
-(defn- response-error-value
+(defn response-error-value
   [response]
   (let [value (get response "error")]
     (cond
@@ -35,7 +36,7 @@
 
       :else value)))
 
-(defn- request-error-result
+(defn request-error-result
   [error space action transport-id]
   (if (and (map? error) (frame/response-frame? error))
     (Result/create
