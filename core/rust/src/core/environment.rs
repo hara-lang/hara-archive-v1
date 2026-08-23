@@ -234,6 +234,20 @@ impl ProtocolRegistry {
             qualified = canonical_protocol_name(protocol);
             qualified.as_str()
         };
+        let known_method = self
+            .methods
+            .borrow()
+            .contains_key(&(protocol.to_owned(), method.to_owned()))
+            || self
+                .guest_declarations
+                .borrow()
+                .contains(&(protocol.to_owned(), method.to_owned()))
+            || FOUNDATION_PROTOCOLS
+                .iter()
+                .any(|(name, _)| builtin_protocol_name(name) == protocol);
+        if !known_method {
+            return Err(format!("missing protocol method: {protocol}/{method}"));
+        }
         if let Some(Value::Extension(receiver)) = arguments.first() {
             return self.invoke_extension(receiver, protocol, method, arguments);
         }
