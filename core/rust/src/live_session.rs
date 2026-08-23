@@ -35,6 +35,12 @@ mod instrumented_hbc;
 #[cfg(all(feature = "bytecode-observation", feature = "bytecode-instrumentation"))]
 pub(crate) use instrumented_hbc::InstrumentedHbcLiveSession;
 
+#[cfg(all(feature = "whole-wasm", not(target_arch = "wasm32")))]
+#[path = "live_session/whole_wasm.rs"]
+mod whole_wasm;
+#[cfg(all(feature = "whole-wasm", not(target_arch = "wasm32")))]
+pub(crate) use whole_wasm::WholeWasmLiveSession;
+
 #[cfg(test)]
 #[path = "live_session/tests.rs"]
 mod tests;

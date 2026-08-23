@@ -488,6 +488,10 @@ impl LiveSession for InstrumentedInterpreterLiveSession {
                 payload["steps"] = JsonValue::from(executed as u64);
                 Ok(payload)
             }
+            LiveSessionCommand::Call { .. } => Err(LiveSessionError::new(
+                "live-session/unsupported-operation",
+                "interpreter backend does not support direct function calls",
+            )),
             LiveSessionCommand::Pause => {
                 self.request_directive(InstrumentDirective::Suspend)?;
                 self.step_target()?;

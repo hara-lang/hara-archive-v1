@@ -41,6 +41,13 @@ function createApi(runtime) {
     compileBytecode(source) {
       return runtime.compileBytecodeArtifact(String(source));
     },
+    compileBytecodeProduct(source) {
+      const value = String(source);
+      return Object.freeze({
+        artifact: runtime.compileBytecodeArtifact(value),
+        manifest: JSON.parse(runtime.compileBytecodeManifest(value)),
+      });
+    },
     evalBytecode(artifact) {
       return runtime.evalBytecodeArtifact(artifact);
     },
@@ -53,6 +60,17 @@ function createApi(runtime) {
       }
       const artifact = runtime.compileWholeWasmArtifact(String(source));
       return loadWholeWasm(artifact);
+    },
+    compileWholeWasmProduct(source) {
+      if (typeof runtime.compileWholeWasmManifest !== "function") {
+        throw new Error("whole-Wasm compilation requires @hara-lang/browser/full");
+      }
+      const value = String(source);
+      const artifact = runtime.compileWholeWasmArtifact(value);
+      return Object.freeze({
+        artifact,
+        manifest: JSON.parse(runtime.compileWholeWasmManifest(value)),
+      });
     },
     raw: runtime,
     dispose() {

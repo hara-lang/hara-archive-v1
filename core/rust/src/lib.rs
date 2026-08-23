@@ -9,6 +9,7 @@ pub mod cli_app;
 mod browser_wasm_provider;
 mod clock;
 pub mod core;
+pub mod compiled_product;
 mod direct_wasm;
 pub mod extension;
 pub mod file;

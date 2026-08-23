@@ -1,6 +1,7 @@
 (ns tool.migrate-transform-lib-core-test
   (:use code.test)
-  (:require [tool.migrate.transform.lib-core :as transform]))
+  (:require [tool.migrate.transform.lib-core :as transform]
+            [code.manage :as manage]))
 
 (fact "ex-info migration accepts constant and per-definition codes"
   (let [source "(defn demo [value]\n  (throw (ex-info \"bad\" {:value value})))\n"]
@@ -99,5 +100,60 @@
     [(str/index-of migrated "ex-info")
      (< (str/length source) (str/length migrated))])
   => [-1 true])
+
+^{:refer tool.migrate.transform.lib-core/foundation-ex-info-transform}
+(fact "Foundation migration runs through code.manage and is idempotent"
+  (let [source
+        (str "(ns std.foundation)\n"
+             "(defn subvec [] (throw (ex-info \"bad\" {:value value})))\n"
+             "(defn take-nth [] (throw (ex-info \"bad\" {:amount amount})))\n"
+             "(defn topological-sort [] (throw (ex-info \"cycle\" {:data remaining})))\n"
+             "(defn macroexpand [] (throw (ex-info \"limit\" {:limit 1000})))\n"
+             "(defn if-let-form [] (throw (ex-info \"bindings\" {:bindings bindings})))\n"
+             "(defn comprehension-error [message bindings] (throw (ex-info message {:bindings bindings})))\n"
+             "(defn dotimes [] (throw (ex-info \"binding\" {:binding binding})))\n")
+        first-pass
+        (manage/plan
+         :transform-code
+         {:units [{:path "core/lib/src/std/foundation.hal"
+                   :source source}]
+          :options {:transform transform/foundation-ex-info-transform}})
+        first-edit (first (:edits first-pass))
+        second-pass
+        (manage/plan
+         :transform-code
+         {:units [{:path "core/lib/src/std/foundation.hal"
+                   :source (:after first-edit)}]
+          :options {:transform transform/foundation-ex-info-transform}})
+        second-edit (first (:edits second-pass))]
+    [(get-in first-edit [:migration/summary :matched])
+     (get-in first-edit [:migration/summary :changed])
+     (get-in first-edit [:migration/summary :unmatched])
+     (:changed first-edit)
+     (str/index-of (:after first-edit) "ex-info")
+     (str/includes? (:after first-edit)
+                    ":foundation/invalid-dotimes-binding")
+     (get-in second-edit [:migration/summary :matched])
+     (get-in second-edit [:migration/summary :changed])
+     (:changed second-edit)])
+  => [7 7 0 true -1 true 0 0 false])
+
+(fact "Foundation migration leaves unreviewed sites unchanged and reports them"
+  (let [source
+        "(ns std.foundation)\n(defn unrelated [] (throw (ex-info \"later\" {})))\n"
+        result
+        (first
+         (:edits
+          (manage/plan
+           :transform-code
+           {:units [{:path "core/lib/src/std/foundation.hal"
+                     :source source}]
+            :options {:transform transform/foundation-ex-info-transform}})))]
+    [(get-in result [:migration/summary :matched])
+     (get-in result [:migration/summary :changed])
+     (get-in result [:migration/summary :unmatched])
+     (:changed result)
+     (= source (:after result))])
+  => [0 0 1 false true])
 
 (pr-str (run {:namespace "tool.migrate-transform-lib-core-test"}))

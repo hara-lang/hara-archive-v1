@@ -183,3 +183,72 @@ fn hbc_adapter_uses_the_same_identity_and_lifecycle_contract() {
 
     dispatch_ok(&mut session, "dispose-hbc", LiveSessionCommand::Dispose);
 }
+
+#[cfg(all(feature = "bytecode-observation", feature = "bytecode-instrumentation"))]
+#[test]
+fn instrumented_hbc_live_session_starts_from_validated_artifact() {
+    use super::instrumented_hbc::InstrumentedHbcLiveSession;
+    use crate::vm::{compile_source, encode_program};
+    use crate::Runtime;
+
+    let program = compile_source("(+ 19 23)").unwrap();
+    let artifact = encode_program(&program).unwrap();
+    let runtime = Runtime::core();
+    let mut session = InstrumentedHbcLiveSession::start_from_artifact(
+        &runtime,
+        "fixture/live-artifact-owner",
+        "fixture/live-artifact",
+        source("artifact.hal", "sha256:artifact", "(+ 19 23)"),
+        &artifact,
+    )
+    .unwrap();
+
+    let run = dispatch_ok(
+        &mut session,
+        "run-artifact",
+        LiveSessionCommand::Run {
+            boundary_limit: 1_000,
+        },
+    );
+    assert_eq!(run.state.status, LiveSessionStatus::Returned);
+    assert_eq!(run.payload["result"], 42);
+
+    dispatch_ok(
+        &mut session,
+        "dispose-artifact",
+        LiveSessionCommand::Dispose,
+    );
+}
+
+#[cfg(all(feature = "whole-wasm", not(target_arch = "wasm32")))]
+#[test]
+fn whole_wasm_live_session_exposes_prepared_call_contract_only() {
+    use super::whole_wasm::WholeWasmLiveSession;
+
+    let mut session = WholeWasmLiveSession::start(
+        "fixture/live-whole-wasm",
+        source("whole-wasm.hal", "sha256:whole-wasm", "(+ 19 23)"),
+    )
+    .unwrap();
+    let capabilities = session.capabilities();
+    assert!(capabilities.supports(LiveSessionOperation::Run));
+    assert!(capabilities.supports(LiveSessionOperation::Call));
+    assert!(!capabilities.supports(LiveSessionOperation::Step));
+    assert!(!capabilities.supports(LiveSessionOperation::Snapshot));
+
+    let run = dispatch_ok(
+        &mut session,
+        "run-whole-wasm",
+        LiveSessionCommand::Run {
+            boundary_limit: 1_000,
+        },
+    );
+    assert_eq!(run.state.status, LiveSessionStatus::Returned);
+    assert_eq!(run.payload["result"], 42);
+
+    dispatch_ok(
+        &mut session,
+        "dispose-whole-wasm",
+        LiveSessionCommand::Dispose,
+    );
+}

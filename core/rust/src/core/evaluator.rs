@@ -31,6 +31,12 @@ fn printer_write(text: &str) -> Result<(), String> {
         .map_err(|error| format!("Printer output failed: {error}"))
 }
 
+// This compatibility evaluator is also used while loading source-backed
+// namespaces. Keeping its large dispatch match out of line prevents the
+// recursive namespace/evaluator path from multiplying that frame until a
+// normal test or Wasm stack overflows. The fiber evaluator remains the
+// stack-safe execution path for ordinary evaluation.
+#[inline(never)]
 pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, String> {
     #[cfg(test)]
     EVALUATOR_INVOCATIONS.with(|count| count.set(count.get() + 1));

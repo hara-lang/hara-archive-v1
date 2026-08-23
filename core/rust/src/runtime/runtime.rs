@@ -1253,6 +1253,28 @@ impl Runtime {
             .map_err(|error| JsValue::from_str(&error))
     }
 
+    /// Returns the immutable manifest for the HBC0 artifact produced from
+    /// `source`. Hosts can cache the bytes and manifest without guessing the
+    /// target or ABI from a filename.
+    #[cfg(feature = "bytecode-vm")]
+    #[wasm_bindgen(js_name = compileBytecodeManifest)]
+    pub fn compile_bytecode_manifest_js(&self, source: &str) -> Result<String, JsValue> {
+        let bytes = self
+            .compile_bytecode_artifact(source)
+            .map_err(|error| JsValue::from_str(&error))?;
+        let product = crate::compiled_product::CompiledProduct::new(
+            crate::compiled_product::CompiledProductKind::HbcModule,
+            crate::compiled_product::sha256_hex(source.as_bytes()),
+            vec![crate::compiled_product::sha256_hex(source.as_bytes())],
+            format!("hara-runtime/{}", env!("CARGO_PKG_VERSION")),
+            "hbc0",
+            b"{}",
+            bytes,
+        );
+        serde_json::to_string(&product.manifest.to_json())
+            .map_err(|error| JsValue::from_str(&error.to_string()))
+    }
+
     /// Compiles source into an HNW0 artifact whose generated module can be
     /// instantiated by either Wasmtime or a browser WebAssembly engine.
     #[cfg(feature = "whole-wasm")]
@@ -1262,6 +1284,23 @@ impl Runtime {
             .compile_bytecode(source)
             .map_err(|error| JsValue::from_str(&error))?;
         whole_wasm::compile_artifact(program.as_ref()).map_err(|error| JsValue::from_str(&error))
+    }
+
+    #[cfg(feature = "whole-wasm")]
+    #[wasm_bindgen(js_name = compileWholeWasmManifest)]
+    pub fn compile_whole_wasm_manifest_js(&self, source: &str) -> Result<String, JsValue> {
+        let bytes = self.compile_whole_wasm_artifact_js(source)?;
+        let product = crate::compiled_product::CompiledProduct::new(
+            crate::compiled_product::CompiledProductKind::WholeWasm,
+            crate::compiled_product::sha256_hex(source.as_bytes()),
+            vec![crate::compiled_product::sha256_hex(source.as_bytes())],
+            format!("hara-runtime/{}", env!("CARGO_PKG_VERSION")),
+            "hnw0/2",
+            b"{}",
+            bytes,
+        );
+        serde_json::to_string(&product.manifest.to_json())
+            .map_err(|error| JsValue::from_str(&error.to_string()))
     }
 
     #[cfg(feature = "bytecode-vm")]

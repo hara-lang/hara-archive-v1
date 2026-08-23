@@ -120,8 +120,12 @@ after all document, identity, dependency, component, provenance, and tooling
 checks pass. It does not mutate a runtime registry, install a package, release
 an HBC program, perform network I/O, or retain partial catalogue state.
 
-Package and distribution admission will consume this verified result in the
-next tranche under issue #903.
+Rust package manifest and archive admission now consume this verified result
+before package build, read, install, or activation. The package boundary keeps
+the exact coordinates from the verified catalogue; it does not resolve the
+tooling-only `catalog/tooling/latest` projection. HBC1 remains an exact-link
+boundary: linked programs carry exact schema coordinates and do not embed the
+registry JSON document.
 
 ## Conformance
 
@@ -138,6 +142,12 @@ The corpus covers successful exact read-back plus rejection of:
 - a stale exact dependency;
 - forged recursive-component evidence;
 - an unsupported semantic hash epoch.
+
+The package conformance contract is published in
+`hara-lang/hara-specs-registry/02-platform/000006-package/draft/conformance/catalog-admission.edn`.
+It requires package admission to read the same checked-in registry fixture,
+verify its provenance and exact coordinates, and reject stale or unresolved
+catalogue evidence before producing an installable artifact.
 
 The existing HBC1 native admission tests remain responsible for rejecting
 missing exact links before linked-program release.
