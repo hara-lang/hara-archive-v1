@@ -1208,6 +1208,10 @@ public final class HaraContext {
         // Validated above; aliases retain the target name until first resolution.
       } else if ("reload".equals(option)) {
         // Validated and executed before namespace bindings are published.
+      } else if ("access".equals(option)) {
+        if (!Boolean.TRUE.equals(value)) {
+          throw new HaraException(":require :access expects true");
+        }
       } else if ("refer".equals(option)) {
         if (value instanceof Keyword && "all".equals(((Keyword) value).getName())) {
           for (String referred : required.symbolNames()) {
