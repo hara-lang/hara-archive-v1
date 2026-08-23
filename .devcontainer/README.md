@@ -21,7 +21,8 @@ Use these Codex environment values:
 The script installs `hara` and `hara-test` in `$HOME/.local/bin`, persists that
 path in `.bashrc`, prepares both locked Rust graphs and Maven dependencies,
 installs HTA/browser and website packages, and verifies exact clean auxiliary
-checkouts. A dirty or mismatched cached checkout fails without being reset.
+checkouts (including the website's visual-language package). A dirty or
+mismatched cached checkout fails without being reset.
 
 ## Smoke test
 
