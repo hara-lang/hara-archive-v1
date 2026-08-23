@@ -761,12 +761,6 @@ fn runtime_profiles(form: &Form) -> Result<BTreeMap<String, RuntimeProfile>, Str
             .map(|value| wasm_native_imports(value, &npm_dependencies))
             .transpose()?
             .unwrap_or_default();
-        if runtime == "jvm" && (!npm_dependencies.is_empty() || !native_imports.is_empty()) {
-            return Err(
-                "runtime/incompatible: npm WASM dependencies and imports are unavailable on :jvm"
-                    .into(),
-            );
-        }
         let profile = RuntimeProfile {
             source_paths,
             test_paths,

@@ -177,34 +177,38 @@ public interface Macro {
     }
 
     public static void processFlavor(RT.Instance rt, List l) {
-      if (l.count() != 2 || !(l.nth(1) instanceof Keyword)) {
-        throw new Ex.Runtime(":flavor expects one keyword");
+      if (l.count() < 2 || !(l.nth(1) instanceof Keyword)) {
+        throw new Ex.Runtime(":flavor expects a host keyword followed by import specs");
       }
       Keyword flavor = (Keyword) l.nth(1);
       if (flavor.getNamespace() != null) {
         throw new Ex.Runtime(":flavor expects an unqualified keyword");
       }
+      if ("wasm".equals(flavor.getName())) {
+        throw new Ex.Runtime(":wasm is not a host flavor; use :import for Wasm modules");
+      }
       rt._nativeFlavors.require(flavor.getName());
       rt.getCurrentNs().nativeFlavor = flavor.getName();
+      NativeFlavorProvider provider = rt.nativeProvider();
+      for (int i = 2; i < l.count(); i++) {
+        processHostImport(rt, provider, l.nth(i));
+      }
     }
 
     public static void processImport(RT.Instance rt, List l) {
-      NativeFlavorProvider provider = rt.nativeProvider();
-      if (provider == null) {
-        throw new Ex.Runtime(":import requires an ns :flavor declaration");
-      }
-      Iterator it = Iter.drop(l.iterator(), 1);
-      while (it.hasNext()) {
-        Object spec = it.next();
-        if (spec instanceof Symbol) {
+      throw new Ex.Runtime(":import is reserved for Wasm modules");
+    }
+
+    private static void processHostImport(RT.Instance rt, NativeFlavorProvider provider, Object spec) {
+      if (spec instanceof Symbol) {
           // Single class import: java.util.Date
           Symbol sym = (Symbol) spec;
           Class cls = (Class) provider.resolveType(sym.getName(), rt.nativeAccess());
           rt.getCurrentNs().imports.put(Symbol.create(cls.getSimpleName()), cls);
-        } else if (spec instanceof Iterable) {
+      } else if (spec instanceof Iterable) {
           // Package import: [java.util Date List]
           Iterator specIt = Iter.iter(spec);
-          if (!specIt.hasNext()) continue;
+          if (!specIt.hasNext()) return;
           Object pkgObj = specIt.next();
           String pkg = pkgObj instanceof Symbol ? ((Symbol) pkgObj).display() : pkgObj.toString();
           while (specIt.hasNext()) {
@@ -216,7 +220,8 @@ public interface Macro {
             Class cls = (Class) provider.resolveType(clsName, rt.nativeAccess());
             rt.getCurrentNs().imports.put(Symbol.create(cls.getSimpleName()), cls);
           }
-        }
+      } else {
+        throw new Ex.Runtime(":flavor expects host import symbols or package vectors");
       }
     }
 

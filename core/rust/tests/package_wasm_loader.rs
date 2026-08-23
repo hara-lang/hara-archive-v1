@@ -17,7 +17,7 @@ const PACKAGE_MANIFEST: &str = r#"
                         :commit "0123456789abcdef0123456789abcdef01234567"}}
  :files {"artifacts/provider.wasm" {:sha256 "sha256:cf96c3351ea2afd66dd2cee4480ea44fd2e76f8009ca1df96edb9dc149749edc"
                                     :size 41}}
- :variants {:wasm {:variant/artifact {:artifact/type :wasm
+ :wasm-imports {:provider {:variant/artifact {:artifact/type :wasm
                                        :artifact/path "artifacts/provider.wasm"
                                        :artifact/sha256 "sha256:cf96c3351ea2afd66dd2cee4480ea44fd2e76f8009ca1df96edb9dc149749edc"
                                        :artifact/target "wasm32-wasi-preview1"

@@ -147,6 +147,10 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
     return hta;
   }
 
+  boolean supportsDirectImport() {
+    return "wasm".equals(manifest.provider()) && "core.v1".equals(manifest.abi());
+  }
+
   public boolean asynchronous() {
     return hta;
   }

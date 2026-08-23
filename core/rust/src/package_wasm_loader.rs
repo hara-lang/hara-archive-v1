@@ -11,7 +11,7 @@ use std::path::Path;
 
 use crate::extension::{ExtensionManifest, WasmAbi, WasmExtension};
 use crate::package_manifest::{
-    PackageArtifactType, PackageManifest, PackageRuntime, PackageRuntimeRequirements,
+    PackageArtifactType, PackageManifest, PackageRuntimeRequirements,
     PackageSelection,
 };
 use crate::wasmtime_provider::WasmtimeExtensionProvider;
@@ -28,8 +28,30 @@ pub fn load_wasm_package(
     requirements: &PackageRuntimeRequirements,
     extension_manifest_source: &str,
 ) -> Result<LoadedPackageWasm, String> {
+    let module = manifest
+        .wasm_imports
+        .keys()
+        .next()
+        .cloned()
+        .ok_or_else(|| "package/missing-wasm-import: package declares no Wasm imports".to_owned())?;
+    load_wasm_import_package(
+        manifest,
+        package_root,
+        &module,
+        requirements,
+        extension_manifest_source,
+    )
+}
+
+pub fn load_wasm_import_package(
+    manifest: &PackageManifest,
+    package_root: &Path,
+    module: &str,
+    requirements: &PackageRuntimeRequirements,
+    extension_manifest_source: &str,
+) -> Result<LoadedPackageWasm, String> {
     let selection = manifest
-        .select_variant(PackageRuntime::Wasm, requirements)
+        .select_wasm_import(module, requirements)
         .map_err(|error| error.to_string())?;
     let PackageSelection::Variant(variant) = &selection else {
         return Err("package/missing-artifact: portable package has no Wasm artifact".into());

@@ -36,14 +36,18 @@ pub(super) fn parse_manifest(source: &str) -> Result<PackageManifest, PackageMan
         validate_descriptor(descriptor)?;
     }
 
-    let variants = optional_value(root, "variants", "package.edn")?
-        .map(|value| parse_variants(value, &files))
+    let wasm_imports = optional_value(root, "wasm-imports", "package.edn")?
+        .map(|value| parse_wasm_imports(value, &files))
         .transpose()?
         .unwrap_or_default();
-    if !variants.is_empty() && provenance.is_none() {
+    let flavors = optional_value(root, "flavors", "package.edn")?
+        .map(|value| parse_flavors(value, &files))
+        .transpose()?
+        .unwrap_or_default();
+    if (!wasm_imports.is_empty() || !flavors.is_empty()) && provenance.is_none() {
         return Err(PackageManifestError::new(
             "package/invalid-manifest",
-            "packages with runtime variants require :package :provenance",
+            "packages with Wasm imports or host flavors require :package :provenance",
         ));
     }
 
@@ -53,7 +57,8 @@ pub(super) fn parse_manifest(source: &str) -> Result<PackageManifest, PackageMan
         version,
         provenance,
         files,
-        variants,
+        wasm_imports,
+        flavors,
         canonical_edn: canonical_form(&form).to_string(),
     })
 }
@@ -111,44 +116,84 @@ fn parse_files(value: &Form) -> Result<BTreeMap<PathBuf, PackageFile>, PackageMa
     Ok(files)
 }
 
-fn parse_variants(
+fn parse_wasm_imports(
     value: &Form,
     files: &BTreeMap<PathBuf, PackageFile>,
-) -> Result<BTreeMap<PackageRuntime, PackageVariant>, PackageManifestError> {
-    let entries = expect_map(value, ":variants")?;
-    let mut variants = BTreeMap::new();
-    for (runtime, declaration) in entries {
-        let runtime = parse_runtime(runtime)?;
-        let variant = parse_variant(runtime, declaration, files)?;
-        if variants.insert(runtime, variant).is_some() {
+) -> Result<BTreeMap<String, PackageVariant>, PackageManifestError> {
+    let entries = expect_map(value, ":wasm-imports")?;
+    let mut imports = BTreeMap::new();
+    for (module, declaration) in entries {
+        let module = parse_module_name(module)?;
+        let variant = parse_artifact(declaration, files)?;
+        if variant.artifact.artifact_type != PackageArtifactType::Wasm
+            && variant.artifact.artifact_type != PackageArtifactType::Hta
+        {
             return Err(PackageManifestError::new(
-                "package/duplicate-variant",
-                format!("duplicate :{} runtime variant", runtime.keyword()),
+                "package/invalid-manifest",
+                format!("Wasm import {module} must use :artifact/type :wasm or :hta"),
+            ));
+        }
+        if imports.insert(module.clone(), variant).is_some() {
+            return Err(PackageManifestError::new(
+                "package/duplicate-wasm-import",
+                format!("duplicate Wasm import {module}"),
             ));
         }
     }
-    Ok(variants)
+    Ok(imports)
 }
 
-fn parse_runtime(value: &Form) -> Result<PackageRuntime, PackageManifestError> {
+fn parse_flavors(
+    value: &Form,
+    files: &BTreeMap<PathBuf, PackageFile>,
+) -> Result<BTreeMap<String, PackageVariant>, PackageManifestError> {
+    let entries = expect_map(value, ":flavors")?;
+    let mut flavors = BTreeMap::new();
+    for (flavor, declaration) in entries {
+        let flavor = match flavor {
+            Form::Keyword(value) if value != "wasm" && !value.contains('/') => value.clone(),
+            _ => {
+                return Err(PackageManifestError::new(
+                    "package/invalid-manifest",
+                    ":flavors keys must be unqualified host keywords; :wasm is reserved",
+                ));
+            }
+        };
+        let variant = parse_artifact(declaration, files)?;
+        if variant.artifact.artifact_type != PackageArtifactType::Jar {
+            return Err(PackageManifestError::new(
+                "package/invalid-manifest",
+                format!(":{flavor} host flavor must use :artifact/type :jar"),
+            ));
+        }
+        if flavors.insert(flavor.clone(), variant).is_some() {
+            return Err(PackageManifestError::new(
+                "package/duplicate-flavor",
+                format!("duplicate :{flavor} host flavor"),
+            ));
+        }
+    }
+    Ok(flavors)
+}
+
+fn parse_module_name(value: &Form) -> Result<String, PackageManifestError> {
     match value {
-        Form::Keyword(value) if value == "jvm" => Ok(PackageRuntime::Jvm),
-        Form::Keyword(value) if value == "wasm" => Ok(PackageRuntime::Wasm),
+        Form::Keyword(value) if !value.contains('/') && !value.is_empty() => Ok(value.clone()),
+        Form::String(value) if !value.is_empty() => Ok(value.clone()),
         _ => Err(PackageManifestError::new(
             "package/invalid-manifest",
-            ":variants keys must be :jvm or :wasm",
+            ":wasm-imports keys must be non-empty module keywords or strings",
         )),
     }
 }
 
-fn parse_variant(
-    runtime: PackageRuntime,
+fn parse_artifact(
     value: &Form,
     files: &BTreeMap<PathBuf, PackageFile>,
 ) -> Result<PackageVariant, PackageManifestError> {
-    let entries = expect_map(value, "runtime variant")?;
+    let entries = expect_map(value, "package artifact")?;
     let artifact_entries = expect_map(
-        required_value(entries, "variant/artifact", "runtime variant")?,
+        required_value(entries, "variant/artifact", "package artifact")?,
         ":variant/artifact",
     )?;
     let artifact_type =
@@ -164,22 +209,6 @@ fn parse_variant(
                 ));
             }
         };
-    match (runtime, artifact_type) {
-        (PackageRuntime::Jvm, PackageArtifactType::Jar)
-        | (PackageRuntime::Wasm, PackageArtifactType::Wasm)
-        | (PackageRuntime::Wasm, PackageArtifactType::Hta) => {}
-        _ => {
-            return Err(PackageManifestError::new(
-                "package/invalid-manifest",
-                format!(
-                    ":{} variant cannot use :artifact/type :{}",
-                    runtime.keyword(),
-                    artifact_type.keyword()
-                ),
-            ));
-        }
-    }
-
     let artifact_path = parse_relative_path(&required_string(
         artifact_entries,
         "artifact/path",
@@ -216,29 +245,28 @@ fn parse_variant(
     }
 
     let required_capabilities = parse_identifier_set(
-        required_value(entries, "variant/required-capabilities", "runtime variant")?,
+        required_value(entries, "variant/required-capabilities", "package artifact")?,
         ":variant/required-capabilities",
     )?;
-    let host_calls = optional_value(entries, "variant/host-calls", "runtime variant")?
+    let host_calls = optional_value(entries, "variant/host-calls", "package artifact")?
         .map(|value| parse_identifier_set(value, ":variant/host-calls"))
         .transpose()?
         .unwrap_or_default();
-    let exports = optional_value(entries, "variant/exports", "runtime variant")?
+    let exports = optional_value(entries, "variant/exports", "package artifact")?
         .map(|value| parse_identifier_set(value, ":variant/exports"))
         .transpose()?
         .unwrap_or_default();
-    let dependencies = optional_value(entries, "variant/dependencies", "runtime variant")?
+    let dependencies = optional_value(entries, "variant/dependencies", "package artifact")?
         .map(|value| {
             expect_map(value, ":variant/dependencies")?;
             Ok::<Form, PackageManifestError>(value.clone())
         })
         .transpose()?;
-    let lifecycle = optional_value(entries, "variant/lifecycle", "runtime variant")?
+    let lifecycle = optional_value(entries, "variant/lifecycle", "package artifact")?
         .map(parse_lifecycle)
         .transpose()?;
 
     Ok(PackageVariant {
-        runtime,
         artifact: PackageArtifact {
             artifact_type,
             path: artifact_path,

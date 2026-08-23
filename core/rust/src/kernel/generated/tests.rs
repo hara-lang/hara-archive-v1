@@ -64,6 +64,40 @@ fn config_role_defaults_validates_and_is_retained() {
 }
 
 #[test]
+fn separates_wasm_imports_from_host_flavor_imports() {
+    let config = GeneratedNamespaceConfig::configure(
+        &parse_forms(
+            "(:flavor :jvm [java.lang String RuntimeException]) \
+             (:import vendor.numeric.Vector)",
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(config.native_flavor(), Some("jvm"));
+    assert_eq!(
+        config.native_flavor_imports(),
+        &[
+            ("String".into(), "java.lang.String".into()),
+            ("RuntimeException".into(), "java.lang.RuntimeException".into()),
+        ]
+    );
+    assert_eq!(
+        config.native_imports(),
+        &[("vendor.numeric.Vector".into(), "vendor.numeric.Vector".into())]
+    );
+}
+
+#[test]
+fn wasm_is_not_a_host_flavor() {
+    let error = GeneratedNamespaceConfig::configure(&parse_forms("(:flavor :wasm)").unwrap())
+        .unwrap_err();
+    assert_eq!(
+        error,
+        "native/unsupported-flavor: :wasm (Wasm modules use :import)"
+    );
+}
+
+#[test]
 fn config_override_omits_selected_foundation_vars() {
     let config = GeneratedNamespaceConfig::configure(
         &parse_forms("(:config {:override [compile pointer]})").unwrap(),

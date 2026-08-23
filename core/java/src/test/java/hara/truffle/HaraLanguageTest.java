@@ -2212,7 +2212,7 @@ public class HaraLanguageTest {
             .build()) {
       context.eval(
           HaraLanguage.ID,
-          "(ns jvm-test (:flavor :jvm) (:import [java.lang String RuntimeException] [java.awt Point]))");
+          "(ns jvm-test (:flavor :jvm [java.lang String RuntimeException] [java.awt Point]))");
       assertEquals(
           "HELLO",
           context.eval(HaraLanguage.ID, "(. (new String \"hello\") (toUpperCase))").asString());
@@ -2243,7 +2243,7 @@ public class HaraLanguageTest {
             .allowHostAccess(HostAccess.ALL)
             .allowHostClassLookup(name -> true)
             .build()) {
-      context.eval(HaraLanguage.ID, "(ns jvm-default (:import [java.lang String]))");
+      context.eval(HaraLanguage.ID, "(ns jvm-default (:flavor :jvm [java.lang String]))");
       assertEquals("42", context.eval(HaraLanguage.ID, "(String/valueOf 42)").asString());
     }
   }
@@ -2257,7 +2257,7 @@ public class HaraLanguageTest {
               () ->
                   context.eval(
                       HaraLanguage.ID,
-                      "(ns denied (:flavor :jvm) (:import [java.lang String RuntimeException]))"));
+                      "(ns denied (:flavor :jvm [java.lang String RuntimeException]))"));
       assertTrue(error.getMessage().contains("reflection capability is not granted"));
     }
   }
@@ -2721,7 +2721,7 @@ public class HaraLanguageTest {
             .build()) {
       context.eval(
           HaraLanguage.ID,
-          "(ns exception-native-type (:flavor :jvm) (:import [java.lang RuntimeException]))");
+          "(ns exception-native-type (:flavor :jvm [java.lang RuntimeException]))");
       assertEquals(
           "java.lang.RuntimeException",
           context

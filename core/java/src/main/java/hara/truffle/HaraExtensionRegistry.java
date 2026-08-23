@@ -60,6 +60,40 @@ final class HaraExtensionRegistry {
     }
   }
 
+  /** Verifies an installed package index before exposing its extension root. */
+  HaraExtensionPackage discoverWasmImport(String logical) {
+    ArrayList<Path> candidates = new ArrayList<>();
+    for (Path root : HaraPackageManifest.installedRoots()) {
+      HaraPackageManifest manifest = HaraPackageManifest.read(root);
+      if (manifest == null || manifest.wasmImport(logical) == null) continue;
+      manifest.verifyImport(root, logical);
+      candidates.add(root);
+    }
+    if (candidates.size() > 1) {
+      throw new HaraException("package/ambiguous-wasm-import: " + logical);
+    }
+    if (candidates.isEmpty()) return null;
+    HaraExtensionPackage extension = discover(logical, candidates);
+    if (extension == null) {
+      throw new HaraException("package/extension-missing: " + logical);
+    }
+    HaraPackageManifest manifest = HaraPackageManifest.read(candidates.get(0));
+    HaraPackageManifest.WasmImport selected = manifest.wasmImport(logical);
+    HaraExtensionManifest extensionManifest = extension.manifest();
+    if (extensionManifest.identity() != null
+        && !extensionManifest.identity().equals(manifest.identity())) {
+      throw new HaraException("package/identity-mismatch: " + logical);
+    }
+    if (!selected.exports().stream().allMatch(extensionManifest.exports()::containsKey)) {
+      throw new HaraException("package/manifest-mismatch: selected exports are not declared by extension");
+    }
+    if (!extensionManifest.exports().values().stream()
+        .anyMatch(export -> selected.entryPoint().equals(export.wasmExport()))) {
+      throw new HaraException("package/entry-point-mismatch: " + logical);
+    }
+    return extension;
+  }
+
   private static void addCandidates(
       List<HaraProject> candidates, Path root, String namespace) throws IOException {
     Path normalizedRoot = root.toAbsolutePath().normalize();

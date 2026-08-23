@@ -213,7 +213,28 @@ pub fn configured_roots() -> Vec<PathBuf> {
     if let Some(configured) = env::var_os("HARA_EXTENSION_PATH") {
         roots.extend(env::split_paths(&configured));
     }
+    roots.extend(installed_package_roots());
     roots
+}
+
+/// Returns immutable installed package roots. Package loading still verifies
+/// package.edn and every selected artifact before activation.
+pub fn installed_package_roots() -> Vec<PathBuf> {
+    let dist = env::var_os("HARA_DIST_HOME")
+        .map(PathBuf::from)
+        .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".hara/dist")))
+        .unwrap_or_else(|| PathBuf::from(".hara/dist"));
+    let roots = dist.join("roots/sha256");
+    let Ok(entries) = fs::read_dir(&roots) else {
+        return Vec::new();
+    };
+    let mut result = entries
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.is_dir())
+        .collect::<Vec<_>>();
+    result.sort();
+    result
 }
 
 pub fn package_exists(namespace: &str, roots: &[PathBuf]) -> bool {

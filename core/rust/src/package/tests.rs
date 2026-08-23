@@ -78,8 +78,8 @@ fn runtime_archive(
  :files
  {{"artifacts/provider.hta" {{:sha256 "{artifact_digest}" :size {artifact_size}}}
   "project.edn" {{:sha256 "{project_digest}" :size {project_size}}}}}
- :variants
- {{:wasm
+ :wasm-imports
+ {{:provider
    {{:variant/artifact
      {{:artifact/type :hta
       :artifact/path "artifacts/provider.hta"
@@ -261,10 +261,10 @@ fn selects_verified_runtime_archive_before_and_after_installation() {
     let root = fixture();
     let archive = runtime_archive(&root, b"wasm", b"wasm", false);
     let verified =
-        PackageManifest::select_archive(&archive, PackageRuntime::Wasm, &wasm_requirements())
+        PackageManifest::select_wasm_import_archive(&archive, "provider", &wasm_requirements())
             .unwrap();
     let PackageSelection::Variant(variant) = &verified.selection else {
-        panic!("expected Wasm runtime variant");
+        panic!("expected Wasm import");
     };
     assert_eq!(variant.artifact.artifact_type, PackageArtifactType::Hta);
     assert_eq!(variant.artifact.path, Path::new("artifacts/provider.hta"));
@@ -273,20 +273,17 @@ fn selects_verified_runtime_archive_before_and_after_installation() {
     let installed = install_archive_at(&archive, &dist).unwrap();
     let installed_manifest = PackageManifest::read(&installed.join("package.edn")).unwrap();
     let installed_selection = installed_manifest
-        .verify_selection_at(&installed, PackageRuntime::Wasm, &wasm_requirements())
+        .select_wasm_import("provider", &wasm_requirements())
         .unwrap();
     assert_eq!(installed_selection, verified.selection);
     assert!(dist
         .join("packages/hara/example/provider/1.0.0.edn")
         .is_file());
 
-    let missing = PackageManifest::select_archive(
-        &archive,
-        PackageRuntime::Jvm,
-        &PackageRuntimeRequirements::default(),
-    )
-    .unwrap_err();
-    assert_eq!(missing.code, "package/missing-variant");
+    let portable =
+        PackageManifest::select_archive(&archive, PackageRuntime::Jvm, &PackageRuntimeRequirements::default())
+            .unwrap();
+    assert_eq!(portable.selection, PackageSelection::Portable);
     fs::remove_dir_all(root).unwrap();
 }
 

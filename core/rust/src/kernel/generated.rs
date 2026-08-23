@@ -65,8 +65,9 @@ pub struct GeneratedNamespaceConfig {
     used_exclusions: HashMap<String, HashSet<String>>,
     excluded_foundation: HashSet<String>,
     exposed_foundation: Option<HashSet<String>>,
-    native_flavor: String,
+    native_flavor: Option<String>,
     native_imports: Vec<(String, String)>,
+    native_flavor_imports: Vec<(String, String)>,
     role: String,
     blank: bool,
 }
@@ -90,8 +91,9 @@ impl GeneratedNamespaceConfig {
             used_exclusions: HashMap::new(),
             excluded_foundation: HashSet::new(),
             exposed_foundation: None,
-            native_flavor: "wasm".into(),
+            native_flavor: None,
             native_imports: Vec::new(),
+            native_flavor_imports: Vec::new(),
             role: "standard".into(),
             blank: false,
         }
@@ -115,6 +117,7 @@ impl GeneratedNamespaceConfig {
         let mut blank = false;
         let mut config_seen = false;
         let mut native_flavor = None;
+        let mut native_flavor_imports = Vec::new();
         let mut native_imports = Vec::new();
         let mut role = "standard".to_owned();
 
@@ -151,7 +154,9 @@ impl GeneratedNamespaceConfig {
                     if native_flavor.is_some() {
                         return Err("ns accepts only one :flavor clause".into());
                     }
-                    native_flavor = Some(parse_native_flavor(values)?);
+                    let (flavor, imports) = parse_native_flavor(values)?;
+                    native_flavor = Some(flavor);
+                    native_flavor_imports = imports;
                 }
                 "import" => parse_native_imports(&values[1..], &mut native_imports)?,
                 other => return Err(format!("Unsupported ns clause: :{other}")),
@@ -179,8 +184,9 @@ impl GeneratedNamespaceConfig {
         let mut config = Self::default();
         config.excluded_foundation = excluded_foundation;
         config.exposed_foundation = exposed_foundation;
-        config.native_flavor = native_flavor.unwrap_or_else(|| "wasm".into());
+        config.native_flavor = native_flavor;
         config.native_imports = native_imports;
+        config.native_flavor_imports = native_flavor_imports;
         config.role = role;
         config.blank = blank;
         for native_type in NATIVE_TYPES {
@@ -234,12 +240,16 @@ impl GeneratedNamespaceConfig {
         self.blank
     }
 
-    pub fn native_flavor(&self) -> &str {
-        &self.native_flavor
+    pub fn native_flavor(&self) -> Option<&str> {
+        self.native_flavor.as_deref()
     }
 
     pub fn native_imports(&self) -> &[(String, String)] {
         &self.native_imports
+    }
+
+    pub fn native_flavor_imports(&self) -> &[(String, String)] {
+        &self.native_flavor_imports
     }
 
     pub fn role(&self) -> &str {
@@ -436,16 +446,20 @@ impl GeneratedNamespaceConfig {
     }
 }
 
-fn parse_native_flavor(values: &[Form]) -> Result<String, String> {
-    match values {
-        [_, Form::Keyword(flavor)] if !flavor.contains('/') && flavor == "wasm" => {
-            Ok(flavor.clone())
+fn parse_native_flavor(values: &[Form]) -> Result<(String, Vec<(String, String)>), String> {
+    let flavor = match values.get(1) {
+        Some(Form::Keyword(flavor)) if !flavor.contains('/') && flavor != "wasm" => flavor,
+        Some(Form::Keyword(flavor)) if flavor == "wasm" => {
+            return Err("native/unsupported-flavor: :wasm (Wasm modules use :import)".into())
         }
-        [_, Form::Keyword(flavor)] if !flavor.contains('/') => {
-            Err(format!("native/unsupported-flavor: :{flavor}"))
+        Some(Form::Keyword(flavor)) => {
+            return Err(format!("native/invalid-flavor: :{flavor}"))
         }
-        _ => Err(":flavor expects one unqualified keyword".into()),
-    }
+        _ => return Err(":flavor expects an unqualified host keyword".into()),
+    };
+    let mut imports = Vec::new();
+    parse_native_imports(&values[2..], &mut imports)?;
+    Ok((flavor.clone(), imports))
 }
 
 fn parse_native_imports(
@@ -455,10 +469,7 @@ fn parse_native_imports(
     for specification in specifications {
         match specification {
             Form::Symbol(module) if !module.contains('/') => {
-                imports.push((
-                    module.rsplit('.').next().unwrap_or(module).into(),
-                    module.clone(),
-                ));
+                imports.push((module.clone(), module.clone()));
             }
             Form::Vector(values) if !values.is_empty() => {
                 let package = match &values[0] {

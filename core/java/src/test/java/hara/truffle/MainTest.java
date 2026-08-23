@@ -42,7 +42,7 @@ public class MainTest {
               + "}\n");
       Files.writeString(
           root.resolve("src/demo_app/main.hal"),
-          "(ns demo_app.main (:flavor :jvm) (:import [demo_app Bridge])) "
+          "(ns demo_app.main (:flavor :jvm [demo_app Bridge])) "
               + "(defn main [] (Bridge/greeting)) (main)");
       Files.writeString(
           root.resolve("test/demo_app/main_test.hal"),
@@ -61,7 +61,7 @@ public class MainTest {
           Main.run(
               new String[] {"--project", root.toString(), "--offline", "repl"},
               new ByteArrayInputStream(
-                  ("(ns demo_app.repl (:flavor :jvm) (:import [demo_app Bridge]))\n"
+                  ("(ns demo_app.repl (:flavor :jvm [demo_app Bridge]))\n"
                           + "(Bridge/greeting)\n:quit\n")
                       .getBytes(StandardCharsets.UTF_8)),
               stdout,

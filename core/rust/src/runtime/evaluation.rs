@@ -229,6 +229,10 @@ impl Runtime {
     ) -> Result<(), String> {
         let namespace = self.namespace_registry.current();
         for (local, logical) in config.native_imports() {
+            #[cfg(not(target_arch = "wasm32"))]
+            if !self.native_wasm_imports.contains_key(logical) {
+                self.install_discovered_wasm_import(logical)?;
+            }
             let bindings = self
                 .native_wasm_imports
                 .get_mut(logical)
@@ -259,6 +263,39 @@ impl Runtime {
             }
         }
         self.refresh_qualified_bindings();
+        Ok(())
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn install_discovered_wasm_import(&mut self, logical: &str) -> Result<(), String> {
+        let package = native_extension::ExtensionPackage::discover(
+            logical,
+            &self.extension_roots,
+        )?
+        .ok_or_else(|| format!("native/import-missing: {logical}"))?;
+        let package_manifest_path = package.root.join("package.edn");
+        if !package_manifest_path.is_file() {
+            return Err(format!("native/import-missing: {logical}"));
+        }
+        let manifest = package_manifest::PackageManifest::read(&package_manifest_path)
+            .map_err(|error| error.to_string())?;
+        let requirements = package_manifest::PackageRuntimeRequirements {
+            supported_targets: ["wasm32-wasi-preview1".to_owned()].into_iter().collect(),
+            supported_abis: ["core.v1".to_owned()].into_iter().collect(),
+            ..package_manifest::PackageRuntimeRequirements::default()
+        };
+        let loaded = package_wasm_loader::load_wasm_import_package(
+            &manifest,
+            &package.root,
+            logical,
+            &requirements,
+            &package.source,
+        )?;
+        if loaded.identity != manifest.identity {
+            return Err(format!("package/identity-mismatch: {logical}"));
+        }
+        self.native_wasm_imports
+            .insert(logical.to_owned(), loaded.extension);
         Ok(())
     }
 

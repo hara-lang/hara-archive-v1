@@ -1,9 +1,10 @@
-//! Data-only validation and exact runtime-variant resolution for generated
+//! Data-only validation and exact package-artifact resolution for generated
 //! `package.edn` manifests.
 //!
 //! This module deliberately stops before class loading, Wasm instantiation, or
 //! provider registration. It turns untrusted archive metadata into a verified,
-//! deterministic selection that a runtime-specific loader can consume.
+//! deterministic selection that a host loader can consume. Wasm modules are
+//! imports shared by all hosts; host artifacts live under named flavors.
 
 use crate::kernel::Form;
 use semver::Version;
@@ -24,14 +25,12 @@ const PACKAGE_FORMAT: &str = "0.0.0-alpha";
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum PackageRuntime {
     Jvm,
-    Wasm,
 }
 
 impl PackageRuntime {
     pub const fn keyword(self) -> &'static str {
         match self {
             Self::Jvm => "jvm",
-            Self::Wasm => "wasm",
         }
     }
 }
@@ -109,7 +108,6 @@ pub struct PackageLifecycle {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PackageVariant {
-    pub runtime: PackageRuntime,
     pub artifact: PackageArtifact,
     pub required_capabilities: BTreeSet<String>,
     pub host_calls: BTreeSet<String>,
@@ -147,7 +145,8 @@ pub struct PackageManifest {
     pub version: Version,
     pub provenance: Option<PackageProvenance>,
     pub files: BTreeMap<PathBuf, PackageFile>,
-    pub variants: BTreeMap<PackageRuntime, PackageVariant>,
+    pub wasm_imports: BTreeMap<String, PackageVariant>,
+    pub flavors: BTreeMap<String, PackageVariant>,
     canonical_edn: String,
 }
 
@@ -185,6 +184,16 @@ impl PackageManifest {
         })
     }
 
+    pub fn select_wasm_import_archive(
+        path: &Path,
+        module: &str,
+        requirements: &PackageRuntimeRequirements,
+    ) -> Result<VerifiedPackageSelection, PackageManifestError> {
+        let manifest = Self::read_archive(path)?;
+        let selection = manifest.select_wasm_import(module, requirements)?;
+        Ok(VerifiedPackageSelection { manifest, selection })
+    }
+
     pub fn parse(source: &str) -> Result<Self, PackageManifestError> {
         parse::parse_manifest(source)
     }
@@ -198,17 +207,26 @@ impl PackageManifest {
         runtime: PackageRuntime,
         requirements: &PackageRuntimeRequirements,
     ) -> Result<PackageSelection, PackageManifestError> {
-        if self.variants.is_empty() {
+        let flavor = match runtime {
+            PackageRuntime::Jvm => "jvm",
+        };
+        self.select_flavor(flavor, requirements)
+    }
+
+    pub fn select_flavor(
+        &self,
+        flavor: &str,
+        requirements: &PackageRuntimeRequirements,
+    ) -> Result<PackageSelection, PackageManifestError> {
+        if self.flavors.is_empty() {
             return Ok(PackageSelection::Portable);
         }
-        let variant = self.variants.get(&runtime).ok_or_else(|| {
+        let variant = self.flavors.get(flavor).ok_or_else(|| {
             PackageManifestError::new(
-                "package/missing-variant",
+                "package/missing-flavor",
                 format!(
-                    "{} {} has no :{} runtime variant",
-                    self.identity,
-                    self.version,
-                    runtime.keyword()
+                    "{} {} has no :{} host flavor",
+                    self.identity, self.version, flavor
                 ),
             )
         })?;
@@ -220,7 +238,7 @@ impl PackageManifest {
                 "package/target-mismatch",
                 format!(
                     ":{} artifact target {} is not supported",
-                    runtime.keyword(),
+                    flavor,
                     variant.artifact.target
                 ),
             ));
@@ -230,7 +248,7 @@ impl PackageManifest {
                 "package/abi-mismatch",
                 format!(
                     ":{} artifact ABI {} is not supported",
-                    runtime.keyword(),
+                    flavor,
                     variant.artifact.abi
                 ),
             ));
@@ -240,6 +258,47 @@ impl PackageManifest {
             &variant.required_capabilities,
             &requirements.available_capabilities,
         );
+        if !missing_capabilities.is_empty() {
+            return Err(PackageManifestError::new(
+                "package/capability-denied",
+                format!("missing capabilities: {}", missing_capabilities.join(", ")),
+            ));
+        }
+        let denied_host_calls = difference(&variant.host_calls, &requirements.allowed_host_calls);
+        if !denied_host_calls.is_empty() {
+            return Err(PackageManifestError::new(
+                "package/host-call-denied",
+                format!("denied host calls: {}", denied_host_calls.join(", ")),
+            ));
+        }
+        Ok(PackageSelection::Variant(variant.clone()))
+    }
+
+    pub fn select_wasm_import(
+        &self,
+        module: &str,
+        requirements: &PackageRuntimeRequirements,
+    ) -> Result<PackageSelection, PackageManifestError> {
+        let variant = self.wasm_imports.get(module).ok_or_else(|| {
+            PackageManifestError::new(
+                "package/missing-wasm-import",
+                format!("{} {} has no Wasm import {module}", self.identity, self.version),
+            )
+        })?;
+        if !requirements.supported_targets.contains(&variant.artifact.target) {
+            return Err(PackageManifestError::new(
+                "package/target-mismatch",
+                format!("Wasm import {module} target {} is not supported", variant.artifact.target),
+            ));
+        }
+        if !requirements.supported_abis.contains(&variant.artifact.abi) {
+            return Err(PackageManifestError::new(
+                "package/abi-mismatch",
+                format!("Wasm import {module} ABI {} is not supported", variant.artifact.abi),
+            ));
+        }
+        let missing_capabilities =
+            difference(&variant.required_capabilities, &requirements.available_capabilities);
         if !missing_capabilities.is_empty() {
             return Err(PackageManifestError::new(
                 "package/capability-denied",

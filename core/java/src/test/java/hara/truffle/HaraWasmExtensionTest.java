@@ -6,6 +6,8 @@ import static org.junit.Assert.assertTrue;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.util.HexFormat;
 import org.graalvm.polyglot.Context;
 import org.graalvm.polyglot.PolyglotException;
 import org.junit.Test;
@@ -40,10 +42,18 @@ public class HaraWasmExtensionTest {
                   "(ns app (:require [demo.000-answer-42 :as answer :refer [add]])) "
                       + "(+ (deref (answer/add 20 22)) (deref (add 1 2)))")
               .asLong());
+      assertEquals(
+          42,
+          context
+              .eval(
+                  HaraLanguage.ID,
+                  "(ns imported (:import demo.000-answer-42)) "
+                      + "(deref (demo.000-answer-42/add 20 22))")
+              .asLong());
       PolyglotException arity =
           assertThrows(
               PolyglotException.class,
-              () -> context.eval(HaraLanguage.ID, "(deref (answer/add 1))"));
+              () -> context.eval(HaraLanguage.ID, "(deref (demo.000-answer-42/add 1))"));
       assertTrue(arity.getMessage().contains("expects 2 arguments"));
     } finally {
       if (previous == null) System.clearProperty("hara.extensions.path");
@@ -68,5 +78,76 @@ public class HaraWasmExtensionTest {
                       HaraLanguage.ID, "(ns app (:require [demo.000-answer-42 :as answer]))"));
       assertTrue(error.getMessage().contains("Cannot require missing namespace"));
     }
+  }
+
+  @Test
+  public void importRejectsHostClassesAndWasmFlavorIsNotAllowed() {
+    try (Context context = Context.newBuilder(HaraLanguage.ID).build()) {
+      PolyglotException hostImport =
+          assertThrows(
+              PolyglotException.class,
+              () -> context.eval(HaraLanguage.ID, "(ns host-import (:import [java.lang String]))"));
+      assertTrue(hostImport.getMessage().contains("native/import-missing"));
+
+      PolyglotException wasmFlavor =
+          assertThrows(
+              PolyglotException.class,
+              () -> context.eval(HaraLanguage.ID, "(ns wasm-flavor (:flavor :wasm))"));
+      assertTrue(wasmFlavor.getMessage().contains("not a host flavor"));
+    }
+  }
+
+  @Test
+  public void installedPackageImportIsVerifiedBeforeTheWasmNamespaceIsExposed() throws Exception {
+    Path dist = Files.createTempDirectory("hara-package-dist-");
+    Path root = dist.resolve("roots/sha256/demo");
+    Files.createDirectories(root);
+    HaraExtensionTestProject.write(
+        root,
+        "{:namespace \"demo.000-answer-42\" :version \"1.0.0\" :provider :wasm "
+            + ":module \"answer-42.wasm\" :abi :core.v1 "
+            + ":exports {\"add\" {:args [:i32 :i32] :returns :i32 :async true}} :capabilities []}");
+    Files.write(root.resolve("answer-42.wasm"), ADD_WASM);
+    String project = Files.readString(root.resolve("project.edn"));
+    String packageManifest =
+        "{:harp/format \"0.0.0-alpha\" :package {:identity \"test/demo.000-answer-42\" :version \"1.0.0\"} "
+            + ":files {\"project.edn\" {:sha256 \""
+            + digest(project.getBytes())
+            + "\" :size "
+            + project.getBytes().length
+            + "} \"answer-42.wasm\" {:sha256 \""
+            + digest(ADD_WASM)
+            + "\" :size "
+            + ADD_WASM.length
+            + "}} :wasm-imports {:demo.000-answer-42 {:variant/artifact {:artifact/type :wasm "
+            + ":artifact/path \"answer-42.wasm\" :artifact/sha256 \""
+            + digest(ADD_WASM)
+            + "\" :artifact/target \"wasm32-wasi-preview1\" :artifact/abi \"core.v1\" :artifact/entry-point \"add\"} "
+            + ":variant/required-capabilities #{} :variant/host-calls #{} :variant/exports #{:add}}}}";
+    Files.writeString(root.resolve("package.edn"), packageManifest);
+    String previous = System.getProperty("hara.dist.home");
+    System.setProperty("hara.dist.home", dist.toString());
+    try (Context context = Context.newBuilder(HaraLanguage.ID).build()) {
+      assertEquals(
+          42,
+          context
+              .eval(
+                  HaraLanguage.ID,
+                  "(ns packaged (:import demo.000-answer-42)) "
+                      + "(deref (demo.000-answer-42/add 20 22))")
+              .asLong());
+    } finally {
+      if (previous == null) System.clearProperty("hara.dist.home");
+      else System.setProperty("hara.dist.home", previous);
+      try (var paths = Files.walk(dist)) {
+        paths.sorted(java.util.Comparator.reverseOrder()).forEach(path -> {
+          try { Files.deleteIfExists(path); } catch (Exception ignored) { }
+        });
+      }
+    }
+  }
+
+  private static String digest(byte[] bytes) throws Exception {
+    return "sha256:" + HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
   }
 }

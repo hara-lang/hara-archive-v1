@@ -474,7 +474,7 @@ fn eval_namespace_form(fs: &[Form], env: &mut HashMap<String, Value>) -> Result<
     select_namespace_environment(&registry, env, &name);
     let destination = registry.current();
     destination.set_role(config.role());
-    destination.set_native_flavor(Some(config.native_flavor().into()));
+    destination.set_native_flavor(config.native_flavor().map(str::to_owned));
     for (local, module) in config.native_imports() {
         destination.import(local, module.clone());
     }

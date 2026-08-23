@@ -83,6 +83,78 @@ mod tests {
     }
 
     #[test]
+    fn direct_import_discovers_only_verified_core_wasm_packages() {
+        use sha2::{Digest, Sha256};
+
+        const ADD: &[u8] =
+            b"\0asm\x01\0\0\0\x01\x07\x01\x60\x02\x7e\x7e\x01\x7e\x03\x02\x01\0\x07\x07\x01\x03add\0\0\x0a\x09\x01\x07\0\x20\0\x20\x01\x7c\x0b";
+        let root = std::env::temp_dir().join(format!("hara-runtime-package-import-{}", std::process::id()));
+        if root.exists() {
+            std::fs::remove_dir_all(&root).unwrap();
+        }
+        std::fs::create_dir_all(&root).unwrap();
+        let project = r#"{:hara/type :project :hara/version "1.0.0"
+ :project/id "example/provider" :project/version "1.0.0"
+ :project/source-paths [] :project/test-paths [] :project/extension-paths []
+ :project/capabilities #{}
+ :project/extensions {demo.provider {:identity "example/provider" :provider :wasm
+                                      :module "provider.wasm" :abi :core.v1
+                                      :exports {"add" {:args [:i64 :i64] :returns :i64}}
+                                      :capabilities []}}}"#;
+        let digest = |bytes: &[u8]| {
+            format!(
+                "sha256:{}",
+                Sha256::digest(bytes)
+                    .iter()
+                    .map(|byte| format!("{byte:02x}"))
+                    .collect::<String>()
+            )
+        };
+        let wasm_digest = digest(ADD);
+        let project_digest = digest(project.as_bytes());
+        let package = r#"{:harp/format "0.0.0-alpha"
+ :package {:identity "example/provider" :version "1.0.0"
+           :provenance {:repository "https://github.com/example/provider"
+                        :commit "0123456789abcdef0123456789abcdef01234567"}}
+ :files {"project.edn" {:sha256 "__PROJECT_DIGEST__" :size __PROJECT_SIZE__}
+          "provider.wasm" {:sha256 "__WASM_DIGEST__" :size __WASM_SIZE__}}
+ :wasm-imports {:demo.provider {:variant/artifact {:artifact/type :wasm
+                                      :artifact/path "provider.wasm"
+                                      :artifact/sha256 "__WASM_DIGEST__"
+                                      :artifact/target "wasm32-wasi-preview1"
+                                      :artifact/abi "core.v1"
+                                      :artifact/entry-point "add"}
+                    :variant/required-capabilities #{}
+                    :variant/host-calls #{}
+                    :variant/exports #{:add}}}}"#
+            .replace("__PROJECT_DIGEST__", &project_digest)
+            .replace("__PROJECT_SIZE__", &project.len().to_string())
+            .replace("__WASM_DIGEST__", &wasm_digest)
+            .replace("__WASM_SIZE__", &ADD.len().to_string());
+        std::fs::write(root.join("project.edn"), project).unwrap();
+        std::fs::write(root.join("provider.wasm"), ADD).unwrap();
+        std::fs::write(root.join("package.edn"), package).unwrap();
+
+        let mut runtime = Runtime::new();
+        runtime.add_extension_root(root.clone());
+        assert_eq!(
+            runtime
+                .eval_text("(ns imported (:import demo.provider)) (demo.provider/add 20 22)")
+                .unwrap(),
+            "42"
+        );
+
+        std::fs::write(root.join("provider.wasm"), vec![0u8; ADD.len()]).unwrap();
+        let mut rejected = Runtime::new();
+        rejected.add_extension_root(root.clone());
+        let error = rejected
+            .eval_text("(ns rejected (:import demo.provider))")
+            .unwrap_err();
+        assert!(error.starts_with("package/digest-mismatch:"), "{error}");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn in_process_sandbox_lifecycle_is_private_and_explicitly_non_secure() {
         let mut kernel = SessionKernel::new();
         let provider = Rc::new(InProcessSandboxProvider);
@@ -4031,7 +4103,7 @@ mod tests {
     }
 
     #[test]
-    fn native_imports_default_to_wasm_and_are_recorded_in_namespace_state() {
+    fn native_imports_are_recorded_without_a_host_flavor() {
         let mut runtime = Runtime::new();
         let add = b"\0asm\x01\0\0\0\x01\x07\x01\x60\x02\x7e\x7e\x01\x7e\x03\x02\x01\0\x07\x07\x01\x03add\0\0\x0a\x09\x01\x07\0\x20\0\x20\x01\x7c\x0b";
         for logical in ["math", "vendor.numeric.Vector", "vendor.numeric.Matrix"] {
@@ -4056,9 +4128,8 @@ mod tests {
                 .namespace_registry
                 .find("direct.imports")
                 .unwrap()
-                .native_flavor()
-                .as_deref(),
-            Some("wasm")
+                .native_flavor(),
+            None
         );
     }
 
@@ -4071,23 +4142,17 @@ mod tests {
                 b"\0asm\x01\0\0\0\x01\x07\x01\x60\x02\x7e\x7e\x01\x7e\x03\x02\x01\0\x07\x07\x01\x03add\0\0\x0a\x09\x01\x07\0\x20\0\x20\x01\x7c\x0b",
             )
             .unwrap();
-        runtime
-            .eval_text("(ns explicit.wasm (:flavor :wasm) (:import math))")
-            .unwrap();
         assert_eq!(
             runtime
-                .namespace_registry
-                .find("explicit.wasm")
-                .unwrap()
-                .native_flavor()
-                .as_deref(),
-            Some("wasm")
+                .eval_text("(ns explicit.wasm (:flavor :wasm) (:import math))")
+                .unwrap_err(),
+            "native/unsupported-flavor: :wasm (Wasm modules use :import)"
         );
         assert_eq!(
             runtime
                 .eval_text("(ns wrong.runtime (:flavor :jvm) (:import java.lang.String))")
                 .unwrap_err(),
-            "native/unsupported-flavor: :jvm"
+            "native/import-missing: java.lang.String"
         );
         assert_eq!(
             runtime

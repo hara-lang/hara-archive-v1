@@ -88,8 +88,7 @@ public class JvmFlavorLibrariesTest {
     RT.Instance<Object> runtime = new RT.Instance<>(null, "jvm-libraries-test", capabilities);
     runtime.eval(
         runtime.readString(
-            "(ns jvm-libraries-test (:flavor :jvm) "
-                + "(:import [java.lang String] [java.awt Point]))"));
+            "(ns jvm-libraries-test (:flavor :jvm [java.lang String] [java.awt Point]))"));
     return runtime;
   }
 }

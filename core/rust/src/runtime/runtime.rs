@@ -419,7 +419,7 @@ impl Runtime {
                         .expect("ns config was installed")
                         .clone();
                     let namespace = self.namespace_registry.current();
-                    namespace.set_native_flavor(Some(config.native_flavor().into()));
+                    namespace.set_native_flavor(config.native_flavor().map(str::to_owned));
                     for (local, module) in config.native_imports() {
                         namespace.import(local, module.clone());
                     }

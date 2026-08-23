@@ -61,7 +61,7 @@ public class HaraJvmFlavorParityTest {
   }
 
   private static String namespaceForm() {
-    return "(ns jvm-parity-test (:flavor :jvm) " + "(:import [java.lang String] [java.awt Point]))";
+    return "(ns jvm-parity-test (:flavor :jvm [java.lang String] [java.awt Point]))";
   }
 
   private static boolean arrayContains(Value values, String expected) {

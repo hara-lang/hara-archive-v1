@@ -946,32 +946,26 @@ public final class HaraContext {
       }
     }
     if (flavorClause != null) {
-      if (flavorClause.count() != 2 || !(flavorClause.nth(1) instanceof Keyword)) {
-        throw new HaraException(":flavor expects one keyword");
+      if (flavorClause.count() < 2 || !(flavorClause.nth(1) instanceof Keyword)) {
+        throw new HaraException(":flavor expects a host keyword followed by import specs");
       }
       Keyword flavor = (Keyword) flavorClause.nth(1);
       if (flavor.getNamespace() != null) {
         throw new HaraException(":flavor expects an unqualified keyword");
       }
+      if ("wasm".equals(flavor.getName())) {
+        throw new HaraException(":wasm is not a host flavor; use :import for Wasm modules");
+      }
       nativeFlavorRegistry.require(flavor.getName());
       nativeFlavors.put(currentNamespace.name(), flavor.getName());
-    }
-
-    for (Object clauseValue : clauses) {
-      if (!(clauseValue instanceof List<?>)) continue;
-      List<?> clause = (List<?>) clauseValue;
-      if (clause.count() == 0
-          || !(clause.nth(0) instanceof Keyword)
-          || !"import".equals(((Keyword) clause.nth(0)).getName())) continue;
-      NativeFlavorProvider provider = nativeProvider();
-      if (provider == null) throw new HaraException(":import requires an ns :flavor declaration");
-      Map<String, Object> imports =
+      Map<String, Object> hostImports =
           nativeImports.computeIfAbsent(
               currentNamespace.name(), ignored -> new ConcurrentHashMap<>());
-      for (int i = 1; i < clause.count(); i++) {
-        Object spec = clause.nth(i);
+      for (int i = 2; i < flavorClause.count(); i++) {
+        Object spec = flavorClause.nth(i);
         if (spec instanceof Symbol) {
-          importNativeType(provider, imports, ((Symbol) spec).display());
+          importNativeType(nativeFlavorRegistry.require(flavor.getName()), hostImports,
+              ((Symbol) spec).display());
         } else if (spec instanceof ILinearType<?>) {
           ILinearType<?> group = (ILinearType<?>) spec;
           if (group.count() == 0) continue;
@@ -986,13 +980,71 @@ public final class HaraContext {
                 classValue instanceof Symbol
                     ? ((Symbol) classValue).display()
                     : String.valueOf(classValue);
-            importNativeType(provider, imports, packageName + "." + className);
+            importNativeType(
+                nativeFlavorRegistry.require(flavor.getName()),
+                hostImports,
+                packageName + "." + className);
           }
         } else {
-          throw new HaraException(":import expects class symbols or package vectors");
+          throw new HaraException(":flavor expects host import symbols or package vectors");
         }
       }
     }
+
+    for (Object clauseValue : clauses) {
+      if (!(clauseValue instanceof List<?>)) continue;
+      List<?> clause = (List<?>) clauseValue;
+      if (clause.count() == 0
+          || !(clause.nth(0) instanceof Keyword)
+          || !"import".equals(((Keyword) clause.nth(0)).getName())) continue;
+      Map<String, String> namespaceAliases =
+          aliases.computeIfAbsent(currentNamespace.name(), ignored -> new ConcurrentHashMap<>());
+      for (int i = 1; i < clause.count(); i++) {
+        Object spec = clause.nth(i);
+        if (spec instanceof Symbol) {
+          importWasmNamespace(namespaceAliases, ((Symbol) spec).display(), ((Symbol) spec).display());
+        } else if (spec instanceof ILinearType<?>) {
+          ILinearType<?> group = (ILinearType<?>) spec;
+          if (group.count() == 0) continue;
+          Object packageValue = group.nth(0);
+          String packageName =
+              packageValue instanceof Symbol
+                  ? ((Symbol) packageValue).display()
+                  : String.valueOf(packageValue);
+          for (int j = 1; j < group.count(); j++) {
+            Object classValue = group.nth(j);
+            String className =
+                classValue instanceof Symbol
+                    ? ((Symbol) classValue).display()
+                    : String.valueOf(classValue);
+            importWasmNamespace(namespaceAliases, className, packageName + "." + className);
+          }
+        } else {
+          throw new HaraException(":import expects Wasm module symbols or package vectors");
+        }
+      }
+    }
+  }
+
+  private void importWasmNamespace(
+      Map<String, String> namespaceAliases, String localName, String moduleName) {
+    HaraNamespace loaded = namespaces.get(moduleName);
+    if (loaded == null) {
+      HaraExtensionPackage packageExtension = extensionRegistry.discoverWasmImport(moduleName);
+      if (packageExtension != null) loaded = installExtension(packageExtension);
+    }
+    if (loaded == null) loaded = requiredNamespace(moduleName);
+    if (loaded == null) {
+      throw new HaraException("native/import-missing: " + moduleName);
+    }
+    HaraExtensionRuntime extension = loadedExtensions.get(moduleName);
+    if (!(extension instanceof HaraWasmExtension)) {
+      throw new HaraException("native/import-not-wasm: " + moduleName);
+    }
+    if (!((HaraWasmExtension) extension).supportsDirectImport()) {
+      throw new HaraException("native/import-abi-unsupported: " + moduleName + " requires core.v1");
+    }
+    putAlias(namespaceAliases, localName, moduleName);
   }
 
   private void importNativeType(
