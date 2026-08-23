@@ -1,0 +1,26 @@
+(ns std.block.zip
+  (:config {:role :internal})
+  (:require [std.block.base :as base]
+            [std.block.construct :as construct]
+            [std.lib.zip :as zip]))
+
+(defn block-context
+  "Returns the persistent zipper operations for portable blocks."
+  []
+  (merge zip/+base+
+         {:cursor '|
+          :create-container (fn [] (construct/container :list []))
+          :create-element construct/block
+          :is-container? base/container?
+          :is-empty-container?
+          (fn [block] (empty? (base/block-children block)))
+          :is-element? base/block?
+          :list-elements base/block-children
+          :update-elements base/replace-children
+          :add-element construct/add-child}))
+
+(defn block-zip
+  "Creates a persistent zipper over a portable block tree."
+  ([block] (block-zip block {}))
+  ([block options]
+   (zip/zipper block (merge (block-context) options) options)))

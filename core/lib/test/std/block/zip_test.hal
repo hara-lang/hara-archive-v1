@@ -1,0 +1,33 @@
+(ns std.block.zip-test
+  (:require [std.block.construct :as construct]
+            [std.block.zip :as block-zip]
+            [std.lib.zip :as zip]))
+
+^{:refer std.block.zip/block-context}
+(def block-context-result
+  (let [context (block-zip/block-context)
+        empty-container (construct/container :list [])
+        non-empty-container (construct/container :list [(construct/token 1)])]
+    (test-check "creates portable zipper callbacks"
+                [(:cursor context)
+                 ((:is-container? context) empty-container)
+                 ((:is-empty-container? context) empty-container)
+                 ((:is-empty-container? context) non-empty-container)]
+                ['| true true false])))
+
+^{:refer std.block.zip/block-zip}
+(def block-zip-result
+  (let [original (construct/block [1 2])
+        zipper (block-zip/block-zip original)
+        edited (zip/result
+                (zip/replace-right
+                 (zip/step-right
+                  (zip/step-right
+                   (zip/step-inside zipper)))
+                 (construct/block 3)))]
+    (test-check "rebuilds edited containers"
+                [(construct/block-string original)
+                 (construct/block-string edited)]
+                ["[1 2]" "[1 3]"])))
+
+[block-context-result block-zip-result]

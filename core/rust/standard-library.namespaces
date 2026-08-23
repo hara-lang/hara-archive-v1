@@ -220,7 +220,6 @@ std.block.heal.edit
 std.block.heal.indent
 std.block.heal.parse
 std.block.heal.print
-std.block.internal
 std.block.layout
 std.block.layout.common
 std.block.layout.estimate
@@ -228,9 +227,11 @@ std.block.navigate
 std.block.parse
 std.block.protocol
 std.block.reader
+std.block.source
 std.block.template
 std.block.type
 std.block.value
+std.block.zip
 std.config
 std.config.common
 std.config.ext.json

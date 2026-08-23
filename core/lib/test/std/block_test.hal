@@ -143,10 +143,9 @@
    (test-check "root facade exports portable healing"
                (block/heal "(+ 1 2")
                "(+ 1 2)")
-   (test-check "root block namespace publishes facade and internal roles"
-               [(get (Runtime/namespace 'std.block) :namespace/role)
-                (get (Runtime/namespace 'std.block.internal) :namespace/role)]
-               [:facade :internal])
+   (test-check "root block namespace publishes facade role"
+               (get (Runtime/namespace 'std.block) :namespace/role)
+               :facade)
    (test-check "parser indexes CRLF source positions in one pass"
                (let [source "a\r\n[b\nc]"
                      parsed (block/parse-string source)
