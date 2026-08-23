@@ -230,6 +230,12 @@ pub(crate) const DIRECT_CALLABLE_CATALOG: &[DirectCallableSpec] = &[
         Operation(direct_numeric_operation)
     ),
     direct!(
+        "double",
+        DirectCallableArity::Exact(1),
+        RuntimePrimitive,
+        Operation(direct_numeric_conversion_operation)
+    ),
+    direct!(
         "deref",
         DirectCallableArity::Exact(1),
         RuntimePrimitive,
@@ -549,6 +555,12 @@ pub(crate) const DIRECT_CALLABLE_CATALOG: &[DirectCallableSpec] = &[
         LoadString
     ),
     direct!(
+        "long",
+        DirectCallableArity::Exact(1),
+        RuntimePrimitive,
+        Operation(direct_numeric_conversion_operation)
+    ),
+    direct!(
         "long?",
         DirectCallableArity::Exact(1),
         BootstrapLibrary,
@@ -829,6 +841,15 @@ pub(crate) const DIRECT_CALLABLE_CATALOG: &[DirectCallableSpec] = &[
         Operation(direct_collection_operation)
     ),
     direct!(
+        "reduce",
+        DirectCallableArity::Between {
+            minimum: 2,
+            maximum: 3
+        },
+        BootstrapLibrary,
+        Operation(direct_reduce_operation)
+    ),
+    direct!(
         "reverse",
         DirectCallableArity::Exact(1),
         BootstrapLibrary,
@@ -972,6 +993,12 @@ pub(crate) const DIRECT_CALLABLE_CATALOG: &[DirectCallableSpec] = &[
     ),
     direct!(
         "vector?",
+        DirectCallableArity::Exact(1),
+        BootstrapLibrary,
+        Operation(direct_predicate_operation)
+    ),
+    direct!(
+        "tuple?",
         DirectCallableArity::Exact(1),
         BootstrapLibrary,
         Operation(direct_predicate_operation)

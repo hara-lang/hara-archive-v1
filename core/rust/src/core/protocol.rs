@@ -823,6 +823,75 @@ fn schema_ast_form(schema: &crate::kernel::SchemaType) -> Form {
     }
 }
 
+fn schema_value_to_form(value: &Value) -> Result<Form, String> {
+    match value {
+        Value::Var(var) => Ok(Form::List(vec![
+            Form::Symbol("var".into()),
+            Form::Symbol(var.symbol().as_str().into()),
+        ])),
+        Value::Tagged(value) => Ok(Form::Tagged(
+            value.tag().get_name().into(),
+            Box::new(schema_value_to_form(value.form())?),
+        )),
+        Value::Tuple(values) => Ok(Form::Vector(
+            values
+                .iter()
+                .map(|value| schema_value_to_form(&value))
+                .collect::<Result<_, _>>()?,
+        )),
+        Value::Vector(values) => Ok(Form::Vector(
+            values
+                .iter()
+                .map(schema_value_to_form)
+                .collect::<Result<_, _>>()?,
+        )),
+        Value::List(values) => Ok(Form::List(
+            values
+                .iter()
+                .map(schema_value_to_form)
+                .collect::<Result<_, _>>()?,
+        )),
+        Value::Queue(values) => Ok(Form::List(
+            values
+                .iter()
+                .map(schema_value_to_form)
+                .collect::<Result<_, _>>()?,
+        )),
+        Value::Deque(values) => Ok(Form::List(
+            values
+                .iter()
+                .map(schema_value_to_form)
+                .collect::<Result<_, _>>()?,
+        )),
+        Value::Cons(values) => Ok(Form::List(
+            values
+                .iter()
+                .map(|value| schema_value_to_form(&value))
+                .collect::<Result<_, _>>()?,
+        )),
+        value @ (Value::Set(_) | Value::OrderedSet(_) | Value::SortedSet(_)) => Ok(Form::Set(
+            set_items(value)
+                .unwrap()
+                .into_iter()
+                .map(schema_value_to_form)
+                .collect::<Result<_, _>>()?,
+        )),
+        value
+            @ (Value::Map(_)
+            | Value::OrderedMap(_)
+            | Value::SortedMap(_)
+            | Value::Trie(_)
+            | Value::PriorityMap(_)) => Ok(Form::Map(
+            map_entries(value)
+                .unwrap()
+                .into_iter()
+                .map(|(key, value)| Ok((schema_value_to_form(&key)?, schema_value_to_form(&value)?)))
+                .collect::<Result<_, String>>()?,
+        )),
+        value => value_to_form(value),
+    }
+}
+
 fn compile_schema_value(value: &Value, origin: Option<KernelVar<Value>>) -> Result<Value, String> {
     if let Value::Schema(schema) = value {
         return Ok(Value::Schema(schema.clone()));
@@ -830,7 +899,7 @@ fn compile_schema_value(value: &Value, origin: Option<KernelVar<Value>>) -> Resu
     if let Value::Var(var) = value {
         return compile_schema_value(&var.deref_value(), Some(var.clone()));
     }
-    let form = value_to_form(value).map_err(|_| "schema expects schema data".to_string())?;
+    let form = schema_value_to_form(value).map_err(|_| "schema expects schema data".to_string())?;
     let ast = crate::kernel::normalize_schema(&form)
         .map_err(|error| format!("invalid schema: {error}"))?;
     if matches!(ast, crate::kernel::SchemaType::Unknown(_)) {

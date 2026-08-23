@@ -1,7 +1,14 @@
 use std::{env, fs, path::PathBuf, process};
 
 fn main() {
-    if let Err(error) = run() {
+    let result = std::thread::Builder::new()
+        .name("foundation-bytecode-artifact".into())
+        .stack_size(64 * 1024 * 1024)
+        .spawn(run)
+        .expect("spawn foundation bytecode artifact worker")
+        .join()
+        .expect("foundation bytecode artifact worker must not panic");
+    if let Err(error) = result {
         eprintln!("hara-foundation-artifact: {error}");
         process::exit(1);
     }

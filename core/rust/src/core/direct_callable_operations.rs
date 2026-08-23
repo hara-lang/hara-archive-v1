@@ -35,6 +35,26 @@ fn direct_numeric_operation(
     )
 }
 
+fn direct_numeric_conversion_operation(
+    specification: &DirectCallableSpec,
+    arguments: Vec<Value>,
+) -> Result<Value, String> {
+    number_conversion_value(specification.symbol, arguments[0].clone())
+}
+
+fn direct_reduce_operation(
+    _specification: &DirectCallableSpec,
+    arguments: Vec<Value>,
+) -> Result<Value, String> {
+    match arguments.as_slice() {
+        [function, source] => protocol_reduce(&[source.clone(), function.clone()]),
+        [function, initial, source] => {
+            protocol_reduce(&[source.clone(), function.clone(), initial.clone()])
+        }
+        _ => unreachable!("reduce catalog arity validates the argument count"),
+    }
+}
+
 fn direct_predicate_operation(
     specification: &DirectCallableSpec,
     arguments: Vec<Value>,
@@ -89,6 +109,7 @@ fn direct_predicate_operation(
         "string?" => matches!(value, Value::String(_)),
         "symbol?" => matches!(value, Value::Symbol(_)),
         "true?" => matches!(value, Value::Bool(true)),
+        "tuple?" => matches!(value, Value::Tuple(_)),
         "vector?" => matches!(value, Value::Vector(_) | Value::Tuple(_)),
         operation => {
             return Err(format!(

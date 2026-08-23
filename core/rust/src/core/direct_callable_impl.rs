@@ -388,6 +388,14 @@ pub(crate) fn direct_bootstrap_callable_value(name: &str) -> Option<Value> {
     if let Some(value) = direct_callable_value(name) {
         return Some(value);
     }
+    // Compiler-generated destructuring uses the canonical Foundation owner
+    // to avoid capture by guest locals. It is a qualified reference, not a
+    // guest namespace alias, so resolve its ordinary callable by local name.
+    if let Some(local) = name.strip_prefix("std.foundation/") {
+        if let Some(value) = direct_callable_value(local) {
+            return Some(value);
+        }
+    }
     match name {
         "gensym" => Some(native_variadic_function("gensym", |arguments| {
             direct_gensym_value(arguments)

@@ -150,12 +150,6 @@ pub(crate) fn apply_primitive(primitive: Primitive, arguments: &[Value]) -> Resu
         | Primitive::Divide
         | Primitive::Remainder => {
             if arguments.is_empty() {
-                if primitive == Primitive::Add {
-                    return Ok(Value::Number(0));
-                }
-                if primitive == Primitive::Multiply {
-                    return Ok(Value::Number(1));
-                }
                 return Err(format!("{op} expects arguments"));
             }
             if primitive == Primitive::Remainder && arguments.len() != 2 {
@@ -201,7 +195,7 @@ pub(crate) fn apply_primitive(primitive: Primitive, arguments: &[Value]) -> Resu
             }
             for pair in arguments.windows(2) {
                 let Some(ordering) = numeric::numeric_compare(&pair[0], &pair[1])? else {
-                    return Ok(Value::Bool(false));
+                    return Err(format!("{} expects numbers", primitive.operator()));
                 };
                 let matches = match primitive {
                     Primitive::Less => ordering == std::cmp::Ordering::Less,
@@ -397,7 +391,7 @@ pub(crate) fn apply_binary_primitive(
         | Primitive::Greater
         | Primitive::GreaterOrEqual => {
             let Some(ordering) = numeric::numeric_compare(left, right)? else {
-                return Ok(Value::Bool(false));
+                return Err(format!("{op} expects numbers"));
             };
             return Ok(Value::Bool(match primitive {
                 Primitive::Less => ordering == std::cmp::Ordering::Less,
@@ -488,6 +482,19 @@ pub(crate) fn apply_binary_primitive(
 }
 
 pub(crate) fn apply_binary_numbers(
+    primitive: Primitive,
+    left: i64,
+    right: i64,
+) -> Result<Value, String> {
+    let value = apply_binary_numbers_promoting(primitive, left, right)?;
+    if matches!(value, Value::BigInteger(_)) {
+        Err("integer overflow".into())
+    } else {
+        Ok(value)
+    }
+}
+
+fn apply_binary_numbers_promoting(
     primitive: Primitive,
     left: i64,
     right: i64,
@@ -650,7 +657,7 @@ fn bit_values(op: &str, values: &[Value]) -> Result<Value, String> {
     }
 }
 
-fn number_conversion_value(operation: &str, value: Value) -> Result<Value, String> {
+pub(crate) fn number_conversion_value(operation: &str, value: Value) -> Result<Value, String> {
     let operation = operation
         .strip_prefix("std.native.Num/")
         .unwrap_or(operation);

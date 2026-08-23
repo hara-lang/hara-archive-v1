@@ -3392,7 +3392,7 @@ pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, Stri
                     match n.as_str() {
                         "quot" => numeric::numeric_quotient(&left, &right),
                         "rem" => apply_binary_primitive(Primitive::Remainder, &left, &right),
-                        "mod" => numeric::numeric_binary(ArithmeticOp::Modulo, &left, &right),
+                        "mod" => numeric::numeric_binary(ArithmeticOp::Remainder, &left, &right),
                         _ => unreachable!(),
                     }
                 }

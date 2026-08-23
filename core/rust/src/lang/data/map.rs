@@ -2,6 +2,23 @@ use std::cell::Cell;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
+thread_local! {
+    static CHAMP_PLACEMENT_HASHING: Cell<bool> = const { Cell::new(false) };
+}
+
+pub(crate) fn with_champ_placement_hash<T>(f: impl FnOnce() -> T) -> T {
+    CHAMP_PLACEMENT_HASHING.with(|active| {
+        let previous = active.replace(true);
+        let result = f();
+        active.set(previous);
+        result
+    })
+}
+
+pub(crate) fn champ_placement_hashing() -> bool {
+    CHAMP_PLACEMENT_HASHING.with(Cell::get)
+}
+
 use crate::lang::hash::JavaHash;
 use crate::lang::protocol::{
     HashType, IAssoc, IColl, IConj, ICount, IDisplay, IDissoc, IEmpty, IEquality, IFind, IHash,
@@ -102,7 +119,7 @@ fn key_hash<K: Hash>(key: &K) -> u64 {
         }
     }
     let mut probe = Probe::default();
-    key.hash(&mut probe);
+    with_champ_placement_hash(|| key.hash(&mut probe));
     let hash = probe.finish();
     if probe.captured.is_some() {
         (hash as u32) as u64
@@ -931,6 +948,7 @@ impl<K: Clone + Eq + Hash, V: Clone> IToPersistent for Mutable<K, V> {
 #[cfg(test)]
 mod tests {
     use super::Standard;
+    use crate::core::Value;
     use crate::lang::protocol::{IEmpty, IMetadata, IToMutable, IToPersistent};
     use std::collections::HashMap;
     use std::hash::{Hash, Hasher};
@@ -1179,6 +1197,29 @@ mod tests {
         assert_eq!(smaller.len(), 49);
         assert_eq!(frozen.len(), 50);
         assert_eq!(frozen.get(&1), Some(&2));
+    }
+
+    #[test]
+    fn integer_churn_matches_java_champ_order() {
+        let mut map = Standard::new();
+        for i in 0..30i64 {
+            map = map.assoc_value(Value::Number(i), i);
+        }
+        for i in (0..30i64).step_by(3) {
+            map = map.dissoc_value(&Value::Number(i));
+        }
+        let entries: Vec<_> = map
+            .entries()
+            .into_iter()
+            .map(|(k, _)| match k {
+                Value::Number(value) => *value,
+                other => panic!("unexpected key: {other:?}"),
+            })
+            .collect();
+        assert_eq!(
+            entries,
+            vec![29, 28, 26, 25, 23, 22, 20, 19, 17, 16, 14, 13, 11, 10, 8, 7, 5, 4, 2, 1]
+        );
     }
 
     #[test]

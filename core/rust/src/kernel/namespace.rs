@@ -577,6 +577,15 @@ impl<V: Clone> NamespaceRegistry<V> {
             if let Some(namespace) = self.find(namespace_name) {
                 return namespace.mappings.borrow().get(&local).cloned();
             }
+            if let Some(namespace_name) = self
+                .global_aliases
+                .borrow()
+                .get(&Symbol::parse(namespace_name))
+            {
+                if let Some(namespace) = self.find(namespace_name.as_str()) {
+                    return namespace.mappings.borrow().get(&local).cloned();
+                }
+            }
             return self
                 .current()
                 .aliases

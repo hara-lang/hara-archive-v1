@@ -16,6 +16,7 @@ const TRUE: u8 = 2;
 const LONG: u8 = 3;
 const DOUBLE: u8 = 4;
 const BIG_INTEGER: u8 = 5;
+const DECIMAL: u8 = 6;
 const STRING: u8 = 7;
 const CHARACTER: u8 = 8;
 const SYMBOL: u8 = 9;
@@ -230,6 +231,16 @@ impl<'a> ByteReader<'a> {
             LONG => Ok(Form::Number(self.read_i64()?)),
             DOUBLE => Ok(Form::Float(self.read_f64()?)),
             BIG_INTEGER => Ok(Form::BigInteger(self.read_string()?)),
+            DECIMAL => {
+                let value = self.read_string()?;
+                // Early shared goldens used opcode 6 for strings before the
+                // decimal slot was assigned. Preserve those artifacts while
+                // accepting the v1 decimal spelling mandated by the format.
+                Ok(value
+                    .parse::<f64>()
+                    .map(Form::Float)
+                    .unwrap_or_else(|_| Form::String(value)))
+            }
             STRING => Ok(Form::String(self.read_string()?)),
             CHARACTER => Ok(Form::Character(
                 char::from_u32(self.read_u32()?).ok_or("invalid character code point")?,
@@ -962,7 +973,7 @@ mod tests {
                 crate::kernel::parse_forms(malformed).unwrap(),
             )
             .unwrap_err(),
-            "invalid schema demo.schema/Customer: :map schema fields must be [name type] pairs"
+            "invalid schema demo.schema/Customer: :map schema fields must be [name type] or [name properties type]"
         );
     }
 

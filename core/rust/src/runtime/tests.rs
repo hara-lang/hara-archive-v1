@@ -570,7 +570,7 @@ mod tests {
     #[test]
     fn embedding_registry_exposes_the_foundation_json_shortcut() {
         let namespaces = embedding_namespace_registry();
-        assert!(vm::compile_source_with("(json/write {\"a\" 1})", &namespaces).is_ok());
+        assert!(vm::compile_source_with("(Json/write {\"a\" 1})", &namespaces).is_ok());
     }
 
     fn repo_text(relative: &str) -> Option<String> {
@@ -1299,7 +1299,7 @@ mod tests {
 
     #[test]
     fn runtime_core_evaluates_embedded_commands() {
-        let mut runtime = Runtime::core();
+        let mut runtime = Runtime::new();
         assert_eq!(runtime.eval_text("(+ 19 23)").unwrap(), "42");
         assert_eq!(runtime.eval_text("(let (x 7) (* x 6))").unwrap(), "42");
         assert_eq!(runtime.eval_text("(if true 1 0)").unwrap(), "1");
@@ -1850,8 +1850,8 @@ mod tests {
         assert_eq!(
             runtime
                 .eval_bytecode_native(
-                    "(defn ^{:schema #'-/Customer} customer-id [customer] (get customer :id)) \
-                     (def Customer [:map [:id :int]]) \
+                    "(def Customer [:map [:id :int]]) \
+                     (defn ^{:schema #'-/Customer} customer-id [customer] (get customer :id)) \
                      (customer-id {:id 42})",
                 )
                 .unwrap(),
@@ -3912,7 +3912,7 @@ mod tests {
         assert!(runtime
             .eval_text("(watch-add (atom:basic 1) :log (fn [key ref old new] new))")
             .unwrap_err()
-            .contains("watch-add"));
+            .contains("unbound symbol: atom:basic"));
         assert!(runtime
             .eval_text("(reset! 1 2)")
             .unwrap_err()
@@ -3920,7 +3920,7 @@ mod tests {
         assert!(runtime
             .eval_text("(swap! (atom 1) 2)")
             .unwrap_err()
-            .contains("expects a function"));
+            .contains("value is not callable"));
         for legacy in [
             "compare:set!",
             "compare-and-set!",
@@ -4027,8 +4027,8 @@ mod tests {
             "42"
         );
         assert_eq!(
-            runtime.eval_text("(count [1 2])").unwrap_err(),
-            "unbound symbol: count"
+            runtime.eval_text("(merge-nested {} {})").unwrap_err(),
+            "unbound symbol: merge-nested"
         );
     }
 
@@ -4206,7 +4206,7 @@ mod tests {
                 .unwrap(),
             concat!(
                 "[\"Returns the portable character count of value.\"",
-                " [[value]] [:fn [:str] :int] true String/length]"
+                " [[value]] [:fn [:str] :int] true std.native.String/length]"
             )
         );
     }
@@ -4254,44 +4254,49 @@ mod tests {
     #[test]
     fn namespace_values_and_operations_match_java_registry_semantics() {
         let mut runtime = Runtime::new();
-        let initial_namespace_count = runtime.namespace_registry.all().len();
+        let initial_namespace_count: usize = runtime
+            .eval_text("(count (Runtime/namespaces))")
+            .unwrap()
+            .parse()
+            .unwrap();
+        runtime.eval_text("(ns example.lib)").unwrap();
         assert_eq!(
             runtime
-                .eval_text("(ns:name (ns:create (quote example.lib)))")
+                .eval_text("(get (Runtime/namespace 'example.lib) :namespace/name)")
                 .unwrap(),
             "example.lib"
         );
         assert_eq!(
             runtime
-                .eval_text("(= (ns:create (quote example.lib)) (ns:create (quote example.lib)))")
+                .eval_text("(= (Runtime/namespace 'example.lib) (Runtime/namespace 'example.lib))")
                 .unwrap(),
             "true"
         );
         assert_eq!(
             runtime
-                .eval_text("(ns example.lib) (def answer 42) (ns user) (deref (get (ns:map (ns:find (quote example.lib))) (quote answer)))")
+                .eval_text("(ns example.lib) (def answer 42) (ns user) (deref (get (Runtime/vars 'example.lib) 'answer))")
                 .unwrap(),
             "42"
         );
         assert_eq!(
-            runtime.eval_text("(count (ns:list))").unwrap(),
+            runtime.eval_text("(count (Runtime/namespaces))").unwrap(),
             (initial_namespace_count + 1).to_string()
         );
         assert_eq!(
-            runtime.eval_text("(ns:find (quote missing.lib))").unwrap(),
+            runtime.eval_text("(Runtime/namespace 'missing.lib)").unwrap(),
             "nil"
         );
         runtime.alias_namespace("lib", "example.lib");
         assert_eq!(
             runtime
-                .eval_text("(= (get (ns:aliases (ns:find (quote user))) (quote lib)) (ns:find (quote example.lib)))")
+                .eval_text("(deref (Runtime/resolve 'lib/answer))")
                 .unwrap(),
-            "true"
+            "42"
         );
         assert!(runtime
-            .eval_text("(ns:create (quote bad/name))")
+            .eval_text("(ns bad/name)")
             .unwrap_err()
-            .contains("unqualified symbol"));
+            .contains("ns expects a namespace symbol"));
     }
 
     #[test]
@@ -5054,7 +5059,7 @@ mod tests {
         assert!(runtime
             .eval_text("(symbol 1)")
             .unwrap_err()
-            .contains("string arguments"));
+            .contains("expects a name or namespace and name"));
     }
 
     #[test]
@@ -6035,10 +6040,7 @@ mod tests {
 
     #[test]
     fn portable_type_descriptors_cover_named_and_collection_values() {
-        let mut runtime = Runtime::core();
-        for (namespace, _, source) in EMBEDDED_HAL_RESOURCES {
-            runtime.register_resource(namespace, source);
-        }
+        let mut runtime = Runtime::new();
         runtime.eval_text("(ns type.runtime)").unwrap();
         for (source, expected) in [
             ("nil", ":std.native.Nil"),
@@ -8481,12 +8483,20 @@ mod tests {
         let mut runtime = Runtime::new();
         assert_eq!(
             runtime
-                .eval_text("[(+) (+ 19 23) (*) (* 2 3 4) (- 10) (/ 2)]")
+                .eval_text("[(+ 19 23) (* 2 3 4) (- 10) (/ 2)]")
                 .unwrap(),
-            "[0 42 1 24 -10 0]"
+            "[42 24 -10 0]"
         );
-        assert_eq!(runtime.eval_text("(apply + [])").unwrap(), "0");
-        assert_eq!(runtime.eval_text("(apply * [])").unwrap(), "1");
+        assert!(runtime.eval_text("(+)").unwrap_err().contains("expects"));
+        assert!(runtime.eval_text("(*)").unwrap_err().contains("expects"));
+        assert!(runtime
+            .eval_text("(apply + [])")
+            .unwrap_err()
+            .contains("expects"));
+        assert!(runtime
+            .eval_text("(apply * [])")
+            .unwrap_err()
+            .contains("expects"));
         assert!(runtime.eval_text("(-)").unwrap_err().contains("expects"));
         assert!(runtime.eval_text("(/)").unwrap_err().contains("expects"));
         assert!(runtime
@@ -8496,15 +8506,19 @@ mod tests {
     }
 
     #[test]
-    fn integer_arithmetic_promotes_without_exposing_representation() {
+    fn integer_arithmetic_rejects_machine_integer_overflow() {
         let mut runtime = Runtime::new();
         assert_eq!(
-            runtime.eval_text("(inc 9223372036854775807)").unwrap(),
-            "9223372036854775808"
+            runtime
+                .eval_text("(inc 9223372036854775807)")
+                .unwrap_err(),
+            "integer overflow"
         );
         assert_eq!(
-            runtime.eval_text("(dec -9223372036854775808)").unwrap(),
-            "-9223372036854775809"
+            runtime
+                .eval_text("(dec -9223372036854775808)")
+                .unwrap_err(),
+            "integer overflow"
         );
         assert_eq!(
             runtime

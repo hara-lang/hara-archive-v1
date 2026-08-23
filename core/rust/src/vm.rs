@@ -115,8 +115,10 @@ pub(crate) fn error_category(message: &str) -> &'static str {
             "namespace config",
         ),
         (&["recur"], "recur"),
-        (&["Invalid number"], "reader"),
-        (&["EOF while reading"], "reader"),
+        (
+            &["Invalid number", "Legacy numeric suffixes", "EOF while reading"],
+            "reader",
+        ),
     ];
     for (markers, bucket) in buckets {
         if markers.iter().any(|marker| message.contains(marker)) {

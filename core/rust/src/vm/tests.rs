@@ -7,8 +7,10 @@ use super::opcode::Instruction;
 use super::program::{FunctionPrototype, Program, MAX_OPERAND_STACK};
 use super::source_map::SourceMap;
 use super::validate::validate;
-use crate::core::{Primitive, Value};
+use crate::core::{ExceptionInfo, ExceptionProvenance, Primitive, Value};
 use crate::kernel::{FunctionSchema, Position, SchemaType};
+use std::cell::RefCell;
+use std::rc::Rc;
 
 fn source_map(len: usize) -> SourceMap {
     let mut map = SourceMap::default();
@@ -557,8 +559,17 @@ fn try_entry(
     }
 }
 
-/// `(throw 41)` with a catch-all handler, built by hand: the machine
-/// stores the caught value into slot 0 and jumps to the clause.
+fn test_exception(message: &str, data: Value) -> Value {
+    Value::ExceptionInfo(Rc::new(ExceptionInfo {
+        message: message.into(),
+        data: Box::new(data),
+        cause: None,
+        provenance: Rc::new(RefCell::new(ExceptionProvenance::default())),
+    }))
+}
+
+/// A canonical Exception with a catch-all handler, built by hand: the
+/// machine stores the caught value into slot 0 and jumps to the clause.
 fn throw_catch_program() -> Program {
     let code = vec![
         Instruction::Constant(0),
@@ -566,7 +577,12 @@ fn throw_catch_program() -> Program {
         Instruction::LoadLocal(0),
         Instruction::Return,
     ];
-    let mut result = program(code, vec![Value::Number(41)], 1, 1);
+    let mut result = program(
+        code,
+        vec![test_exception("failed", Value::Number(41))],
+        1,
+        1,
+    );
     result.functions[0].handlers = vec![try_entry(
         0,
         2,
@@ -588,21 +604,21 @@ fn machine_catches_hand_built_throw() {
     validate(&program).expect("hand-built handler program validates");
     let value = super::machine::execute_program(std::rc::Rc::new(program))
         .expect("catch handles the throw");
-    assert_eq!(value.display(), "41");
+    assert_eq!(value.display(), "#error[\"failed\" 41]");
 }
 
 #[test]
 fn machine_uncaught_throw_reports_original_message() {
     let program = program(
         vec![Instruction::Constant(0), Instruction::Throw],
-        vec![Value::Keyword("failed".into())],
+        vec![test_exception("failed", Value::Nil)],
         0,
         1,
     );
     validate(&program).expect("validates");
     let error = super::machine::execute_program(std::rc::Rc::new(program))
         .expect_err("uncaught throw fails");
-    assert_eq!(error.message, "thrown: :failed");
+    assert_eq!(error.message, "thrown: #error[\"failed\" nil]");
     assert_eq!(error.instruction, 1);
 }
 

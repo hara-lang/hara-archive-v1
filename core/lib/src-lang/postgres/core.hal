@@ -6,14 +6,14 @@
             [postgres.core.impl :as impl]
             [postgres.gen.bind-macro :as bind]
             [lang.runtime.postgres.base.application :as app]
-            [std.foundation :as f
+            [std.foundation
              :exclude [abs assert case concat count format max min mod name
                        replace repeat reverse bit-and bit-or]]))
 
-(f/intern-all postgres.core.builtin
+(std.foundation/intern-all postgres.core.builtin
               postgres.core.addon)
 
-(f/intern-in impl/t:select
+(std.foundation/intern-in impl/t:select
              impl/t:get-field
              impl/t:get
              impl/t:id

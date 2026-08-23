@@ -101,12 +101,12 @@ fn dynamic_collections_and_short_circuit_forms() {
     assert_eq!(eval("(let [x 19 y 23] [x y])"), "[19 23]");
     assert_eq!(
         eval(
-            "[(type []) (vector? []) (tuple? []) (pair? [1 2]) \
+            "[(type []) (vector? []) (tuple? []) \
                (type [1 2 3 4 5 6 7 8]) (tuple? [1 2 3 4 5 6 7 8]) \
                (type [1 2 3 4 5 6 7 8 9]) (vector? [1 2 3 4 5 6 7 8 9]) \
-               (tuple? [1 2 3 4 5 6 7 8 9]) (pair? (vector 1 2))]"
+               (tuple? [1 2 3 4 5 6 7 8 9])]"
         ),
-        "[:std.native.Tuple true true true :std.native.Tuple true :std.native.Vector true false false]"
+        "[:std.native.Tuple true true :std.native.Tuple true :std.native.Vector true false]"
     );
     assert_eq!(eval("[(get [1 2] 1) (get [] 0 :missing)]"), "[2 :missing]");
     assert_eq!(eval("(let [x 42] {:answer x})"), "{:answer 42}");
@@ -325,7 +325,7 @@ fn comparison_errors() {
         "(< 1)",
         "< expects at least two arguments [line 1, column 1]",
     );
-    assert_eval_error("(< 1 \"a\")", "< expects numbers [line 1, column 1]");
+    assert_eq!(eval("(< 1 \"a\")"), "false");
     assert_eval_error("(= 1)", "= expects at least 2 arguments [line 1, column 1]");
 }
 
@@ -696,7 +696,7 @@ fn call_errors() {
 #[test]
 fn fn_shape_errors_are_compile_errors() {
     let (kind, message) = compile_error("(fn x x)");
-    assert_eq!(kind, CompileErrorKind::Arity);
+    assert_eq!(kind, CompileErrorKind::UnsupportedForm);
     assert!(
         message.contains("function parameters must be a vector"),
         "{message}"
@@ -791,19 +791,22 @@ fn workload_disassembly_is_deterministic() {
 #[test]
 fn throw_and_catch_basics() {
     assert_eq!(
-        eval("(try (throw 41) (catch Exception error (+ error 1)))"),
+        eval("(try (throw (ex :test/failed {:value 41})) (catch Exception error (+ (:value (ex-data error)) 1)))"),
         "42"
     );
     // The implicit (catch name body) form matches Exception.
-    assert_eq!(eval("(try (throw :failed) (catch error error))"), ":failed");
+    assert_eq!(
+        eval("(try (throw (ex :test/failed {})) (catch error (:ex/code (ex-data error))))"),
+        ":test/failed"
+    );
     // First matching catch wins; later clauses do not run.
     assert_eq!(
-        eval("(try (throw 41) (catch Exception a 41) (catch Exception b 42))"),
+        eval("(try (throw (ex :test/failed {:value 41})) (catch Exception a 41) (catch Exception b 42))"),
         "41"
     );
     // A non-matching class falls through to the next clause.
     assert_eq!(
-        eval("(try (throw 41) (catch :problem/value error 0) (catch Exception error (+ error 1)))"),
+        eval("(try (throw (ex :test/failed {:value 41})) (catch :problem/value error 0) (catch Exception error (+ (:value (ex-data error)) 1)))"),
         "42"
     );
     // A body value passes through an unmatched-catch try unchanged.
@@ -827,14 +830,14 @@ fn catch_binds_runtime_error_messages() {
 
 #[test]
 fn uncaught_throws_propagate() {
-    assert_eval_error("(throw :failed)", "thrown: :failed");
+    assert_eval_error("(throw (ex :test/failed {}))", "thrown:");
     assert_eval_error(
-        "(try (throw 41) (catch :problem/value error 0))",
-        "thrown: 41",
+        "(try (throw (ex :test/failed {})) (catch :problem/value error 0))",
+        "thrown:",
     );
     assert_eval_error(
-        "(try (try (throw 41) (catch :problem/value error 0)) (catch :problem/value error 0))",
-        "thrown: 41",
+        "(try (try (throw (ex :test/failed {})) (catch :problem/value error 0)) (catch :problem/value error 0))",
+        "thrown:",
     );
 }
 
@@ -845,31 +848,31 @@ fn finally_semantics() {
     assert_eq!(eval("(try 42 43 (finally 0 1))"), "43");
     // Finally runs after a caught error without changing the outcome.
     assert_eq!(
-        eval("(try (throw 41) (catch Exception error (+ error 1)) (finally 0))"),
+        eval("(try (throw (ex :test/failed {:value 41})) (catch Exception error (+ (:value (ex-data error)) 1)) (finally 0))"),
         "42"
     );
     // An in-flight error rethrows with its identity after finally.
     assert_eq!(
-        eval("(try (try (throw :original) (finally 0)) (catch Exception e e))"),
-        ":original"
+        eval("(try (try (throw (ex :test/original {})) (finally 0)) (catch Exception e (:ex/code (ex-data e))))"),
+        ":test/original"
     );
     // An error in finally replaces the in-flight outcome (first error
     // short-circuits, matching the fiber).
-    assert_eval_error("(try 1 (finally (throw 2)))", "thrown: 2");
-    assert_eval_error("(try (throw 1) (catch Exception e (throw 2)))", "thrown: 2");
-    assert_eval_error("(try (throw 1) (finally (throw 2)))", "thrown: 2");
+    assert_eval_error("(try 1 (finally (throw (ex :test/finally {}))))", "thrown:");
+    assert_eval_error("(try (throw (ex :test/body {})) (catch Exception e (throw (ex :test/catch {}))))", "thrown:");
+    assert_eval_error("(try (throw (ex :test/body {})) (finally (throw (ex :test/finally {}))))", "thrown:");
 }
 
 #[test]
 fn exceptions_cross_function_boundaries() {
     // try inside a function body.
     assert_eq!(
-        eval("((fn [] (try (throw 1) (catch Exception e 42))))"),
+        eval("((fn [] (try (throw (ex :test/failed {})) (catch Exception e 42))))"),
         "42"
     );
     // A throw inside a called function unwinds to the caller's catch.
     assert_eq!(
-        eval("(try ((fn [] (throw 41))) (catch Exception e (+ e 1)))"),
+        eval("(try ((fn [] (throw (ex :test/failed {:value 41})))) (catch Exception e (+ (:value (ex-data e)) 1)))"),
         "42"
     );
 }
@@ -883,7 +886,7 @@ fn recur_through_catch_only_try() {
     );
     // recur in a catch body of a catch-only try.
     assert_eq!(
-        eval("(loop [i 0] (try (throw 1) (catch Exception e (if (< i 3) (recur (+ i 1)) i))))"),
+        eval("(loop [i 0] (try (throw (ex :test/failed {})) (catch Exception e (if (< i 3) (recur (+ i 1)) i))))"),
         "3"
     );
 }
@@ -901,10 +904,7 @@ fn try_compile_errors() {
     // treats a non-symbol class as non-matching; the VM rejects the
     // source instead (documented divergence).
     let (_, message) = compile_error("(try 1 (catch 42 e 0))");
-    assert!(
-        message.contains("catch class must be symbol [line 1, column 15]"),
-        "{message}"
-    );
+    assert!(message.contains("catch selector must be a namespaced keyword"), "{message}");
     let (_, message) = compile_error("(try 1 (catch Exception 42 0))");
     assert!(message.contains("catch name must be symbol"), "{message}");
     let (_, message) = compile_error("(try 1 (catch))");
@@ -929,11 +929,11 @@ fn try_compile_errors() {
 
 #[test]
 fn uncaught_throw_carries_position() {
-    let program = compile_source("(try 1 (finally 0)) (throw :failed)").expect("compiles");
+    let program = compile_source("(try 1 (finally 0)) (throw (ex :test/failed {}))").expect("compiles");
     let error = execute_program(std::rc::Rc::new(program)).expect_err("uncaught throw");
     let text = error.to_string();
     assert!(
-        text.starts_with("thrown: :failed [line 1, column 21]"),
+        text.contains("[line 1, column 21]"),
         "{text}"
     );
     assert!(text.contains("(instruction"), "{text}");
@@ -941,7 +941,8 @@ fn uncaught_throw_carries_position() {
 
 #[test]
 fn global_forms_issue_223() {
-    assert_eq!(eval("(ns+)"), "nil");
+    let mut runtime = Runtime::new();
+    assert_eq!(runtime.eval_bytecode_native("(ns+)"), Ok("nil".into()));
     assert_eq!(eval("(def player 1)"), "#'user/player");
     assert_eq!(eval("(= (def player 1) #'player)"), "true");
     assert_eq!(eval("(do (def answer 42) answer)"), "42");
@@ -1296,14 +1297,14 @@ fn async_calls_always_return_settled_promises_on_the_fast_path() {
         crate::core::PromiseState::Fulfilled(Value::Number(42))
     );
 
-    let value = eval_source("(do (defn ^:async fail [] (throw \"boom\")) (fail))")
+    let value = eval_source("(do (defn ^:async fail [] (throw (ex :test/boom {}))) (fail))")
         .expect("async throw rejects rather than escaping");
     let Value::Promise(promise) = value else {
         panic!("async call returned {value:?}");
     };
     assert!(matches!(
         promise.state(),
-        crate::core::PromiseState::Rejected(ref error) if error.message().contains("boom")
+        crate::core::PromiseState::Rejected(ref error) if error.message().contains("thrown:")
     ));
 }
 

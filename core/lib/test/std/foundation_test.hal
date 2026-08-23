@@ -1,5 +1,4 @@
-(ns std.foundation-test
-  (:require [std.foundation :as f]))
+(ns std.foundation-test)
 
 ^{:refer std.foundation/code-line}
 (Test/run [])
@@ -14,10 +13,10 @@
 (Test/run
  [{:name "recognizes native Results"
    :test (fn []
-           (let [created (f/result :success 42 {:source :test})
-                 synchronized (f/result 42)]
-             [(f/result? created)
-              (f/result? nil)
+           (let [created (std.foundation/result :success 42 {:source :test})
+                 synchronized (std.foundation/result 42)]
+             [(std.foundation/result? created)
+              (std.foundation/result? nil)
               (:status created)
               (:data created)
               (:error created)
@@ -29,37 +28,37 @@
 ^{:refer std.foundation/env-current}
 (Test/run
  [{:name "returns the active namespace symbol"
-   :test (fn [] (symbol? (f/env-current)))
+   :test (fn [] (symbol? (std.foundation/env-current)))
    :expected true}])
 
 ^{:refer std.foundation/var-sym}
 (Test/run
  [{:name "returns the qualified symbol naming a Var"
-   :test (fn [] (f/var-sym (resolve 'std.foundation/var-sym)))
+   :test (fn [] (std.foundation/var-sym (resolve 'std.foundation/var-sym)))
    :expected 'std.foundation/var-sym}])
 
 ^{:refer std.foundation/env-snapshot}
 (Test/run
  [{:name "returns the environment descriptor"
-   :test (fn [] (map? (f/env-snapshot)))
+   :test (fn [] (map? (std.foundation/env-snapshot)))
    :expected true}])
 
 ^{:refer std.foundation/env-vars}
 (Test/run
  [{:name "returns the active namespace Vars"
-   :test (fn [] (map? (f/env-vars)))
+   :test (fn [] (map? (std.foundation/env-vars)))
    :expected true}])
 
 ^{:refer std.foundation/env-namespaces}
 (Test/run
  [{:name "returns known namespace descriptors"
-   :test (fn [] (vector? (f/env-namespaces)))
+   :test (fn [] (vector? (std.foundation/env-namespaces)))
    :expected true}])
 
 ^{:refer std.foundation/env-namespace}
 (Test/run
  [{:name "looks up a known namespace descriptor"
-   :test (fn [] (get (f/env-namespace 'std.foundation) :namespace/state))
+   :test (fn [] (get (std.foundation/env-namespace 'std.foundation) :namespace/state))
    :expected :loaded}])
 
 ^{:refer std.foundation/env-module}
@@ -68,7 +67,7 @@
 ^{:refer std.foundation/env-resolve}
 (Test/run
  [{:name "does not load an unresolved symbol"
-   :test (fn [] (f/env-resolve 'missing/value))
+   :test (fn [] (std.foundation/env-resolve 'missing/value))
    :expected nil}])
 
 ^{:refer std.foundation/ns-alias-state}
@@ -80,13 +79,13 @@
 ^{:refer std.foundation/eval-in-ns}
 (Test/run
  [{:name "evaluates forms in an existing namespace"
-   :test (fn [] (f/eval-in-ns 'std.foundation-test '[(+ 19 23)]))
+   :test (fn [] (std.foundation/eval-in-ns 'std.foundation-test '[(+ 19 23)]))
    :expected 42}])
 
 ^{:refer std.foundation/eval}
 (Test/run
  [{:name "evaluates a form value"
-   :test (fn [] (f/eval '(+ 19 23)))
+   :test (fn [] (std.foundation/eval '(+ 19 23)))
    :expected 42}])
 
 ^{:refer std.foundation/defonce}
@@ -94,19 +93,19 @@
  [{:name "does not replace an existing Var root"
    :test (fn []
            (do
-             (f/defonce retained-value (atom 1))
+             (std.foundation/defonce retained-value (atom 1))
              (swap! retained-value inc)
-             (f/defonce retained-value (atom 99))
+             (std.foundation/defonce retained-value (atom 99))
              (deref retained-value)))
    :expected 2}])
 
 ^{:refer std.foundation/meta}
 (Test/run
  [{:name "returns nil for values without IObjType"
-   :test (fn [] (f/meta 42))
+   :test (fn [] (std.foundation/meta 42))
    :expected nil}
   {:name "returns attached metadata"
-   :test (fn [] (f/meta (with-meta [1] {:tag :sample})))
+   :test (fn [] (std.foundation/meta (with-meta [1] {:tag :sample})))
    :expected {:tag :sample}}])
 
 ^{:refer std.foundation/with-meta}
@@ -118,15 +117,15 @@
 ^{:refer std.foundation/time-ms}
 (Test/run
  [{:name "returns Unix wall-clock milliseconds"
-   :test (fn [] (let [value (f/time-ms)]
+   :test (fn [] (let [value (std.foundation/time-ms)]
                   [(integer? value) (< 0 value)]))
    :expected [true true]}])
 
 ^{:refer std.foundation/time-ns}
 (Test/run
  [{:name "returns a nondecreasing runtime-local counter"
-   :test (fn [] (let [before (f/time-ns)
-                      after (f/time-ns)]
+   :test (fn [] (let [before (std.foundation/time-ns)
+                      after (std.foundation/time-ns)]
                   [(integer? before) (<= before after)]))
    :expected [true true]}])
 
@@ -151,16 +150,16 @@
 ^{:refer std.foundation/apply-with}
 (Test/run
  [{:name "returns an object when no function is supplied"
-   :test (fn [] (f/apply-with 2))
+   :test (fn [] (std.foundation/apply-with 2))
    :expected 2}
   {:name "prepends the object to function arguments"
-   :test (fn [] (f/apply-with 2 + 1 2 3))
+   :test (fn [] (std.foundation/apply-with 2 + 1 2 3))
    :expected 8}
   {:name "preserves the object when function is nil"
-   :test (fn [] (f/apply-with 2 nil 1 2))
+   :test (fn [] (std.foundation/apply-with 2 nil 1 2))
    :expected 2}
   {:name "works as an object-first threaded operation"
-   :test (fn [] (-> 2 (f/apply-with + 1 2 3)))
+   :test (fn [] (-> 2 (std.foundation/apply-with + 1 2 3)))
    :expected 8}])
 
 ^{:refer std.foundation/tap}
@@ -169,7 +168,7 @@
    :test (fn []
            (let [seen (atom nil)
                  object {:value 7}
-                 output (f/tap object
+                 output (std.foundation/tap object
                                (fn [value label]
                                  (reset! seen [value label])
                                  :ignored)
@@ -179,7 +178,7 @@
   {:name "requires an observer function"
    :test (fn []
            (try
-             (do (f/tap :value nil) false)
+             (do (std.foundation/tap :value nil) false)
              (catch Throwable error true)))
    :expected true}])
 
@@ -195,7 +194,7 @@
 ^{:refer std.foundation/concat}
 (Test/run
  [{:name "concatenates sources in order"
-   :test (fn [] (vec (f/concat [1 2] '(3 4))))
+   :test (fn [] (vec (std.foundation/concat [1 2] '(3 4))))
    :expected [1 2 3 4]}])
 
 ^{:refer std.foundation/comp}
@@ -254,7 +253,7 @@
  [{:name "returns output from the successful atomic replacement"
    :test (fn []
            (let [reference (atom 10)
-                 output (f/swap-return!
+                 output (std.foundation/swap-return!
                          reference
                          (fn [value] [value (+ value 5)]))]
              [output (deref reference)]))
@@ -262,7 +261,7 @@
   {:name "optionally returns output together with new state"
    :test (fn []
            (let [reference (atom {:count 1})]
-             (f/swap-return!
+             (std.foundation/swap-return!
               reference
               (fn [value]
                 [(:count value) (update value :count inc)])
@@ -282,9 +281,9 @@
 (Test/run
  [{:name "round trips persistent collections through mutable form"
    :test (fn []
-           (let [mutable (f/to-mutable (vec [1]))]
+           (let [mutable (std.foundation/to-mutable (vec [1]))]
              [(satisfies? IMutable mutable)
-              (f/to-persistent mutable)]))
+              (std.foundation/to-persistent mutable)]))
    :expected [true [1]]}])
 
 ^{:refer std.foundation/to-persistent}
@@ -293,33 +292,33 @@
 ^{:refer std.foundation/reduced}
 (Test/run
  [{:name "marks and unwraps reduced values"
-   :test (fn [] [(f/reduced? (f/reduced 42))
-                 (f/unreduced (f/reduced 42))])
+   :test (fn [] [(std.foundation/reduced? (std.foundation/reduced 42))
+                 (std.foundation/unreduced (std.foundation/reduced 42))])
    :expected [true 42]}])
 
 ^{:refer std.foundation/reduced?}
 (Test/run
  [{:name "rejects ordinary values"
-   :test (fn [] (f/reduced? 42))
+   :test (fn [] (std.foundation/reduced? 42))
    :expected false}])
 
 ^{:refer std.foundation/unreduced}
 (Test/run
  [{:name "leaves ordinary values unchanged"
-   :test (fn [] (f/unreduced 42))
+   :test (fn [] (std.foundation/unreduced 42))
    :expected 42}])
 
 ^{:refer std.foundation/reduce-in}
 (Test/run
  [{:name "reduces into a persistent collection"
-   :test (fn [] (f/reduce-in [] conj [1 2 3]))
+   :test (fn [] (std.foundation/reduce-in [] conj [1 2 3]))
    :expected [1 2 3]}
   {:name "honors reduced early termination"
    :test (fn []
-           (f/reduce-in 0
+           (std.foundation/reduce-in 0
                         (fn [total value]
                           (if (= value 3)
-                            (f/reduced total)
+                            (std.foundation/reduced total)
                             (+ total value)))
                         [1 2 3 4]))
    :expected 3}])
@@ -327,16 +326,16 @@
 ^{:refer std.foundation/empty?}
 (Test/run
  [{:name "uses counted collection capability"
-   :test (fn [] [(f/empty? []) (f/empty? [1])])
+   :test (fn [] [(std.foundation/empty? []) (std.foundation/empty? [1])])
    :expected [true false]}])
 
 ^{:refer std.foundation/first}
 (Test/run
  [{:name "peeks without changing collection semantics"
-   :test (fn [] [(f/first [1 2])
-                 (f/first [])
-                 (f/first '())
-                 (f/first (vec []))])
+   :test (fn [] [(std.foundation/first [1 2])
+                 (std.foundation/first [])
+                 (std.foundation/first '())
+                 (std.foundation/first (vec []))])
    :expected [1 nil nil nil]}])
 
 ^{:refer std.foundation/second}
@@ -351,10 +350,10 @@
 ^{:refer std.foundation/last}
 (Test/run
  [{:name "peeks at the final collection item"
-   :test (fn [] [(f/last [1 2])
-                 (f/last [])
-                 (f/last '())
-                 (f/last (vec []))])
+   :test (fn [] [(std.foundation/last [1 2])
+                 (std.foundation/last [])
+                 (std.foundation/last '())
+                 (std.foundation/last (vec []))])
    :expected [2 nil nil nil]}])
 
 ^{:refer std.foundation/reverse}
@@ -375,13 +374,13 @@
 ^{:refer std.foundation/key}
 (Test/run
  [{:name "dispatches through IPair"
-   :test (fn [] (f/key (first {:a 1})))
+   :test (fn [] (std.foundation/key (first {:a 1})))
    :expected :a}])
 
 ^{:refer std.foundation/val}
 (Test/run
  [{:name "dispatches through IPair"
-   :test (fn [] (f/val (first {:a 1})))
+   :test (fn [] (std.foundation/val (first {:a 1})))
    :expected 1}])
 
 ^{:refer std.foundation/keys}
@@ -424,8 +423,8 @@
 (Test/run
  [{:name "preserves vector shape and metadata"
    :test (fn []
-           (let [output (f/map inc (with-meta (vec [1 2]) {:tag :sample}))]
-             [output (f/meta output)]))
+           (let [output (std.foundation/map inc (with-meta (vec [1 2]) {:tag :sample}))]
+             [output (std.foundation/meta output)]))
    :expected [[2 3] {:tag :sample}]}])
 
 ^{:refer std.foundation/filter}
@@ -438,48 +437,48 @@
 (Test/run
  [{:name "keeps Seq pipelines lazy and reusable"
    :test (fn []
-           (let [output (f/drop 1 (f/iterate f/inc 0))]
-             [(f/seq? output)
-              (f/first output)
-              (f/first output)
-              (f/first (f/rest output))]))
+           (let [output (std.foundation/drop 1 (std.foundation/iterate std.foundation/inc 0))]
+             [(std.foundation/seq? output)
+              (std.foundation/first output)
+              (std.foundation/first output)
+              (std.foundation/first (std.foundation/rest output))]))
    :expected [true 1 1 2]}
   {:name "keeps Iterator pipelines lazy and consumptive"
    :test (fn []
-           (let [output (f/drop 1 (f/iter [1 2 3]))]
-             [(f/iter? output)
-              (f/iter-next output)
-              (f/iter-next output)]))
+           (let [output (std.foundation/drop 1 (std.foundation/iter [1 2 3]))]
+             [(std.foundation/iter? output)
+              (std.foundation/iter-next output)
+              (std.foundation/iter-next output)]))
    :expected [true 2 3]}
   {:name "preserves eager persistent collection behavior"
    :test (fn []
-           [(f/drop 1 [1 2 3])
-            (f/drop 1 '(a b c d))])
+           [(std.foundation/drop 1 [1 2 3])
+            (std.foundation/drop 1 '(a b c d))])
    :expected [[2 3] (quote (b c d))]}
   {:name "supports the original lazy thread-last pipeline"
    :test (fn []
-           (->> (f/iterate f/inc 0)
-                (f/drop 1)
-                (f/take-while (fn [value] (< value 5)))
-                (f/filter (fn [value] (= 0 (mod value 2))))
-                (f/first)))
+           (->> (std.foundation/iterate std.foundation/inc 0)
+                (std.foundation/drop 1)
+                (std.foundation/take-while (fn [value] (< value 5)))
+                (std.foundation/filter (fn [value] (= 0 (mod value 2))))
+                (std.foundation/first)))
    :expected 2}
   {:name "preserves list order"
-   :test (fn [] (f/drop 1 '(a b c d)))
+   :test (fn [] (std.foundation/drop 1 '(a b c d)))
    :expected '(b c d)}])
 
 ^{:refer std.foundation/subvec}
 (Test/run
  [{:name "slices vectors with two or three arguments"
-   :test (fn [] [(f/subvec [0 1 2 3] 2)
-                 (f/subvec [0 1 2 3] 1 3)])
+   :test (fn [] [(std.foundation/subvec [0 1 2 3] 2)
+                 (std.foundation/subvec [0 1 2 3] 1 3)])
    :expected [[2 3] [1 2]]}])
 
 ^{:refer std.foundation/subs}
 (Test/run
  [{:name "slices strings with two or three arguments"
-   :test (fn [] [(f/subs "hara" 1)
-                 (f/subs "hara" 1 3)])
+   :test (fn [] [(std.foundation/subs "hara" 1)
+                 (std.foundation/subs "hara" 1 3)])
    :expected ["ara" "ar"]}])
 
 ^{:refer std.foundation/mapcat}
@@ -506,16 +505,16 @@
 ^{:refer std.foundation/some}
 (Test/run
  [{:name "returns the first truthy mapped value"
-   :test (fn [] [(f/some (fn [value] (if (> value 2) (* value 10) nil)) [1 3 4])
-                 (f/some f/odd? [2 4])])
+   :test (fn [] [(std.foundation/some (fn [value] (if (> value 2) (* value 10) nil)) [1 3 4])
+                 (std.foundation/some std.foundation/odd? [2 4])])
    :expected [30 nil]}])
 
 ^{:refer std.foundation/mapv}
 (Test/run
  [{:name "always returns a persistent vector and stops at the shortest source"
-   :test (fn [] [(f/mapv f/inc (f/list 1 2))
-                 (f/mapv + [1 2 3] [10])
-                 (f/type (f/mapv f/inc [1]))])
+   :test (fn [] [(std.foundation/mapv std.foundation/inc (std.foundation/list 1 2))
+                 (std.foundation/mapv + [1 2 3] [10])
+                 (std.foundation/type (std.foundation/mapv std.foundation/inc [1]))])
    :expected [[2 3] [11] :std.native.Vector]}])
 
 ^{:refer std.foundation/long}
@@ -527,14 +526,14 @@
 ^{:refer std.foundation/parse-long}
 (Test/run
  [{:name "parses only complete integer strings"
-   :test (fn [] [(f/parse-long "42") (f/parse-long "4x")])
+   :test (fn [] [(std.foundation/parse-long "42") (std.foundation/parse-long "4x")])
    :expected [42 nil]}])
 
 ^{:refer std.foundation/parse-double}
 (Test/run
  [{:name "parses only complete double strings"
-   :test (fn [] [(= (f/parse-double "3.5") (f/double 3.5))
-                 (f/parse-double "3x")])
+   :test (fn [] [(= (std.foundation/parse-double "3.5") (std.foundation/double 3.5))
+                 (std.foundation/parse-double "3x")])
    :expected [true nil]}])
 
 ^{:refer std.foundation/bit-and}
@@ -657,8 +656,8 @@
 ^{:refer std.foundation/filterv}
 (Test/run
  [{:name "always returns a vector"
-   :test (fn [] [(f/filterv odd? [1 2 3 4])
-                 (f/filterv keyword? '(:a 1 :b))])
+   :test (fn [] [(std.foundation/filterv odd? [1 2 3 4])
+                 (std.foundation/filterv keyword? '(:a 1 :b))])
    :expected [[1 3] [:a :b]]}])
 
 ^{:refer std.foundation/map-indexed}
@@ -685,77 +684,77 @@
 ^{:refer std.foundation/merge-nested}
 (Test/run
  [{:name "merges nested maps from left to right"
-   :test (fn [] (f/merge-nested {:a {:b {:c 1 :d 2}}}
+   :test (fn [] (std.foundation/merge-nested {:a {:b {:c 1 :d 2}}}
                                 {:a {:b {:c 3}}}
                                 {:e 4}))
    :expected {:a {:b {:c 3 :d 2}} :e 4}}
   {:name "replaces nested maps with later scalar values"
-   :test (fn [] (f/merge-nested {:a {:b {:c 3}}} {:a {:b 3}}))
+   :test (fn [] (std.foundation/merge-nested {:a {:b {:c 3}}} {:a {:b 3}}))
    :expected {:a {:b 3}}}])
 
 ^{:refer std.foundation/dissoc-in}
 (Test/run
  [{:name "removes a nested value and empty parents"
-   :test (fn [] (f/dissoc-in {:a {:b {:c 1}} :x 2} [:a :b :c]))
+   :test (fn [] (std.foundation/dissoc-in {:a {:b {:c 1}} :x 2} [:a :b :c]))
    :expected {:x 2}}])
 
 ^{:refer std.foundation/transpose}
 (Test/run
  [{:name "exchanges map keys and values"
-   :test (fn [] (f/transpose {:a 1 :b 2 :c 3}))
+   :test (fn [] (std.foundation/transpose {:a 1 :b 2 :c 3}))
    :expected {1 :a 2 :b 3 :c}}])
 
 ^{:refer std.foundation/find-at}
 (Test/run
  [{:name "returns the first matching index"
-   :test (fn [] [(f/find-at even? [1 3 4 6])
-                 (f/find-at keyword? [1 2])])
+   :test (fn [] [(std.foundation/find-at even? [1 3 4 6])
+                 (std.foundation/find-at keyword? [1 2])])
    :expected [2 -1]}])
 
 ^{:refer std.foundation/insert-at}
 (Test/run
  [{:name "inserts one or more values at an index"
-   :test (fn [] (f/insert-at [:a :b] 1 :x :y))
+   :test (fn [] (std.foundation/insert-at [:a :b] 1 :x :y))
    :expected [:a :x :y :b]}])
 
 ^{:refer std.foundation/remove-at}
 (Test/run
  [{:name "removes one or more values at an index"
-   :test (fn [] [(f/remove-at [:a :b :c :d] 2)
-                 (f/remove-at [:a :b :c :d] 1 2)])
+   :test (fn [] [(std.foundation/remove-at [:a :b :c :d] 2)
+                 (std.foundation/remove-at [:a :b :c :d] 1 2)])
    :expected [[:a :b :d] [:a :d]]}])
 
 ^{:refer std.foundation/qualified-keys}
 (Test/run
  [{:name "selects qualified keys with an optional namespace"
-   :test (fn [] [(f/qualified-keys {:a 1 :ns/b 2 :other/c 3})
-                 (f/qualified-keys {:a 1 :ns/b 2 :other/c 3} :ns)])
+   :test (fn [] [(std.foundation/qualified-keys {:a 1 :ns/b 2 :other/c 3})
+                 (std.foundation/qualified-keys {:a 1 :ns/b 2 :other/c 3} :ns)])
    :expected [{:ns/b 2 :other/c 3} {:ns/b 2}]}])
 
 ^{:refer std.foundation/unqualified-keys}
 (Test/run
  [{:name "selects unqualified keyword keys"
-   :test (fn [] (f/unqualified-keys {:a 1 :ns/b 2 "c" 3}))
+   :test (fn [] (std.foundation/unqualified-keys {:a 1 :ns/b 2 "c" 3}))
    :expected {:a 1}}])
 
 ^{:refer std.foundation/qualify-keys}
 (Test/run
  [{:name "qualifies unqualified keyword keys"
-   :test (fn [] (f/qualify-keys {:a 1 :other/b 2} :ns))
+   :test (fn [] (std.foundation/qualify-keys {:a 1 :other/b 2} :ns))
    :expected {:ns/a 1 :other/b 2}}])
 
 ^{:refer std.foundation/unqualify-keys}
 (Test/run
  [{:name "unqualifies every keyword or one namespace"
-   :test (fn [] [(f/unqualify-keys {:a 1 :ns/b 2 :other/c 3})
-                 (f/unqualify-keys {:a 1 :ns/b 2 :other/c 3} :ns)])
+   :test (fn [] [(std.foundation/unqualify-keys {:a 1 :ns/b 2 :other/c 3})
+                 (std.foundation/unqualify-keys {:a 1 :ns/b 2 :other/c 3} :ns)])
    :expected [{:a 1 :b 2 :c 3}
               {:a 1 :b 2 :other/c 3}]}])
 
 ^{:refer std.foundation/flatten-nested}
 (Test/run
  [{:name "returns nested collection leaves"
-   :test (fn [] (f/flatten-nested [1 2 [3 [4 5]]]))
+   :test (fn [] (std.foundation/flatten-nested [1 2 [3 [4 5]]]))
    :expected [1 2 3 4 5]}])
 
 ^{:refer std.foundation/group-by}
@@ -800,16 +799,16 @@
 ^{:refer std.foundation/form?}
 (Test/run
  [{:name "recognizes List, Cons, and lazy Seq forms"
-   :test (fn [] [(f/form? '(a b))
-                 (f/form? (cons 'a (cons 'b nil)))
-                 (f/form? (f/take 2 (f/iterate f/inc 0)))
-                 (f/form? [1 2])])
+   :test (fn [] [(std.foundation/form? '(a b))
+                 (std.foundation/form? (cons 'a (cons 'b nil)))
+                 (std.foundation/form? (std.foundation/take 2 (std.foundation/iterate std.foundation/inc 0)))
+                 (std.foundation/form? [1 2])])
    :expected [true true true false]}])
 
 ^{:refer std.foundation/walk}
 (Test/run
  [{:name "walks Cons forms as source forms"
-   :test (fn [] (f/walk f/inc identity (cons 1 (cons 2 nil))))
+   :test (fn [] (std.foundation/walk std.foundation/inc identity (cons 1 (cons 2 nil))))
    :expected '(2 3)}])
 
 ^{:refer std.foundation/postwalk}
@@ -833,18 +832,18 @@
 ^{:refer std.foundation/->}
 (Test/run
  [{:name "supports positional and explicit placeholder threading"
-   :test (fn [] [(f/-> 1 inc (- 10 %))
-                 (f/-> 2 (+ % %) (* % %))])
+   :test (fn [] [(std.foundation/-> 1 inc (- 10 %))
+                 (std.foundation/-> 2 (+ % %) (* % %))])
    :expected [8 16]}
   {:name "does not treat quoted percent as a placeholder"
-   :test (fn [] (f/-> 1 (vector '%)))
+   :test (fn [] (std.foundation/-> 1 (vector '%)))
    :expected [1 '%]}])
 
 ^{:refer std.foundation/->>}
 (Test/run
  [{:name "supports thread-last insertion and explicit placement"
-   :test (fn [] [(f/->> [1 2 3] (map inc) (reduce +))
-                 (f/->> [1 2 3] (reduce + %))])
+   :test (fn [] [(std.foundation/->> [1 2 3] (map inc) (reduce +))
+                 (std.foundation/->> [1 2 3] (reduce + %))])
    :expected [9 6]}])
 
 ^{:refer std.foundation/case}
@@ -877,35 +876,35 @@
 ^{:refer std.foundation/if-let}
 (Test/run
  [{:name "binds dependent pairs from left to right"
-   :test (fn [] (f/if-let [a 2 b (+ a 3)] (+ a b) :failed))
+   :test (fn [] (std.foundation/if-let [a 2 b (+ a 3)] (+ a b) :failed))
    :expected 7}
   {:name "uses the shared alternative at the first falsey binding"
-   :test (fn [] (f/if-let [a nil b (+ a 3)] (+ a b) :failed))
+   :test (fn [] (std.foundation/if-let [a nil b (+ a 3)] (+ a b) :failed))
    :expected :failed}
   {:name "tests the raw value before destructuring"
-   :test (fn [] (f/if-let [[a b] [1 2]] (+ a b) :failed))
+   :test (fn [] (std.foundation/if-let [[a b] [1 2]] (+ a b) :failed))
    :expected 3}])
 
 ^{:refer std.foundation/when-let}
 (Test/run
  [{:name "evaluates the body after every binding succeeds"
-   :test (fn [] (f/when-let [a 2 b (+ a 3)] (+ a b)))
+   :test (fn [] (std.foundation/when-let [a 2 b (+ a 3)] (+ a b)))
    :expected 7}
   {:name "returns nil at the first falsey binding"
-   :test (fn [] (f/when-let [a false b 3] (+ a b)))
+   :test (fn [] (std.foundation/when-let [a false b 3] (+ a b)))
    :expected nil}])
 
 ^{:refer std.foundation/for}
 (Test/run
  [{:name "builds nested comprehensions with destructuring"
    :test (fn []
-           (vec (f/for [[a b] [[1 2] [3 4]]
+           (vec (std.foundation/for [[a b] [[1 2] [3 4]]
                         scale [10 100]]
                   (* (+ a b) scale))))
    :expected [30 300 70 700]}
   {:name "supports sequential let when and while modifiers"
    :test (fn []
-           (vec (f/for [x (range 8)
+           (vec (std.foundation/for [x (range 8)
                         :let [y (* x 2)
                               z (+ y 1)]
                         :when (not (= 0 (mod z 3)))
@@ -914,7 +913,7 @@
    :expected [[0 0 1] [2 4 5] [3 6 7] [5 10 11]]}
   {:name "scopes while to its associated inner binding"
    :test (fn []
-           (vec (f/for [x [1 2]
+           (vec (std.foundation/for [x [1 2]
                         y [1 2 3 4]
                         :while (< y 3)]
                   [x y])))
@@ -922,15 +921,15 @@
   {:name "consumes a native iterator in order"
    :test (fn []
            (let [calls (atom 0)
-                 values (f/for [x (std.native.Iter/iter-range 0 3)]
+                 values (std.foundation/for [x (std.native.Iter/iter-range 0 3)]
                           (do (swap! calls inc) x))]
              [(vec values) @calls]))
    :expected [[0 1 2] 3]}
   {:name "collects eagerly into a final destination"
    :test (fn []
-           [(f/for [x [1 2 2 3] :into #{}] x)
-            (f/for [x [1 2] :into [:start]] (* x 10))
-            (f/for [x [1 2] :into {:zero 0}] [x (* x x)])])
+           [(std.foundation/for [x [1 2 2 3] :into #{}] x)
+            (std.foundation/for [x [1 2] :into [:start]] (* x 10))
+            (std.foundation/for [x [1 2] :into {:zero 0}] [x (* x x)])])
    :expected [#{1 2 3} [:start 10 20] {:zero 0 1 1 2 4}]}
   {:name "rejects invalid into placement"
    :test (fn []
@@ -944,7 +943,7 @@
  [{:name "executes eagerly with comprehension modifiers and returns nil"
    :test (fn []
            (let [seen (atom [])
-                 output (f/doseq [x (range 8)
+                 output (std.foundation/doseq [x (range 8)
                                   :let [y (* x 2)]
                                   :when (not (= 0 (mod y 3)))
                                   :while (< y 11)]
@@ -964,15 +963,15 @@
    :test (fn []
            (let [bounds (atom 0)
                  seen (atom [])
-                 output (f/dotimes [index (do (swap! bounds inc) 4)]
+                 output (std.foundation/dotimes [index (do (swap! bounds inc) 4)]
                           (swap! seen conj index))]
              [output @bounds @seen]))
    :expected [nil 1 [0 1 2 3]]}
   {:name "does not execute for a non-positive bound"
    :test (fn []
            (let [seen (atom [])]
-             [(f/dotimes [index 0] (swap! seen conj index))
-              (f/dotimes [index -2] (swap! seen conj index))
+             [(std.foundation/dotimes [index 0] (swap! seen conj index))
+              (std.foundation/dotimes [index -2] (swap! seen conj index))
               @seen]))
    :expected [nil nil []]}])
 
@@ -982,7 +981,7 @@
    :test (fn []
            (let [index (atom 0)
                  seen (atom [])
-                 output (f/while (< @index 3)
+                 output (std.foundation/while (< @index 3)
                           (swap! seen conj @index)
                           (swap! index inc))]
              [output @index @seen]))
@@ -991,13 +990,13 @@
 ^{:refer std.foundation/cond->}
 (Test/run
  [{:name "threads every matching clause pair"
-   :test (fn [] (f/cond-> 1 true inc true (* 3)))
+   :test (fn [] (std.foundation/cond-> 1 true inc true (* 3)))
    :expected 6}])
 
 ^{:refer std.foundation/cond->>}
 (Test/run
  [{:name "threads every matching clause pair last"
-   :test (fn [] (f/cond->> 1 true inc true (* 3)))
+   :test (fn [] (std.foundation/cond->> 1 true inc true (* 3)))
    :expected 6}])
 
 ^{:refer std.foundation/with-ns}

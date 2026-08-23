@@ -6,7 +6,6 @@
             [lang.core.script-annex :as annex]
             [lang.core.script-def :as script-def]
             [lang.core.script-lint :as script-lint]
-            [std.foundation :as f]
             [std.lib.component :as component]))
 
 (defn report-data [outcome] (Result/data outcome))
@@ -33,14 +32,14 @@
          [true 86 86 []]])
 
    (fact "script-def preserves Foundation entry and macro template semantics"
-     (let [entry-a (f/with-template-meta {:type :fragment :tag "js"}
+     (let [entry-a (std.foundation/with-template-meta {:type :fragment :tag "js"}
                      (script-def/tmpl-entry '[createObject create]))
-           entry-b (f/with-template-meta {:type :fragment
+           entry-b (std.foundation/with-template-meta {:type :fragment
                                           :base "Webassembly"
                                           :prefix "ws-"
                                           :tag "js"}
                      (script-def/tmpl-entry 'compile))
-           macro-form (f/with-template-meta {:tag "js"}
+           macro-form (std.foundation/with-template-meta {:tag "js"}
                         (script-def/tmpl-macro
                          '[length [arr] {:property true :tag "js"}]))
            macro-symbol (second macro-form)]

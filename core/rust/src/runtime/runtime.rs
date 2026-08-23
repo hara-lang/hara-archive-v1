@@ -1,3 +1,7 @@
+#[cfg(feature = "bytecode-vm")]
+const EMBEDDED_FOUNDATION_BYTECODE: &[u8] =
+    include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/std.foundation.hbx"));
+
 #[wasm_bindgen]
 impl Runtime {
     fn empty() -> Runtime {
@@ -221,7 +225,7 @@ impl Runtime {
         #[cfg(feature = "bytecode-vm")]
         {
             let mut source_fallback = false;
-            match vm::eval_bytecode_bundle(self, include_bytes!("../../assets/std.foundation.hbx"))
+            match vm::eval_bytecode_bundle(self, EMBEDDED_FOUNDATION_BYTECODE)
             {
                 Ok(()) => {
                     self.loaded_resources.insert("std.foundation".into());

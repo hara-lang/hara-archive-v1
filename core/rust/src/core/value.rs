@@ -862,8 +862,11 @@ pub(crate) fn direct_function_value(name: &str) -> Option<Value> {
         "rem" => Some(native_function("rem", 2, |arguments| {
             apply_binary_primitive(Primitive::Remainder, &arguments[0], &arguments[1])
         })),
-        "mod" => Some(native_function("mod", 2, |arguments| {
-            numeric::numeric_binary(ArithmeticOp::Modulo, &arguments[0], &arguments[1])
+        "mod" => Some(native_variadic_function("mod", |arguments| {
+            if arguments.len() != 2 {
+                return Err("mod expects arguments".into());
+            }
+            numeric::numeric_binary(ArithmeticOp::Remainder, &arguments[0], &arguments[1])
         })),
         _ => Primitive::from_symbol(name).map(|primitive| {
             native_variadic_function(name, move |arguments| {
@@ -2837,6 +2840,24 @@ impl Ord for Value {
 }
 impl Hash for Value {
     fn hash<H: Hasher>(&self, state: &mut H) {
+        // CHAMP placement needs Java's scale-zero integral layout, while the
+        // ordinary Hash contract must remain canonical across numeric types.
+        if crate::lang::data::map::champ_placement_hashing() {
+            if let Self::Number(value) = self {
+                state.write_u64(crate::lang::hash::hash_long_placement(*value) as i64 as u64);
+                return;
+            }
+            if let Self::Float(value) = self {
+                if value.is_finite() && value.fract() == 0.0 {
+                    if let Ok(integer) = (*value).to_string().parse::<i64>() {
+                        state.write_u64(
+                            crate::lang::hash::hash_long_placement(integer) as i64 as u64,
+                        );
+                        return;
+                    }
+                }
+            }
+        }
         if let Some(hash) = numeric::numeric_hash(self) {
             state.write_u64(hash as i64 as u64);
             return;
@@ -2876,9 +2897,9 @@ impl crate::lang::hash::JavaHash for Value {
             Self::Bool(v) => jh::hash_bool(*v) as i64,
             Self::Character(v) => jh::hash_char(*v) as i64,
             Self::String(v) => jh::java_string_hash(v) as i64,
-            Self::Number(_) | Self::Float(_) | Self::BigInteger(_) => {
-                numeric::numeric_hash(self).expect("numeric value") as i64
-            }
+            Self::Number(value) => jh::hash_long(*value) as i64,
+            Self::Float(value) => jh::hash_double(*value) as i64,
+            Self::BigInteger(value) => jh::canonical_decimal_str_hash(value) as i64,
             // Java hashes java.util.regex.Pattern by identity; hash the
             // pattern string instead (deterministic deviation).
             Self::Regex(v) => jh::java_string_hash(v) as i64,

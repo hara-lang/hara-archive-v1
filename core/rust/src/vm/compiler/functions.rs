@@ -92,6 +92,16 @@ impl Compiler {
                 suspend_allowed,
             );
         }
+        if !matches!(
+            crate::core::form_without_metadata(children[1].form),
+            Form::List(_)
+        ) {
+            return Err(CompileError::new(
+                CompileErrorKind::UnsupportedForm,
+                "function parameters must be a vector",
+                Some(children[1].span.start),
+            ));
+        }
 
         let mut count = 0usize;
         for clause in &children[1..] {

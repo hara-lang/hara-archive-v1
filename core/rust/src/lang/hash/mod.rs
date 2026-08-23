@@ -170,11 +170,21 @@ pub fn hash_bytes(bytes: &[u8]) -> i32 {
     h
 }
 
-/// Canonical integer hash. Integer representation is not observable, so the
-/// compact `i64` path uses the same canonical decimal hash as arbitrary
-/// integers, exact decimals, and equal finite doubles.
+/// System hash for a long follows `BigDecimal.hashCode` at scale zero. Unlike
+/// the canonical decimal path, integer trailing zeroes remain significant.
 pub fn hash_long(n: i64) -> i32 {
-    canonical_decimal_str_hash(&n.to_string())
+    hash_long_placement(n)
+}
+
+/// CHAMP placement hash for an integral value. Java's node layout retains the
+/// scale-zero representation here, including trailing zeroes, even though
+/// value/protocol hashing uses the canonical numeric domain above.
+pub fn hash_long_placement(n: i64) -> i32 {
+    let text = n.to_string();
+    let Some((signum, digits, scale)) = parse_decimal(&text) else {
+        return java_string_hash(&text);
+    };
+    bigdecimal_hash(&digits_to_words_be(&digits), signum, scale as i32)
 }
 
 /// `G.hashValue(Double)`:
@@ -627,12 +637,11 @@ mod tests {
 
     #[test]
     fn cross_type_numeric_equality() {
-        // Numeric representations share one equality/hash domain.
-        assert_eq!(hash_long(1), hash_double(1.0));
-        assert_eq!(hash_long(1), canonical_decimal_str_hash("1"));
-        assert_eq!(hash_long(1), canonical_decimal_str_hash("1.0"));
+        // Canonical numeric representations share one equality/hash domain;
+        // `hash_long` is the separate scale-zero system/CHAMP layout hash.
+        assert_eq!(hash_double(1.0), canonical_decimal_str_hash("1"));
+        assert_eq!(hash_double(1.0), canonical_decimal_str_hash("1.0"));
         assert_eq!(hash_double(2.5), canonical_decimal_str_hash("2.50"));
-        assert_eq!(hash_long(100), hash_double(100.0));
         assert_eq!(hash_double(100.0), canonical_decimal_str_hash("100"));
         assert_eq!(hash_double(100.0), canonical_decimal_str_hash("100.0"));
     }

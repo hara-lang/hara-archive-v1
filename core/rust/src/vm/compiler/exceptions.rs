@@ -68,8 +68,22 @@ impl Compiler {
                 unreachable!("partition keeps only catch/finally")
             };
             if keyword == "finally" {
+                if clause_children.len() < 2 {
+                    return Err(CompileError::new(
+                        CompileErrorKind::Arity,
+                        "finally expects a body",
+                        Some(clause.span.start),
+                    ));
+                }
                 finally_body.extend_from_slice(&clause_children[1..]);
                 continue;
+            }
+            if clause_children.len() < 3 {
+                return Err(CompileError::new(
+                    CompileErrorKind::Arity,
+                    "catch expects class, name, and body",
+                    Some(clause.span.start),
+                ));
             }
             if matches!(clause_children[1].form, Form::Symbol(name) if name != "Exception" && name != "Throwable")
             {
