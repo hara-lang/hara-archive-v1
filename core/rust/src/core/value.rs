@@ -2667,7 +2667,7 @@ fn protocol_to_mutable(arguments: &[Value]) -> Result<Value, String> {
     match arguments {
         [Value::Extension(receiver)] => extension_protocol_call(
             receiver,
-            "std.protocol.itomutable/IToMutable",
+            "std.protocol.itomutable.IToMutable",
             "to-mutable",
             arguments,
         ),
@@ -2680,7 +2680,7 @@ fn protocol_to_persistent(arguments: &[Value]) -> Result<Value, String> {
     match arguments {
         [Value::Extension(receiver)] => extension_protocol_call(
             receiver,
-            "std.protocol.itopersistent/IToPersistent",
+            "std.protocol.itopersistent.IToPersistent",
             "to-persistent",
             arguments,
         ),

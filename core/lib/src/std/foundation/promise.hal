@@ -43,64 +43,64 @@
   run
   "Runs function asynchronously and returns its promise."
   [function]
-  (Promise/run function))
+  (std.native.Promise/run function))
 
 (defn ^{:inline true :schema [:fn [:fn] :promise]}
   new
   "Creates a promise controlled by executor."
   [executor]
-  (Promise/new executor))
+  (std.native.Promise/new executor))
 
 (defn ^{:inline true :schema [:fn [:any] :promise]}
   from
   "Returns a settled promise containing value."
   [value]
-  (Promise/from value))
+  (std.native.Promise/from value))
 
 (defn ^{:inline true :schema [:fn [:any] :promise]}
   all
   "Returns a promise of all values after every input succeeds."
   [values]
-  (Promise/all values))
+  (std.native.Promise/all values))
 
 (defn ^{:inline true :schema [:fn [:num :fn] :promise]}
   delay
   "Runs function after milliseconds and returns its promise."
   [milliseconds function]
-  (Promise/delay milliseconds function))
+  (std.native.Promise/delay milliseconds function))
 
 (defn ^{:inline true :schema [:fn [:promise] :keyword]}
   state
   "Returns promise's scheduler state."
   [promise]
-  (IPromise/state promise))
+  (std.protocol.ipromise.IPromise/state promise))
 
 (defn ^{:inline true :schema [:fn [:promise] :any]}
   value
   "Returns promise's settled value or provider-specific failure."
   [promise]
-  (IPromise/value promise))
+  (std.protocol.ipromise.IPromise/value promise))
 
 (defn ^{:inline true :schema [:fn [:promise :fn] :promise]}
   then
   "Chains function after promise succeeds."
   [promise function]
-  (IPromise/then promise function))
+  (std.protocol.ipromise.IPromise/then promise function))
 
 (defn ^{:inline true :schema [:fn [:promise :fn] :promise]}
   catch
   "Chains function after promise fails."
   [promise function]
-  (IPromise/catch promise function))
+  (std.protocol.ipromise.IPromise/catch promise function))
 
 (defn ^{:inline true :schema [:fn [:promise :fn] :promise]}
   finally
   "Chains cleanup function after promise settles."
   [promise function]
-  (IPromise/finally promise function))
+  (std.protocol.ipromise.IPromise/finally promise function))
 
 (defn ^{:inline true :schema [:fn [:promise] :any]}
   cancel
   "Requests best-effort cancellation of promise."
   [promise]
-  (IPromise/cancel promise))
+  (std.protocol.ipromise.IPromise/cancel promise))

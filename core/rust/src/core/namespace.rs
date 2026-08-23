@@ -485,11 +485,7 @@ fn eval_namespace_form(fs: &[Form], env: &mut HashMap<String, Value>) -> Result<
     if let Some(alias) = config.global_alias() {
         registry.register_global_alias(alias, &name)?;
     }
-    if !config.blank() {
-        refer_startup_defaults(&registry, &name);
-    } else {
-        crate::core::refer_native_aliases(&registry, &name);
-    }
+    refer_startup_defaults(&registry, &name);
     select_namespace_environment(&registry, env, &name);
     let destination = registry.current();
     destination.set_role(config.role());

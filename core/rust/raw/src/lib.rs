@@ -225,53 +225,7 @@ impl Session {
         resources: Rc<RefCell<HashMap<String, String>>>,
         events: Rc<RefCell<VecDeque<Vec<u8>>>>,
     ) -> Self {
-        let namespaces = kernel::NamespaceRegistry::new("user");
-        let foundation_namespace = namespaces.find_or_create("std.foundation");
-        for (name, value) in core::direct_callable_values()
-            .expect("runtime callable inventory and direct catalog must agree")
-        {
-            foundation_namespace.intern(name, value);
-        }
-        for (name, protocol) in core::foundation_protocol_values() {
-            foundation_namespace.intern(&name, protocol.clone());
-            namespaces
-                .find_or_create(core::builtin_protocol_namespace(&name))
-                .intern(name, protocol);
-        }
-        for (namespace, name, method) in core::builtin_protocol_method_values() {
-            let var = namespaces.find_or_create(&namespace).intern(&name, method);
-            if matches!(
-                (namespace.as_str(), name.as_str()),
-                ("std.protocol.itomutable", "to-mutable")
-                    | ("std.protocol.itopersistent", "to-persistent")
-            ) {
-                foundation_namespace.map_var(lang::data::Symbol::parse(&name), var);
-            }
-        }
-        for (name, descriptor) in core::native_type_values() {
-            let canonical_name = format!("std.native.{name}");
-            let var = foundation_namespace.intern(&canonical_name, descriptor);
-            foundation_namespace.map_var(lang::data::Symbol::parse(&name), var);
-            namespaces.find_or_create(canonical_name);
-        }
-        for (native_type, methods) in core::NATIVE_TYPES {
-            let namespace_name = format!("std.native.{native_type}");
-            let namespace = namespaces.find_or_create(&namespace_name);
-            for method in *methods {
-                let var = namespace.intern(
-                    *method,
-                    core::native_type_function_value(native_type, method)
-                        .unwrap_or_else(|error| panic!("{error}")),
-                );
-                if *native_type == "Base"
-                    && foundation_namespace
-                        .resolve(&lang::data::Symbol::parse(method))
-                        .is_none()
-                {
-                    foundation_namespace.map_var(lang::data::Symbol::parse(method), var);
-                }
-            }
-        }
+        let namespaces = core::minimal_namespace_registry();
         let native_string = namespaces.find_or_create("std.native.String");
         let string = namespaces.find_or_create("std.foundation.string");
         for (name, var) in native_string.mappings() {
@@ -330,24 +284,6 @@ impl Session {
         core::refer_startup_defaults(&namespaces, "user");
         let mut env = HashMap::new();
         core::select_namespace_environment(&namespaces, &mut env, "user");
-        // Keep qualified native calls directly addressable in raw WASM. The
-        // compact core evaluator resolves ordinary aliases through the
-        // namespace registry, while wasm32's exported one-shot evaluator also
-        // needs the qualified bindings in its transient environment.
-        for (native_type, methods) in core::NATIVE_TYPES {
-            let namespace_name = format!("std.native.{native_type}");
-            let namespace = namespaces
-                .find(&namespace_name)
-                .expect("native namespace was installed");
-            for method in *methods {
-                let function = namespace
-                    .resolve(&lang::data::Symbol::parse(method))
-                    .expect("native method inventory was installed")
-                    .deref_value();
-                env.insert(format!("{native_type}/{method}"), function.clone());
-                env.insert(format!("{namespace_name}/{method}"), function);
-            }
-        }
         let provider_resources = resources.clone();
         let provider = Rc::new(move |name: &str| {
             provider_resources

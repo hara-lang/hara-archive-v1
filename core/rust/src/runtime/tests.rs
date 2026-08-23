@@ -1195,7 +1195,7 @@ mod tests {
             protocols.register_extension(
                 "lazy-map",
                 "request",
-                "std.protocol.ilookup/ILookup",
+                "std.protocol.ilookup.ILookup",
                 "lookup",
                 |arguments| match arguments {
                     [core::Value::Extension(value), key, default]
@@ -1217,7 +1217,7 @@ mod tests {
             protocols.register_extension(
                 "lazy-map",
                 "request",
-                "std.protocol.icount/ICount",
+                "std.protocol.icount.ICount",
                 "count",
                 |arguments| match arguments {
                     [core::Value::Extension(value)]

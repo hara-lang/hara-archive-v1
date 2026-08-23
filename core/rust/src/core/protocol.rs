@@ -300,7 +300,7 @@ fn pointer_context_call(
         Value::Pointer(pointer.clone()),
     ];
     call.extend_from_slice(arguments);
-    protocol_call("std.protocol.icontext/IContext", "call", &call)
+    protocol_call("std.protocol.icontext.IContext", "call", &call)
 }
 
 fn protocol_apply_default(arguments: &[Value]) -> Result<Value, String> {
@@ -408,7 +408,7 @@ fn protocol_find(arguments: &[Value]) -> Result<Value, String> {
     let key = &arguments[1];
     match collection {
         Value::Extension(receiver) => {
-            extension_protocol_call(receiver, "std.protocol.ifind/IFind", "find", arguments)
+            extension_protocol_call(receiver, "std.protocol.ifind.IFind", "find", arguments)
         }
         value @ (Value::Map(_)
         | Value::OrderedMap(_)
@@ -516,7 +516,7 @@ fn protocol_find(arguments: &[Value]) -> Result<Value, String> {
 fn protocol_iter(arguments: &[Value]) -> Result<Value, String> {
     match arguments {
         [Value::Extension(receiver)] => {
-            extension_protocol_call(receiver, "std.protocol.iiter/IIter", "iter", arguments)
+            extension_protocol_call(receiver, "std.protocol.iiter.IIter", "iter", arguments)
         }
         [value]
             if matches!(
@@ -1330,7 +1330,7 @@ fn protocol_encode_with(arguments: &[Value]) -> Result<Value, String> {
         _ => ("visit-unknown", vec![visitor.clone(), value.clone()]),
     };
     protocol_call(
-        "std.protocol.iencodevisitor/IEncodeVisitor",
+        "std.protocol.iencodevisitor.IEncodeVisitor",
         method,
         &visitor_arguments,
     )
@@ -1622,7 +1622,7 @@ fn protocol_conj(arguments: &[Value]) -> Result<Value, String> {
     match collection {
         Value::Nil => Ok(Value::List(std::iter::once(item.clone()).collect())),
         Value::Extension(receiver) => {
-            extension_protocol_call(receiver, "std.protocol.iconj/IConj", "conj", arguments)
+            extension_protocol_call(receiver, "std.protocol.iconj.IConj", "conj", arguments)
         }
         Value::MutableCollection(collection) => {
             let mut borrowed = collection.borrow_mut();

@@ -202,33 +202,16 @@ impl Compiler {
                 } else if !name.contains('/') && self.globals.iter().any(|global| global == name) {
                     Some(format!("{}/{}", self.namespace, name))
                 } else if let Some((alias, local)) = name.split_once('/') {
-                    crate::core::NATIVE_TYPES
-                        .iter()
-                        .any(|(native_type, _)| *native_type == alias)
-                        .then(|| format!("std.native.{alias}/{local}"))
-                        .or_else(|| {
-                            crate::core::FOUNDATION_PROTOCOLS
-                                .iter()
-                                .any(|(protocol, _)| *protocol == alias)
-                                .then(|| {
-                                    format!(
-                                        "{}/{local}",
-                                        crate::core::builtin_protocol_namespace(alias)
-                                    )
-                                })
-                        })
+                    (if registry.find(alias).is_some() {
+                        registry.resolve(&crate::lang::data::Symbol::parse(name))
+                    } else {
+                        current.resolve(&crate::lang::data::Symbol::parse(name))
+                    })
+                        .map(|var| var.symbol().as_str().to_owned())
                         .or_else(|| {
                             current
                                 .lazy_target(alias)
                                 .map(|target| format!("{}/{}", target.as_str(), local))
-                        })
-                        .or_else(|| {
-                            (if registry.find(alias).is_some() {
-                                registry.resolve(&crate::lang::data::Symbol::parse(name))
-                            } else {
-                                current.resolve(&crate::lang::data::Symbol::parse(name))
-                            })
-                            .map(|var| var.symbol().as_str().to_owned())
                         })
                 } else {
                     current
