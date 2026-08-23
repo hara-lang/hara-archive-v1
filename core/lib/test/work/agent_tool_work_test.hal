@@ -25,7 +25,7 @@
     :required ["value"]
     :additionalProperties false}
    (fn [arguments]
-     (promise
+     (Promise/run
       (fn []
         (inc (get arguments "value")))))))
 
@@ -165,4 +165,4 @@
        (get-in result [:tool/error :code])])
     [:error :tool/unknown])])
 
-(pr-str (run '[work.agent-tool-work-test]))
+results
