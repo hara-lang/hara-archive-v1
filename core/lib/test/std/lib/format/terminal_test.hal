@@ -1,0 +1,47 @@
+(ns std.lib.format.terminal-test
+  (:use code.test)
+  (:require [std.lib.format.terminal :as terminal]))
+
+^{:refer std.lib.format.terminal/render-line}
+(fact "renders plain and ANSI lines while preserving empty text"
+  [(terminal/render-line {:line/text "hello" :line/role :success} {})
+   (terminal/render-line {:line/text "hello" :line/role :success} {:ansi true})
+   (terminal/render-line {:line/text "" :line/role :success} {:ansi true})]
+  => ["hello" "\u001b[32mhello\u001b[0m" ""])
+
+^{:refer std.lib.format.terminal/render-lines}
+(fact "renders every structured line with stable ordering"
+  [(terminal/render-lines
+    [{:line/text "ok" :line/role :success}
+     {:line/text "warn" :line/role :warning}])
+   (terminal/render-lines
+    [{:line/text "ok" :line/role :success}
+     {:line/text "warn" :line/role :warning}]
+    {:ansi true})]
+  => [["ok" "warn"]
+      ["\u001b[32mok\u001b[0m" "\u001b[33mwarn\u001b[0m"]])
+
+^{:refer std.lib.format.terminal/render}
+(fact "joins rendered lines with newline separators"
+  [(terminal/render [{:line/text "one"} {:line/text "two"}])
+   (terminal/render [{:line/text "one" :line/role :error}] {:ansi true})]
+  => ["one\ntwo" "\u001b[31mone\u001b[0m"])
+
+^{:refer std.lib.format.terminal/emit-lines}
+(fact "emits rendered lines through the injected sink and returns count"
+  (let [output (atom [])
+        count (terminal/emit-lines
+               [{:line/text "one"} {:line/text "two"}]
+               {:emit (fn [text] (swap! output conj text))})]
+    [count @output])
+  => [2 ["one" "two"]])
+
+(fact "marks only the supported terminal operations public"
+  [(:public (meta (get (ns-publics 'std.lib.format.terminal) 'render-lines)))
+   (:public (meta (get (ns-publics 'std.lib.format.terminal) 'render)))
+   (:public (meta (get (ns-publics 'std.lib.format.terminal) 'emit-lines)))
+   (:public (meta (get (ns-publics 'std.lib.format.terminal) 'render-line)))
+   (:private (meta (get (ns-publics 'std.lib.format.terminal) '+ansi-reset+)))]
+  => [true true true nil nil])
+
+(pr-str (run {:namespace "std.lib.format.terminal-test"}))
