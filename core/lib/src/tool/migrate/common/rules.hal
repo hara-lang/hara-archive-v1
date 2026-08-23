@@ -1,0 +1,218 @@
+(ns tool.migrate.common.rules
+  (:require [std.fs :as fs]
+            [std.foundation.string :as str]))
+
+;; The registry is the policy boundary. This namespace only loads and
+;; normalises the data contract; it does not contain migration policy.
+
+(def +catalog-path+
+  "../hara-specs-registry/01-lang/007-code-migration/draft/code-migration.edn")
+
+(def +phase-order+
+  [:namespace :dependency :definition :expression :test :cleanup :verification])
+
+(defn phase-index
+  [phase]
+  (loop [remaining (vec +phase-order+)
+         index 0]
+    (if (empty? remaining)
+      (count +phase-order+)
+      (if (= phase (first remaining))
+        index
+        (recur (vec (rest remaining)) (inc index))))))
+
+(defn read-catalog
+  "Reads one explicit EDN migration catalog. The caller owns the path and
+   therefore this function remains hermetic in tests and embedders."
+  [path]
+  (let [value (Edn/read (str/decode-utf8 (fs/read-bytes path)))]
+    (if (map? value)
+      value
+      (throw (ex :tool.migrate/invalid-catalog
+                 {:path path}
+                 :ex/message "Migration catalog must contain an EDN map")))))
+
+(defn catalog-rules
+  [catalog]
+  (vec (or (:migration/rules catalog) [])))
+
+(defn rule-id
+  [rule]
+  (or (:rule/id rule) (:id rule)))
+
+(defn rule-language-branch
+  [value language]
+  (if (and (map? value) (has? value language))
+    (get value language)
+    value))
+
+(defn languages
+  [rule]
+  (vec (or (:rule/languages rule)
+           (:languages rule)
+           [:clojure :hara])))
+
+(defn language-rule?
+  [rule language]
+  (has? (reduce (fn [out value] (assoc out value true)) {} (languages rule))
+        language))
+
+(defn evidence-vector
+  [evidence]
+  (cond
+    (nil? evidence) []
+    (vector? evidence) evidence
+    :else [evidence]))
+
+(defn canonical-kind
+  [rule]
+  (let [kind (or (:rule/kind rule) (:kind rule))]
+    (case kind
+      :dependency :token
+      :symbol-pattern :token
+      :form-pattern :form-head
+      :form-shape :form-head
+      :namespace-clause :form-head
+      :metadata-value :token
+      :literal :token
+      :form-arity :form-head
+      :target-recipe :token
+      kind)))
+
+(defn canonical-rewrite
+  [rewrite]
+  (if (not (map? rewrite))
+    rewrite
+    (case (:op rewrite)
+      :replace-namespace
+      {:op :replace-token-prefix
+       :text (str (:namespace rewrite))}
+
+      :replace-symbol
+      {:op :replace-token
+       :text (str (:symbol rewrite))}
+
+      rewrite)))
+
+(defn canonical-rule
+  "Converts the registry vocabulary to the engine's small structural model.
+   Language-specific match/rewrite branches remain attached to the rule so a
+   function rule can inspect both Clojure and Hara trees."
+  ([rule]
+   (canonical-rule rule :clojure 0))
+  ([rule language index]
+   (let [phase (or (:rule/phase rule) :expression)
+         function (rule-language-branch (:rule/function rule) language)
+         rewrite (if function
+                   nil
+                   (canonical-rewrite
+                    (rule-language-branch (:rule/rewrite rule) language)))
+         match (rule-language-branch (:rule/match rule) language)
+         priority (or (:rule/priority rule)
+                      (+ (* 1000 (phase-index phase)) index))]
+     {:id (rule-id rule)
+      :kind (canonical-kind rule)
+      :match (if (map? match) match {:text (str match)})
+      :match/value match
+      :rewrite rewrite
+      :function function
+      :languages (languages rule)
+      :language language
+      :safety (or (:rule/safety rule) (:safety rule) :manual)
+      :priority priority
+      :phase phase
+      :message (or (:rule/message rule)
+                   (:message rule)
+                   (str "Migration rule " (rule-id rule)))
+      :disposition (:rule/disposition rule)
+      :evidence (evidence-vector (or (:rule/evidence rule) (:evidence rule)))
+      :registry/rule rule})))
+
+(defn rules-for
+  "Returns deterministic canonical rules for a source language."
+  ([catalog language]
+   (rules-for catalog language {}))
+  ([catalog language options]
+   (let [selected
+         (filter (fn [rule]
+                   (and (language-rule? rule language)
+                        (or (nil? (:rule/enabled rule))
+                            (:rule/enabled rule))))
+                 (catalog-rules catalog))]
+     (vec
+      (map-indexed
+       (fn [index rule]
+         (canonical-rule rule language index))
+       (sort-by
+        (fn [rule]
+          [(phase-index (or (:rule/phase rule) :expression))
+           (or (:rule/priority rule) 0)
+           (str (rule-id rule))])
+        selected))))))
+
+(defn duplicate-ids
+  [rules]
+  (let [seen (reduce (fn [out rule]
+                       (let [id (rule-id rule)]
+                         (assoc out id (inc (or (get out id) 0)))))
+                     {}
+                     rules)]
+    (vec (sort (keep (fn [[id count]]
+                       (if (> count 1) id nil)) seen)))))
+
+(defn validate-catalog
+  "Validates the registry envelope without compiling executable functions."
+  [catalog]
+  (let [rules (catalog-rules catalog)
+        duplicates (duplicate-ids rules)
+        missing
+        (vec (keep (fn [rule]
+                     (if (or (nil? (rule-id rule))
+                             (nil? (:rule/phase rule))
+                             (nil? (:rule/match rule)))
+                       (rule-id rule)
+                       nil))
+                   rules))]
+    (if (or (not (keyword? (:document/id catalog)))
+            (not (keyword? (:document/type catalog)))
+            (not (empty? duplicates))
+            (not (empty? missing)))
+      (throw (ex :tool.migrate/invalid-catalog
+                 {:duplicates duplicates :missing missing}
+                 :ex/message "Migration catalog failed structural validation")))
+    {:valid true
+     :document/id (:document/id catalog)
+     :rules (count rules)
+     :languages [:clojure :hara]}))
+
+(defn load
+  "Loads and validates a catalog from an explicit path or parsed value."
+  ([value]
+   (if (map? value)
+     (do (validate-catalog value) value)
+     (load value {})))
+  ([path options]
+   (let [catalog (read-catalog (or path (:registry/path options) +catalog-path+))]
+     (validate-catalog catalog)
+     catalog)))
+
+(defn catalog
+  "Resolves the explicit catalog supplied by a transform invocation."
+  [options]
+  (let [value (:catalog options)]
+    (cond
+      (map? value) (load value)
+      (string? value) (load value options)
+      (:registry/path options) (load (:registry/path options) options)
+      :else (load +catalog-path+ options))))
+
+(defn rules
+  ([options]
+   (rules (catalog options) (or (:source/language options) :clojure)))
+  ([catalog language]
+   (rules-for catalog language {})))
+
+(def +rules+
+  ;; No implicit filesystem access: callers must inject a parsed catalog or a
+  ;; registry path visible to their Hara mount. Policy remains external EDN.
+  [])

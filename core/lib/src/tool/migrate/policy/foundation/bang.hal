@@ -1,0 +1,503 @@
+(ns tool.migrate.policy.foundation.bang
+  (:require [code.framework :as framework]
+            [code.manage.unit.structure :as structure]
+            [std.block :as block]
+            [tool.lint.schema :as schema]
+            [code.project :as project]))
+
+(def +allowed-var-references+
+  '#{std.foundation/reset!
+     std.foundation/swap!
+     std.foundation/swap-return!
+     std.foundation/cas!})
+
+(def +allowed-special-forms+ '#{set!})
+
+(def +embedded-rust-snapshot-ledger+
+  [{:source/path "lib/src/code/framework/source.hal"
+    :target/path "rust/hal-src/code/framework/source.hal"
+    :migration/action :regenerate :migration/owner :tool.migrate}
+   {:source/path "lib/src/code/framework/navigation.hal"
+    :target/path "rust/hal-src/code/framework/navigation.hal"
+    :migration/action :regenerate :migration/owner :tool.migrate}
+   {:source/path "lib/src/tool/migrate/project.hal"
+    :target/path "rust/hal-src/tool/migrate/project.hal"
+    :migration/action :regenerate :migration/owner :tool.migrate}
+   {:source/path "lib/src/tool/migrate/clojure.hal"
+    :target/path "rust/hal-src/tool/migrate/clojure.hal"
+    :migration/action :regenerate :migration/owner :tool.migrate}
+   {:source/path "lib/src/tool/migrate/rule.hal"
+    :target/path "rust/hal-src/tool/migrate/rule.hal"
+    :migration/action :regenerate :migration/owner :tool.migrate}
+   {:source/path "lib/src/tool/migrate/rules.hal"
+    :target/path "rust/hal-src/tool/migrate/rules.hal"
+    :migration/action :regenerate :migration/owner :tool.migrate}
+   {:source/path "lib/src/tool/migrate/profile.hal"
+    :target/path "rust/hal-src/tool/migrate/profile.hal"
+    :migration/action :regenerate :migration/owner :tool.migrate}
+   {:source/path "lib/src/tool/migrate/git.hal"
+    :target/path "rust/hal-src/tool/migrate/git.hal"
+    :migration/action :regenerate :migration/owner :tool.migrate}
+   {:source/path "lib/src/tool/migrate/corpus.hal"
+    :target/path "rust/hal-src/tool/migrate/corpus.hal"
+    :migration/action :regenerate :migration/owner :tool.migrate}
+   {:source/path "lib/src/tool/migrate/report.hal"
+    :target/path "rust/hal-src/tool/migrate/report.hal"
+    :migration/action :regenerate :migration/owner :tool.migrate}
+   {:source/path "lib/src/tool/migrate/write.hal"
+    :target/path "rust/hal-src/tool/migrate/write.hal"
+    :migration/action :regenerate :migration/owner :tool.migrate}
+   {:source/path "lib/src/code/manage/migrate.hal"
+    :target/path "rust/hal-src/code/manage/migrate.hal"
+    :migration/action :regenerate :migration/owner :tool.migrate}
+   {:source/path "lib/src/std/dom/common.hal"
+    :target/path "rust/hal-src/std/dom/common.hal"
+    :migration/action :regenerate :migration/owner :tool.migrate}])
+
+
+(def +rename-overrides+
+  '{tool.sh/require-success tool.sh/require-success
+    tool.sh/run-checked tool.sh/run-checked
+    tool.sh/execute-checked tool.sh/execute-checked
+    work.agent/mark-failed work.agent/mark-failed
+    work.agent/mark-completed work.agent/mark-completed
+    work.agent/mark-ready work.agent/mark-ready
+    postgres.typed/throw-missing-function postgres.typed/throw-missing-function
+    postgres.typed/throw-missing-argument postgres.typed/throw-missing-argument
+    postgres.core.impl-update/assert-valid-keys postgres.core.impl-update/assert-valid-keys
+    std.config.resolve/throw-include-cycle std.config.resolve/throw-include-cycle
+    lang.runtime.hara/pop-path lang.runtime.hara/pop-path
+    postgres.core.impl/t:insert-untracked postgres.core.impl/t:insert-untracked
+    postgres.core.impl/t:update-untracked postgres.core.impl/t:update-untracked})
+
+(defn bang-name?
+  [value]
+  (and (symbol? value)
+       (str/ends-with? (str value) "!")))
+
+(defn strip-bang
+  [value]
+  (let [text (str value)]
+    (str/slice text 0 (dec (str/length text)))))
+
+(defn qualified-reference
+  [namespace name]
+  (symbol (str namespace) (str name)))
+
+(defn definition-reference
+  [namespace definition]
+  (qualified-reference namespace (:name definition)))
+
+(defn block-span
+  [value]
+  (:props value))
+
+(defn code-children
+  [value]
+  (vec (filter block/code? (block/children value))))
+
+(defn form-head
+  [form]
+  (let [children (code-children form)]
+    (when (not (empty? children))
+      (block/value (first children)))))
+
+(defn namespace-info
+  [root]
+  (let [namespace-block
+        (first
+         (filter
+          (fn [form]
+            (has? '#{ns ns+} (form-head form)))
+          (code-children root)))]
+    (if namespace-block
+      {:name (second (block/value namespace-block))
+       :block namespace-block}
+      {:name nil :block nil})))
+
+(defn first-symbol-block
+  [values]
+  (first
+   (filter (fn [value] (symbol? (block/value value))) values)))
+
+(defn definition-info
+  [namespace form]
+  (let [children (code-children form)
+        head-block (first children)
+        head (when head-block (block/value head-block))
+        head-name (when head (str head))]
+    (when (and head-name (framework/definition-head? head-name))
+      (let [name-block (first-symbol-block (vec (rest children)))
+            definition-name (when name-block (block/value name-block))]
+        (when definition-name
+          {:name definition-name
+           :qualified (qualified-reference namespace definition-name)
+           :head head-name
+           :kind (framework/definition-kind head-name)
+           :block name-block
+           :form form})))))
+
+(defn scan-definitions
+  [scan]
+  (let [namespace (get-in scan [:namespace :name])
+        entries (schema/annotated-top-level-forms
+                 (get-in scan [:document :root]))]
+    (vec
+     (keep (fn [entry] (definition-info namespace (:form entry)))
+           entries))))
+
+(defn unit-analysis
+  [unit]
+  (let [parsed (block/parse-source (:source unit) {:file (:path unit)})
+        root (:block parsed)
+        scan {:document {:file (:path unit)
+                         :source (:source unit)
+                         :root root}
+              :namespace (namespace-info root)
+              :reader-findings (:diagnostics parsed)}]
+    (assoc unit :analysis (assoc scan :definitions (scan-definitions scan)))))
+
+(defn analyzed-units
+  [units]
+  (vec (map unit-analysis units)))
+
+(defn bang-definition-records
+  [units]
+  (vec
+   (mapcat
+    (fn [unit]
+      (let [analysis (:analysis unit)
+            namespace (get-in analysis [:namespace :name])]
+        (keep
+         (fn [definition]
+           (let [source (definition-reference namespace definition)
+                 span (block-span (:block definition))]
+             (if (and (bang-name? (:name definition))
+                      (not (has? +allowed-var-references+ source)))
+               {:source/refer source
+                :source/path (:path unit)
+                :source/line (:row span)
+                :source/column (:col span)
+                :definition/head (:head definition)
+                :definition/kind (:kind definition)}
+               nil)))
+         (:definitions analysis))))
+    units)))
+
+(defn default-target-reference
+  [source]
+  (qualified-reference (namespace source) (strip-bang (symbol (name source)))))
+
+(defn rename-record
+  [record overrides]
+  (let [source (:source/refer record)
+        target (or (get overrides source)
+                   (default-target-reference source))]
+    (assoc record
+           :target/refer target
+           :migration/action :rename
+           :migration/status :planned)))
+
+(defn rename-ledger
+  ([units]
+   (rename-ledger units +rename-overrides+))
+  ([units overrides]
+   (let [units (if (or (empty? units)
+                       (:analysis (first units)))
+                 units
+                 (analyzed-units units))]
+     (vec
+      (map (fn [record] (rename-record record overrides))
+           (bang-definition-records units))))))
+
+(defn definition-index
+  [units]
+  (reduce
+   (fn [index unit]
+     (let [analysis (:analysis unit)
+           namespace (get-in analysis [:namespace :name])]
+       (reduce
+        (fn [current definition]
+          (let [span (block-span (:block definition))]
+            (assoc current
+                   (definition-reference namespace definition)
+                   {:path (:path unit)
+                    :line (:row span)
+                    :column (:col span)})))
+        index
+        (:definitions analysis))))
+   {}
+   units))
+
+(defn target-owner-index
+  [ledger]
+  (reduce
+   (fn [index record]
+     (update index
+             (:target/refer record)
+             (fn [owners] (conj (or owners []) (:source/refer record)))))
+   {}
+   ledger))
+
+(defn collision-diagnostics
+  [units ledger]
+  (let [definitions (definition-index units)
+        owners (target-owner-index ledger)]
+    (vec
+     (concat
+      (keep
+       (fn [record]
+         (let [source (:source/refer record)
+               target (:target/refer record)
+               existing (get definitions target)]
+           (if (and existing (not= source target))
+             {:level :error
+              :migration/error :bang-rename/existing-target
+              :source/refer source
+              :target/refer target
+              :target/owner existing}
+             nil)))
+       ledger)
+      (keep
+       (fn [entry]
+         (let [target (first entry)
+               sources (second entry)]
+           (if (< 1 (count sources))
+             {:level :error
+              :migration/error :bang-rename/duplicate-target
+              :target/refer target
+              :source/references sources}
+             nil)))
+       owners)))))
+
+(defn reader-diagnostics
+  [units edits]
+  (let [changed-paths
+        (into #{} (map :path (filter :changed edits)))]
+    (vec
+     (mapcat
+      (fn [unit]
+        (if (has? changed-paths (:path unit))
+          (map
+           (fn [finding]
+             (assoc finding
+                    :migration/error :bang-rename/reader-error
+                    :source/path (:path unit)))
+           (get-in unit [:analysis :reader-findings]))
+          []))
+      units))))
+
+(defn require-entry
+  [entry]
+  (if (not (vector? entry))
+    {:namespace entry :alias nil :refers []}
+    (let [target (first entry)]
+      (loop [remaining (vec (rest entry))
+             alias nil
+             refers []]
+        (if (empty? remaining)
+          {:namespace target :alias alias :refers refers}
+          (let [option (first remaining)
+                value (second remaining)]
+            (cond
+              (= option :as)
+              (recur (vec (drop 2 remaining)) value refers)
+
+              (and (= option :refer) (vector? value))
+              (recur (vec (drop 2 remaining)) alias value)
+
+              :else
+              (recur (vec (rest remaining)) alias refers))))))))
+
+(defn namespace-routes
+  [analysis]
+  (let [namespace-block (get-in analysis [:namespace :block])
+        namespace-form (when namespace-block (block/value namespace-block))
+        clauses (if namespace-form (drop 2 namespace-form) [])
+        requirements
+        (reduce
+         (fn [output clause]
+           (if (and (list? clause) (= :require (first clause)))
+             (into output (map require-entry (rest clause)))
+             output))
+         []
+         clauses)]
+    {:aliases
+     (reduce
+      (fn [output requirement]
+        (if (:alias requirement)
+          (assoc output (:alias requirement) (:namespace requirement))
+          output))
+      {}
+      requirements)
+     :refers
+     (reduce
+      (fn [output requirement]
+        (reduce
+         (fn [current name]
+           (assoc current name (:namespace requirement)))
+         output
+         (:refers requirement)))
+      {}
+      requirements)}))
+
+(defn symbol-blocks-in
+  [value]
+  (let [current
+        (if (= :symbol (block/tag value))
+          [value]
+          [])]
+    (reduce
+     (fn [output child]
+       (into output (symbol-blocks-in child)))
+     current
+     (block/children value))))
+
+(defn symbol-blocks
+  [analysis]
+  (symbol-blocks-in (get-in analysis [:document :root])))
+
+(defn local-definition-names
+  [analysis]
+  (into #{} (map :name (:definitions analysis))))
+
+(defn resolved-reference
+  [value analysis routes]
+  (let [prefix (namespace value)
+        namespace-symbol (get-in analysis [:namespace :name])]
+    (if prefix
+      (let [prefix-symbol (symbol prefix)
+            owner (or (get (:aliases routes) prefix-symbol) prefix-symbol)]
+        (qualified-reference owner (name value)))
+      (cond
+        (has? (local-definition-names analysis) value)
+        (qualified-reference namespace-symbol (name value))
+
+        (get (:refers routes) value)
+        (qualified-reference (get (:refers routes) value) (name value))
+
+        :else nil))))
+
+(defn replacement-symbol
+  [original target]
+  (if (namespace original)
+    (symbol (namespace original) (name target))
+    (symbol (name target))))
+
+(defn unit-rename-edits
+  [unit ledger-index]
+  (let [analysis (:analysis unit)
+        routes (namespace-routes analysis)]
+    (vec
+     (keep
+      (fn [value-block]
+        (let [value (block/value value-block)
+              source (resolved-reference value analysis routes)
+              target (get ledger-index source)
+              span (block-span value-block)]
+          (if target
+            (structure/edit (:start-offset span)
+                            (:end-offset span)
+                            (str (replacement-symbol value target)))
+            nil)))
+      (symbol-blocks analysis)))))
+
+(defn plan-unit
+  [unit ledger-index]
+  (let [edits (unit-rename-edits unit ledger-index)]
+    (framework/transform-code
+     unit
+     (fn [source]
+       {:after (structure/apply-edits source edits)
+        :edits edits
+        :rules [:bang-vars/rename]
+        :diagnostics []}))))
+
+
+(defn plan
+  ([units]
+   (plan units +rename-overrides+))
+  ([units overrides]
+   (let [units (analyzed-units units)
+         ledger (rename-ledger units overrides)
+         ledger-index
+         (reduce (fn [index record]
+                   (assoc index (:source/refer record) (:target/refer record)))
+                 {}
+                 ledger)
+         edits (vec (map (fn [unit] (plan-unit unit ledger-index)) units))
+         diagnostics (vec (concat (reader-diagnostics units edits)
+                                  (collision-diagnostics units ledger)))]
+     {:write false
+      :valid (empty? diagnostics)
+      :ledger ledger
+      :records (count ledger)
+      :files (count units)
+      :changed/files (count (filter :changed edits))
+      :edits edits
+      :diagnostics diagnostics})))
+
+(defn code-migrate-plan
+  [migration]
+  (when (not (:valid migration))
+    (throw (ex :argument {:diagnostics (:diagnostics migration)} :ex/message "Cannot adapt an invalid bang-name migration")))
+  {:records
+   (vec
+    (map
+     (fn [unit]
+       (let [path (:path unit)
+             relative-path (if (str/starts-with? path "/")
+                             (str/slice path 1 (str/length path))
+                             path)]
+         {:status :return
+          :data (assoc unit
+                       :source/path relative-path
+                       :target/path relative-path)}))
+     (:edits migration)))})
+
+(defn project-units
+  ([current-project]
+   (project-units
+    current-project
+    (vec (concat (:project/source-paths current-project)
+                 (:project/test-paths current-project)))))
+  ([current-project roots]
+   (let [paths (project/files-in current-project roots ".hal")]
+     (vec
+      (keep (fn [path]
+              (let [source (project/read-text path)]
+                (when (str/includes? source "!")
+                  {:path path :source source})))
+            paths)))))
+
+(defn embedded-snapshot-unit
+  [current-project record]
+  (let [root (:project/root current-project)
+        source (project/read-text (File/join root (:source/path record)))
+        target (project/read-text (File/join root (:target/path record)))]
+    (framework/transform-code
+     {:source/path (:source/path record)
+      :source/text source
+      :target/path (:target/path record)
+      :target/text target}
+     (fn [_]
+       {:after source
+        :rules [:bang-vars/embedded-rust-snapshot]
+        :diagnostics []
+        :provenance
+        {:migration/action (:migration/action record)
+         :migration/owner (:migration/owner record)}}))))
+
+
+(defn embedded-snapshot-plan
+  [current-project]
+  (let [edits
+        (mapv (fn [record]
+                (embedded-snapshot-unit current-project record))
+              +embedded-rust-snapshot-ledger+)]
+    {:write false
+     :valid true
+     :records (count edits)
+     :changed/files (count (filter :changed edits))
+     :edits edits
+     :diagnostics []}))

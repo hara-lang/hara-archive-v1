@@ -1,0 +1,103 @@
+(ns tool.migrate.common.transform-test
+  (:use code.test)
+  (:require [tool.migrate.common.transform :as transform]
+            [code.framework.navigation :as nav]))
+
+(def catalog
+  {:document/id :demo/transform
+   :document/type :code-migration-spec
+   :migration/rules
+   [{:rule/id :demo/rename
+     :rule/languages [:clojure :hara]
+     :rule/phase :expression
+     :rule/priority 1
+     :rule/kind :token
+     :rule/match {:clojure {:text "old"}
+                  :hara {:text "legacy"}}
+     :rule/rewrite {:clojure {:op :replace-token :text "new"}
+                    :hara {:op :replace-token :text "native"}}
+     :rule/safety :safe
+     :rule/evidence {:source/path "src/demo.clj"
+                     :target/spec :hara/foundation}}]})
+
+(defn resolver
+  [value]
+  (if (= value 'demo/matcher)
+    (fn [root context]
+      (if-let [location (first (nav/walk-locations root))]
+        [(nav/evidence location)]
+        []))
+    (if (= value 'demo/rewriter)
+      (fn [root match context] root)
+      nil)))
+
+(def function-catalog
+  {:document/id :demo/function
+   :document/type :code-migration-spec
+   :migration/rules
+   [{:rule/id :demo/function
+     :rule/languages [:clojure :hara]
+     :rule/phase :expression
+     :rule/priority 1
+     :rule/kind :function
+     :rule/match {:clojure {:text "matcher"}
+                  :hara {:text "matcher"}}
+     :rule/rewrite nil
+     :rule/function
+     {:clojure {:match 'demo/matcher :rewrite 'demo/rewriter}
+      :hara {:match 'demo/matcher :rewrite 'demo/rewriter}}
+     :rule/safety :manual
+     :rule/evidence {:source/path "src/demo.clj"
+                     :target/spec :hara/native}}]})
+
+^{:refer tool.migrate.common.transform/transform-code}
+(fact "transform-code returns the canonical dry-run edit for Clojure"
+  (let [result
+        (transform/transform-code
+         {:source/path "src/demo.clj"
+          :source/text "(ns demo)\n(def old 1)\n"
+          :target/path "lib/demo.hal"}
+         {:catalog catalog :mode :safe})]
+    [(:target/path result)
+     (:changed result)
+     (str/includes? (:after result) "new")
+     (count (:rules/applied result))]
+    => ["lib/demo.hal" true true 1]))
+
+^{:refer tool.migrate.common.transform/analyze}
+(fact "the same rule engine matches Hara source with its Hara branch"
+  (let [result (transform/analyze "(ns demo)\n(def legacy 1)\n"
+                                  {:catalog catalog
+                                   :source/language :hara
+                                   :target/language :hara
+                                   :mode :safe})]
+    [(str/includes? (:output result) "native")
+     (:source/language result)
+     (:target/language result)]
+    => [true :hara :hara]))
+
+^{:refer tool.migrate.common.rule/resolve-function}
+(fact "function rules use the injected resolver"
+  (let [result (transform/analyze "(ns demo)\n(def value 1)\n"
+                                  {:catalog function-catalog
+                                   :function-resolver resolver
+                                   :mode :lint})]
+    [(count (:rules/matched result))
+     (:type (first (:diagnostics result)))]
+    => [1 :tool.migrate/manual]))
+
+(def results
+  [(test-check
+    "transform-code applies the declarative rewrite"
+    (let [result
+          (transform/transform-code
+           {:source/path "src/demo.clj"
+            :source/text "(ns demo)\n(def old 1)\n"
+            :target/path "lib/demo.hal"}
+           {:catalog catalog :mode :safe})]
+      [(:target/path result)
+       (:changed result)
+       (str/includes? (:after result) "new")])
+    ["lib/demo.hal" true true])])
+
+results

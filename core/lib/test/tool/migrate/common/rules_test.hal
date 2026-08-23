@@ -1,0 +1,43 @@
+(ns tool.migrate.common.rules-test
+  (:use code.test)
+  (:require [tool.migrate.common.rules :as catalog]
+            [tool.migrate.common.rule :as rule]))
+
+(def migration-catalog
+  {:document/id :demo/migration
+   :document/type :code-migration-spec
+   :migration/rules
+   [{:rule/id :demo/rename
+     :rule/languages [:clojure :hara]
+     :rule/phase :expression
+     :rule/priority 10
+     :rule/kind :token
+     :rule/match {:clojure {:text "old"}
+                  :hara {:text "legacy"}}
+     :rule/rewrite {:clojure {:op :replace-token :text "new"}
+                    :hara {:op :replace-token :text "native"}}
+     :rule/safety :safe
+     :rule/evidence {:source/path "src/demo.clj"
+                     :target/spec :hara/foundation}}]})
+
+^{:refer tool.migrate.common.rules/validate-catalog}
+(fact "catalog validation accepts the external rule envelope"
+  (:valid (catalog/validate-catalog migration-catalog)) => true)
+
+^{:refer tool.migrate.common.rules/rules-for}
+(fact "language branches are selected independently"
+  [(get-in (first (catalog/rules-for migration-catalog :clojure)) [:match :text])
+   (get-in (first (catalog/rules-for migration-catalog :hara)) [:match :text])
+   (get-in (first (catalog/rules-for migration-catalog :hara)) [:rewrite :text])]
+  => ["old" "legacy" "native"])
+
+^{:refer tool.migrate.common.rule/compile-rules}
+(fact "canonical rules retain deterministic ordering and evidence"
+  (let [compiled (rule/compile-rules (catalog/rules-for migration-catalog :clojure))]
+    [(count compiled)
+     (:compiled/index (first compiled))
+     (:id (first compiled))
+     (count (:evidence (first compiled)))]
+    => [1 0 :demo/rename 1]))
+
+(pr-str (run {:namespace "tool.migrate.common.rules-test"}))

@@ -1,0 +1,31 @@
+(ns tool.migrate.policy.foundation.resolver
+  (:require [std.block :as block]
+            [code.framework.navigation :as nav]))
+
+(defn host-symbol?
+  [value]
+  (and (string? value)
+       (or (str/starts-with? value ".")
+           (and (not (empty? value))
+                (= (str/upper-case (str/slice value 0 1))
+                   (str/slice value 0 1))))))
+
+(defn match-jvm-interop
+  [root context]
+  (vec
+   (keep
+    (fn [location]
+      (let [value (nav/current location)]
+        (if (and (block/token? value)
+                 (host-symbol? (block/string value)))
+          (merge (nav/evidence location)
+                 {:rule/id (:rule/id (:rule context))})
+          nil)))
+    (nav/walk-locations root))))
+
+(defn rewrite-jvm-interop
+  [root match context]
+  ;; Host interop is deliberately review-only. The function is present as a
+  ;; deterministic resolver target, but it never silently invents a Hara host
+  ;; adapter.
+  root)

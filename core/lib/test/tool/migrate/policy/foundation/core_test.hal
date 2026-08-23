@@ -1,0 +1,9 @@
+(ns tool.migrate.policy.foundation.core-test
+  (:use code.test)
+  (:require [tool.migrate.policy.foundation.core :as core]))
+
+^{:refer tool.migrate.policy.foundation.core/plan}
+(fact "Foundation policy loads behind its dedicated namespace"
+  (function? core/plan) => true)
+
+(pr-str (run {:namespace "tool.migrate.policy.foundation.core-test"}))

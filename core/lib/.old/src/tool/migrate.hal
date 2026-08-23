@@ -1,0 +1,1591 @@
+(ns tool.migrate
+  (:require [tool.migrate.write :as migrate-write]
+            [tool.migrate.rule :as migrate-rule]
+            [tool.migrate.project :as migrate-project]
+            [tool.migrate.corpus :as migrate-corpus]
+            [tool.migrate.git :as migrate-git]
+            [tool.migrate.profile :as migrate-profile]
+            [code.framework :as framework]
+            [code.manage.unit.structure :as structure]
+            [tool.migrate.script]
+            [std.foundation :as f]
+            [lang.common.grammar :as common-grammar]
+            [lang.common.grammar-api :as grammar-api]
+            [lang.common.grammar-macro :as grammar-macro]
+            [lang.common.grammar-spec :as grammar-spec]
+            [lang.common.grammar-xtalk-system :as grammar-xtalk-system]
+            [work.base :as work :refer [def.work]]
+            [work.flow.task :as task]
+            [work.flow.task.selector :as selector]))
+
+(f/intern-all tool.migrate.script)
+
+(def rule-id :std.task/def-work)
+
+(def migration-dispositions
+  #{:direct :adapted :test-vector :obsolete :new-only})
+
+(def reasoned-dispositions
+  #{:adapted :test-vector :obsolete :new-only})
+
+(def migration-actions
+  {:direct :materialize
+   :adapted :adapt
+   :test-vector :validate
+   :obsolete :retire
+   :new-only :implement})
+
+(def +v1-grammar-snapshot-target+
+  "lib/src/lang/base/v1/grammar_spec.hal")
+
+(def +v1-grammar-reference-fields+
+  [:macro :lower :value/template :format :value])
+
+(def +v1-grammar-spec-categories+
+  [grammar-spec/+op-builtin+ grammar-spec/+op-builtin-global+
+   grammar-spec/+op-builtin-module+ grammar-spec/+op-builtin-helper+
+   grammar-spec/+op-free-control+ grammar-spec/+op-free-literal+
+   grammar-spec/+op-math+ grammar-spec/+op-compare+ grammar-spec/+op-logic+
+   grammar-spec/+op-counter+ grammar-spec/+op-return+ grammar-spec/+op-throw+
+   grammar-spec/+op-await+ grammar-spec/+op-async+ grammar-spec/+op-data-table+
+   grammar-spec/+op-data-shortcuts+ grammar-spec/+op-data-range+
+   grammar-spec/+op-vars+ grammar-spec/+op-bit+ grammar-spec/+op-pointer+
+   grammar-spec/+op-fn+ grammar-spec/+op-block+
+   grammar-spec/+op-control-base+ grammar-spec/+op-control-general+
+   grammar-spec/+op-control-try-catch+ grammar-spec/+op-top-base+
+   grammar-spec/+op-top-global+ grammar-spec/+op-class+ grammar-spec/+op-for+
+   grammar-spec/+op-coroutine+ grammar-spec/+op-prototype+
+   grammar-spec/+op-functional-core+])
+
+(def +v1-grammar-macro-categories+
+  [grammar-macro/+op-macro+ grammar-macro/+op-macro-arrow+
+   grammar-macro/+op-macro-let+ grammar-macro/+op-macro-xor+
+   grammar-macro/+op-macro-case+ grammar-macro/+op-macro-forange+])
+
+(def +v1-grammar-spec-group-names+
+  '[+op-builtin+ +op-builtin-global+ +op-builtin-module+
+    +op-builtin-helper+ +op-free-control+ +op-free-literal+ +op-math+
+    +op-compare+ +op-logic+ +op-counter+ +op-return+ +op-throw+ +op-await+
+    +op-async+ +op-data-table+ +op-data-shortcuts+ +op-data-range+ +op-vars+
+    +op-bit+ +op-pointer+ +op-fn+ +op-block+ +op-control-base+
+    +op-control-general+ +op-control-try-catch+ +op-top-base+ +op-top-global+
+    +op-class+ +op-for+ +op-coroutine+ +op-prototype+ +op-functional-core+])
+
+(def +v1-grammar-macro-group-names+
+  '[+op-macro+ +op-macro-arrow+ +op-macro-let+ +op-macro-xor+
+    +op-macro-case+ +op-macro-forange+])
+
+(defn v1-grammar-groups
+  [names categories]
+  (mapv (fn [name entries] {:name name :entries (vec entries)})
+        names categories))
+
+(defn v1-grammar-xtalk-groups
+  []
+  (mapv (fn [pair]
+          {:name (symbol (str "+" (name (first pair)) "+"))
+           :entries (vec (second pair))})
+        grammar-xtalk-system/+xtalk-profiles+))
+
+(defn v1-grammar-categories->features
+  [categories]
+  (reduce
+   (fn [out entries]
+     (reduce (fn [features entry]
+               (assoc features (:op entry) entry))
+             out
+             entries))
+   {}
+   categories))
+
+(defn v1-grammar-reference-symbol
+  [value]
+  (if (or (nil? value) (symbol? value))
+    value
+    (let [text (pr-str value)]
+      (if (str/starts-with? text "#'")
+        (symbol (subs text 2))
+        value))))
+
+(defn v1-grammar-reference-at
+  "Extracts executable grammar identity before runtime call dereferencing."
+  [entry field]
+  (let [value (get entry field)]
+    (if (or (nil? value) (symbol? value))
+      value
+      (or (try
+            (var-sym (get entry field))
+            (catch Exception _ nil))
+          (v1-grammar-reference-symbol value)))))
+
+(defn v1-grammar-snapshot-data
+  "Converts executable Vars to stable qualified symbols in snapshot data."
+  [features]
+  (reduce-kv
+   (fn [out op entry]
+     (assoc out op
+            (reduce (fn [record field]
+                      (if (get record field)
+                        (assoc record field
+                               (v1-grammar-reference-at record field))
+                        record))
+                    entry
+                    +v1-grammar-reference-fields+)))
+   {}
+   features))
+
+(defn v1-grammar-entry-snapshot-data
+  [entry]
+  (reduce (fn [record field]
+            (if (get record field)
+              (assoc record field
+                     (v1-grammar-reference-at record field))
+              record))
+          entry
+          +v1-grammar-reference-fields+))
+
+(defn v1-grammar-group-snapshot-data
+  [groups]
+  (mapv (fn [group]
+          {:name (:name group)
+           :entries (mapv v1-grammar-entry-snapshot-data (:entries group))})
+        groups))
+
+(declare render-v1-edn)
+
+(defn render-v1-grammar-features
+  "Renders one deterministic, reviewable operator record per line."
+  [features]
+  (str "{\n"
+       (str/join
+        "\n"
+        (map (fn [op]
+               (str "   " (render-v1-edn op) " "
+                    (render-v1-edn (get features op))))
+             (sort-by str (keys features))))
+       "\n  }"))
+
+(defn render-v1-map-entry
+  [entry]
+  (str (render-v1-edn (first entry))
+       " "
+       (render-v1-edn (second entry))))
+
+(defn render-v1-edn
+  "Renders deterministic source EDN without relying on collection iteration."
+  [value]
+  (cond (map? value)
+        (let [entries
+              (sort-by (fn [entry]
+                         (render-v1-edn (first entry)))
+                       (vec value))]
+          (str "{" (str/join " " (map render-v1-map-entry entries)) "}"))
+
+        (set? value)
+        (let [values (sort-by render-v1-edn (vec value))]
+          (str "#{" (str/join " " (map render-v1-edn values)) "}"))
+
+        (vector? value)
+        (str "[" (str/join " " (map render-v1-edn value)) "]")
+
+        (sequential? value)
+        (str "(" (str/join " " (map render-v1-edn value)) ")")
+
+        :else (pr-str value)))
+
+(defn materialize-v1-grammar-snapshot-source
+  "Renders the deterministic source-owned V1 operator snapshot."
+  [features inputs fingerprint]
+  (str
+   "(ns lang.base.v1.grammar-spec\n"
+   "  (:require [lang.common.grammar :as grammar]\n"
+   "            [lang.common.grammar-api :as grammar-api]))\n\n"
+   "(def +version+ 1)\n\n"
+   ";; Generated by tool.migrate from the declared, fingerprinted inputs.\n"
+   "(def +migration-inputs+\n  '" (render-v1-edn inputs) ")\n\n"
+   "(def +feature-data+\n  '"
+   (render-v1-grammar-features (v1-grammar-snapshot-data features))
+   ")\n\n"
+   "(def +reference-fields+ [:macro :lower :value/template :format :value])\n\n"
+   "(defn hydrate-entry\n"
+   "  [entry]\n"
+   "  (reduce (fn [record field]\n"
+   "            (let [reference (get record field)]\n"
+   "              (if (and (symbol? reference) (namespace reference))\n"
+   "                (let [resolved (resolve reference)]\n"
+   "                  (if resolved\n"
+   "                    (assoc record field resolved)\n"
+   "                    (throw (ex-info \"Unable to hydrate V1 grammar reference\"\n"
+   "                                    {:field field :reference reference}))))\n"
+   "                record)))\n"
+   "          entry\n"
+   "          +reference-fields+))\n\n"
+   "(def +features+\n"
+   "  (reduce-kv (fn [out op entry]\n"
+   "               (assoc out op (hydrate-entry entry)))\n"
+   "             {}\n"
+   "             +feature-data+))\n\n"
+   "(def +fingerprint+ \"" fingerprint "\")\n\n"
+   "(def +operators+\n"
+   "  {:define +features+\n"
+   "   :override {}})\n\n"
+   "(defn extend\n"
+   "  \"Extends the V1 snapshot with operators that do not already exist.\"\n"
+   "  [entries]\n"
+   "  (grammar/build:extend +features+ entries))\n\n"
+   "(defn overwrite\n"
+   "  \"Overwrites existing V1 operators with target-specific entries.\"\n"
+   "  [entries]\n"
+   "  (grammar/build:override +features+ entries))\n\n"
+   "(defn snapshot-valid?\n"
+   "  \"Detects a stale or manually altered materialized snapshot.\"\n"
+   "  []\n"
+   "  (= +fingerprint+ (grammar-api/fingerprint +feature-data+)))\n"))
+
+(defn materialize-v1-grammar-snapshot
+  "Returns a reproducible V1 snapshot artifact and its migration facts."
+  [features inputs]
+  (let [snapshot-data (v1-grammar-snapshot-data features)
+        fingerprint
+        (grammar-api/fingerprint snapshot-data)
+        source
+        (materialize-v1-grammar-snapshot-source
+         features inputs fingerprint)]
+    {:path +v1-grammar-snapshot-target+
+     :after source
+     :fingerprint fingerprint
+     :inputs inputs
+     :changed true
+     :rules [:lang.base/v1-grammar-snapshot]
+     :facts {:source (count inputs)
+             :direct 0
+             :adapted (count inputs)
+             :unmapped 0}
+     :diagnostics []}))
+
+(defn render-v1-grammar-group-source
+  [group]
+  (let [name (str (:name group))
+        data-name (str (subs name 0 (- (count name) 1)) "-data+")]
+    (str "(def " data-name "\n  '"
+         (render-v1-edn (:entries group)) ")\n\n"
+         "(def " name "\n  (mapv hydrate-entry " data-name "))")))
+
+(defn materialize-v1-grouped-grammar-snapshot-source
+  [groups inputs fingerprint]
+  (let [data-groups (v1-grammar-group-snapshot-data groups)
+        names (mapv :name data-groups)
+        data-names
+        (mapv (fn [name]
+                (let [text (str name)]
+                  (symbol (str (subs text 0 (- (count text) 1)) "-data+"))))
+              names)]
+    (str
+     "(ns lang.base.v1.grammar-spec\n"
+     "  (:require [lang.common.grammar :as grammar]\n"
+     "            [lang.common.grammar-api :as grammar-api]))\n\n"
+     "(def +version+ 1)\n\n"
+     ";; Generated by tool.migrate as named, source-owned feature groups.\n"
+     "(def +migration-inputs+\n  '" (render-v1-edn inputs) ")\n\n"
+     "(def +reference-fields+ [:macro :lower :value/template :format :value])\n\n"
+     "(defn hydrate-entry\n"
+     "  [entry]\n"
+     "  (reduce (fn [record field]\n"
+     "            (let [reference (get record field)]\n"
+     "              (if (and (symbol? reference) (namespace reference))\n"
+     "                (let [resolved (resolve reference)]\n"
+     "                  (if resolved\n"
+     "                    (assoc record field resolved)\n"
+     "                    (throw (ex-info \"Unable to hydrate V1 grammar reference\"\n"
+     "                                    {:field field :reference reference}))))\n"
+     "                record)))\n"
+     "          entry\n"
+     "          +reference-fields+))\n\n"
+     (str/join "\n\n" (map render-v1-grammar-group-source data-groups))
+     "\n\n(def +feature-group-names+\n  '" (render-v1-edn names) ")\n\n"
+     "(def +feature-group-data+\n  ["
+     (str/join " " (map str data-names)) "])\n\n"
+     "(def +feature-groups+\n  ["
+     (str/join " " (map str names)) "])\n\n"
+     "(def +snapshot-data+\n"
+     "  {:names +feature-group-names+ :groups +feature-group-data+})\n\n"
+     "(def +features+\n"
+     "  (reduce (fn [out entries]\n"
+     "            (reduce (fn [features entry]\n"
+     "                      (assoc features (:op entry) entry))\n"
+     "                    out entries))\n"
+     "          {} +feature-groups+))\n\n"
+     "(def +fingerprint+ \"" fingerprint "\")\n\n"
+     "(def +operators+ {:define +features+ :override {}})\n\n"
+     "(defn extend [entries] (grammar/build:extend +features+ entries))\n\n"
+     "(defn overwrite [entries] (grammar/build:override +features+ entries))\n\n"
+     "(defn snapshot-valid?\n  []\n"
+     "  (= +fingerprint+ (grammar-api/fingerprint +snapshot-data+)))\n")))
+
+(defn materialize-v1-grouped-grammar-snapshot
+  [groups inputs]
+  (let [data-groups (v1-grammar-group-snapshot-data groups)
+        snapshot-data {:names (mapv :name data-groups)
+                       :groups (mapv :entries data-groups)}
+        fingerprint (grammar-api/fingerprint snapshot-data)]
+    {:path +v1-grammar-snapshot-target+
+     :after
+     (materialize-v1-grouped-grammar-snapshot-source
+      groups inputs fingerprint)
+     :fingerprint fingerprint
+     :inputs inputs
+     :groups (mapv :name groups)
+     :changed true
+     :rules [:lang.base/v1-grouped-grammar-snapshot]
+     :facts {:source (count inputs) :direct 0
+             :adapted (count inputs) :unmapped 0}
+     :diagnostics []}))
+
+(defn current-v1-grammar-snapshot-input
+  "Builds the declared V1 migration input from common source authorities."
+  []
+  (let [spec-groups
+        (v1-grammar-groups +v1-grammar-spec-group-names+
+                           +v1-grammar-spec-categories+)
+        macro-groups
+        (v1-grammar-groups +v1-grammar-macro-group-names+
+                           +v1-grammar-macro-categories+)
+        xtalk-groups (v1-grammar-xtalk-groups)
+        groups (vec (concat spec-groups macro-groups xtalk-groups))
+        spec-features
+        (v1-grammar-categories->features +v1-grammar-spec-categories+)
+        macro-features
+        (v1-grammar-categories->features +v1-grammar-macro-categories+)
+        xtalk-features (common-grammar/build-xtalk)]
+    {:groups groups
+     :features (merge spec-features macro-features xtalk-features)
+     :inputs
+     [{:source 'lang.common.grammar-spec
+       :fingerprint
+       (grammar-api/fingerprint (v1-grammar-snapshot-data spec-features))}
+      {:source 'lang.common.grammar-macro
+       :fingerprint
+       (grammar-api/fingerprint (v1-grammar-snapshot-data macro-features))}
+      {:source 'lang.common.grammar-xtalk
+       :fingerprint
+       (grammar-api/fingerprint (v1-grammar-snapshot-data xtalk-features))}]}))
+
+(defn materialize-current-v1-grammar-snapshot
+  []
+  (let [input (current-v1-grammar-snapshot-input)]
+    (materialize-v1-grouped-grammar-snapshot
+     (:groups input) (:inputs input))))
+
+(declare migration-diagnostic)
+
+(defn validate-v1-grammar-snapshot
+  "Compares checked-in source with deterministic rematerialization."
+  [current-source features inputs]
+  (let [materialized (materialize-v1-grammar-snapshot features inputs)
+        stale (not= current-source (:after materialized))]
+    (assoc materialized
+           :stale stale
+           :valid (not stale)
+           :changed stale
+           :diagnostics
+           (if stale
+             [(migration-diagnostic
+               :migration/stale-snapshot
+               "Checked-in V1 grammar snapshot differs from materialization"
+               {:path +v1-grammar-snapshot-target+})]
+             []))))
+
+(defn validate-current-v1-grammar-snapshot
+  [current-source]
+  (let [materialized (materialize-current-v1-grammar-snapshot)
+        stale (not= current-source (:after materialized))]
+    (assoc materialized
+           :stale stale
+           :valid (not stale)
+           :changed stale
+           :diagnostics
+           (if stale
+             [(migration-diagnostic
+               :migration/stale-snapshot
+               "Checked-in grouped V1 grammar differs from materialization"
+               {:path +v1-grammar-snapshot-target+})]
+             []))))
+
+(def +foundation-language-ledger+
+  [{:source/refer 'tahto.base.emit-data/emit-data
+    :target/refer 'lang.common.emit-data/emit-data
+    :disposition :direct
+    :stage/from :emit
+    :stage/to :emit
+    :provenance
+    {:repository :foundation-base
+     :path "src/tahto/base/emit_data.clj"}
+    :validation 'lang.common.emit-data-test/run}
+   {:source/refer 'tahto.base.emit-template/emit-template
+    :target/refer 'lang.common.emit-template/emit-template
+    :disposition :direct
+    :stage/from :emit
+    :stage/to :emit
+    :provenance
+    {:repository :foundation-base
+     :path "src/tahto/base/emit_template.clj"}
+    :validation 'lang.common.emit-template-test/run}
+   {:source/refer 'tahto.base.grammar/build
+    :target/refer 'lang.common.grammar-api/materialize
+    :disposition :adapted
+    :stage/from :grammar-build
+    :stage/to :grammar-materialize
+    :reason :grammar-now-owns-profiles-facets-and-fingerprints
+    :provenance
+    {:repository :foundation-base
+     :path "src/tahto/base/grammar.clj"}
+    :validation 'lang.common.grammar-api-test/run}
+   {:source/refer 'tahto.base.preprocess-base/to-input
+    :target/refer 'lang.common.emit-preprocess/to-input
+    :disposition :adapted
+    :stage/from :preprocess
+    :stage/to :emit-preprocess
+    :reason :preprocessing-is-split-by-pipeline-stage
+    :provenance
+    {:repository :foundation-base
+     :path "src/tahto/base/preprocess_base.clj"}
+    :validation 'lang.common.emit-preprocess-test/run}
+   {:source/refer 'tahto.common.book/book
+    :target/refer 'lang.common.book/book
+    :disposition :adapted
+    :stage/from :mutable-library
+    :stage/to :source-owned-book
+    :reason :books-replace-global-library-snapshots
+    :provenance
+    {:repository :foundation-base
+     :path "src/tahto/common/book.clj"}
+    :validation 'lang.common.book-test/run}])
+
+(defn migration-diagnostic
+  [error message data]
+  (merge {:level :error
+          :migration/error error
+          :message message}
+         data))
+
+(defn qualified-reference?
+  [value]
+  (and (symbol? value) (boolean (namespace value))))
+
+(defn migration-record-diagnostics
+  "Validates one semantic migration record without throwing. Records describe
+   ownership and intent; they do not contain generated target source."
+  [record]
+  (let [disposition (:disposition record)
+        source (:source/refer record)
+        target (:target/refer record)
+        provenance (:provenance record)
+        validation (:validation record)
+        reason (:reason record)]
+    (vec
+     (concat
+      (if (map? record)
+        []
+        [(migration-diagnostic
+          :migration/invalid-record
+          "Migration record must be a map"
+          {:record record})])
+      (if (has? migration-dispositions disposition)
+        []
+        [(migration-diagnostic
+          :migration/invalid-disposition
+          "Migration disposition is not supported"
+          {:disposition disposition})])
+      (if (or (= :new-only disposition)
+              (qualified-reference? source))
+        []
+        [(migration-diagnostic
+          :migration/missing-source
+          "Source-owned migration requires a qualified source reference"
+          {:source/refer source})])
+      (if (or (= :obsolete disposition)
+              (qualified-reference? target))
+        []
+        [(migration-diagnostic
+          :migration/missing-target
+          "Non-obsolete migration requires a qualified target reference"
+          {:target/refer target})])
+      (if (or (= :new-only disposition) provenance)
+        []
+        [(migration-diagnostic
+          :migration/missing-provenance
+          "Source-owned migration requires provenance"
+          {:source/refer source})])
+      (if (or (= :obsolete disposition) validation)
+        []
+        [(migration-diagnostic
+          :migration/missing-validation
+          "Active migration requires a validation reference"
+          {:target/refer target})])
+      (if (or (not (has? reasoned-dispositions disposition)) reason)
+        []
+        [(migration-diagnostic
+          :migration/missing-reason
+          "Architectural migration disposition requires a reason"
+          {:disposition disposition})])))))
+
+(defn duplicate-source-diagnostics
+  [records]
+  (reduce-kv
+   (fn [diagnostics source owners]
+     (if (and source (< 1 (count owners)))
+       (conj diagnostics
+             (migration-diagnostic
+              :migration/duplicate-source
+              "Migration source has multiple semantic owners"
+              {:source/refer source
+               :owners (vec (map :target/refer owners))}))
+       diagnostics))
+   []
+   (group-by :source/refer records)))
+
+(defn migration-ledger-diagnostics
+  [records]
+  (vec
+   (concat
+    (mapcat
+     (fn [indexed]
+       (let [index (first indexed)
+             record (second indexed)]
+         (map (fn [diagnostic]
+                (assoc diagnostic :record/index index))
+              (migration-record-diagnostics record))))
+     (map-indexed vector records))
+    (duplicate-source-diagnostics records))))
+
+(defn migration-ledger-valid?
+  [records]
+  (empty? (migration-ledger-diagnostics records)))
+
+(defn reference-namespace
+  [reference]
+  (if (qualified-reference? reference)
+    (namespace reference)
+    nil))
+
+(defn migration-record-matches?
+  [record query]
+  (reduce-kv
+   (fn [matches key expected]
+     (if (not matches)
+       false
+       (let [actual
+             (cond (= key :source/namespace)
+                   (reference-namespace (:source/refer record))
+
+                   (= key :target/namespace)
+                   (reference-namespace (:target/refer record))
+
+                   :else (get record key))]
+         (= (str expected) (str actual)))))
+   true
+   query))
+
+(defn migration-ledger-query
+  "Queries semantic records by field, source/namespace, or target/namespace."
+  [records query]
+  (vec (filter (fn [record]
+                 (migration-record-matches? record query))
+               records)))
+
+(defn inventory-record-diagnostics
+  [record inventory]
+  (let [disposition (:disposition record)
+        source (:source/refer record)
+        target (:target/refer record)
+        validation (:validation record)
+        sources (set (:source/references inventory))
+        targets (set (:target/references inventory))
+        validations (set (:validation/references inventory))]
+    (vec
+     (concat
+      (if (or (= :new-only disposition) (has? sources source))
+        []
+        [(migration-diagnostic
+          :migration/stale-source
+          "Ledger source is absent from the source inventory"
+          {:source/refer source})])
+      (if (or (= :obsolete disposition) (has? targets target))
+        []
+        [(migration-diagnostic
+          :migration/stale-target
+          "Ledger target is absent from the target inventory"
+          {:target/refer target})])
+      (if (or (= :obsolete disposition) (has? validations validation))
+        []
+        [(migration-diagnostic
+          :migration/stale-validation
+          "Ledger validation is absent from the validation inventory"
+          {:validation validation})])))))
+
+(defn unaccounted-source-diagnostics
+  [records inventory]
+  (let [accounted
+      (set
+       (keep (fn [record]
+               (get record :source/refer))
+             records))]
+    (vec
+     (keep
+      (fn [source]
+        (if (has? accounted source)
+          nil
+          (migration-diagnostic
+           :migration/unaccounted-source
+           "Source inventory entry has no semantic migration record"
+           {:source/refer source})))
+      (:source/references inventory)))))
+
+(defn migration-ledger-audit
+  [records inventory]
+  (let [structural (migration-ledger-diagnostics records)
+        inventory-diagnostics
+        (vec
+         (concat
+          (mapcat (fn [record]
+                    (inventory-record-diagnostics record inventory))
+                  records)
+          (unaccounted-source-diagnostics records inventory)))
+        diagnostics (vec (concat structural inventory-diagnostics))]
+    {:valid (empty? diagnostics)
+     :records (count records)
+     :source/references (count (:source/references inventory))
+     :diagnostics diagnostics}))
+
+(defn migration-record-plan
+  ([record]
+   (migration-record-plan record nil))
+  ([record inventory]
+   (let [diagnostics
+         (vec
+          (concat
+           (migration-record-diagnostics record)
+           (if inventory
+             (inventory-record-diagnostics record inventory)
+             [])))]
+     {:action (get migration-actions (:disposition record))
+      :status (if (empty? diagnostics) :ready :blocked)
+      :write false
+      :source/refer (:source/refer record)
+      :target/refer (:target/refer record)
+      :validation (:validation record)
+      :diagnostics diagnostics})))
+
+(defn migration-ledger-plan
+  "Returns a dry, non-writing explanation of ledger coverage and diagnostics."
+  ([records]
+   (migration-ledger-plan records nil))
+  ([records inventory]
+  (let [audit (if inventory
+                (migration-ledger-audit records inventory)
+                {:valid (migration-ledger-valid? records)
+                 :diagnostics (migration-ledger-diagnostics records)})
+        diagnostics (:diagnostics audit)
+        queue (vec (map (fn [record]
+                          (migration-record-plan record inventory))
+                        records))]
+    {:write false
+     :valid (empty? diagnostics)
+     :records (count records)
+     :queue queue
+     :actions
+     (reduce (fn [counts item]
+               (update counts
+                       (:action item)
+                       (fn [current] (inc (or current 0)))))
+             {}
+             queue)
+     :dispositions
+     (reduce (fn [counts record]
+               (update counts
+                       (:disposition record)
+                       (fn [current] (inc (or current 0)))))
+             {}
+             records)
+     :diagnostics diagnostics})))
+
+(def +lang-model-v1-prefix+ "lang.model.spec-")
+(def +lang-model-v1-target-prefix+ "lang.model.v1.spec-")
+(def +lang-model-v1-path-prefix+ "lang/model/spec_")
+(def +lang-model-v1-target-path-prefix+ "lang/model/v1/spec_")
+
+(def +foundation-common-test-rewrites+
+  [["tahto.base.emit" "lang.common.emit"]
+   ["tahto.base.grammar" "lang.common.grammar"]
+   ["tahto.base.preprocess-base" "lang.common.emit-preprocess"]
+   ["tahto.base.util" "lang.common.util"]
+   ["tahto.common.book" "lang.common.book"]
+   ["tahto.model.spec-js" "lang.model.v1.spec-js"]
+   ["tahto.model.spec-lua" "lang.model.v1.spec-lua"]
+   ["tahto.model.annex.spec-rust" "lang.model.v1.spec-rust"]])
+
+(def +foundation-common-blocked-prefixes+ ["tahto.core"])
+
+(def +foundation-emitter-direct-prefixes+
+  ["tahto.base.emit-common/"
+   "tahto.base.emit-data/"
+   "tahto.base.emit-helper/"
+   "tahto.base.emit-template/"])
+
+(def +foundation-block-vector-references+
+  #{'tahto.base.emit-block/test-block-loop.do
+    'tahto.base.emit-block/test-block-loop.do*
+    'tahto.base.emit-block/test-block-loop.for
+    'tahto.base.emit-block/test-block-loop.forange
+    'tahto.base.emit-block/test-block-loop.if
+    'tahto.base.emit-block/test-block-loop.when
+    'tahto.base.emit-block/test-block-loop.switch
+    'tahto.base.emit-block/test-block-loop.block
+    'tahto.base.emit-block/test-block-loop.try})
+
+(def +foundation-function-vector-references+
+  #{'tahto.base.emit-block/test-fn-emit.fn
+    'tahto.base.emit-block/test-fn-emit.name})
+
+(def +foundation-emitter-policy-overrides+
+  {'tahto.base.emit/form-key
+   {:target/refer 'lang.common.emit-common/form-key
+    :disposition :adapted
+    :stage/to :emit-dispatch
+    :reason :form-classification-is-owned-by-common-emitter-dispatch}
+   'tahto.base.emit-common/emit-map-key
+   {:target/refer 'lang.common.emit-data/emit-map-key}
+   'tahto.base.emit-common/emit-map-entry
+   {:target/refer 'lang.common.emit-data/emit-map-entry}
+   'tahto.base.emit-common/emit-coll-layout
+   {:target/refer 'lang.common.emit-data/emit-coll-layout}
+   'tahto.base.emit-common/emit-coll
+   {:target/refer 'lang.common.emit-data/emit-coll}
+   'tahto.base.emit-common/emit-data-standard
+   {:target/refer 'lang.common.emit-data/emit-data-standard}
+   'tahto.base.emit-common/emit-data
+   {:target/refer 'lang.common.emit-data/emit-data}
+   'tahto.base.emit-common/emit-quote
+   {:target/refer 'lang.common.emit-data/emit-quote}
+   'tahto.base.emit-common/emit-table-group
+   {:target/refer 'lang.common.emit-data/emit-table-group}
+   'tahto.base.emit-common/emit-table
+   {:target/refer 'lang.common.emit-data/emit-table}
+   'tahto.base.emit-common/emit-raw
+   {:target/refer 'lang.common.emit-common/emit-free
+    :disposition :test-vector
+    :stage/to :emit
+    :reason :adopted-reference-is-an-emit-free-behavior-vector}
+   'tahto.base.emit-common/emit-macro.->
+   {:target/refer 'lang.common.grammar-macro/tf-macroexpand
+    :disposition :test-vector
+    :stage/to :grammar-expand
+    :reason :threading-is-owned-by-source-grammar-macro-expansion}
+   'tahto.base.emit-common/emit-macro.->>
+   {:target/refer 'lang.common.grammar-macro/tf-macroexpand
+    :disposition :test-vector
+    :stage/to :grammar-expand
+    :reason :threading-is-owned-by-source-grammar-macro-expansion}
+   'tahto.base.emit-common/emit-macro.xor
+   {:target/refer 'lang.common.grammar-macro/tf-xor
+    :disposition :test-vector
+    :stage/to :grammar-expand
+    :reason :xor-lowering-is-owned-by-source-grammar-macro-expansion}
+   'tahto.base.emit-common/emit-with-uuid
+   {:disposition :adapted
+    :stage/to :emit-capability
+    :reason :portable-uuid-generation-replaces-host-specific-generation}
+   'tahto.base.emit-common/emit-with-rand
+   {:disposition :adapted
+    :stage/to :emit-capability
+    :reason :portable-random-generation-replaces-host-specific-generation}
+   'tahto.base.emit-common/emit-op
+   {:disposition :adapted
+    :stage/to :emit-adapter
+    :reason :operation-dispatch-is-an-explicit-emitter-adapter}
+   'tahto.base.emit-common/emit-common-loop
+   {:disposition :adapted
+    :stage/to :emit-orchestration
+    :reason :recursive-emission-now-uses-a-cycle-free-explicit-boundary}
+   'tahto.base.emit-common/emit-common
+   {:disposition :adapted
+    :stage/to :emit-orchestration
+    :reason :public-emission-now-routes-through-the-redesigned-pipeline}})
+
+(defn source-reference-entries
+  "Extracts qualified metadata references and adoption provenance."
+  [source prefix]
+  (vec
+   (keep
+    (fn [line]
+      (let [match (re-find #":refer\s+[^\s\}\]]+" line)
+            reference (if match (subs match 7) nil)]
+        (if (and reference (str/starts-with? (str reference) prefix))
+          {:reference (symbol (str reference))
+           :adopted? (str/includes? line ":adopt true")}
+          nil)))
+    (str/split-lines source))))
+
+(defn source-references
+  "Extracts qualified metadata references with the supplied namespace prefix."
+  [source prefix]
+  (vec (map :reference (source-reference-entries source prefix))))
+
+(defn foundation-emitter-reference?
+  [reference]
+  (str/starts-with? (str reference) "tahto.base.emit"))
+
+(defn foundation-emitter-policy
+  [reference]
+  (let [reference (symbol (str reference))
+        direct
+        (reduce (fn [found prefix]
+                  (or found (str/starts-with? (str reference) prefix)))
+                false
+                +foundation-emitter-direct-prefixes+)
+        base {:disposition (if direct :direct :adapted)
+              :stage/to (if direct :emit :emit-adapter)}
+        vector-policy
+        (cond (has? +foundation-block-vector-references+ reference)
+              {:target/refer 'lang.common.emit-block/test-block-emit
+               :disposition :test-vector
+               :stage/to :emit-block
+               :reason :operator-specific-fact-validates-recursive-block-emission}
+
+              (has? +foundation-function-vector-references+ reference)
+              {:target/refer 'lang.common.emit-fn/test-fn-emit
+               :disposition :test-vector
+               :stage/to :emit-function
+               :reason :function-shape-fact-validates-recursive-function-emission}
+
+              :else {})]
+    (merge base vector-policy
+           (get +foundation-emitter-policy-overrides+ reference))))
+
+(defn foundation-emitter-disposition
+  [reference]
+  (:disposition (foundation-emitter-policy reference)))
+
+(defn route-foundation-emitter-reference
+  [reference]
+  (symbol
+   (replace-routes (str reference) +foundation-common-test-rewrites+)))
+
+(defn target-test-validation
+  [target-reference]
+  (symbol (str (namespace target-reference) "-test/run")))
+
+(defn foundation-emitter-ledger-record
+  ([reference source-path validation]
+   (foundation-emitter-ledger-record reference source-path validation false))
+  ([reference source-path validation adopted?]
+  (let [policy (foundation-emitter-policy reference)
+        disposition (:disposition policy)
+        target (or (:target/refer policy)
+                   (route-foundation-emitter-reference reference))
+        validation (or (:validation policy)
+                       (if (:target/refer policy)
+                         (target-test-validation target)
+                         validation))]
+    (cond->
+     {:source/refer reference
+      :target/refer target
+      :disposition disposition
+      :stage/from :emit
+      :stage/to (:stage/to policy)
+      :provenance {:repository :foundation-base
+                   :path source-path
+                   :adopted? adopted?}
+      :validation validation}
+      (has? reasoned-dispositions disposition)
+      (assoc :reason (or (:reason policy)
+                         :emitter-behavior-moved-to-redesigned-stage))))))
+
+(defn foundation-emitter-ledger-records
+  "Builds semantic records from the Foundation fact metadata in one source unit."
+  [unit]
+  (let [validation (or (:target/validation unit)
+                       (symbol (str (:target/namespace unit) "/run")))]
+    (vec
+     (map (fn [entry]
+            (foundation-emitter-ledger-record
+             (:reference entry) (:path unit) validation (:adopted? entry)))
+          (source-reference-entries (:source unit) "tahto.base.emit")))))
+
+(defn foundation-emitter-record-owners
+  "Selects canonical source owners while retaining genuine duplicate ownership
+   for blocking diagnostics. Adopted-only pseudo references retain one stable
+  representative as test-vector authority."
+  [records]
+  (let [selected-paths
+        (reduce-kv
+         (fn [result source owners]
+           (let [canonical
+                 (vec (filter (fn [record]
+                                (not (get-in record [:provenance :adopted?])))
+                              owners))
+                 selected (if (empty? canonical)
+                            [(first owners)]
+                            canonical)]
+             (assoc result source
+                    (set (map (fn [record]
+                                (get-in record [:provenance :path]))
+                              selected)))))
+         {}
+         (group-by :source/refer records))
+        result
+        (reduce
+         (fn [state record]
+           (let [source (:source/refer record)
+                 path (get-in record [:provenance :path])
+                 owner-key [source path]]
+             (if (and (has? (get selected-paths source) path)
+                      (not (has? (:seen state) owner-key)))
+               {:seen (conj (:seen state) owner-key)
+                :records (conj (:records state) record)}
+               state)))
+         {:seen #{} :records []}
+         records)]
+    (:records result)))
+
+(defn foundation-emitter-inventory
+  "Creates the audit inventory from Foundation units and current target tests."
+  [source-units target-units]
+  (let [records
+        (foundation-emitter-record-owners
+         (vec (mapcat foundation-emitter-ledger-records source-units)))]
+    {:records records
+     :inventory
+     {:source/references (vec (map :source/refer records))
+      :target/references
+      (vec
+       (mapcat (fn [unit]
+                 (source-references (:source unit) "lang.common."))
+               target-units))
+      :validation/references
+      (vec (map (fn [unit]
+                  (or (:validation unit)
+                      (symbol (str (:namespace unit) "/run"))))
+                target-units))}}))
+
+(defn read-migration-source
+  [root path]
+  (str/decode-utf8
+   (deref (File/read (if root (File/resolve root path) path)))))
+
+(defn load-migration-unit
+  [root unit]
+  (assoc unit :source (read-migration-source root (:path unit))))
+
+(defn foundation-emitter-path-audit
+  "Loads declared Foundation and target test units, then returns their semantic
+   ledger, inventory, and blocking audit in one reproducible result."
+  [root source-units target-units]
+  (let [loaded-sources
+        (vec (map (fn [unit] (load-migration-unit root unit)) source-units))
+        loaded-targets
+        (vec (map (fn [unit] (load-migration-unit root unit)) target-units))
+        generated (foundation-emitter-inventory loaded-sources loaded-targets)
+        audit (migration-ledger-audit (:records generated)
+                                      (:inventory generated))]
+    (assoc generated :audit audit)))
+
+(def +foundation-grammar-new-records+
+  [{:source/refer nil
+    :target/refer 'lang.common.grammar-api/profile
+    :disposition :new-only
+    :stage/from nil
+    :stage/to :grammar-declare
+    :reason :profiles-are-versioned-source-owned-grammar-inputs
+    :validation 'lang.common.grammar-api-test/run}
+   {:source/refer nil
+    :target/refer 'lang.common.grammar-api/definition
+    :disposition :new-only
+    :stage/from nil
+    :stage/to :grammar-declare
+    :reason :grammar-definitions-replace-global-mutable-builder-state
+    :validation 'lang.common.grammar-api-test/run}
+   {:source/refer nil
+    :target/refer 'lang.common.grammar-api/materialize
+    :disposition :new-only
+    :stage/from nil
+    :stage/to :grammar-materialize
+    :reason :materialization-records-coordinates-provenance-and-fingerprints
+    :validation 'lang.common.grammar-api-test/run}
+   {:source/refer nil
+    :target/refer 'lang.common.grammar-api/fingerprint
+    :disposition :new-only
+    :stage/from nil
+    :stage/to :grammar-materialize
+    :reason :source-owned-grammars-require-stable-content-identities
+    :validation 'lang.common.grammar-api-test/run}])
+
+(defn foundation-grammar-reference?
+  [reference]
+  (let [value (str reference)]
+    (or (str/starts-with? value "tahto.base.grammar")
+        (str/starts-with? value "tahto.base.preprocess"))))
+
+(defn foundation-grammar-policy
+  [reference]
+  (let [value (str reference)]
+    (cond (= reference 'tahto.base.preprocess-input/to-input-form)
+          {:disposition :adapted :stage/from :preprocess-input
+           :stage/to :input
+           :reason :reader-normalization-remains-at-input-while-symbol-resolution-moved-to-resolve}
+
+          (= reference 'tahto.base.grammar-xtalk/tf-global-has?)
+          {:disposition :adapted :stage/from :grammar-expand
+           :stage/to :grammar-expand
+           :reason :global-membership-uses-canonical-nil-comparison}
+
+          (str/starts-with? value "tahto.base.grammar-macro/")
+          {:disposition :direct :stage/from :grammar-expand
+           :stage/to :grammar-expand}
+
+          (str/starts-with? value "tahto.base.grammar-spec/")
+          {:disposition :direct :stage/from :grammar-spec
+           :stage/to :grammar-spec}
+
+          (str/starts-with? value "tahto.base.grammar-xtalk/")
+          {:disposition :direct :stage/from :grammar-expand
+           :stage/to :grammar-expand}
+
+          (str/starts-with? value "tahto.base.grammar-xtalk-system/")
+          {:disposition :adapted :stage/from :grammar-analysis
+           :stage/to :grammar-profile
+           :reason :xtalk-analysis-now-feeds-explicit-source-owned-profiles}
+
+          (str/starts-with? value "tahto.base.grammar/")
+          {:disposition :adapted :stage/from :grammar-build
+           :stage/to :grammar-compatibility
+           :reason :builder-intent-is-preserved-behind-versioned-materialization}
+
+          (str/starts-with? value "tahto.base.preprocess-input/")
+          {:disposition :direct :stage/from :preprocess-input
+           :stage/to :input}
+
+          (str/starts-with? value "tahto.base.preprocess-value/")
+          {:disposition :adapted :stage/from :preprocess-value
+           :stage/to :staging
+           :reason :value-expansion-is-owned-by-the-staging-boundary}
+
+          :else
+          {:disposition :adapted :stage/from :preprocess
+           :stage/to :staging
+           :reason :preprocessing-is-split-into-explicit-input-resolve-and-staging-stages})))
+
+(defn route-foundation-grammar-reference
+  [reference]
+  (symbol
+   (str/replace (str reference) "tahto.base." "lang.common.")))
+
+(defn foundation-grammar-ledger-record
+  [reference source-path validation adopted?]
+  (let [policy (foundation-grammar-policy reference)
+        disposition (:disposition policy)
+        target (route-foundation-grammar-reference reference)]
+    (cond->
+     {:source/refer reference
+      :target/refer target
+      :disposition disposition
+      :stage/from (:stage/from policy)
+      :stage/to (:stage/to policy)
+      :provenance {:repository :foundation-base
+                   :path source-path
+                   :adopted? adopted?}
+      :validation validation}
+      (has? reasoned-dispositions disposition)
+      (assoc :reason (:reason policy)))))
+
+(defn foundation-grammar-ledger-records
+  [unit]
+  (let [validation (or (:target/validation unit)
+                       (symbol (str (:target/namespace unit) "/run")))]
+    (vec
+     (map (fn [entry]
+            (foundation-grammar-ledger-record
+             (:reference entry) (:path unit) validation (:adopted? entry)))
+          (filter (fn [entry]
+                    (foundation-grammar-reference? (:reference entry)))
+                  (source-reference-entries (:source unit) "tahto.base."))))))
+
+(defn foundation-grammar-inventory
+  [source-units target-units]
+  (let [source-records
+        (foundation-emitter-record-owners
+         (vec (mapcat foundation-grammar-ledger-records source-units)))
+        records (vec (concat source-records +foundation-grammar-new-records+))]
+    {:records records
+     :inventory
+     {:source/references (vec (map :source/refer source-records))
+      :target/references
+      (vec
+       (mapcat (fn [unit]
+                 (source-references (:source unit) "lang.common."))
+               target-units))
+      :validation/references
+      (vec (map (fn [unit]
+                  (or (:validation unit)
+                      (symbol (str (:namespace unit) "/run"))))
+                target-units))}}))
+
+(defn foundation-grammar-path-audit
+  "Loads declared Foundation grammar/preprocess authorities and target tests,
+   then audits their stage-aware semantic ledger."
+  [root source-units target-units]
+  (let [loaded-sources
+        (vec (map (fn [unit] (load-migration-unit root unit)) source-units))
+        loaded-targets
+        (vec (map (fn [unit] (load-migration-unit root unit)) target-units))
+        generated (foundation-grammar-inventory loaded-sources loaded-targets)
+        audit (migration-ledger-audit (:records generated)
+                                      (:inventory generated))]
+    (assoc generated :audit audit)))
+
+(defn replace-routes
+  [source routes]
+  (reduce (fn [output route]
+            (str/replace output (first route) (second route)))
+          source
+          routes))
+
+(defn route-foundation-common-test-path
+  [path]
+  (-> path
+      (str/replace "test/tahto/base/" "core/lib/test-lang/lang/common/")
+      (str/replace "test/tahto/common/" "core/lib/test-lang/lang/common/")
+      (str/replace ".clj" ".hal")))
+
+(defn foundation-common-fact-count
+  [source]
+  (- (count (str/split source "(fact")) 1))
+
+(defn foundation-common-diagnostics
+  [source]
+  (vec
+   (keep (fn [prefix]
+           (if (str/includes? source prefix)
+             {:level :error
+              :migration/error :foundation/unmapped-reference
+              :reference prefix
+              :message "Foundation test requires an explicit persistent adaptation"}
+             nil))
+         +foundation-common-blocked-prefixes+)))
+
+(defn canonical-test-runner
+  [namespace]
+  (str "(pr-str (run {:namespace \"" namespace "\"}))"))
+
+(defn migrate-foundation-common-test-source
+  [source namespace]
+  (let [rewritten (replace-routes source +foundation-common-test-rewrites+)
+        runner (canonical-test-runner namespace)
+        output (if (str/includes? rewritten runner)
+                 rewritten
+                 (str (if (str/ends-with? rewritten "\n")
+                        rewritten
+                        (str rewritten "\n"))
+                      "\n" runner "\n"))
+        fact-count (foundation-common-fact-count source)
+        diagnostics (foundation-common-diagnostics output)]
+    {:before source
+     :after output
+     :changed (not= source output)
+     :rules [:foundation/lang-common-tests]
+     :facts {:source fact-count
+             :direct (if (empty? diagnostics) fact-count 0)
+             :adapted 0
+             :covered-current 0
+             :unmapped (if (empty? diagnostics) 0 fact-count)}
+     :diagnostics diagnostics}))
+
+(defn migrate-foundation-grammar-xtalk-test-source
+  "Migrates the pure XTalk grammar vectors and applies the declared canonical
+   adaptation for global membership."
+  [source]
+  (let [base
+        (migrate-foundation-common-test-source
+         source "lang.common.grammar-xtalk-test")
+        output
+        (-> (:after base)
+            (str/replace "  (:require [clojure.string :as str]\n            [lang.common.grammar-xtalk :as xtalk :refer :all])"
+                         "  (:require [lang.common.grammar-xtalk :as xtalk :refer :all])")
+            (str/replace "entry @v" "entry (deref v)")
+            (str/replace "'(not (x:nil? (x:get-key !:G \"SYM\")))"
+                         "'(not= nil (x:get-key !:G \"SYM\"))"))
+        changed (not= source output)]
+    (assoc base
+           :after output
+           :changed changed
+           :rules (conj (:rules base) :foundation/grammar-xtalk-canonical)
+           :facts (assoc (:facts base) :direct 51 :adapted 1))))
+
+(defn migrate-foundation-grammar-xtalk-system-test-source
+  "Migrates XTalk profile analysis tests to the source-owned Hara profile
+   vocabulary and native collection membership operation."
+  [source]
+  (let [base
+        (migrate-foundation-common-test-source
+         source "lang.common.grammar-xtalk-system-test")
+        output
+        (-> (:after base)
+            (str/replace "tahto.core-link-specific"
+                         "hara.lang-link-specific")
+            (str/replace "(contains? ops " "(member? ops "))]
+    (assoc base
+           :after output
+           :changed (not= source output)
+           :rules
+           (conj (:rules base) :foundation/grammar-xtalk-profile-canonical)
+           :facts (assoc (:facts base)
+                         :direct 21 :adapted 3 :unmapped 0)
+           :diagnostics [])))
+
+(defn migrate-foundation-common-test-unit
+  [unit]
+  (let [source-path (:path unit)
+        target-path (or (:target/path unit)
+                        (route-foundation-common-test-path source-path))
+        namespace (or (:target/namespace unit) (:namespace unit))
+        result (migrate-foundation-common-test-source (:source unit) namespace)]
+    (merge {:path target-path
+            :source/path source-path
+            :target/path target-path
+            :language :hara
+            :copy true
+            :move false
+            :create true
+            :write false}
+           result)))
+
+(defn route-lang-model-v1-namespace
+  [namespace]
+  (let [name (str namespace)]
+    (if (str/starts-with? name +lang-model-v1-prefix+)
+      (str +lang-model-v1-target-prefix+
+           (subs name (count +lang-model-v1-prefix+)))
+      name)))
+
+(defn route-lang-model-v1-path
+  [path]
+  (str/replace path
+               +lang-model-v1-path-prefix+
+               +lang-model-v1-target-path-prefix+))
+
+(defn rewrite-lang-model-v1-source
+  [source]
+  (str/replace source
+               +lang-model-v1-prefix+
+               +lang-model-v1-target-prefix+))
+
+(defn migrate-lang-model-v1-source
+  [source]
+  (let [output (rewrite-lang-model-v1-source source)]
+    {:before source
+     :after output
+     :changed (not= source output)
+     :rules (if (= source output) [] [:lang.model/v1])
+     :diagnostics []}))
+
+(defn migrate-lang-model-v1-unit
+  [unit]
+  (let [source-path (:path unit)
+        target-path (route-lang-model-v1-path source-path)
+        result (migrate-lang-model-v1-source (:source unit))]
+    (merge {:path target-path
+            :source/path source-path
+            :target/path target-path
+            :language (or (:language unit) :hara)
+            :move (not= source-path target-path)
+            :create false
+            :write false}
+           result
+           {:changed (or (:changed result)
+                         (not= source-path target-path))})))
+
+(def task-heads
+  #{"deftask" "def.task" "task/deftask" "task/def.task"})
+
+(defn task-vector?
+  [value]
+  (and (vector? value)
+       (= :task (first value))
+       (map? (second value))))
+
+(defn child-values
+  [source form]
+  (vec
+   (map :value
+        (framework/semantic-children source form))))
+
+(defn first-task-vector
+  [values]
+  (first (filter task-vector? values)))
+
+(defn first-docstring
+  [values]
+  (first (filter string? values)))
+
+(defn definition-with-doc
+  [definition docstring]
+  (if docstring
+    (assoc definition
+           :metadata
+           (assoc (or (:metadata definition) {}) :doc docstring))
+    definition))
+
+(defn task-replacement
+  [source form]
+  (let [values (child-values source form)
+        head (str (first values))
+        name (second values)]
+    (cond
+      (or (= head "invoke/definvoke")
+          (= head "definvoke"))
+      (let [task-vector (first-task-vector values)]
+        (if task-vector
+          {:replacement
+           (pr-str
+            (list 'def.work
+                  name
+                  [:task]
+                  (definition-with-doc (second task-vector)
+                                       (first-docstring values))))
+           :rules [rule-id]
+           :diagnostics []}
+          nil))
+
+      (has? task-heads head)
+      (let [definition (if (< 2 (count values)) (nth values 2) nil)
+            body (vec (drop 3 values))]
+        (if (and (map? definition) (empty? body))
+          {:replacement
+           (pr-str (list 'def.work name [:task] definition))
+           :rules [rule-id]
+           :diagnostics []}
+          {:replacement nil
+           :rules []
+           :diagnostics
+           [{:level :error
+             :migration/error :std.task/ambiguous-deftask
+             :message "deftask body requires manual conversion"
+             :name name}]}))
+
+      :else nil)))
+
+(defn nested-map
+  [value]
+  (cond
+    (map? value) value
+    (or (sequential? value) (seq? value))
+    (loop [remaining (reverse (vec value))]
+      (if (empty? remaining)
+        nil
+        (let [found (nested-map (first remaining))]
+          (if found found (recur (rest remaining))))))
+    :else nil))
+
+(defn profile-replacement
+  [source form]
+  (let [values (child-values source form)]
+    (if (and (= "defmethod" (str (first values)))
+             (= "task/task-defaults" (str (second values))))
+      (let [type (if (< 2 (count values)) (nth values 2) nil)
+            options (nested-map
+                     (if (< 3 (count values)) (nth values 3) nil))]
+        (if (and type options)
+          {:replacement
+           (pr-str (list 'task/register-profile type options))
+           :rules [:std.task/profile]
+           :diagnostics []}
+          {:replacement nil
+           :rules []
+           :diagnostics
+           [{:level :error
+             :migration/error :std.task/invalid-profile
+             :message "task-defaults method could not be converted"}]}))
+      nil)))
+
+(defn form-migration
+  [source form]
+  (or (task-replacement source form)
+      (profile-replacement source form)))
+
+(defn source-plan
+  [source]
+  (let [analysis (framework/analyse-structure source)]
+    (reduce
+     (fn [plan form]
+       (let [migration (form-migration source form)]
+         (if migration
+           (let [replacement (:replacement migration)]
+             {:edits
+              (if replacement
+                (conj (:edits plan)
+                      (structure/edit (:start form)
+                                      (:end form)
+                                      replacement))
+                (:edits plan))
+              :rules (into (:rules plan) (:rules migration))
+              :diagnostics
+              (into (:diagnostics plan) (:diagnostics migration))})
+           plan)))
+     {:edits [] :rules [] :diagnostics []}
+     (:form-records analysis))))
+
+(defn rewrite-requires
+  [source]
+  (-> source
+      (str/replace "[std.task :as task]"
+                   "[work.base :as work :refer [def.work]]\n            [work.flow.task :as task]")
+      (str/replace "[std.work :as work]"
+                   "[work.base :as work :refer [def.work]]")
+      (str/replace "[std.work.template.task :as task]"
+                   "[work.flow.task :as task]")))
+
+(defn migrate-source
+  [source]
+  (let [plan (source-plan source)
+        rewritten (structure/apply-edits source (:edits plan))
+        output (rewrite-requires rewritten)]
+    (assoc plan
+           :before source
+           :after output
+           :changed (not= source output))))
+
+(defn migrate-unit
+  [unit]
+  (let [result (migrate-source (:source unit))]
+    (merge {:path (:path unit)
+            :language (or (:language unit) :hara)
+            :create false
+            :write false}
+           result)))
+
+(defn migrate-selected-unit
+  [unit]
+  (cond (= :lang.model/v1 (:migration unit))
+        (migrate-lang-model-v1-unit unit)
+        (= :foundation/lang-common-tests (:migration unit))
+        (migrate-foundation-common-test-unit unit)
+        :else (migrate-unit unit)))
+
+(def.work migration
+  [:task]
+  {:task/type :tool.migrate
+   :item
+   {:list
+    (fn [input context]
+      (vec
+       (map
+        (fn [unit]
+          {:item/id (:path unit)
+           :item/value (assoc unit :migration (:migration input))})
+        (sort-by :path (:units input)))))
+    :run
+    (fn [unit context]
+      (let [result (migrate-selected-unit unit)]
+        {:status
+         (if (empty? (:diagnostics result)) :return :error)
+         :data result}))}
+   :return {:select :all :package :map}})
+
+(defn plan
+  [input]
+  (work/run migration input))
+
+(defn planned-edits
+  [plan]
+  (vec
+   (keep
+    (fn [record]
+      (let [value (:data record)]
+        (if (:changed value) value nil)))
+    (:records plan))))
+
+(defn target-path-of
+  [unit]
+  (or (:target/path unit) (:path unit)))
+
+(defn owned-edits
+  "Chooses the moved implementation when a hard-cut target is also occupied by
+   a compatibility facade. Other duplicate target ownership is rejected."
+  [edits]
+  (vals
+   (reduce
+    (fn [owners unit]
+      (let [target (target-path-of unit)
+            current (get owners target)]
+        (cond
+          (nil? current) (assoc owners target unit)
+          (and (:move unit) (not (:move current))) (assoc owners target unit)
+          (and (:move current) (not (:move unit))) owners
+          :else
+          (throw (ex :io {:target/path target
+                           :owners [(:source/path current)
+                                    (:source/path unit)]} :ex/message "Migration target has multiple owners")))))
+    {}
+    edits)))
+
+(defn path-under-root?
+  [root path]
+  (let [root (str/replace (File/resolve root "") "\\" "/")
+        path (str/replace (File/resolve root path) "\\" "/")]
+    (or (= root path)
+        (str/starts-with? path (str root "/")))))
+
+(defn validate-unit
+  [root unit]
+  (let [source-path (or (:source/path unit) (:path unit))
+        target-path (or (:target/path unit) (:path unit))]
+    (if (or (not (path-under-root? root source-path))
+            (not (path-under-root? root target-path)))
+    (throw (ex :io {:root root
+                     :source/path source-path
+                     :target/path target-path} :ex/message "Migration path escapes project root")))
+    (let [path (File/resolve root source-path)
+          current (str/decode-utf8 (deref (File/read path)))]
+    (if (not= current (:before unit))
+      (throw (ex :io {:path path} :ex/message "Migration source changed after planning")))
+      unit)))
+
+(defn apply-unit
+  [root unit]
+  (let [source-relative (or (:source/path unit) (:path unit))
+        target-relative (or (:target/path unit) (:path unit))
+        source-path (File/resolve root source-relative)
+        target-path (File/resolve root target-relative)
+        target-parent (File/parent target-path)]
+    (if target-parent
+      (deref (File/mkdir target-parent {:parents? true :exists-ok? true}))
+      nil)
+    (deref (File/write target-path
+                       (str/encode-utf8 (:after unit))
+                       {:mode :replace :parents? true}))
+    (if (and (not (:copy unit))
+             (not= source-path target-path))
+      (deref (File/delete source-path {:missing-ok? false}))
+      nil)
+    (assoc unit :write true)))
+
+(defn apply
+  [root plan]
+  (let [edits (vec (owned-edits (planned-edits plan)))
+        diagnostics
+        (vec (mapcat (fn [unit] (:diagnostics unit)) edits))]
+    (if (not (empty? diagnostics))
+      (throw (ex :generic {:diagnostics diagnostics} :ex/message "Migration contains blocking diagnostics")))
+    (vec (map (fn [unit] (validate-unit root unit)) edits))
+    (vec (map (fn [unit] (apply-unit root unit)) edits))))
+
+(def foundation-profile migrate-profile/+foundation-baa75a+)
+(def foundation-corpus migrate-corpus/corpus-document)
+(def foundation-corpus-source migrate-corpus/corpus-source)
+(def foundation-report-source migrate-corpus/report-source)
+(def foundation-plan migrate-project/plan)
+(def foundation-run migrate-project/run)
+(def foundation-validate-write-plan migrate-write/validate-write-plan)
+(def foundation-apply-plan migrate-write/apply-plan)
+(def foundation-rules migrate-rule/+ruleset+)
+(def foundation-git-snapshot migrate-git/snapshot)

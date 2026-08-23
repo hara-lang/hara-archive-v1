@@ -1,0 +1,613 @@
+(ns tool.migrate.common.rule
+  (:require [std.block :as block]
+            [code.framework.navigation :as nav]
+            [tool.migrate.common.rules :as declarations]))
+
+(def +safety-rank+
+  {:safe 0
+   :review 1
+   :manual 2})
+
+(def +modes+
+  #{:lint :safe :review})
+
+(defn evidence-valid?
+  [entry]
+  (and (map? entry)
+       (or (string? (:foundation/path entry))
+           (string? (:source/path entry)))
+       (or (string? (:hara/path entry))
+           (keyword? (:target/spec entry))
+           (string? (:target/path entry)))))
+
+(defn rewrite-valid?
+  [rule]
+  (if (or (= :manual (:safety rule))
+          (:function rule))
+    (nil? (:rewrite rule))
+    (let [rewrite (:rewrite rule)]
+      (and (map? rewrite)
+           (or (and (or (= :replace-token (:op rewrite))
+                        (= :replace-token-prefix (:op rewrite)))
+                    (string? (:text rewrite)))
+               (and (= :replace-call (:op rewrite))
+                    (keyword? (:builder rewrite)))
+               (= :delete-parent (:op rewrite))
+               ;; Registry-owned operations may be handled by a function rule
+               ;; in a later phase; keep them valid for deterministic review.
+               (keyword? (:op rewrite)))))))
+
+(defn rule-valid?
+  [rule]
+  (and (map? rule)
+       (keyword? (:id rule))
+       (or (:function rule)
+           (= :token (:kind rule))
+           (= :token-prefix (:kind rule))
+           (= :dependency-entry (:kind rule))
+           (= :form-head (:kind rule)))
+       (or (:function rule)
+           (and (map? (:match rule))
+                (string? (:text (:match rule)))))
+       (keyword? (:safety rule))
+       (not (nil? (get +safety-rank+ (:safety rule))))
+       (number? (:priority rule))
+       (string? (:message rule))
+       (not (empty? (:evidence rule)))
+       (every? evidence-valid? (:evidence rule))
+       (rewrite-valid? rule)))
+
+(defn automatic?
+  [rule]
+  (not (= :manual (:safety rule))))
+
+(defn matcher-key
+  [rule]
+  [(:kind rule)
+   (:text (:match rule))
+   (:match/when rule)])
+
+(defn compile-rules
+  "Validates and indexes deterministic, evidence-backed translation rules."
+  [rules]
+  (loop [index 0
+         previous-priority -1
+         identifiers {}
+         automatic-matchers {}
+         output []]
+    (if (= index (count rules))
+      output
+      (let [rule (nth rules index)
+            identifier (:id rule)
+            priority (:priority rule)
+            match-key (matcher-key rule)]
+        (if (not (rule-valid? rule))
+          (throw (ex :argument {:rule rule
+                           :index index} :ex/message "Invalid Clojure to HAL rule")))
+        (if (< priority previous-priority)
+          (throw (ex :generic {:previous previous-priority
+                           :rule rule} :ex/message "Clojure to HAL rules are not priority ordered")))
+        (if (has? identifiers identifier)
+          (throw (ex :conflict {:id identifier} :ex/message "Duplicate Clojure to HAL rule identifier")))
+        (if (and (automatic? rule)
+                 (has? automatic-matchers match-key))
+          (throw (ex :conflict {:matcher match-key
+                           :left (get automatic-matchers match-key)
+                           :right identifier} :ex/message "Conflicting automatic Clojure to HAL rules")))
+        (recur
+         (inc index)
+         priority
+         (assoc identifiers identifier true)
+         (if (automatic? rule)
+           (assoc automatic-matchers match-key identifier)
+           automatic-matchers)
+         (conj output (assoc rule :compiled/index index)))))))
+
+(def +ruleset+
+  (compile-rules declarations/+rules+))
+
+(defn selected-mode
+  [options]
+  (let [mode (or (:mode options) :review)]
+    (if (not (has? +modes+ mode))
+      (throw (ex :generic {:mode mode
+                       :supported +modes+} :ex/message "Unsupported Clojure to HAL translation mode")))
+    mode))
+
+(defn active?
+  [rule mode]
+  (and
+   (automatic? rule)
+   (or (and (= mode :safe)
+            (= :safe (:safety rule)))
+       (and (= mode :review)
+            (or (= :safe (:safety rule))
+                (= :review (:safety rule)))))))
+
+(defn rule-by-id
+  ([identifier]
+   (rule-by-id +ruleset+ identifier))
+  ([rules identifier]
+   (first (filter (fn [rule] (= identifier (:id rule))) rules))))
+
+(defn rules-summary
+  ([] (rules-summary +ruleset+))
+  ([rules]
+   (reduce
+    (fn [output rule]
+      (let [safety (:safety rule)]
+        (assoc
+         (assoc output :total (inc (:total output)))
+         safety
+         (inc (or (get output safety) 0)))))
+    {:total 0 :safe 0 :review 0 :manual 0}
+    rules)))
+
+(defn match-condition?
+  [rule location]
+  (let [condition (:match/when rule)
+        arity-condition?
+        (and condition
+             (or (not (nil? (:form-arity condition)))
+                 (not (nil? (:not-form-arity condition)))
+                 (not (nil? (:not-form-arities condition)))))
+        form-location
+        (if arity-condition?
+          (if (nav/form? location)
+            location
+            (if (and (:parent location) (nav/form? (:parent location)))
+              (:parent location)
+              nil))
+          nil)
+        form-arity
+        (if form-location
+          (dec (count (nav/code-children form-location)))
+          nil)]
+    (if (nil? condition)
+      true
+      (and
+       (or (nil? (:form-arity condition))
+           (= (:form-arity condition) form-arity))
+       (or (nil? (:not-form-arity condition))
+           (not (= (:not-form-arity condition) form-arity)))
+       (or (nil? (:not-form-arities condition))
+           (empty? (filter (fn [arity] (= arity form-arity))
+                           (:not-form-arities condition))))
+       (or (nil? (:second condition))
+           (= (:second condition) (nav/form-second location)))
+       (or (nil? (:contains condition))
+           (str/includes? (block/string (nav/current location))
+                          (:contains condition)))
+       (or (nil? (:parent-contains condition))
+           (and (:parent location)
+                (str/includes?
+                 (block/string (nav/current (:parent location)))
+                 (:parent-contains condition))))
+       (or (nil? (:not-parent-contains condition))
+           (or (nil? (:parent location))
+               (not
+                (str/includes?
+                 (block/string (nav/current (:parent location)))
+                 (:not-parent-contains condition)))))))))
+
+(defn location-matches?
+  [rule location]
+  (let [value (nav/current location)
+        text (:text (:match rule))]
+    (and
+     value
+     (match-condition? rule location)
+     (if (= :token (:kind rule))
+       (and (block/token? value)
+            (= text (block/string value)))
+       (if (= :token-prefix (:kind rule))
+         (and (block/token? value)
+              (let [current (block/string value)]
+                (or (= text current)
+                    (and (= false (:boundary (:match rule)))
+                         (str/starts-with? current text))
+                    (str/starts-with? current (str text "."))
+                    (str/starts-with? current (str text "/")))))
+       (if (= :dependency-entry (:kind rule))
+         (and (block/token? value)
+              (= text (block/string value)))
+       (if (= :form-head (:kind rule))
+         (and (nav/form? location)
+              (= text (nav/form-head location)))
+         false)))))))
+
+(defn match-record
+  [rule location]
+  (merge
+   {:rule/id (:id rule)
+    :rule/index (:compiled/index rule)
+    :match/text (:text (:match rule))
+    :kind (:kind rule)
+    :safety (:safety rule)
+    :priority (:priority rule)
+    :message (:message rule)
+    :evidence (:evidence rule)}
+   (nav/evidence location)))
+
+(defn dependency-alias
+  [location]
+  (let [parent (:parent location)]
+    (if (nil? parent)
+      nil
+      (let [children (nav/code-children parent)]
+        (if (or (empty? children)
+                (not (= (block/string (nav/current location))
+                        (block/string (first children)))))
+          nil
+          (loop [index 0]
+            (if (>= index (count children))
+              nil
+              (if (= ":as" (block/string (nth children index)))
+                (if (< (inc index) (count children))
+                  (block/string (nth children (inc index)))
+                  nil)
+                (recur (inc index))))))))))
+
+(defn dependency-aliases
+  [root]
+  (let [locations (nav/walk-locations root)]
+    (loop [index 0 output {}]
+      (if (= index (count locations))
+        output
+        (let [location (nth locations index)
+              value (nav/current location)]
+          (recur
+           (inc index)
+           (if (and value (block/token? value))
+             (let [alias (dependency-alias location)]
+               (if alias
+                 (assoc output (block/string value) alias)
+                 output))
+             output)))))))
+
+(defn alias-variant
+  [rule text]
+  (assoc
+   (assoc-in rule [:match :text] text)
+   :match/when
+   (assoc (or (:match/when rule) {})
+          :not-parent-contains ":as")))
+
+(defn alias-rule
+  [rule aliases]
+  (if (= :dependency-entry (:kind rule))
+    nil
+    (let [text (:text (:match rule))
+          separator (str/index-of text "/")]
+      (if (or (nil? separator) (< separator 0))
+        (let [alias (get aliases text)]
+          (if alias
+            (alias-variant rule alias)
+            nil))
+        (let [namespace (str/slice text 0 separator)
+              alias (get aliases namespace)]
+          (if alias
+            (assoc-in
+             rule
+             [:match :text]
+             (str alias (str/slice text separator (count text))))
+            nil))))))
+
+(defn resolve-function
+  "Resolves a registry function symbol through an injected resolver only."
+  [value options]
+  (cond
+    (function? value) value
+    (nil? value) nil
+    (:function-resolver options)
+    ((:function-resolver options) value)
+    :else
+    (throw (ex :tool.migrate/function-resolver-required
+               {:function value}
+               :ex/message "Function migration rules require an injected resolver"))))
+
+(defn function-spec
+  [rule]
+  (let [value (:function rule)]
+    (if (map? value) value {:match value})))
+
+(defn function-matches
+  [root rule options]
+  (let [matcher (resolve-function (:match (function-spec rule)) options)
+        context (merge
+                 {:rule rule
+                  :language (or (:source/language options) :clojure)
+                  :target/language (or (:target/language options) :hara)}
+                 options)
+        result (if matcher (matcher root context) [])]
+    (vec
+     (map
+      (fn [value]
+        (merge
+         {:rule/id (:id rule)
+          :rule/index (:compiled/index rule)
+          :kind :function
+          :safety (:safety rule)
+          :priority (:priority rule)
+          :message (:message rule)
+          :evidence (:evidence rule)}
+         value))
+      (or result [])))))
+
+(defn declarative-matches
+  [rule alias-variant locations]
+  (loop [index 0 output []]
+    (if (= index (count locations))
+      output
+      (let [location (nth locations index)
+            direct? (location-matches? rule location)
+            alias? (and alias-variant
+                        (location-matches? alias-variant location))]
+        (recur
+         (inc index)
+         (if (or direct? alias?)
+           (conj output
+                 (match-record
+                  (if direct? rule alias-variant)
+                  location))
+           output))))))
+
+(defn matches
+  ([input]
+   (matches input +ruleset+ {}))
+  ([input rules]
+   (matches input rules {}))
+  ([input rules options]
+   (let [locations (nav/walk-locations input)
+         aliases (dependency-aliases input)]
+     (loop [rule-index 0 output []]
+       (if (= rule-index (count rules))
+         output
+         (let [rule (nth rules rule-index)]
+           (let [matches-for-rule
+                 (if (:function rule)
+                   (function-matches input rule options)
+                   (declarative-matches rule
+                                        (alias-rule rule aliases)
+                                        locations))]
+             (recur (inc rule-index)
+                    (into output matches-for-rule)))))))))
+
+(defn diagnostic-type
+  [rule mode]
+  (if (= :manual (:safety rule))
+    :tool.migrate/manual
+    (if (active? rule mode)
+      :tool.migrate/rewrite
+      :tool.migrate/match)))
+
+(defn diagnostic-level
+  [rule mode]
+  (if (= :manual (:safety rule))
+    :warning
+    (if (active? rule mode) :info :notice)))
+
+(defn diagnostic
+  [rule match mode]
+  (merge
+   {:type (diagnostic-type rule mode)
+    :level (diagnostic-level rule mode)
+    :rule/id (:id rule)
+    :safety (:safety rule)
+    :message (:message rule)
+    :evidence (:evidence rule)}
+   (select-keys match
+                [:path :file :start-offset :end-offset
+                 :row :col :end-row :end-col :source])))
+
+(defn call-arguments
+  [root match]
+  (vec
+   (map block/string
+        (rest (nav/code-children (nav/location-at root (:path match)))))))
+
+(defn collection-call-replacement
+  [builder arguments]
+  (let [function (first arguments)
+        predicate (first arguments)
+        collection (last arguments)]
+    (case builder
+      :map-entries
+      (str "(let [function__ct " function " collection__ct " collection "] "
+           "(into (empty collection__ct) "
+           "(map (fn [entry__ct] "
+           "(let [mapped__ct (function__ct entry__ct)] "
+           "(pair (first mapped__ct) (second mapped__ct)))) "
+           "collection__ct)))")
+
+      :filter-keys
+      (str "(let [predicate__ct " predicate " collection__ct " collection "] "
+           "(into (empty collection__ct) "
+           "(filter (fn [entry__ct] (predicate__ct (key entry__ct))) "
+           "collection__ct)))")
+
+      :filter-vals
+      (str "(let [predicate__ct " predicate " collection__ct " collection "] "
+           "(into (empty collection__ct) "
+           "(filter (fn [entry__ct] (predicate__ct (val entry__ct))) "
+           "collection__ct)))")
+
+      :keep-vals
+      (str "(let [function__ct " function " collection__ct " collection "] "
+           "(into (empty collection__ct) "
+           "(keep (fn [entry__ct] "
+           "(let [mapped__ct (function__ct (val entry__ct))] "
+           "(if mapped__ct (pair (key entry__ct) mapped__ct)))) "
+           "collection__ct)))")
+
+      :keep-vals-when
+      (let [predicate (second arguments)]
+        (str "(let [function__ct " function
+             " predicate__ct " predicate
+             " collection__ct " collection "] "
+             "(into (empty collection__ct) "
+             "(keep (fn [entry__ct] "
+             "(let [mapped__ct (function__ct (val entry__ct))] "
+             "(if (predicate__ct mapped__ct) "
+             "(pair (key entry__ct) mapped__ct)))) "
+             "collection__ct)))"))
+
+      :test-check-error
+      (let [name (first arguments)
+            form (second arguments)]
+        (str "(test-check " name
+             " (try (do " form
+             " false) (catch Throwable test_error__ true)) true)"))
+
+      :test-result-vector
+      (first arguments))))
+
+(defn apply-match
+  ([root rule match]
+   (apply-match root rule match {}))
+  ([root rule match options]
+   (let [rewrite (:rewrite rule)]
+    (cond
+      (:function rule)
+      (let [rewriter (resolve-function (:rewrite (function-spec rule)) options)
+            context (merge {:rule rule
+                            :language (or (:source/language options) :clojure)
+                            :target/language (or (:target/language options) :hara)}
+                           options)
+            result (if rewriter (rewriter root match context) root)]
+        (if (and (map? result) (has? result :root))
+          (:root result)
+          result))
+
+      (= :replace-token (:op rewrite))
+      (nav/root-block
+       (nav/replace-at root (:path match) (:text rewrite)))
+
+      (= :replace-token-prefix (:op rewrite))
+      (let [source (:source match)
+            prefix (:match/text match)
+            suffix (str/slice source (count prefix) (count source))]
+        (nav/root-block
+         (nav/replace-at root (:path match) (str (:text rewrite) suffix))))
+
+      (= :delete-parent (:op rewrite))
+      (nav/root-block
+       (nav/delete-at root (vec (drop-last (:path match)))))
+
+      (= :replace-call (:op rewrite))
+      (nav/root-block
+       (nav/replace-at root
+                       (:path match)
+                       (collection-call-replacement
+                        (:builder rewrite)
+                        (call-arguments root match))))
+
+      :else root))))
+
+(defn apply-matches
+  ([root matched rules mode]
+   (apply-matches root matched rules mode {}))
+  ([root matched rules mode options]
+  (let [active-matches
+        (vec
+         (filter
+          (fn [match]
+            (active? (rule-by-id rules (:rule/id match)) mode))
+          matched))
+        replacements
+        (filter
+         (fn [match]
+           (not (= :delete-parent
+                   (:op (:rewrite (rule-by-id rules (:rule/id match)))))))
+         active-matches)
+        deletions
+        (reverse
+         (sort-by
+          :start-offset
+          (filter
+           (fn [match]
+             (= :delete-parent
+                (:op (:rewrite (rule-by-id rules (:rule/id match))))))
+           active-matches)))
+        ordered (vec (concat replacements deletions))]
+  (loop [current root
+         remaining ordered]
+    (if (empty? remaining)
+      {:root current
+       :applied active-matches}
+      (let [match (first remaining)
+            rule (rule-by-id rules (:rule/id match))]
+        (recur
+         (apply-match current rule match options)
+         (vec (rest remaining)))))))))
+
+(defn empty-dependency-clause?
+  [location]
+  (let [head (nav/form-head location)]
+    (and (or (= head ":require")
+             (= head ":use"))
+         (= 1 (count (nav/code-children location))))))
+
+(defn cleanup-empty-dependency-clauses
+  [root]
+  (loop [current root
+         paths
+         (vec
+          (reverse
+           (sort
+            (map nav/path
+                 (filter empty-dependency-clause?
+                         (nav/namespace-clause-locations root))))))]
+    (if (empty? paths)
+      current
+      (recur
+       (nav/root-block (nav/delete-at current (first paths)))
+       (vec (rest paths))))))
+
+(defn analyze-source
+  ([source]
+   (analyze-source source {}))
+  ([source options]
+   (let [mode (selected-mode options)
+         input (if (:file options)
+                 (block/parse-source source {:file (:file options)})
+                 source)
+         root (nav/block-input input)
+         rules (or (:rules options) +ruleset+)
+         matched (matches root rules options)
+         applied-result (apply-matches root matched rules mode options)
+         configured-root (if (:root-rewriter options)
+                           ((:root-rewriter options)
+                            (:root applied-result)
+                            options)
+                           (:root applied-result))
+         normalized-root (cleanup-empty-dependency-clauses configured-root)
+         output (nav/render normalized-root)
+         diagnostics
+         (vec
+          (map
+           (fn [match]
+             (diagnostic
+              (rule-by-id rules (:rule/id match))
+              match
+              mode))
+           matched))]
+     {:mode mode
+      :source source
+      :output output
+      :changed (not (= source output))
+      :rules/matched matched
+      :rules/applied (:applied applied-result)
+      :diagnostics diagnostics})))
+
+(defn lint-source
+  ([source]
+   (lint-source source {}))
+  ([source options]
+   (analyze-source source (assoc options :mode :lint))))
+
+(defn translate-source
+  ([source]
+   (translate-source source {}))
+  ([source options]
+   (analyze-source source options)))

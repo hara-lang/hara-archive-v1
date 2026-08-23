@@ -1,0 +1,582 @@
+(ns tool.migrate.common.project
+  (:require [tool.migrate.common.write :as migrate-write]
+            [tool.migrate.common.report :as migrate-report]
+            [work.base :as work]
+            [work.flow.task.command :as command]
+            [tool.migrate.common.clojure :as clj]
+            [tool.migrate.common.rule :as rule]
+            [tool.migrate.common.rules :as declarations]))
+
+(def rules rule/+ruleset+)
+(def declarations declarations/+rules+)
+(def compile-rules rule/compile-rules)
+(def rule-by-id rule/rule-by-id)
+(def rules-summary rule/rules-summary)
+(def matches rule/matches)
+(def analyze-source rule/analyze-source)
+(def lint-source rule/lint-source)
+(def translate-source rule/translate-source)
+
+(def source-path clj/source-path)
+(def target-path clj/target-path)
+(def source-unit clj/source-unit)
+(def source-summary clj/source-summary)
+(defn namespace-shape
+  [source]
+  (clj/namespace-shape source))
+
+(defn namespace-shape-check
+  ([expected actual]
+   (clj/namespace-shape-check expected actual))
+  ([expected actual options]
+   (clj/namespace-shape-check expected actual options)))
+
+(defn translated-namespace-shape-check
+  ([source target]
+   (clj/translated-namespace-shape-check source target))
+  ([source target options]
+   (clj/translated-namespace-shape-check source target options)))
+(def namespace-name
+  (fn [input]
+    (:namespace (clj/source-summary input))))
+(def dependencies clj/dependencies)
+(def public-symbols clj/public-symbols)
+(def catalog-symbol-routes clj/catalog-symbol-routes)
+(def catalog-symbol-route clj/catalog-symbol-route)
+(def catalog-migration-summary clj/catalog-migration-summary)
+(def catalog-diagnostics clj/catalog-diagnostics)
+(def analyze-source-unit clj/analyze-source-unit)
+(def lint-source-unit clj/lint-source-unit)
+(def translate-source-unit clj/translate-source-unit)
+(def migrate-source-unit clj/migrate-source-unit)
+(def run-unit clj/run-unit)
+
+(def task-id :tool.migrate/project)
+(def task-version 1)
+
+(def +terminal-statuses+
+  #{:exact :ported :obsolete})
+
+(def +blocking-diagnostic-types+
+  #{:tool.migrate/ambiguous
+    :tool.migrate/conflict
+    :tool.migrate/unsupported})
+
+(defn corpus-field
+  [value keys]
+  (loop [remaining keys]
+    (if (empty? remaining)
+      nil
+      (let [key (first remaining)]
+        (if (and (map? value)
+                 (has? value key))
+          (get value key)
+          (recur (vec (rest remaining))))))))
+
+(defn keyword-value
+  [value]
+  (if (string? value)
+    (keyword value)
+    value))
+
+(defn input-units
+  [input]
+  (cond
+    (and (map? input) (has? input :units))
+    (vec (or (:units input) []))
+
+    (and (map? input) (has? input :unit))
+    [(:unit input)]
+
+    (vector? input)
+    input
+
+    (nil? input)
+    []
+
+    :else
+    [input]))
+
+(defn input-options
+  [input]
+  (merge
+   {:mode :lint}
+   (if (map? input)
+     (or (:translation/options input)
+         (:options input)
+         {})
+     {})))
+
+(defn input-selection
+  [input]
+  (if (map? input)
+    (or (:selection input) {})
+    {}))
+
+(defn corpus-entries
+  [input]
+  (if (map? input)
+    (let [corpus (:corpus input)]
+      (cond
+        (vector? corpus) corpus
+        (map? corpus) (vec (or (corpus-field corpus
+                                      [:namespaces "namespaces"])
+                                []))
+        (has? input :corpus/namespaces)
+        (vec (or (:corpus/namespaces input) []))
+        :else []))
+    []))
+
+(defn entry-source-path
+  [entry]
+  (corpus-field entry
+         [:source/path :source_path
+          "source/path" "source_path"]))
+
+(defn entry-target-path
+  [entry]
+  (corpus-field entry
+         [:target/path :target_path
+          "target/path" "target_path"]))
+
+(defn entry-namespace
+  [entry]
+  (corpus-field entry
+         [:source/namespace :corpus/namespace :namespace
+          "source/namespace" "corpus/namespace" "namespace"]))
+
+(defn entry-target-namespace
+  [entry]
+  (corpus-field entry
+         [:target/namespace :target_namespace
+          "target/namespace" "target_namespace"]))
+
+(defn unit-namespace
+  [unit]
+  (corpus-field unit
+         [:source/namespace :corpus/namespace :namespace
+          "source/namespace" "corpus/namespace" "namespace"]))
+
+(defn find-corpus-entry
+  [entries unit]
+  (let [path (clj/source-path unit)
+        namespace (unit-namespace unit)]
+    (first
+     (filter
+      (fn [entry]
+        (or (and path
+                 (= path (entry-source-path entry)))
+            (and namespace
+                 (= namespace (entry-namespace entry)))))
+      entries))))
+
+(defn dependency-component
+  [unit entry namespace]
+  (vec
+   (or
+    (corpus-field unit
+           [:dependency/component :dependency_component
+            "dependency/component" "dependency_component"])
+    (corpus-field entry
+           [:dependency/component :dependency_component
+            "dependency/component" "dependency_component"])
+    (if namespace [namespace] []))))
+
+(defn prepare-unit
+  [unit options entries]
+  (let [entry (find-corpus-entry entries unit)
+        source-path
+        (or (clj/source-path unit)
+            (entry-source-path entry))
+        target-path
+        (or (:target/path unit)
+            (entry-target-path entry))
+        namespace
+        (or (unit-namespace unit)
+            (entry-namespace entry))
+        target-namespace
+        (or (corpus-field unit
+                   [:target/namespace :target_namespace
+                    "target/namespace" "target_namespace"])
+            (entry-target-namespace entry))
+        status
+        (keyword-value
+         (or
+          (corpus-field unit
+                 [:corpus/status :status
+                  "corpus/status" "status"])
+          (corpus-field entry
+                 [:corpus/status :status
+                  "corpus/status" "status"])))
+        rank
+        (or
+         (corpus-field unit
+                [:dependency/rank :dependency_rank
+                 "dependency/rank" "dependency_rank"])
+         (corpus-field entry
+                [:dependency/rank :dependency_rank
+                 "dependency/rank" "dependency_rank"]))
+        cycle
+        (or
+         (corpus-field unit
+                [:dependency/cycle :dependency_cycle
+                 "dependency/cycle" "dependency_cycle"])
+         (corpus-field entry
+                [:dependency/cycle :dependency_cycle
+                 "dependency/cycle" "dependency_cycle"])
+         false)
+        component
+        (dependency-component unit entry namespace)]
+    (merge
+     unit
+     {:source/path source-path
+      :target/path target-path
+      :source/namespace namespace
+      :target/namespace target-namespace
+      :corpus/status status
+      :corpus/match
+      (or
+       (corpus-field unit
+              [:corpus/match :match
+               "corpus/match" "match"])
+       (corpus-field entry
+              [:corpus/match :match
+               "corpus/match" "match"]))
+      :corpus/entry entry
+      :migration/summary
+      (clj/catalog-migration-summary entry)
+      :dependency/rank rank
+      :dependency/component component
+      :dependency/cycle (= true cycle)
+      :translation/options
+      (merge
+       (or (:translation/options unit) {})
+       options)})))
+
+(defn component-key
+  [unit]
+  (str/join "|" (:dependency/component unit)))
+
+(defn order-key
+  [unit]
+  [(or (:dependency/rank unit) 2147483647)
+   (component-key unit)
+   (or (:source/namespace unit) "")
+   (or (clj/source-path unit) "")])
+
+(defn order-units
+  [units]
+  (vec (sort-by order-key units)))
+
+(defn criterion
+  [selection keys]
+  (corpus-field selection keys))
+
+(defn criterion-collection?
+  [value]
+  (or (vector? value)
+      (set? value)
+      (list? value)))
+
+(defn criterion-match?
+  [expected actual]
+  (cond
+    (nil? expected) true
+    (criterion-collection? expected)
+    (not
+     (empty?
+      (filter
+       (fn [value] (= value actual))
+       expected)))
+    :else (= expected actual)))
+
+(defn rule-identifiers
+  [unit]
+  (try
+    (vec
+     (map
+      :rule/id
+      (:rules/matched
+       (clj/lint-source-unit unit))))
+    (catch Throwable error
+      [])))
+
+(defn rule-selection-match?
+  [selection unit]
+  (let [required
+        (criterion selection
+                   [:rule-ids :rules :requires-rules
+                    "rule-ids" "rules" "requires-rules"])]
+    (if (nil? required)
+      true
+      (let [required
+            (if (criterion-collection? required) (vec required) [required])
+            matched (rule-identifiers unit)
+            mode
+            (or
+             (corpus-field selection
+                    [:rule-match "rule-match"])
+             :any)]
+        (if (= mode :all)
+          (every?
+           (fn [identifier]
+             (not
+              (empty?
+               (filter
+                (fn [matched-id]
+                  (= identifier matched-id))
+                matched))))
+           required)
+          (not
+           (empty?
+            (filter
+             (fn [identifier]
+               (not
+                (empty?
+                 (filter
+                  (fn [matched-id]
+                    (= identifier matched-id))
+                  matched))))
+             required))))))))
+
+(defn selected-unit?
+  [selection unit]
+  (let [include?
+        (corpus-field selection [:include? "include?"])
+        exclude?
+        (corpus-field selection [:exclude? "exclude?"])]
+    (and
+     (criterion-match?
+      (criterion selection
+                 [:source-paths :paths
+                  "source-paths" "paths"])
+      (clj/source-path unit))
+     (criterion-match?
+      (criterion selection
+                 [:namespaces
+                  "namespaces"])
+      (:source/namespace unit))
+     (criterion-match?
+      (criterion selection
+                 [:corpus-statuses :statuses
+                  "corpus-statuses" "statuses"])
+      (:corpus/status unit))
+     (criterion-match?
+      (criterion selection
+                 [:dependency-ranks :ranks
+                  "dependency-ranks" "ranks"])
+      (:dependency/rank unit))
+     (rule-selection-match? selection unit)
+     (if include? (include? unit) true)
+     (if exclude? (not (exclude? unit)) true))))
+
+(defn prepare-units
+  [input]
+  (if (and (map? input)
+           (:tool.migrate/prepared input))
+    (vec (:units input))
+    (let [options (input-options input)
+          selection (input-selection input)
+          entries (corpus-entries input)]
+      (vec
+       (filter
+        (fn [unit]
+          (selected-unit? selection unit))
+        (order-units
+         (map
+          (fn [unit]
+            (prepare-unit unit options entries))
+          (input-units input))))))))
+
+(def batch-records migrate-report/batch-records)
+
+
+(def record-error? migrate-report/record-error?)
+
+
+(defn task-summary
+  [batch]
+  (migrate-report/task-summary task-id batch))
+
+
+(def migration-work
+  (command/batch
+   {:id task-id
+    :version task-version
+    :task/schema "tool.migrate.common.project.project/0-alpha"
+    :task/tasklet 'tool.migrate.common.clojure/migrate-source-unit}
+   {:list
+    (work/pure
+     :tool.migrate/list-source-units
+     (fn [input context]
+       (prepare-units input)))
+    :process clj/migrate-source-unit
+    :batch-options {:item-key clj/item-id}
+    :summarise
+    (work/pure
+     :tool.migrate/summarise-project
+     (fn [batch context]
+       (task-summary batch)))}))
+
+(def task-work migration-work)
+
+(defn run
+  ([input]
+   (work/run migration-work input))
+  ([runtime input]
+   (work/run runtime migration-work input)))
+
+(defn record-index
+  [records]
+  (reduce
+   (fn [output record]
+     (assoc output (:item/id record) record))
+   {}
+   records))
+
+(defn plan-items
+  [units records]
+  (let [index (record-index records)]
+    (vec
+     (map
+      (fn [unit]
+        (let [record (get index (clj/item-id unit))
+              result (:data record)]
+          {:item/id (clj/item-id unit)
+           :unit unit
+           :record record
+           :result result
+           :namespace
+           (or (:namespace result)
+               (:source/namespace unit))
+           :corpus/status (:corpus/status unit)
+           :migration/summary (:migration/summary unit)
+           :dependency/rank (:dependency/rank unit)
+           :dependency/component
+           (:dependency/component unit)
+           :dependency/cycle
+           (:dependency/cycle unit)}))
+      units))))
+
+(def result-edit? migrate-write/result-edit?)
+
+
+(def item-diagnostics migrate-report/item-diagnostics)
+
+
+(def item-rules migrate-report/item-rules)
+
+
+(defn plan-edits
+  [items]
+  (vec
+   (keep
+    (fn [item]
+      (let [result (:result item)]
+        (if (result-edit? result)
+          result
+          nil)))
+    items)))
+
+(def write-intent migrate-write/write-intent)
+
+
+(def write-intents migrate-write/write-intents)
+
+
+(defn flatten-diagnostics
+  [items]
+  (reduce
+   (fn [output item]
+     (into output (item-diagnostics item)))
+   []
+   items))
+
+(def count-by migrate-report/count-by)
+
+
+(def sorted-unique migrate-report/sorted-unique)
+
+
+(def namespaces-by migrate-report/namespaces-by)
+
+
+(def rule-counts migrate-report/rule-counts)
+
+
+(def safety-counts migrate-report/safety-counts)
+
+
+(def cycle-report migrate-report/cycle-report)
+
+
+(def item-blocked? migrate-report/item-blocked?)
+
+
+(def next-unblocked migrate-report/next-unblocked)
+
+
+(def diagnostic-errors migrate-report/diagnostic-errors)
+
+
+(def diagnostic-warnings migrate-report/diagnostic-warnings)
+
+
+(defn plan-summary
+  [units records items edits diagnostics]
+  (migrate-report/plan-summary
+   task-id units records items edits diagnostics))
+
+
+(def report migrate-report/report)
+
+
+(defn plan
+  [input]
+  (let [units (prepare-units input)
+        batch
+        (run
+         {:units units
+          :tool.migrate/prepared true})
+        records (batch-records batch)
+        items (plan-items units records)
+        edits (plan-edits items)
+        diagnostics (flatten-diagnostics items)]
+    {:operation task-id
+     :write false
+     :units units
+     :records records
+     :items items
+     :edits edits
+     :write-intents (write-intents items)
+     :diagnostics diagnostics
+     :warnings (diagnostic-warnings diagnostics)
+     :errors
+     (vec
+      (concat
+       (diagnostic-errors diagnostics)
+       (filter record-error? records)))
+     :summary
+     (plan-summary units records items edits diagnostics)
+     :report (report items)
+     :task/summary (:summary batch)}))
+
+(def blocking-diagnostic? migrate-write/blocking-diagnostic?)
+
+
+(def canonical-under-root? migrate-write/canonical-under-root?)
+
+
+(def required-capability migrate-write/required-capability)
+
+
+(def duplicate-targets migrate-write/duplicate-targets)
+
+
+(def intent-errors migrate-write/intent-errors)
+
+
+(def validate-write-plan migrate-write/validate-write-plan)
+
+
+(def apply-plan migrate-write/apply-plan)

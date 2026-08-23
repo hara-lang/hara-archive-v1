@@ -1,0 +1,646 @@
+(ns tool.migrate-test
+  (:use code.test)
+  (:require [tool.migrate :as migrate]
+            [std.fs :as fs]))
+
+(fact "language model namespace routing is a hard V1 cut"
+  [(migrate/route-lang-model-v1-namespace 'lang.model.spec-lua)
+   (migrate/route-lang-model-v1-namespace 'lang.model.spec-lua.lua-native)
+   (migrate/route-lang-model-v1-namespace 'lang.common.book)]
+  => ["lang.model.v1.spec-lua"
+      "lang.model.v1.spec-lua.lua-native"
+      "lang.common.book"])
+
+(fact "language model source and test paths retain their relative suffix"
+  [(migrate/route-lang-model-v1-path "core/lib/src/lang/model/spec_lua.hal")
+   (migrate/route-lang-model-v1-path
+    "core/lib/test/lang/model/spec_lua/lua_native_test.hal")
+   (migrate/route-lang-model-v1-path "core/lib/src/lang/common/book.hal")]
+  => ["core/lib/src/lang/model/v1/spec_lua.hal"
+      "core/lib/test/lang/model/v1/spec_lua/lua_native_test.hal"
+      "core/lib/src/lang/common/book.hal"])
+
+(fact "language model references are rewritten throughout source"
+  (let [source
+        "(ns demo (:require [lang.model.spec-lua :as lua]))\n^{:refer lang.model.spec-lua/+book+}\n(def x 'lang.model.spec-lua.lua-native/value)"
+        result (migrate/migrate-lang-model-v1-source source)]
+    [(:rules result)
+     (str/includes? (:after result) "lang.model.v1.spec-lua :as lua")
+     (str/includes? (:after result) "lang.model.v1.spec-lua/+book+")
+     (str/includes? (:after result) "lang.model.v1.spec-lua.lua-native/value")])
+  => [[:lang.model/v1] true true true])
+
+(fact "language model units expose an explicit move intent"
+  (select-keys
+   (migrate/migrate-lang-model-v1-unit
+    {:path "core/lib/src/lang/model/spec_js/js_native.hal"
+     :source "(ns lang.model.spec-js.js-native)"})
+   [:source/path :target/path :move :changed :after])
+  => {:source/path "core/lib/src/lang/model/spec_js/js_native.hal"
+      :target/path "core/lib/src/lang/model/v1/spec_js/js_native.hal"
+      :move true
+      :changed true
+      :after "(ns lang.model.v1.spec-js.js-native)"})
+
+(fact "a moved implementation owns a destination occupied by an old facade"
+  (let [facade {:path "lang/model/v1/spec_lua.hal"
+                :source/path "lang/model/v1/spec_lua.hal"
+                :target/path "lang/model/v1/spec_lua.hal"
+                :move false}
+        implementation {:path "lang/model/v1/spec_lua.hal"
+                        :source/path "lang/model/spec_lua.hal"
+                        :target/path "lang/model/v1/spec_lua.hal"
+                        :move true}]
+    (map :source/path (migrate/owned-edits [facade implementation])))
+  => ["lang/model/spec_lua.hal"])
+
+(fact "applying a language model migration moves the source after preflight"
+  (let [root (deref (File/temp-directory "/private/tmp"))
+        source-path "lang/model/spec_lua/sample.hal"
+        target-path "lang/model/v1/spec_lua/sample.hal"
+        source "(ns lang.model.spec-lua.sample)"
+        absolute-source (File/resolve root source-path)
+        _ (deref (File/write absolute-source
+                             (str/encode-utf8 source)
+                             {:mode :create :parents? true}))
+        unit (migrate/migrate-lang-model-v1-unit
+              {:path source-path :source source})
+        applied (migrate/apply root {:records [{:data unit}]})
+        absolute-target (File/resolve root target-path)
+        output (str/decode-utf8 (deref (File/read absolute-target)))
+        source-exists (deref (File/exists? absolute-source))
+        result [(:write (first applied)) source-exists output]
+        _ (fs/delete root {:recursive? true :missing-ok? false})]
+    result)
+  => [true false "(ns lang.model.v1.spec-lua.sample)"])
+
+(fact "Foundation common tests route into canonical Hara test namespaces"
+  [(migrate/route-foundation-common-test-path
+    "test/tahto/base/emit_data_test.clj")
+   (migrate/route-foundation-common-test-path
+    "test/tahto/common/book_module_test.clj")]
+  => ["core/lib/test-lang/lang/common/emit_data_test.hal"
+      "core/lib/test-lang/lang/common/book_module_test.hal"])
+
+(fact "Foundation common test migration preserves facts and installs code.test"
+  (let [source
+        "(ns tahto.base.emit-data-test (:use code.test))\n^{:refer tahto.base.emit-data/emit-data :added \"4.0\"}\n(fact \"emits data\" 1 => 1)"
+        result
+        (migrate/migrate-foundation-common-test-source
+         source "lang.common.emit-data-test")]
+    [(:facts result)
+     (:diagnostics result)
+     (str/includes? (:after result) "lang.common.emit-data-test")
+     (str/includes? (:after result) "lang.common.emit-data/emit-data")
+     (str/includes? (:after result)
+                    "(pr-str (run {:namespace \"lang.common.emit-data-test\"}))")])
+  => [{:source 1 :direct 1 :adapted 0 :covered-current 0 :unmapped 0}
+      [] true true true])
+
+(fact "legacy mutable Foundation fixtures remain blocking until adapted"
+  (let [result
+        (migrate/migrate-foundation-common-test-source
+         "(ns tahto.base.emit-assign-test (:require [tahto.core.library]))\n(fact \"legacy\" 1 => 1)"
+         "lang.common.emit-assign-test")]
+    [(:unmapped (:facts result))
+     (:migration/error (first (:diagnostics result)))])
+  => [1 :foundation/unmapped-reference])
+
+(fact "applying a Foundation import copies without deleting its authority"
+  (let [root (deref (File/temp-directory "/private/tmp"))
+        source-path "reference/test/tahto/base/emit_data_test.clj"
+        target-path "core/lib/test-lang/lang/common/emit_data_test.hal"
+        source "(ns tahto.base.emit-data-test (:use code.test))\n(fact \"one\" 1 => 1)"
+        absolute-source (File/resolve root source-path)
+        _ (deref (File/write absolute-source (str/encode-utf8 source)
+                             {:mode :create :parents? true}))
+        unit (migrate/migrate-foundation-common-test-unit
+              {:path source-path :target/path target-path
+               :target/namespace "lang.common.emit-data-test"
+               :source source})
+        applied (migrate/apply root {:records [{:data unit}]})
+        source-exists (deref (File/exists? absolute-source))
+        target-exists (deref (File/exists? (File/resolve root target-path)))
+        result [(:copy (first applied)) source-exists target-exists]
+        _ (fs/delete root {:recursive? true :missing-ok? false})]
+    result)
+  => [true true true])
+
+(fact "Foundation test migration is idempotent after canonical routing"
+  (let [source "(ns tahto.base.emit-data-test (:use code.test))\n(fact \"one\" 1 => 1)"
+        first-pass (migrate/migrate-foundation-common-test-source
+                    source "lang.common.emit-data-test")
+        second-pass (migrate/migrate-foundation-common-test-source
+                     (:after first-pass) "lang.common.emit-data-test")]
+    [(:changed first-pass) (:changed second-pass)
+     (= (:after first-pass) (:after second-pass))])
+  => [true false true])
+
+(def +semantic-ledger+
+  [{:source/refer 'tahto.base.emit-data/emit-data
+    :target/refer 'lang.common.emit-data/emit-data
+    :disposition :direct
+    :stage/from :emit
+    :stage/to :emit
+    :provenance {:repository :foundation-base :path "src/tahto/base/emit_data.clj"}
+    :validation 'lang.common.emit-data-test/emits-data}
+   {:source/refer 'tahto.typed.xtalk-infer/infer-type
+    :target/refer 'lang.common.emit-rewrite/canonical-stage
+    :disposition :test-vector
+    :stage/from :analysis
+    :stage/to :canonical
+    :reason :portable-access-lowering-moved
+    :provenance {:repository :foundation-base :path "test/tahto/typed/xtalk_infer_test.clj"}
+    :validation 'lang.common.emit-rewrite-test/lowers-portable-access}
+   {:source/refer 'tahto.core.library/snapshot
+    :disposition :obsolete
+    :stage/from :runtime
+    :reason :replaced-by-source-owned-books
+    :provenance {:repository :foundation-base :path "src/tahto/core/library.clj"}}
+   {:target/refer 'lang.base.v1.grammar-spec/fingerprint
+    :disposition :new-only
+    :stage/to :materialize
+    :reason :versioned-grammar-requires-reproducibility
+    :validation 'lang.base.v1.grammar-spec-test/stable-fingerprint}])
+
+(fact "semantic migration records cover all five architectural dispositions"
+  (let [records
+        (conj +semantic-ledger+
+              {:source/refer 'tahto.base.emit-special/deref-form
+               :target/refer 'lang.common.emit-special/deref-form
+               :disposition :adapted
+               :reason :host-capability-is-explicit
+               :provenance {:repository :foundation-base}
+               :validation 'lang.common.emit-special-test/explicit-host-capability})]
+    [(migrate/migration-ledger-valid? records)
+     (:dispositions (migrate/migration-ledger-plan records))])
+  => [true {:direct 1 :test-vector 1 :obsolete 1 :new-only 1 :adapted 1}])
+
+(fact "semantic ledger validation reports missing contracts without writing"
+  (let [plan
+        (migrate/migration-ledger-plan
+         [{:source/refer 'tahto.base.emit/emit
+           :disposition :adapted}])]
+    [(:write plan)
+     (:valid plan)
+     (set (map :migration/error (:diagnostics plan)))])
+  => [false false
+      #{:migration/missing-target
+        :migration/missing-provenance
+        :migration/missing-validation
+        :migration/missing-reason}])
+
+(fact "semantic ledger rejects duplicate ownership for one source reference"
+  (let [record (first +semantic-ledger+)
+        duplicate (assoc record :target/refer 'lang.common.emit/emit-data)
+        diagnostics (migrate/migration-ledger-diagnostics [record duplicate])]
+    [(count diagnostics)
+     (:migration/error (first diagnostics))
+     (:owners (first diagnostics))])
+  => [1 :migration/duplicate-source
+      ['lang.common.emit-data/emit-data 'lang.common.emit/emit-data]])
+
+(fact "semantic ledger queries fields and qualified reference namespaces"
+  [(mapv :source/refer
+         (migrate/migration-ledger-query
+          +semantic-ledger+
+          {:source/namespace 'tahto.typed.xtalk-infer
+           :stage/to :canonical}))
+   (mapv :target/refer
+         (migrate/migration-ledger-query
+          +semantic-ledger+
+          {:disposition :new-only}))]
+  => [['tahto.typed.xtalk-infer/infer-type]
+      ['lang.base.v1.grammar-spec/fingerprint]])
+
+(fact "V1 grammar snapshots are deterministic source-owned artifacts"
+  (let [features {:add {:op :add :symbol #{'+} :raw "+"}}
+        inputs [{:source 'lang.common.grammar-spec
+                 :fingerprint "djb2:input"}]
+        first-pass
+        (migrate/materialize-v1-grammar-snapshot features inputs)
+        second-source
+        (migrate/materialize-v1-grammar-snapshot-source
+         features inputs (:fingerprint first-pass))]
+    [(:path first-pass)
+     (= (:after first-pass) second-source)
+     (str/includes? (:after first-pass) "(def +features+")
+     (str/includes? (:after first-pass) "(def +migration-inputs+")
+     (str/includes? (:after first-pass) "(defn extend")
+     (str/includes? (:after first-pass) "(defn overwrite")
+     (str/includes? (:after first-pass) "(defn snapshot-valid?")
+     (:diagnostics first-pass)])
+  => ["lib/src/lang/base/v1/grammar_spec.hal"
+      true true true true true true []])
+
+(fact "V1 grammar validation detects a stale checked-in snapshot"
+  (let [features {:add {:op :add :symbol #{'+} :raw "+"}}
+        inputs [{:source 'lang.common.grammar-spec
+                 :fingerprint "djb2:input"}]
+        source (:after
+                (migrate/materialize-v1-grammar-snapshot features inputs))
+        current
+        (migrate/validate-v1-grammar-snapshot source features inputs)
+        stale
+        (migrate/validate-v1-grammar-snapshot
+         (str source "\n;; stale") features inputs)]
+    [[(:valid current) (:stale current) (:diagnostics current)]
+     [(:valid stale) (:stale stale)
+      (mapv :migration/error (:diagnostics stale))]])
+  => [[true false []]
+      [false true [:migration/stale-snapshot]]])
+
+(fact "V1 snapshot extraction preserves qualified grammar reference identity"
+  (let [entry (first (first migrate/+v1-grammar-macro-categories+))
+        snapshot (migrate/v1-grammar-entry-snapshot-data entry)
+        reference (:macro snapshot)]
+    [(symbol? reference) (str reference)])
+  => [true "lang.common.grammar-macro/tf-macroexpand"])
+
+(fact "the checked-in V1 grammar equals current tool.migrate materialization"
+  (let [source
+        (migrate/read-migration-source
+         nil migrate/+v1-grammar-snapshot-target+)
+        materialized (migrate/materialize-current-v1-grammar-snapshot)
+        validation
+        (migrate/validate-current-v1-grammar-snapshot source)]
+    [(:fingerprint materialized)
+     (mapv :fingerprint (:inputs materialized))
+     (:valid validation)
+     (:stale validation)
+     (:diagnostics validation)])
+  => ["djb2:2219895603"
+      ["djb2:1675029460" "djb2:2718165669" "djb2:4048472753"]
+      true false []])
+
+(fact "Foundation language authority starts as a valid concrete ledger"
+  [(migrate/migration-ledger-valid? migrate/+foundation-language-ledger+)
+   (mapv :source/refer migrate/+foundation-language-ledger+)
+   (mapv :validation migrate/+foundation-language-ledger+)]
+  => [true
+      ['tahto.base.emit-data/emit-data
+       'tahto.base.emit-template/emit-template
+       'tahto.base.grammar/build
+       'tahto.base.preprocess-base/to-input
+       'tahto.common.book/book]
+      ['lang.common.emit-data-test/run
+       'lang.common.emit-template-test/run
+       'lang.common.grammar-api-test/run
+       'lang.common.emit-preprocess-test/run
+       'lang.common.book-test/run]])
+
+(fact "dry plans explain materialize and adapt actions without writing"
+  (let [plan
+        (migrate/migration-ledger-plan migrate/+foundation-language-ledger+)]
+    [(:write plan)
+     (:valid plan)
+     (:actions plan)
+     (mapv (fn [item]
+             [(:action item) (:status item) (:write item)])
+           (:queue plan))])
+  => [false true {:materialize 2 :adapt 3}
+      [[:materialize :ready false]
+       [:materialize :ready false]
+       [:adapt :ready false]
+       [:adapt :ready false]
+       [:adapt :ready false]]])
+
+(fact "invalid records become blocked queue entries"
+  (select-keys
+   (migrate/migration-record-plan
+    {:source/refer 'tahto.base.emit/emit
+     :disposition :adapted})
+   [:action :status :write])
+  => {:action :adapt :status :blocked :write false})
+
+(fact "inventory audits accept fully accounted source target and validation sets"
+  (let [records migrate/+foundation-language-ledger+
+        inventory
+        {:source/references (mapv :source/refer records)
+         :target/references (mapv :target/refer records)
+         :validation/references (mapv :validation records)}
+        audit (migrate/migration-ledger-audit records inventory)
+        plan (migrate/migration-ledger-plan records inventory)]
+    [(:valid audit)
+     (:source/references audit)
+     (:diagnostics audit)
+     (:valid plan)
+     (set (map :status (:queue plan)))])
+  => [true 5 [] true #{:ready}])
+
+(fact "inventory audits block stale references and unaccounted source authority"
+  (let [record (first migrate/+foundation-language-ledger+)
+        inventory
+        {:source/references ['tahto.base.emit-common/emit-common]
+         :target/references []
+         :validation/references []}
+        audit (migrate/migration-ledger-audit [record] inventory)
+        plan (migrate/migration-ledger-plan [record] inventory)]
+    [(set (map :migration/error (:diagnostics audit)))
+     (:valid plan)
+     (:status (first (:queue plan)))])
+  => [#{:migration/stale-source
+        :migration/stale-target
+        :migration/stale-validation
+        :migration/unaccounted-source}
+      false
+      :blocked])
+
+(fact "Foundation emitter references are extracted from fact metadata"
+  (migrate/source-references
+   "^{:refer tahto.base.emit-common/emit-free :added \"4.0\"}\n(fact \"one\" 1 => 1)\n^{:refer lang.common.emit/emit}\n"
+   "tahto.base.emit")
+  => ['tahto.base.emit-common/emit-free])
+
+(fact "Foundation emitter extraction preserves adopted validation provenance"
+  (migrate/source-reference-entries
+   "^{:refer tahto.base.emit-common/emit-free :added \"4.0\"}\n^{:refer tahto.base.emit-common/emit-free :adopt true}"
+   "tahto.base.emit")
+  => [{:reference 'tahto.base.emit-common/emit-free :adopted? false}
+      {:reference 'tahto.base.emit-common/emit-free :adopted? true}])
+
+(fact "canonical owners supersede adopted facts but real duplicates remain"
+  (let [record (fn [path adopted?]
+                 {:source/refer 'tahto.base.emit-common/emit-free
+                  :provenance {:path path :adopted? adopted?}})]
+    [(mapv (fn [item] (get-in item [:provenance :path]))
+           (migrate/foundation-emitter-record-owners
+            [(record "adopted.clj" true) (record "owner.clj" false)]))
+     (mapv (fn [item] (get-in item [:provenance :path]))
+           (migrate/foundation-emitter-record-owners
+            [(record "owner-a.clj" false) (record "owner-b.clj" false)]))])
+  => [["owner.clj"] ["owner-a.clj" "owner-b.clj"]])
+
+(fact "Foundation emitter records classify direct and stage-adapted authority"
+  (let [records
+        (migrate/foundation-emitter-ledger-records
+         {:path "test/tahto/base/emit_common_test.clj"
+          :target/namespace "lang.common.emit-common-test"
+          :source
+          "^{:refer tahto.base.emit-common/emit-free}\n(fact \"direct\" 1 => 1)\n^{:refer tahto.base.emit-block/emit-block}\n(fact \"adapted\" 1 => 1)"})]
+    (mapv (fn [record]
+            [(:source/refer record)
+             (:target/refer record)
+             (:disposition record)
+             (:stage/to record)
+             (boolean (:reason record))])
+          records))
+  => [['tahto.base.emit-common/emit-free
+       'lang.common.emit-common/emit-free
+       :direct :emit false]
+      ['tahto.base.emit-block/emit-block
+       'lang.common.emit-block/emit-block
+       :adapted :emit-adapter true]])
+
+(fact "emitter policy overrides namespace defaults at architectural boundaries"
+  (mapv (fn [reference]
+          (let [policy (migrate/foundation-emitter-policy reference)]
+            [reference (:disposition policy) (:stage/to policy)
+             (boolean (:reason policy))]))
+        ['tahto.base.emit-common/emit-free
+         'tahto.base.emit-common/emit-with-uuid
+         'tahto.base.emit-common/emit-op
+         'tahto.base.emit-common/emit-common-loop
+         'tahto.base.emit-common/emit-common])
+  => [['tahto.base.emit-common/emit-free :direct :emit false]
+      ['tahto.base.emit-common/emit-with-uuid :adapted :emit-capability true]
+      ['tahto.base.emit-common/emit-op :adapted :emit-adapter true]
+      ['tahto.base.emit-common/emit-common-loop :adapted :emit-orchestration true]
+      ['tahto.base.emit-common/emit-common :adapted :emit-orchestration true]])
+
+(fact "emitter policy routes moved helpers and adopted vectors to their owners"
+  (mapv (fn [reference]
+          (let [record (migrate/foundation-emitter-ledger-record
+                        reference "test/tahto/base/emit_common_grammar_test.clj"
+                        'lang.common.emit-data-test/run)]
+            [(:source/refer record) (:target/refer record)
+             (:disposition record) (:stage/to record)
+             (boolean (:reason record))]))
+        ['tahto.base.emit-common/emit-map-key
+         'tahto.base.emit-common/emit-raw
+         'tahto.base.emit-common/emit-macro.->
+         'tahto.base.emit-common/emit-macro.xor])
+  => [['tahto.base.emit-common/emit-map-key
+       'lang.common.emit-data/emit-map-key :direct :emit false]
+      ['tahto.base.emit-common/emit-raw
+       'lang.common.emit-common/emit-free :test-vector :emit true]
+      ['tahto.base.emit-common/emit-macro.->
+       'lang.common.grammar-macro/tf-macroexpand
+       :test-vector :grammar-expand true]
+      ['tahto.base.emit-common/emit-macro.xor
+       'lang.common.grammar-macro/tf-xor
+       :test-vector :grammar-expand true]])
+
+(fact "block and function operator facts route as stage-owned test vectors"
+  (mapv (fn [reference]
+          (let [record
+                (migrate/foundation-emitter-ledger-record
+                 reference "test/tahto/base/emit_block_op_test.clj"
+                 'lang.common.emit-block-test/run true)]
+            [(:target/refer record) (:disposition record) (:stage/to record)
+             (:validation record)]))
+        ['tahto.base.emit-block/test-block-loop.try
+         'tahto.base.emit-block/test-fn-emit.fn
+         'tahto.base.emit/form-key])
+  => [['lang.common.emit-block/test-block-emit
+       :test-vector :emit-block 'lang.common.emit-block-test/run]
+      ['lang.common.emit-fn/test-fn-emit
+       :test-vector :emit-function 'lang.common.emit-fn-test/run]
+      ['lang.common.emit-common/form-key
+       :adapted :emit-dispatch 'lang.common.emit-common-test/run]])
+
+(fact "path audits load real units and derive moved validation ownership"
+  (let [root (deref (File/temp-directory "/private/tmp"))
+        source-path "reference/emit_common_grammar_test.clj"
+        data-path "target/emit_data_test.hal"
+        macro-path "target/grammar_macro_test.hal"
+        _ (deref
+           (File/write
+            (File/resolve root source-path)
+            (str/encode-utf8
+             "^{:refer tahto.base.emit-common/emit-map-key}\n^{:refer tahto.base.emit-common/emit-macro.xor}")
+            {:mode :create :parents? true}))
+        _ (deref
+           (File/write
+            (File/resolve root data-path)
+            (str/encode-utf8
+             "^{:refer lang.common.emit-data/emit-map-key}")
+            {:mode :create :parents? true}))
+        _ (deref
+           (File/write
+            (File/resolve root macro-path)
+            (str/encode-utf8
+             "^{:refer lang.common.grammar-macro/tf-xor}")
+            {:mode :create :parents? true}))
+        result
+        (migrate/foundation-emitter-path-audit
+         root
+         [{:path source-path
+           :target/namespace "lang.common.emit-common-test"}]
+         [{:path data-path :namespace "lang.common.emit-data-test"}
+          {:path macro-path :namespace "lang.common.grammar-macro-test"}])
+        records (:records result)
+        output [(:valid (:audit result))
+                (mapv :validation records)
+                (mapv :target/refer records)]
+        _ (fs/delete root {:recursive? true :missing-ok? false})]
+    output)
+  => [true
+      ['lang.common.emit-data-test/run
+       'lang.common.grammar-macro-test/run]
+      ['lang.common.emit-data/emit-map-key
+       'lang.common.grammar-macro/tf-xor]])
+
+(fact "emitter inventories leave absent target facts explicitly blocked"
+  (let [source-unit
+        {:path "test/tahto/base/emit_common_test.clj"
+         :target/namespace "lang.common.emit-common-test"
+         :source
+         "^{:refer tahto.base.emit-common/emit-free}\n^{:refer tahto.base.emit-block/emit-block}"}
+        target-unit
+        {:namespace "lang.common.emit-common-test"
+         :source "^{:refer lang.common.emit-common/emit-free}"}
+        generated (migrate/foundation-emitter-inventory
+                   [source-unit] [target-unit])
+        plan (migrate/migration-ledger-plan
+              (:records generated) (:inventory generated))]
+    [(:valid plan)
+     (mapv :status (:queue plan))
+     (set (map :migration/error (:diagnostics plan)))])
+  => [false [:ready :blocked] #{:migration/stale-target}])
+
+(fact "grammar and preprocess policy records redesigned stage ownership"
+  (mapv (fn [reference]
+          (let [policy (migrate/foundation-grammar-policy reference)]
+            [(:disposition policy) (:stage/from policy) (:stage/to policy)
+             (boolean (:reason policy))]))
+        ['tahto.base.grammar-macro/tf-xor
+         'tahto.base.grammar/build
+         'tahto.base.preprocess-input/to-input
+         'tahto.base.preprocess-staging/to-staging])
+  => [[:direct :grammar-expand :grammar-expand false]
+      [:adapted :grammar-build :grammar-compatibility true]
+      [:direct :preprocess-input :input false]
+      [:adapted :preprocess :staging true]])
+
+(fact "input-form authority records its split from symbol resolution"
+  (let [policy
+        (migrate/foundation-grammar-policy
+         'tahto.base.preprocess-input/to-input-form)]
+    [(:disposition policy) (:stage/from policy) (:stage/to policy)
+     (:reason policy)])
+  => [:adapted :preprocess-input :input
+      :reader-normalization-remains-at-input-while-symbol-resolution-moved-to-resolve])
+
+(fact "XTalk grammar migration applies its one canonical adaptation idempotently"
+  (let [source
+        (str "(ns tahto.base.grammar-xtalk-test\n"
+             "  (:require [clojure.string :as str]\n"
+             "            [tahto.base.grammar-xtalk :as xtalk :refer :all])\n"
+             "  (:use code.test))\n"
+             "entry @v\n"
+             "'(not (x:nil? (x:get-key !:G \"SYM\")))\n")
+        first-pass
+        (migrate/migrate-foundation-grammar-xtalk-test-source source)
+        second-pass
+        (migrate/migrate-foundation-grammar-xtalk-test-source
+         (:after first-pass))]
+    [(str/includes? (:after first-pass) "clojure.string")
+     (str/includes? (:after first-pass) "entry (deref v)")
+     (str/includes? (:after first-pass)
+                    "(not= nil (x:get-key !:G \"SYM\"))")
+     (:changed second-pass)
+     (select-keys (:facts first-pass) [:direct :adapted])])
+  => [false true true false {:direct 51 :adapted 1}])
+
+(fact "XTalk global membership records its intentional canonical rewrite"
+  (let [policy
+        (migrate/foundation-grammar-policy
+         'tahto.base.grammar-xtalk/tf-global-has?)]
+    [(:disposition policy) (:stage/from policy) (:stage/to policy)
+     (:reason policy)])
+  => [:adapted :grammar-expand :grammar-expand
+      :global-membership-uses-canonical-nil-comparison])
+
+(fact "XTalk profile analysis migration declares vocabulary adaptations"
+  (let [source
+        (str "(ns tahto.base.grammar-xtalk-system-test\n"
+             "  (:use code.test)\n"
+             "  (:require [tahto.base.grammar-xtalk-system :refer :all]))\n"
+             ":xtalk-tahto.core-link-specific\n"
+             ":tahto.core-link-specific\n"
+             "(contains? ops :x-add)\n")
+        first-pass
+        (migrate/migrate-foundation-grammar-xtalk-system-test-source source)
+        second-pass
+        (migrate/migrate-foundation-grammar-xtalk-system-test-source
+         (:after first-pass))]
+    [(str/includes? (:after first-pass) "tahto.core-link-specific")
+     (str/includes? (:after first-pass) "hara.lang-link-specific")
+     (str/includes? (:after first-pass) "(member? ops :x-add)")
+     (:changed second-pass)
+     (select-keys (:facts first-pass) [:direct :adapted :unmapped])
+     (:diagnostics first-pass)])
+  => [false true true false {:direct 21 :adapted 3 :unmapped 0} []])
+
+(fact "grammar records retain exact Foundation provenance"
+  (let [record
+        (migrate/foundation-grammar-ledger-record
+         'tahto.base.grammar/build
+         "test/tahto/base/grammar_test.clj"
+         'lang.common.grammar-test/run false)]
+    [(:target/refer record) (:disposition record)
+     (:stage/from record) (:stage/to record)
+     (:provenance record)])
+  => ['lang.common.grammar/build :adapted
+      :grammar-build :grammar-compatibility
+      {:repository :foundation-base
+       :path "test/tahto/base/grammar_test.clj"
+       :adopted? false}])
+
+(fact "grammar path audits include source authority and redesigned API inputs"
+  (let [root (deref (File/temp-directory "/private/tmp"))
+        grammar-source "reference/grammar_test.clj"
+        macro-source "reference/grammar_macro_test.clj"
+        input-source "reference/preprocess_input_test.clj"
+        grammar-target "target/grammar_test.hal"
+        macro-target "target/grammar_macro_test.hal"
+        input-target "target/preprocess_input_test.hal"
+        api-target "target/grammar_api_test.hal"
+        writes
+        [[grammar-source "^{:refer tahto.base.grammar/build}"]
+         [macro-source "^{:refer tahto.base.grammar-macro/tf-xor}"]
+         [input-source "^{:refer tahto.base.preprocess-input/to-input}"]
+         [grammar-target "^{:refer lang.common.grammar/build}"]
+         [macro-target "^{:refer lang.common.grammar-macro/tf-xor}"]
+         [input-target "^{:refer lang.common.preprocess-input/to-input}"]
+         [api-target
+          (str "^{:refer lang.common.grammar-api/profile}\n"
+               "^{:refer lang.common.grammar-api/definition}\n"
+               "^{:refer lang.common.grammar-api/materialize}\n"
+               "^{:refer lang.common.grammar-api/fingerprint}")]]
+        _ (doseq [entry writes]
+            (deref
+             (File/write
+              (File/resolve root (first entry))
+              (str/encode-utf8 (second entry))
+              {:mode :create :parents? true})))
+        result
+        (migrate/foundation-grammar-path-audit
+         root
+         [{:path grammar-source :target/namespace "lang.common.grammar-test"}
+          {:path macro-source :target/namespace "lang.common.grammar-macro-test"}
+          {:path input-source :target/namespace "lang.common.preprocess-input-test"}]
+         [{:path grammar-target :namespace "lang.common.grammar-test"}
+          {:path macro-target :namespace "lang.common.grammar-macro-test"}
+          {:path input-target :namespace "lang.common.preprocess-input-test"}
+          {:path api-target :namespace "lang.common.grammar-api-test"}])
+        output [(:valid (:audit result))
+                (count (:records result))
+                (set (map :disposition (:records result)))
+                (count (get-in result [:inventory :target/references]))]
+        _ (fs/delete root {:recursive? true :missing-ok? false})]
+    output)
+  => [true 7 #{:direct :adapted :new-only} 7])
+
+(pr-str (run {:namespace "tool.migrate-test"}))

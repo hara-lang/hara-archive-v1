@@ -1,0 +1,301 @@
+(ns tool.migrate.common.report)
+
+(def +terminal-statuses+
+  #{:exact :ported :obsolete})
+
+(def +blocking-diagnostic-types+
+  #{:tool.migrate/ambiguous
+    :tool.migrate/conflict
+    :tool.migrate/unsupported})
+
+(defn record-error?
+  [record]
+  (or
+   (= :error (:status record))
+   (= :critical (:status record))))
+
+(defn batch-records
+  [batch]
+  (vec
+   (map
+    (fn [item]
+      (:item/value item))
+    (:results batch))))
+
+(defn task-summary
+  [task-id batch]
+  (let [records (batch-records batch)]
+    {:operation task-id
+     :selected (count records)
+     :processed (count records)
+     :returned
+     (count
+      (filter
+       (fn [record]
+         (= :return (:status record)))
+       records))
+     :warnings
+     (count
+      (filter
+       (fn [record]
+         (= :warn (:status record)))
+       records))
+     :errors
+     (count (filter record-error? records))}))
+
+(defn item-diagnostics
+  [item]
+  (vec (or (:diagnostics (:result item)) [])))
+
+(defn item-rules
+  [item key]
+  (vec (or (get (:result item) key) [])))
+
+(defn count-by
+  [values key-function]
+  (reduce
+   (fn [output value]
+     (let [key (key-function value)]
+       (assoc output key
+              (inc (or (get output key) 0)))))
+   {}
+   values))
+
+(defn sorted-unique
+  [values]
+  (vec
+   (sort
+    (keys
+     (reduce
+      (fn [output value]
+        (if (nil? value)
+          output
+          (assoc output value true)))
+      {}
+      values)))))
+
+(defn namespaces-by
+  [items key-function]
+  (reduce
+   (fn [output item]
+     (let [key (key-function item)
+           namespace (:namespace item)]
+       (assoc
+        output
+        key
+        (sorted-unique
+         (conj
+          (vec (or (get output key) []))
+          namespace)))))
+   {}
+   items))
+
+(defn rule-counts
+  [items key]
+  (count-by
+   (reduce
+    (fn [output item]
+      (into output (item-rules item key)))
+    []
+    items)
+   :rule/id))
+
+(defn safety-counts
+  [items]
+  (count-by
+   (reduce
+    (fn [output item]
+      (into output (item-rules item :rules/matched)))
+    []
+    items)
+   :safety))
+
+(defn cycle-report
+  [items]
+  (let [cycles
+        (filter
+         (fn [item]
+           (:dependency/cycle item))
+         items)]
+    (namespaces-by
+     cycles
+     (fn [item]
+       (str/join "|" (:dependency/component item))))))
+
+(defn blocking-diagnostic?
+  [diagnostic]
+  (or
+   (= :manual (:safety diagnostic))
+   (= :error (:level diagnostic))
+   (= :critical (:level diagnostic))
+   (has? +blocking-diagnostic-types+ (:type diagnostic))))
+
+(defn item-blocked?
+  [item]
+  (or
+   (record-error? (:record item))
+   (not
+    (empty?
+     (filter blocking-diagnostic?
+             (item-diagnostics item))))))
+
+(defn next-unblocked
+  [items]
+  (let [candidates
+        (vec
+         (filter
+          (fn [item]
+            (and
+             (not
+              (has? +terminal-statuses+
+                    (:corpus/status item)))
+             (not (item-blocked? item))))
+          items))]
+    (if (empty? candidates)
+      []
+      (let [rank
+            (first
+             (sort
+              (keep
+               (fn [item]
+                 (:dependency/rank item))
+               candidates)))]
+        (sorted-unique
+         (map
+          :namespace
+          (filter
+           (fn [item]
+             (= rank (:dependency/rank item)))
+           candidates)))))))
+
+(defn diagnostic-errors
+  [diagnostics]
+  (vec
+   (filter
+    (fn [diagnostic]
+      (or
+       (= :error (:level diagnostic))
+       (= :critical (:level diagnostic))
+       (has? +blocking-diagnostic-types+
+             (:type diagnostic))))
+    diagnostics)))
+
+(defn diagnostic-warnings
+  [diagnostics]
+  (vec
+   (filter
+    (fn [diagnostic]
+      (= :warning (:level diagnostic)))
+    diagnostics)))
+
+(defn plan-summary
+  [task-id units records items edits diagnostics]
+  (let [matched
+        (reduce
+         (fn [output item]
+           (into output
+                 (item-rules item :rules/matched)))
+         []
+         items)
+        applied
+        (reduce
+         (fn [output item]
+           (into output
+                 (item-rules item :rules/applied)))
+         []
+         items)
+        safety (count-by matched :safety)
+        errors (diagnostic-errors diagnostics)]
+    {:operation task-id
+     :selected (count units)
+     :processed (count records)
+     :changed
+     (count
+      (filter
+       (fn [edit]
+         (:changed edit))
+       edits))
+     :unchanged
+     (count
+      (filter
+       (fn [edit]
+         (not (:changed edit)))
+       edits))
+     :matched (count matched)
+     :matched/safe (or (get safety :safe) 0)
+     :matched/review (or (get safety :review) 0)
+     :matched/manual (or (get safety :manual) 0)
+     :applied (count applied)
+     :unsupported
+     (count
+      (filter
+       (fn [diagnostic]
+         (= :tool.migrate/unsupported
+            (:type diagnostic)))
+       diagnostics))
+     :conflicts
+     (count
+      (filter
+       (fn [diagnostic]
+         (= :tool.migrate/conflict
+            (:type diagnostic)))
+       diagnostics))
+     :warnings
+     (+
+      (count (diagnostic-warnings diagnostics))
+      (count
+       (filter
+        (fn [record]
+          (= :warn (:status record)))
+        records)))
+     :errors
+     (+
+      (count errors)
+      (count (filter record-error? records)))}))
+
+(defn report
+  [items]
+  {:by/namespace
+   (reduce
+    (fn [output item]
+      (assoc
+       output
+       (:namespace item)
+       {:source/path
+        (or
+         (:source/path (:unit item))
+         (:path (:unit item)))
+        :target/path (:target/path (:result item))
+        :corpus/status (:corpus/status item)
+        :migration/summary (:migration/summary item)
+        :dependency/rank (:dependency/rank item)
+        :dependency/component (:dependency/component item)
+        :dependency/cycle (:dependency/cycle item)
+        :status (:status (:record item))
+        :changed (:changed (:result item))
+        :rules/matched
+        (vec
+         (map
+          :rule/id
+          (item-rules item :rules/matched)))
+        :rules/applied
+        (vec
+         (map
+          :rule/id
+          (item-rules item :rules/applied)))}))
+    {}
+    items)
+   :by/dependency-rank
+   (namespaces-by items :dependency/rank)
+   :by/migration-status
+   (namespaces-by items :corpus/status)
+   :rules/matched
+   (rule-counts items :rules/matched)
+   :rules/applied
+   (rule-counts items :rules/applied)
+   :rules/by-safety
+   (safety-counts items)
+   :cycles
+   (cycle-report items)
+   :next-unblocked
+   (next-unblocked items)})
