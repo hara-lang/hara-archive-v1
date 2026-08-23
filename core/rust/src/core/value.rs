@@ -2415,6 +2415,57 @@ pub fn map_entries(value: &Value) -> Option<Vec<(Value, Value)>> {
     }
 }
 
+pub(crate) fn validate_exception_info(exception: &ExceptionInfo) -> Result<(), String> {
+    let entries = map_entries(&exception.data)
+        .ok_or_else(|| "hta/value-malformed: exception data must be a map".to_string())?;
+    let field = |name: &str| {
+        entries.iter().find_map(|(key, value)| {
+            matches!(key, Value::Keyword(key_name) if key_name.as_str() == name).then_some(value)
+        })
+    };
+    let Some(Value::Keyword(code)) = field("ex/code") else {
+        return Err("hta/value-malformed: exception data lacks a namespaced :ex/code".into());
+    };
+    if code.get_namespace().is_none() {
+        return Err("hta/value-malformed: exception code must be a namespaced keyword".into());
+    }
+    match field("ex/message") {
+        Some(Value::String(message)) if message == &exception.message => {}
+        Some(Value::String(_)) => {
+            return Err("hta/value-malformed: exception message does not match its data".into())
+        }
+        Some(_) => return Err("hta/value-malformed: invalid exception message".into()),
+        None if exception.message == format!(":{code}") => {}
+        None => {
+            return Err("hta/value-malformed: exception message does not match code fallback".into())
+        }
+    }
+    match (field("ex/cause"), exception.cause.as_deref()) {
+        (None, None) => {}
+        (Some(Value::ExceptionInfo(_)), Some(Value::ExceptionInfo(cause))) => {
+            validate_exception_info(cause)?;
+        }
+        (Some(_), Some(Value::ExceptionInfo(_))) => {
+            return Err("hta/value-malformed: exception data cause must be an Exception".into())
+        }
+        (None, Some(_)) => {
+            return Err("hta/value-malformed: exception data lacks its Exception cause".into())
+        }
+        (_, _) => return Err("hta/value-malformed: exception cause must be an Exception".into()),
+    }
+    if let Some(context) = field("ex/context") {
+        if map_entries(context).is_none() {
+            return Err("hta/value-malformed: exception context must be a map".into());
+        }
+    }
+    if let Some(class) = field("ex/class") {
+        if !matches!(class, Value::Keyword(class) if class.get_namespace().is_some()) {
+            return Err("hta/value-malformed: exception class must be a namespaced keyword".into());
+        }
+    }
+    Ok(())
+}
+
 fn pointer_from_descriptor(descriptor: Value) -> Result<Value, String> {
     let entries =
         map_entries(&descriptor).ok_or_else(|| "pointer expects one descriptor map".to_string())?;

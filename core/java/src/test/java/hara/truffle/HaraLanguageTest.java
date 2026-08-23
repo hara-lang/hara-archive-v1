@@ -2680,13 +2680,13 @@ public class HaraLanguageTest {
       assertTrue(context.eval(HaraLanguage.ID, "(nil? (ex-class (ex :file/read {})))").asBoolean());
       assertEquals(
           ":ex.class/not-found",
-          context.eval(HaraLanguage.ID, "(ex-class (ex :not-found {}))").toString());
+          context.eval(HaraLanguage.ID, "(ex-class (ex :hara/not-found {}))").toString());
       assertEquals(
           ":ex.class/internal",
-          context.eval(HaraLanguage.ID, "(ex-class (ex :generic {}))").toString());
+          context.eval(HaraLanguage.ID, "(ex-class (ex :hara/generic {}))").toString());
       assertEquals(
           ":hara/not-found",
-          context.eval(HaraLanguage.ID, "(:ex/code (ex-data (ex :not-found {})))").toString());
+          context.eval(HaraLanguage.ID, "(:ex/code (ex-data (ex :hara/not-found {})))").toString());
       assertTrue(
           context.eval(HaraLanguage.ID, "(nil? (ex-native-type (ex :file/read {})))").asBoolean());
       assertTrue(
@@ -2700,7 +2700,7 @@ public class HaraLanguageTest {
           context
               .eval(
                   HaraLanguage.ID,
-                  "(let [error (ex :file/read {} :ex/message \"missing\" :ex/class :ex.class/io)] "
+                  "(let [error (ex :file/read {:ex/message \"missing\" :ex/class :ex.class/io})] "
                       + "[(:ex/code (ex-data error)) (ex-message error) (ex-class error)])")
               .toString());
       PolyglotException malformed =

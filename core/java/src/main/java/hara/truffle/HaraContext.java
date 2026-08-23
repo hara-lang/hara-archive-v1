@@ -2497,7 +2497,8 @@ public final class HaraContext {
               if (!(rawAttributes instanceof IMapType attributes)) {
                 throw new HaraException("ex expects an attributes map");
               }
-              Map.Entry<?, ?> messageEntry = attributes.find(Keyword.create("ex", "message"));
+              Map.Entry<?, ?> messageEntry =
+                  (Map.Entry<?, ?>) attributes.find(Keyword.create("ex", "message"));
               Object message = messageEntry == null ? null : messageEntry.getValue();
               if (messageEntry != null && !(message instanceof String)) {
                 throw new HaraException(":ex/message must be a string");
@@ -2506,7 +2507,8 @@ public final class HaraContext {
                 throw new HaraException(
                     "ex attributes must not contain :ex/code; pass the code as the first argument");
               }
-              Map.Entry<?, ?> classEntry = attributes.find(Keyword.create("ex", "class"));
+              Map.Entry<?, ?> classEntry =
+                  (Map.Entry<?, ?>) attributes.find(Keyword.create("ex", "class"));
               Object classValue = classEntry == null ? null : classEntry.getValue();
               if (classEntry != null
                   && (!(classValue instanceof Keyword exceptionClass)
@@ -2520,12 +2522,14 @@ public final class HaraContext {
                 throw new HaraException(
                     ":ex/class conflicts with the registered class for :ex/code");
               }
-              Map.Entry<?, ?> causeEntry = attributes.find(Keyword.create("ex", "cause"));
+              Map.Entry<?, ?> causeEntry =
+                  (Map.Entry<?, ?>) attributes.find(Keyword.create("ex", "cause"));
               Object causeValue = causeEntry == null ? null : causeEntry.getValue();
               if (causeEntry != null && !(causeValue instanceof hara.lang.base.Ex.Info)) {
                 throw new HaraException(":ex/cause must be an Exception");
               }
-              Map.Entry<?, ?> contextEntry = attributes.find(Keyword.create("ex", "context"));
+              Map.Entry<?, ?> contextEntry =
+                  (Map.Entry<?, ?>) attributes.find(Keyword.create("ex", "context"));
               Object contextValue = contextEntry == null ? null : contextEntry.getValue();
               if (contextEntry != null && !(contextValue instanceof IMapType)) {
                 throw new HaraException(":ex/context must be a map");
@@ -2543,7 +2547,7 @@ public final class HaraContext {
               }
               return new hara.lang.base.Ex.Info(
                   message instanceof String ? (String) message : code.display(), data, cause);
-            }));
+            });
     exceptionConstructor = exBuiltin;
     target.define("ex", exBuiltin);
     target.define(
@@ -7853,7 +7857,7 @@ public final class HaraContext {
     throw new HaraException("value is not callable: " + function);
   }
 
-  void recordExceptionCreation(
+  public void recordExceptionCreation(
       Object constructor, Object value, com.oracle.truffle.api.source.SourceSection source) {
     if (constructor != exceptionConstructor
         || !(value instanceof hara.lang.base.Ex.Info info)

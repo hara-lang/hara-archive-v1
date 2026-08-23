@@ -59,6 +59,7 @@ public final class HtaValueCodec {
   private static final int PRIORITY_MAP = 37;
   private static final String RESULT_STRUCT_NAME = "std.native/Result";
   private static final String[] RESULT_STRUCT_FIELDS = {"status", "data", "error", "context"};
+  private static final Object MISSING = new Object();
 
   private HtaValueCodec() {}
 
@@ -177,6 +178,7 @@ public final class HtaValueCodec {
       write(output, tagged.tag(), depth + 1);
       write(output, tagged.form(), depth + 1);
     } else if (value instanceof hara.lang.base.Ex.Info info) {
+      validateException(info);
       output.write(EXCEPTION_INFO);
       write(output, info.getMessage(), depth + 1);
       write(output, info.getData(), depth + 1);
@@ -304,6 +306,59 @@ public final class HtaValueCodec {
   private static void writeRaw(ByteArrayOutputStream output, byte[] value) {
     if (value.length > MAX_FRAME_BYTES - output.size()) throw malformed("frame too large");
     output.writeBytes(value);
+  }
+
+  private static void validateException(hara.lang.base.Ex.Info info) {
+    Object cause = info.getCause();
+    if (cause != null && !(cause instanceof hara.lang.base.Ex.Info)) {
+      throw malformed("exception cause must be an Exception");
+    }
+    validateException(info.getMessage(), info.getData(), (hara.lang.base.Ex.Info) cause);
+  }
+
+  private static void validateException(
+      String message, Object data, hara.lang.base.Ex.Info cause) {
+    Object code = exceptionField(data, "ex/code");
+    if (!(code instanceof Keyword keyword) || keyword.getNamespace() == null) {
+      throw malformed("exception data lacks a namespaced :ex/code");
+    }
+    Object explicitMessage = exceptionField(data, "ex/message");
+    if (explicitMessage == MISSING) {
+      if (!message.equals(keyword.display())) {
+        throw malformed("exception message does not match its code fallback");
+      }
+    } else if (!(explicitMessage instanceof String) || !message.equals(explicitMessage)) {
+      throw malformed("invalid exception message");
+    }
+    Object exceptionCause = exceptionField(data, "ex/cause");
+    if (cause == null) {
+      if (exceptionCause != MISSING) {
+        throw malformed("exception data contains a cause without an Exception cause");
+      }
+    } else {
+      if (!(exceptionCause instanceof hara.lang.base.Ex.Info)) {
+        throw malformed("exception data cause must be an Exception");
+      }
+      validateException(cause);
+    }
+    Object context = exceptionField(data, "ex/context");
+    if (context != MISSING && !(context instanceof IMapType)) {
+      throw malformed("exception context must be a map");
+    }
+    Object exceptionClass = exceptionField(data, "ex/class");
+    if (exceptionClass != MISSING
+        && (!(exceptionClass instanceof Keyword classKeyword)
+            || classKeyword.getNamespace() == null)) {
+      throw malformed("exception class must be a namespaced keyword");
+    }
+  }
+
+  private static Object exceptionField(Object data, String name) {
+    if (!(data instanceof IMapType map)) {
+      throw malformed("exception data must be a map");
+    }
+    Map.Entry<?, ?> entry = (Map.Entry<?, ?>) map.find(Keyword.create(name));
+    return entry == null ? MISSING : HaraBox.unwrap(entry.getValue());
   }
 
   private static void writeInt(ByteArrayOutputStream output, int value) {
@@ -594,16 +649,17 @@ public final class HtaValueCodec {
 
     private Object exceptionInfo(int depth) {
       Object message = read(depth);
-      Object data = read(depth);
+      Object data = HaraPersistentValues.normalize(read(depth));
       Object cause = read(depth);
-      if (!(message instanceof String)) throw malformed("invalid exception message");
-      if (!(data instanceof hara.lang.protocol.IMetadata)) {
-        throw malformed("invalid exception data");
+      if (!(message instanceof String) || !(data instanceof hara.lang.protocol.IMetadata)) {
+        throw malformed("invalid exception value");
       }
-      Throwable throwable = cause instanceof Throwable ? (Throwable) cause : null;
-      if (cause != HaraNull.SINGLETON && throwable == null) {
+      Object rawCause = cause == HaraNull.SINGLETON ? null : cause;
+      if (rawCause != null && !(rawCause instanceof hara.lang.base.Ex.Info)) {
         throw malformed("invalid exception cause");
       }
+      hara.lang.base.Ex.Info throwable = (hara.lang.base.Ex.Info) rawCause;
+      validateException((String) message, data, throwable);
       return new hara.lang.base.Ex.Info(
           (String) message, (hara.lang.protocol.IMetadata) data, throwable);
     }

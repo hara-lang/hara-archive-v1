@@ -1,4 +1,4 @@
-use crate::core::{ResultValue, Value};
+use crate::core::{validate_exception_info, ResultValue, Value};
 #[cfg(test)]
 use crate::lang::data::{Tuple as PTuple, Vector as PVector};
 use crate::lang::protocol::INamespaced;
@@ -68,6 +68,9 @@ pub fn decode(bytes: &[u8]) -> Result<Value, String> {
         cursor: MAGIC.len(),
     };
     let value = reader.value(0)?;
+    if let Value::ExceptionInfo(exception) = &value {
+        validate_exception_info(exception)?;
+    }
     if reader.cursor != bytes.len() {
         return Err("hta/value-malformed: trailing bytes".into());
     }
@@ -238,6 +241,7 @@ fn encode_bare(value: &Value, output: &mut Vec<u8>, depth: usize) -> Result<(), 
             encode_bare(value.form(), output, depth + 1)?;
         }
         Value::ExceptionInfo(value) => {
+            validate_exception_info(value)?;
             output.push(EXCEPTION_INFO);
             encode_bare(&Value::String(value.message.clone()), output, depth + 1)?;
             encode_bare(&value.data, output, depth + 1)?;

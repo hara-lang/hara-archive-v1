@@ -58,6 +58,161 @@ pub fn encode_immutable(value: &Value) -> Result<Vec<u8>, String> {
     Ok(output)
 }
 
+fn validate_exceptions(value: &Value) -> Result<(), String> {
+    match value {
+        Value::ExceptionInfo {
+            message,
+            data,
+            cause,
+        } => {
+            validate_exception(message, data, cause.as_deref())?;
+            validate_exceptions(data)?;
+            if let Some(cause) = cause {
+                validate_exceptions(cause)?;
+            }
+        }
+        Value::List(values)
+        | Value::Vector(values)
+        | Value::Tuple(values)
+        | Value::Cons(values)
+        | Value::Queue(values)
+        | Value::Set(values)
+        | Value::OrderedSet(values)
+        | Value::SortedSet(values) => {
+            for value in values {
+                validate_exceptions(value)?;
+            }
+        }
+        Value::Map(values) | Value::OrderedMap(values) | Value::SortedMap(values) => {
+            for (key, value) in values {
+                validate_exceptions(key)?;
+                validate_exceptions(value)?;
+            }
+        }
+        Value::Trie(values) => {
+            for (_, value) in values {
+                validate_exceptions(value)?;
+            }
+        }
+        Value::Record(values) => {
+            for value in values.values() {
+                validate_exceptions(value)?;
+            }
+        }
+        Value::Tagged { form, .. } => validate_exceptions(form)?,
+        Value::Struct { values, .. } => {
+            for value in values {
+                validate_exceptions(value)?;
+            }
+        }
+        Value::Pointer { fields, .. } => {
+            for value in fields.values() {
+                validate_exceptions(value)?;
+            }
+        }
+        Value::Nil
+        | Value::Boolean(_)
+        | Value::String(_)
+        | Value::Integer(_)
+        | Value::Float(_)
+        | Value::Character(_)
+        | Value::BigInteger(_)
+        | Value::Regex(_)
+        | Value::Bytes(_)
+        | Value::Keyword(_)
+        | Value::Symbol(_)
+        | Value::VarRef(_) => {}
+    }
+    Ok(())
+}
+
+fn validate_exception(
+    message: &str,
+    data: &Value,
+    cause: Option<&Value>,
+) -> Result<(), String> {
+    let code = exception_field(data, "ex/code")?.ok_or_else(|| {
+        "hta/value-malformed: exception data lacks a namespaced :ex/code".to_string()
+    })?;
+    let Value::Keyword(code) = code else {
+        return Err("hta/value-malformed: exception code must be a namespaced keyword".into());
+    };
+    if !is_namespaced_keyword(code) {
+        return Err("hta/value-malformed: exception code must be a namespaced keyword".into());
+    }
+    match exception_field(data, "ex/message")? {
+        Some(Value::String(explicit)) if explicit == message => {}
+        Some(Value::String(_)) => {
+            return Err("hta/value-malformed: exception message does not match its data".into())
+        }
+        Some(_) => return Err("hta/value-malformed: invalid exception message".into()),
+        None if message == format!(":{code}") => {}
+        None => {
+            return Err("hta/value-malformed: exception message does not match code fallback".into())
+        }
+    }
+    match exception_field(data, "ex/cause")? {
+        Some(Value::ExceptionInfo { .. }) if cause.is_some() => {}
+        Some(_) => return Err("hta/value-malformed: exception data cause must be an Exception".into()),
+        None if cause.is_none() => {}
+        None => {
+            return Err("hta/value-malformed: exception data lacks its Exception cause".into())
+        }
+    }
+    if let Some(cause) = cause {
+        if !matches!(cause, Value::ExceptionInfo { .. }) {
+            return Err("hta/value-malformed: exception cause must be an Exception".into());
+        }
+    }
+    if let Some(context) = exception_field(data, "ex/context")? {
+        if !is_map(context) {
+            return Err("hta/value-malformed: exception context must be a map".into());
+        }
+    }
+    if let Some(class) = exception_field(data, "ex/class")? {
+        if !matches!(class, Value::Keyword(class) if is_namespaced_keyword(class)) {
+            return Err(
+                "hta/value-malformed: exception class must be a namespaced keyword".into(),
+            );
+        }
+    }
+    Ok(())
+}
+
+fn exception_field<'a>(data: &'a Value, name: &str) -> Result<Option<&'a Value>, String> {
+    let mut found = None;
+    match data {
+        Value::Map(values) | Value::OrderedMap(values) | Value::SortedMap(values) => {
+            for (key, value) in values {
+                if matches!(key, Value::Keyword(key) if key == name) {
+                    if found.is_some() {
+                        return Err(format!("hta/value-malformed: duplicate exception field :{name}"));
+                    }
+                    found = Some(value);
+                }
+            }
+        }
+        Value::Record(values) => found = values.get(name),
+        _ => return Err("hta/value-malformed: exception data must be a map".into()),
+    }
+    Ok(found)
+}
+
+fn is_map(value: &Value) -> bool {
+    matches!(
+        value,
+        Value::Map(_)
+            | Value::OrderedMap(_)
+            | Value::SortedMap(_)
+            | Value::Record(_)
+    )
+}
+
+fn is_namespaced_keyword(value: &str) -> bool {
+    let mut parts = value.split('/');
+    matches!((parts.next(), parts.next(), parts.next()), (Some(namespace), Some(name), None) if !namespace.is_empty() && !name.is_empty())
+}
+
 /// Decode one exact canonical HTA0 frame into a portable value.
 ///
 /// Runtime-only wire tags such as symbols, lists, sets, handles, namespaces,
@@ -80,6 +235,7 @@ pub fn decode_immutable(bytes: &[u8]) -> Result<Value, String> {
         cursor: 0,
     };
     let value = reader.value(0)?;
+    validate_exceptions(&value)?;
     if reader.cursor != reader.bytes.len() {
         return Err("hta/frame-invalid: trailing bytes".into());
     }
@@ -233,6 +389,7 @@ fn encode_value(value: &Value, depth: usize, output: &mut Vec<u8>) -> Result<(),
             data,
             cause,
         } => {
+            validate_exception(message, data, cause.as_deref())?;
             push(output, EXCEPTION_INFO)?;
             encode_value(&Value::String(message.clone()), depth + 1, output)?;
             encode_value(data, depth + 1, output)?;
