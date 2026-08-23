@@ -140,3 +140,66 @@ world calculator-world {
     )
     .is_err());
 }
+
+#[test]
+fn default_namespace_strips_package_version_and_avoids_duplicate_name() {
+    let source = r#"
+package demo:calculator@1.2.3;
+interface calculator {
+  add: func(left: s32, right: s32) -> s32;
+}
+"#;
+    let imported = import_wit(source, "versioned.wit", &WitImportOptions::default()).unwrap();
+    assert_eq!(imported.namespace, "demo.calculator");
+}
+
+#[test]
+fn rejects_unsafe_module_options() {
+    for module in ["../calculator.wasm", "calculator\\module.wasm", "drive:calculator.wasm"] {
+        assert!(import_wit(
+            SCALAR,
+            "unsafe-module.wit",
+            &WitImportOptions {
+                module: Some(module.into()),
+                ..WitImportOptions::default()
+            }
+        )
+        .unwrap_err()
+        .starts_with("wasm-wit/malformed"));
+    }
+}
+
+#[test]
+fn rejects_duplicate_wit_declarations() {
+    for source in [
+        "interface calculator {} interface calculator {}",
+        "interface calculator { add: func(); add: func(); }",
+        "interface calculator { type value = s32; type value = s64; }",
+    ] {
+        assert!(import_wit(source, "duplicate.wit", &WitImportOptions::default()).is_err());
+    }
+}
+
+#[test]
+fn reports_lossy_integer_widths_and_strictly_rejects_them() {
+    let source = r#"
+package demo:numbers;
+interface numbers {
+  take: func(value: u32);
+}
+"#;
+    let imported = import_wit(source, "numbers.wit", &WitImportOptions::default()).unwrap();
+    assert!(imported
+        .diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.code == "integer-width"));
+    assert!(import_wit(
+        source,
+        "numbers.wit",
+        &WitImportOptions {
+            strict: true,
+            ..WitImportOptions::default()
+        }
+    )
+    .is_err());
+}

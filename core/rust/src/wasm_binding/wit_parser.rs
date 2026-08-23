@@ -181,16 +181,24 @@ impl Parser {
                     self.skip_annotation()?;
                 }
                 "package" => {
+                    if package.is_some() {
+                        return Err("duplicate package declaration".into());
+                    }
                     package = Some(self.package_id()?);
                     self.semicolon()?;
                 }
                 "interface" => {
                     let name = self.required_word("interface name")?;
-                    interfaces.insert(name, self.interface_body()?);
+                    insert_unique(
+                        &mut interfaces,
+                        name,
+                        self.interface_body()?,
+                        "interface",
+                    )?;
                 }
                 "world" => {
                     let name = self.required_word("world name")?;
-                    worlds.insert(name, self.world_body()?);
+                    insert_unique(&mut worlds, name, self.world_body()?, "world")?;
                 }
                 "use" | "include" | "import" | "export" => {
                     self.skip_declaration()?;
@@ -236,35 +244,45 @@ impl Parser {
                 "type" => {
                     let name = self.required_word("type name")?;
                     self.expect_punct('=')?;
-                    types.insert(name, TypeDecl::Alias(self.type_expr()?));
+                    insert_unique(&mut types, name, TypeDecl::Alias(self.type_expr()?), "type")?;
                     self.semicolon()?;
                 }
                 "record" => {
                     let name = self.required_word("record name")?;
-                    types.insert(name, TypeDecl::Record(self.fields()?));
+                    insert_unique(&mut types, name, TypeDecl::Record(self.fields()?), "type")?;
                 }
                 "variant" => {
                     let name = self.required_word("variant name")?;
-                    types.insert(name, TypeDecl::Variant(self.cases()?));
+                    insert_unique(&mut types, name, TypeDecl::Variant(self.cases()?), "type")?;
                 }
                 "resource" => {
                     let name = self.required_word("resource name")?;
-                    types.insert(name.clone(), TypeDecl::Resource);
+                    insert_unique(&mut types, name.clone(), TypeDecl::Resource, "type")?;
+                    if resources.iter().any(|value| value == &name) {
+                        return Err(format!("duplicate resource {name}"));
+                    }
                     resources.push(name);
                     self.skip_block_or_semicolon()?;
                 }
                 "enum" => {
                     let name = self.required_word("enum name")?;
-                    types.insert(
+                    insert_unique(
+                        &mut types,
                         name,
                         TypeDecl::Variant(
                             self.cases()?.into_iter().map(|(n, _)| (n, None)).collect(),
                         ),
-                    );
+                        "type",
+                    )?;
                 }
                 "flags" | "tuple" => {
                     let name = self.required_word("type name")?;
-                    types.insert(name, TypeDecl::Unsupported(declaration));
+                    insert_unique(
+                        &mut types,
+                        name,
+                        TypeDecl::Unsupported(declaration.clone()),
+                        "type",
+                    )?;
                     self.skip_block_or_semicolon()?;
                 }
                 "use" | "include" => self.skip_declaration()?,
@@ -278,11 +296,22 @@ impl Parser {
                 }
                 _ => {
                     self.skip_declaration()?;
-                    types.insert(declaration.clone(), TypeDecl::Unsupported(declaration));
+                    insert_unique(
+                        &mut types,
+                        declaration.clone(),
+                        TypeDecl::Unsupported(declaration),
+                        "type",
+                    )?;
                 }
             }
         }
+        let mut names = BTreeMap::new();
         functions.sort_by(|left, right| left.name.cmp(&right.name));
+        for function in &functions {
+            if names.insert(function.name.clone(), ()).is_some() {
+                return Err(format!("duplicate function {}", function.name));
+            }
+        }
         Ok(Interface {
             types,
             functions,
@@ -332,21 +361,29 @@ impl Parser {
                         name.clone()
                     };
                     self.skip_to_semicolon_or_brace()?;
-                    if declaration == "export" {
-                        exports.push(target);
+                    let values = if declaration == "export" {
+                        &mut exports
                     } else {
-                        imports.push(target);
+                        &mut imports
+                    };
+                    if values.iter().any(|value| value == &target) {
+                        return Err(format!("duplicate world {declaration} {target}"));
                     }
+                    values.push(target);
                 }
                 "include" | "use" => self.skip_declaration()?,
                 _ => self.skip_declaration()?,
             }
         }
         exports.sort();
-        exports.dedup();
         imports.sort();
-        imports.dedup();
         functions.sort_by(|left, right| left.name.cmp(&right.name));
+        let mut names = BTreeMap::new();
+        for function in &functions {
+            if names.insert(function.name.clone(), ()).is_some() {
+                return Err(format!("duplicate world function {}", function.name));
+            }
+        }
         Ok(World {
             exports,
             imports,
@@ -401,8 +438,12 @@ impl Parser {
     fn fields(&mut self) -> Result<Vec<(String, Type)>, String> {
         self.open_brace()?;
         let mut fields = Vec::new();
+        let mut names = BTreeMap::new();
         while !self.take_punct('}') {
             let name = self.required_word("field name")?;
+            if names.insert(name.clone(), ()).is_some() {
+                return Err(format!("duplicate field {name}"));
+            }
             self.expect_punct(':')?;
             fields.push((name, self.type_expr()?));
             self.delimiter()?;
@@ -413,8 +454,12 @@ impl Parser {
     fn cases(&mut self) -> Result<Vec<(String, Option<Type>)>, String> {
         self.open_brace()?;
         let mut cases = Vec::new();
+        let mut names = BTreeMap::new();
         while !self.take_punct('}') {
             let name = self.required_word("variant case name")?;
+            if names.insert(name.clone(), ()).is_some() {
+                return Err(format!("duplicate variant case {name}"));
+            }
             let ty = if self.take_punct('(') {
                 let value = self.type_expr()?;
                 self.expect_punct(')')?;
@@ -646,5 +691,18 @@ impl Parser {
 
     fn done(&self) -> bool {
         self.index >= self.tokens.len()
+    }
+}
+
+fn insert_unique<T>(
+    values: &mut BTreeMap<String, T>,
+    name: String,
+    value: T,
+    kind: &str,
+) -> Result<(), String> {
+    if values.insert(name.clone(), value).is_some() {
+        Err(format!("duplicate {kind} {name}"))
+    } else {
+        Ok(())
     }
 }

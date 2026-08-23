@@ -6,7 +6,6 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
-use std::path::Path;
 
 use sha2::{Digest, Sha256};
 
@@ -472,8 +471,26 @@ impl MappingContext<'_> {
         match ty {
             Type::Atom(name) => match name.as_str() {
                 "bool" => HaraValueType::Boolean,
-                "u8" | "u16" | "u32" | "s8" | "s16" | "s32" => HaraValueType::I32,
-                "u64" | "s64" => HaraValueType::I64,
+                "u8" | "u16" | "u32" | "s8" | "s16" => {
+                    self.diagnostic(
+                        WitDiagnosticSeverity::Lossy,
+                        "integer-width",
+                        path,
+                        &format!("WIT {name} is lowered to the existing Hara i32 scalar"),
+                    );
+                    HaraValueType::I32
+                }
+                "s32" => HaraValueType::I32,
+                "u64" => {
+                    self.diagnostic(
+                        WitDiagnosticSeverity::Lossy,
+                        "integer-width",
+                        path,
+                        "WIT u64 is lowered to the existing Hara i64 scalar",
+                    );
+                    HaraValueType::I64
+                }
+                "s64" => HaraValueType::I64,
                 "f32" => HaraValueType::F32,
                 "f64" => HaraValueType::F64,
                 "char" => {
@@ -624,8 +641,13 @@ fn strict_error(origin: &str, diagnostics: &[WitDiagnostic]) -> String {
 
 fn default_namespace(package: Option<&str>, interface: &str) -> String {
     let package = package.unwrap_or("hara:wit");
+    let package = package.split('@').next().unwrap_or(package);
     let package = package.replace(':', ".");
-    let namespace = format!("{package}.{interface}");
+    let namespace = if package.rsplit('.').next() == Some(interface) {
+        package
+    } else {
+        format!("{package}.{interface}")
+    };
     if valid_namespace(&namespace) {
         namespace
     } else {
@@ -657,13 +679,15 @@ fn valid_wit_name(value: &str) -> bool {
 }
 
 fn valid_module(value: &str) -> bool {
-    let path = Path::new(value);
     !value.is_empty()
         && value.ends_with(".wasm")
-        && !path.is_absolute()
-        && path
-            .components()
-            .all(|component| matches!(component, std::path::Component::Normal(_)))
+        && !value.starts_with('/')
+        && !value.contains('\\')
+        && !value.contains(':')
+        && !value.bytes().any(|byte| byte == 0)
+        && value
+            .split('/')
+            .all(|part| !part.is_empty() && part != "." && part != "..")
 }
 
 pub(super) fn digest(bytes: &[u8]) -> String {
