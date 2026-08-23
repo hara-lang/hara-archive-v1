@@ -74,9 +74,6 @@ pub fn compile_bytecode_bundle(sources: &[ModuleSource<'_>]) -> Result<Vec<u8>, 
         runtime
             .eval_text(namespace_form)
             .map_err(|error| format!("{}: namespace declaration: {error}", source.resource))?;
-        if source.resource == "std.foundation" {
-            runtime.prepare_foundation_bytecode();
-        }
         // Required modules and macro expansion are allowed to select their
         // own namespaces. Pin compilation to the module being emitted so
         // aliases become canonical globals owned by its declaration.
@@ -169,9 +166,6 @@ pub fn eval_bytecode_bundle(runtime: &mut Runtime, bytes: &[u8]) -> Result<(), S
             );
         }
         for module in modules.iter().filter(|module| module.eager) {
-            if module.resource == "std.foundation" {
-                runtime.prepare_foundation_bytecode();
-            }
             core::with_definition_origin(kernel::VarOrigin::HalFallback, || {
                 runtime.load_bytecode_resource(&module.resource).map(|_| ())
             })

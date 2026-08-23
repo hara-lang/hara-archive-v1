@@ -46,7 +46,6 @@ fn quote_compiles_to_literal_bytecode_values() {
 #[test]
 fn a_declared_global_wins_over_a_reserved_operator_name() {
     let mut runtime = Runtime::core();
-    runtime.prepare_foundation_bytecode();
     assert_eq!(
         runtime
             .eval_bytecode_native(
@@ -63,7 +62,6 @@ fn a_declared_global_wins_over_a_reserved_operator_name() {
 #[test]
 fn macro_introduced_lexical_bindings_are_not_captures() {
     let mut runtime = Runtime::core();
-    runtime.prepare_foundation_bytecode();
     runtime
         .eval_native(
             "(defmacro if-let [binding then alternative]
@@ -90,7 +88,6 @@ fn macro_introduced_lexical_bindings_are_not_captures() {
 #[test]
 fn destructuring_lowers_across_bindings_parameters_and_recur() {
     let mut runtime = Runtime::core();
-    runtime.prepare_foundation_bytecode();
     runtime.use_namespace("std.foundation");
     assert_eq!(
         runtime
@@ -299,7 +296,6 @@ fn destructuring_lowers_across_bindings_parameters_and_recur() {
 #[test]
 fn destructuring_generated_calls_ignore_shadowing() {
     let mut runtime = Runtime::core();
-    runtime.prepare_foundation_bytecode();
     assert_eq!(
         runtime
             .eval_bytecode_native(
@@ -324,7 +320,6 @@ fn destructuring_generated_calls_ignore_shadowing() {
 #[test]
 fn static_array_calls_compile_to_native_bytecode() {
     let mut runtime = Runtime::core();
-    runtime.prepare_foundation_bytecode();
     assert_eq!(
         runtime
             .eval_bytecode_native(

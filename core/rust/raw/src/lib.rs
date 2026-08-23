@@ -307,7 +307,6 @@ impl Session {
                 Ok(Value::String(arguments[0].display()))
             }),
         );
-        core::refer_startup_defaults(&namespaces, "user");
         let mut env = HashMap::new();
         core::select_namespace_environment(&namespaces, &mut env, "user");
         let provider_resources = resources.clone();
@@ -335,7 +334,7 @@ impl Session {
             })
         })
         .expect("raw runtime foundation resource must load");
-        core::refer_startup_defaults(&namespaces, "user");
+        core::apply_global_aliases(&namespaces, "user");
         core::select_namespace_environment(&namespaces, &mut env, "user");
         Self {
             name: name.into(),
@@ -3003,7 +3002,7 @@ mod tests {
                 .iter()
                 .map(|(_, methods)| methods.len())
                 .sum::<usize>(),
-            372
+            389
         );
         let mut runtime = Session::new();
         assert!(runtime.env.contains_key("std.native.Edn/write"));

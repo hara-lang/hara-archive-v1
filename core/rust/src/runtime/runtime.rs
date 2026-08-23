@@ -66,7 +66,6 @@ impl Runtime {
         runtime
             .bootstrap_foundation()
             .expect("embedded std.foundation fallback must be valid");
-        runtime.refer_foundation_into("user");
         runtime
     }
 
@@ -95,7 +94,6 @@ impl Runtime {
     /// only require core forms and should become interactive immediately.
     pub fn core() -> Runtime {
         let mut runtime = Runtime::empty();
-        runtime.refer_foundation_into("user");
         runtime.use_namespace("user");
         runtime
     }
@@ -109,35 +107,6 @@ impl Runtime {
     pub fn set_test_runner(&mut self, runner: &str) -> Result<(), JsValue> {
         self.configure_test_runner(runner)
             .map_err(|error| JsValue::from_str(&error))
-    }
-
-    #[cfg(feature = "bytecode-vm")]
-    pub(crate) fn prepare_foundation_bytecode(&mut self) {
-        let foundation = self.namespace_registry.find_or_create("std.foundation");
-        for name in core::BYTECODE_BOOTSTRAP_ONLY_CALLABLES {
-            let symbol = crate::lang::data::Symbol::parse(name);
-            if foundation.resolve(&symbol).is_none() {
-                let value = core::direct_bootstrap_callable_value(name).unwrap_or_else(|| {
-                    panic!("missing direct Foundation bootstrap callable: {name}")
-                });
-                foundation.intern_with_origin(name, value, kernel::VarOrigin::RuntimePrimitive);
-            }
-        }
-    }
-
-    fn refer_foundation_into(&mut self, namespace: &str) {
-        let target = self.namespace_registry.find_or_create(namespace);
-        if namespace == "std.foundation" {
-            return;
-        }
-        let Some(foundation) = self.namespace_registry.find("std.foundation") else {
-            return;
-        };
-        for (name, var) in foundation.mappings() {
-            if target.resolve(&name).is_none() {
-                target.map_var(name, var);
-            }
-        }
     }
 
     fn bootstrap_foundation(&mut self) -> Result<(), String> {
@@ -213,7 +182,7 @@ impl Runtime {
             self.loaded_resources.insert(name.into());
         }
         self.use_namespace("std.foundation");
-        self.refer_foundation_into("user");
+        core::apply_global_aliases(&self.namespace_registry, "user");
         self.use_namespace("user");
         Ok(())
     }
@@ -611,19 +580,21 @@ impl Runtime {
             .get(name)
             .cloned()
             .unwrap_or_else(kernel::GeneratedNamespaceConfig::defaults);
-        self.namespace_registry
-            .find_or_create(name)
-            .set_role(config.role());
+        let target = self.namespace_registry.find_or_create(name);
+        target.set_role(config.role());
+        target.set_foundation_visibility(
+            config.exposed_foundation(),
+            config.excluded_foundation(),
+            config.blank(),
+        );
         if config.blank() {
-            let target = self.namespace_registry.find_or_create(name);
             for (local, var) in target.mappings() {
                 if var.symbol().get_namespace() != Some(name) {
                     target.unmap(&local);
                 }
             }
         } else {
-            self.refer_foundation_into(name);
-            let target = self.namespace_registry.find_or_create(name);
+            core::apply_global_aliases(&self.namespace_registry, name);
             let omitted = match config.exposed_foundation() {
                 Some(exposed) => target
                     .mappings()
@@ -1164,8 +1135,8 @@ impl Runtime {
             .map_err(|error| JsValue::from_str(&error))
     }
 
-    #[cfg(all(target_arch = "wasm32", not(feature = "raw-wasm")))]
-    #[wasm_bindgen(js_name = installDirectWasmImport)]
+    #[cfg(target_arch = "wasm32")]
+    #[cfg_attr(not(feature = "raw-wasm"), wasm_bindgen(js_name = installDirectWasmImport))]
     pub fn install_direct_wasm_import_js(
         &mut self,
         logical: &str,
@@ -1175,7 +1146,7 @@ impl Runtime {
             .map_err(|error| JsValue::from_str(&error))
     }
 
-    #[cfg(all(target_arch = "wasm32", not(feature = "raw-wasm")))]
+    #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen(js_name = installMemoryWasmBinding)]
     pub fn install_memory_wasm_binding_js(
         &mut self,
