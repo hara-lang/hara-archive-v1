@@ -82,8 +82,56 @@ fn direct_binding_is_deterministic_atomic_and_language_neutral() {
     }
     let project = fs::read_to_string(first.join("project.edn")).unwrap();
     assert!(project.contains(":abi :core.v1"));
+    assert!(project.contains(":identity \"generated/math-scalar\""));
     assert!(project.contains("\"sum\" {:wasm/export \"add\""));
+    let manifest =
+        crate::package_manifest::PackageManifest::read(&first.join("package.edn")).unwrap();
+    assert_eq!(manifest.identity, "generated/math-scalar");
+    assert!(manifest.wasm_imports.contains_key("math.scalar"));
     assert_language_neutral(&bound.files);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn direct_package_loads_through_the_native_import_route() {
+    let root = fixture_root("direct-import");
+    fs::create_dir_all(&root).unwrap();
+    let module = root.join("math.wasm");
+    let interface = root.join("interface.input.hal");
+    fs::write(&module, ADD).unwrap();
+    fs::write(&interface, INTERFACE).unwrap();
+    let package_root = root.join("package");
+    bind_package(&interface, &module, &package_root).unwrap();
+
+    let mut runtime = crate::Runtime::new();
+    runtime.add_extension_root(package_root.clone());
+    assert_eq!(
+        runtime
+            .eval_text("(ns imported (:import math.scalar)) (math.scalar/sum 19 23)")
+            .unwrap(),
+        "42"
+    );
+
+    fs::write(package_root.join("modules/math.wasm"), vec![0u8; ADD.len()]).unwrap();
+    let mut rejected = crate::Runtime::new();
+    rejected.add_extension_root(package_root.clone());
+    let error = rejected
+        .eval_text("(ns rejected (:import math.scalar))")
+        .unwrap_err();
+    assert!(error.starts_with("package/digest-mismatch:"), "{error}");
+
+    fs::write(package_root.join("modules/math.wasm"), ADD).unwrap();
+    let mut project = fs::OpenOptions::new()
+        .append(true)
+        .open(package_root.join("project.edn"))
+        .unwrap();
+    std::io::Write::write_all(&mut project, b"\n").unwrap();
+    let mut rejected = crate::Runtime::new();
+    rejected.add_extension_root(package_root.clone());
+    let error = rejected
+        .eval_text("(ns rejected-project (:import math.scalar))")
+        .unwrap_err();
+    assert!(error.starts_with("package/size-mismatch:"), "{error}");
     fs::remove_dir_all(root).unwrap();
 }
 

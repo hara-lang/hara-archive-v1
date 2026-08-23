@@ -50,6 +50,9 @@ pub fn load_wasm_import_package(
     requirements: &PackageRuntimeRequirements,
     extension_manifest_source: &str,
 ) -> Result<LoadedPackageWasm, String> {
+    manifest
+        .verify_files_at(package_root)
+        .map_err(|error| error.to_string())?;
     let selection = manifest
         .select_wasm_import(module, requirements)
         .map_err(|error| error.to_string())?;

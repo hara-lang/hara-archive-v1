@@ -15,6 +15,7 @@ rust_files=(
   core/rust/src/wasm_binding/canonical.rs
   core/rust/src/wasm_binding/direct.rs
   core/rust/src/wasm_binding/memory.rs
+  core/rust/src/wasm_binding/package/manifest.rs
   core/rust/src/wasm_binding/package.rs
   core/rust/src/wasm_binding/package/tests.rs
   core/rust/src/wasm_binding/parser.rs
@@ -34,23 +35,23 @@ check_format_and_layout() {
 }
 
 check_wasm_binding_tests() {
-  cargo test --locked --manifest-path core/rust/Cargo.toml --lib wasm_binding
+  cargo test --locked --manifest-path core/rust/runtime/Cargo.toml --lib wasm_binding
 }
 
 check_direct_tests() {
-  cargo test --locked --manifest-path core/rust/Cargo.toml --lib direct_wasm
+  cargo test --locked --manifest-path core/rust/runtime/Cargo.toml --lib direct_wasm
 }
 
 check_extension_tests() {
-  cargo test --locked --manifest-path core/rust/Cargo.toml --lib extension::tests
+  cargo test --locked --manifest-path core/rust/runtime/Cargo.toml --lib extension::tests
 }
 
 check_wasmtime_tests() {
-  cargo test --locked --manifest-path core/rust/Cargo.toml --lib wasmtime_provider::tests
+  cargo test --locked --manifest-path core/rust/runtime/Cargo.toml --lib wasmtime_provider::tests
 }
 
 check_cli_app_tests() {
-  cargo test --locked --manifest-path core/rust/Cargo.toml --lib cli_app
+  cargo test --locked --manifest-path core/rust/runtime/Cargo.toml --lib cli_app
 }
 
 check_rust_tests() {
