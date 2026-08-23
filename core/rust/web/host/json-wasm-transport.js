@@ -1,3 +1,5 @@
+import { parseJson, stringifyJson } from "./services.js";
+
 const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", { fatal: true });
 
@@ -54,7 +56,7 @@ export class JsonWasmTransport {
   }
 
   invoke(request) {
-    const source = JSON.stringify(objectValue(request, this.requestLabel));
+    const source = stringifyJson(objectValue(request, this.requestLabel));
     const input = encoder.encode(source);
     const pointer = this.exports[this.names.alloc](input.byteLength);
     if (!Number.isInteger(pointer) || pointer <= 0) {
@@ -88,7 +90,7 @@ export class JsonWasmTransport {
       this.exports[this.names.dealloc](responsePointer, responseLength);
     }
 
-    const response = JSON.parse(decoder.decode(responseBytes));
+    const response = parseJson(decoder.decode(responseBytes));
     if (!response || response.ok !== true) {
       const message = response?.error?.message ?? `${this.requestLabel} failed`;
       const error = new Error(String(message));

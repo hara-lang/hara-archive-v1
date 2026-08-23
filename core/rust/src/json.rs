@@ -1,5 +1,6 @@
 use crate::core::Value;
 use crate::lang::data::{OrderedMap, Vector};
+use num_bigint::BigInt;
 
 const MAX_DEPTH: usize = 256;
 
@@ -30,25 +31,38 @@ fn encode(out: &mut String, value: &Value, depth: usize, pretty: bool) -> Result
         Value::Nil => out.push_str("null"),
         Value::Bool(value) => out.push_str(if *value { "true" } else { "false" }),
         Value::Number(value) => out.push_str(&value.to_string()),
+        Value::BigInteger(value) => out.push_str(&value.to_string()),
         Value::String(value) => string(out, value),
         Value::Vector(values) => {
             out.push('[');
             for (index, value) in values.iter().enumerate() {
-                if index > 0 { out.push(','); }
-                if pretty { newline(out, depth + 1); }
+                if index > 0 {
+                    out.push(',');
+                }
+                if pretty {
+                    newline(out, depth + 1);
+                }
                 encode(out, value, depth + 1, pretty)?;
             }
-            if pretty && values.len() > 0 { newline(out, depth); }
+            if pretty && values.len() > 0 {
+                newline(out, depth);
+            }
             out.push(']');
         }
         Value::Tuple(values) => {
             out.push('[');
             for (index, value) in values.iter().enumerate() {
-                if index > 0 { out.push(','); }
-                if pretty { newline(out, depth + 1); }
+                if index > 0 {
+                    out.push(',');
+                }
+                if pretty {
+                    newline(out, depth + 1);
+                }
                 encode(out, value, depth + 1, pretty)?;
             }
-            if pretty && !values.is_empty() { newline(out, depth); }
+            if pretty && !values.is_empty() {
+                newline(out, depth);
+            }
             out.push(']');
         }
         value @ (Value::Map(_) | Value::OrderedMap(_) | Value::SortedMap(_) | Value::Trie(_)) => {
@@ -58,16 +72,27 @@ fn encode(out: &mut String, value: &Value, depth: usize, pretty: bool) -> Result
                 let Value::String(key) = key else {
                     return Err("json/write expects maps with string keys".into());
                 };
-                if index > 0 { out.push(','); }
-                if pretty { newline(out, depth + 1); }
+                if index > 0 {
+                    out.push(',');
+                }
+                if pretty {
+                    newline(out, depth + 1);
+                }
                 string(out, key);
                 out.push_str(if pretty { ": " } else { ":" });
                 encode(out, value, depth + 1, pretty)?;
             }
-            if pretty && !values.is_empty() { newline(out, depth); }
+            if pretty && !values.is_empty() {
+                newline(out, depth);
+            }
             out.push('}');
         }
-        _ => return Err("json/write accepts nil, booleans, signed 64-bit integers, strings, vectors, and string-key maps".into()),
+        _ => {
+            return Err(
+                "json/write accepts nil, booleans, integers, strings, vectors, and string-key maps"
+                    .into(),
+            )
+        }
     }
     Ok(())
 }
@@ -109,6 +134,7 @@ impl Parser {
             offset: 0,
         }
     }
+
     fn peek(&self) -> Option<char> {
         self.input.get(self.offset).copied()
     }
@@ -127,6 +153,7 @@ impl Parser {
             self.offset += 1;
         }
     }
+
     fn expect(&mut self, expected: char) -> Result<(), String> {
         if self.take() == Some(expected) {
             Ok(())
@@ -187,14 +214,12 @@ impl Parser {
             _ => return Err(self.error("expected a JSON value")),
         }
         if matches!(self.peek(), Some('.' | 'e' | 'E')) {
-            return Err(self.error("JSON v1 supports signed 64-bit integers only"));
+            return Err(self.error("JSON numbers must be integers"));
         }
-        self.input[start..self.offset]
-            .iter()
-            .collect::<String>()
-            .parse::<i64>()
-            .map(Value::Number)
-            .map_err(|_| self.error("JSON integer is outside the signed 64-bit range"))
+        let text = self.input[start..self.offset].iter().collect::<String>();
+        let value = BigInt::parse_bytes(text.as_bytes(), 10)
+            .ok_or_else(|| self.error("invalid JSON integer"))?;
+        Ok(crate::numeric::compact_integer(value))
     }
     fn array(&mut self, depth: usize) -> Result<Value, String> {
         self.expect('[')?;
@@ -292,5 +317,29 @@ impl Parser {
                 .ok_or_else(|| self.error("invalid Unicode escape"))?;
         }
         char::from_u32(value).ok_or_else(|| self.error("invalid Unicode escape"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn integer_json_round_trips_canonical_boundaries() {
+        for (source, expected) in [
+            (i64::MIN.to_string(), Value::Number(i64::MIN)),
+            (i64::MAX.to_string(), Value::Number(i64::MAX)),
+            (
+                (BigInt::from(i64::MIN) - 1).to_string(),
+                Value::BigInteger(BigInt::from(i64::MIN) - 1),
+            ),
+            (
+                (BigInt::from(i64::MAX) + 1).to_string(),
+                Value::BigInteger(BigInt::from(i64::MAX) + 1),
+            ),
+        ] {
+            assert_eq!(read(&source).unwrap(), expected);
+            assert_eq!(read(&write(&expected).unwrap()).unwrap(), expected);
+        }
     }
 }

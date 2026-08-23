@@ -12,6 +12,7 @@ test("repository compatibility shim re-exports the package API",async()=>{
 });
 
 test("HTA0 browser codec matches the Java/Rust golden vector",()=>{assert.deepEqual([...encodeHta(["x",42,true])],[72,84,65,48,9,0,0,0,3,4,0,0,0,1,120,3,0,0,0,0,0,0,0,42,2]);assert.deepEqual(decodeHta(encodeHta(["x",42,true])),["x",42,true]);});
+test("HTA0 preserves arbitrary-size integers as BigInt",()=>{const value=123456789012345678901234567890n;assert.equal(decodeHta(encodeHta(value)),value);assert.equal(decodeHta(encodeHta(-value)),-value);});
 test("HTA0 rejects excessive nesting and impossible lengths",()=>{let value=null;for(let i=0;i<257;i++)value=[value];assert.throws(()=>encodeHta(value),/value-too-deep/);const deep=[72,84,65,48];for(let i=0;i<257;i++)deep.push(9,0,0,0,1);deep.push(0);assert.throws(()=>decodeHta(Uint8Array.from(deep)),/value-too-deep/);assert.throws(()=>decodeHta(Uint8Array.from([72,84,65,48,9,255,255,255,255])),/impossible sequence length/);});
 test("HTA0 floats preserve IEEE-754 values",()=>{for(const value of [0.28,-0,Infinity,-Infinity,NaN]){const decoded=decodeHta(encodeHta(value));if(Number.isNaN(value))assert.ok(Number.isNaN(decoded));else assert.ok(Object.is(decoded,value));}});
 test("opaque handles round trip canonically",()=>{const value=new HtaHandle("runtime","cursor",42n);const decoded=decodeHta(encodeHta(value));assert.equal(decoded.owner,"runtime");assert.equal(decoded.type,"cursor");assert.equal(decoded.id,42n);assert.equal(decoded.toString(),"#ht[:handle 42]");});

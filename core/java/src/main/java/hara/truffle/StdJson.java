@@ -29,6 +29,7 @@ final class StdJson {
     if (value instanceof JsonValue.Null) out.append("null");
     else if (value instanceof JsonValue.Bool bool) out.append(bool.value());
     else if (value instanceof JsonValue.Integer integer) out.append(integer.value());
+    else if (value instanceof JsonValue.BigIntegerValue integer) out.append(integer.value());
     else if (value instanceof JsonValue.String string) appendString(out, string.value());
     else if (value instanceof JsonValue.Array array) {
       out.append('[');
@@ -81,16 +82,10 @@ final class StdJson {
   }
 
   private static void requireStrictValue(Object value) {
+    value = HaraBox.unwrap(value);
     if (value == null || value instanceof Boolean || value instanceof String) return;
     if (value instanceof Byte || value instanceof Short || value instanceof Integer || value instanceof Long) return;
-    if (value instanceof java.math.BigInteger integer) {
-      try {
-        integer.longValueExact();
-        return;
-      } catch (ArithmeticException error) {
-        throw new IllegalArgumentException("JSON integers must fit in the signed 64-bit range.");
-      }
-    }
+    if (value instanceof java.math.BigInteger) return;
     if (value instanceof ILinearType<?> values) {
       for (Object item : values) requireStrictValue(item);
       return;
@@ -105,6 +100,6 @@ final class StdJson {
       return;
     }
     throw new IllegalArgumentException(
-        "JSON values must be nil, booleans, signed 64-bit integers, strings, vectors, or string-key maps.");
+        "JSON values must be nil, booleans, integers, strings, vectors, or string-key maps.");
   }
 }

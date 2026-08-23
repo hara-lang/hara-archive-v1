@@ -105,7 +105,7 @@ export function createHostServices(options = {}) {
       if (!response.ok) throw new Error(`http/get failed with status ${response.status}`);
       return response.text();
     },
-    "json/parse": async (text) => fromJson(JSON.parse(text))
+    "json/parse": async (text) => fromJson(parseJson(text))
   };
   if (options.nodeRuntime) Object.assign(services, createNodeHostServices(options.nodeRuntime));
   if (options.graphHost) Object.assign(services, createGraphHostServices(options.graphHost, options.graphHostOptions));
@@ -520,6 +520,130 @@ function fromJson(value) {
   return value;
 }
 
+export function parseJson(source) {
+  if (typeof source !== "string") throw new TypeError("json/parse expects text");
+  let offset = 0;
+  const whitespace = () => {
+    while (/[ \t\n\r]/.test(source[offset] ?? "")) offset++;
+  };
+  const error = (message) => new Error(`json/parse: ${message} at character ${offset}`);
+  const expect = (character) => {
+    if (source[offset++] !== character) throw error(`expected '${character}'`);
+  };
+  const string = () => {
+    expect("\"");
+    let value = "";
+    while (offset < source.length) {
+      const character = source[offset++];
+      if (character === "\"") return value;
+      if (character < " ") throw error("invalid control character in string");
+      if (character !== "\\") {
+        value += character;
+        continue;
+      }
+      const escaped = source[offset++];
+      const escapes = { "\"": "\"", "\\": "\\", "/": "/", b: "\b", f: "\f", n: "\n", r: "\r", t: "\t" };
+      if (escaped === "u") {
+        const code = source.slice(offset, offset + 4);
+        if (!/^[0-9a-fA-F]{4}$/.test(code)) throw error("invalid unicode escape");
+        value += String.fromCharCode(Number.parseInt(code, 16));
+        offset += 4;
+      } else if (escaped in escapes) {
+        value += escapes[escaped];
+      } else {
+        throw error("invalid escape sequence");
+      }
+    }
+    throw error("unterminated string");
+  };
+  const number = () => {
+    const start = offset;
+    if (source[offset] === "-") offset++;
+    if (source[offset] === "0") {
+      offset++;
+      if (/[0-9]/.test(source[offset] ?? "")) throw error("leading zero in JSON number");
+    } else if (/[1-9]/.test(source[offset] ?? "")) {
+      while (/[0-9]/.test(source[offset] ?? "")) offset++;
+    } else {
+      throw error("invalid JSON number");
+    }
+    let integer = true;
+    if (source[offset] === ".") {
+      integer = false;
+      offset++;
+      if (!/[0-9]/.test(source[offset] ?? "")) throw error("fraction requires digits");
+      while (/[0-9]/.test(source[offset] ?? "")) offset++;
+    }
+    if (source[offset] === "e" || source[offset] === "E") {
+      integer = false;
+      offset++;
+      if (source[offset] === "+" || source[offset] === "-") offset++;
+      if (!/[0-9]/.test(source[offset] ?? "")) throw error("exponent requires digits");
+      while (/[0-9]/.test(source[offset] ?? "")) offset++;
+    }
+    const text = source.slice(start, offset);
+    if (integer) {
+      try {
+        const value = BigInt(text);
+        return value >= BigInt(Number.MIN_SAFE_INTEGER) && value <= BigInt(Number.MAX_SAFE_INTEGER)
+          ? Number(value) : value;
+      } catch {
+        throw error("invalid JSON integer");
+      }
+    }
+    const value = Number(text);
+    if (!Number.isFinite(value)) throw error("JSON number is outside the floating-point range");
+    return value;
+  };
+  const value = (depth = 0) => {
+    if (depth > 256) throw error("JSON nesting exceeds 256");
+    whitespace();
+    switch (source[offset]) {
+      case "n": if (source.slice(offset, offset + 4) !== "null") throw error("invalid JSON token"); offset += 4; return null;
+      case "t": if (source.slice(offset, offset + 4) !== "true") throw error("invalid JSON token"); offset += 4; return true;
+      case "f": if (source.slice(offset, offset + 5) !== "false") throw error("invalid JSON token"); offset += 5; return false;
+      case "\"": return string();
+      case "[": {
+        offset++;
+        whitespace();
+        const result = [];
+        if (source[offset] === "]") { offset++; return result; }
+        for (;;) {
+          result.push(value(depth + 1));
+          whitespace();
+          if (source[offset] === "]") { offset++; return result; }
+          expect(",");
+          whitespace();
+          if (source[offset] === "]") throw error("trailing comma");
+        }
+      }
+      case "{": {
+        offset++;
+        whitespace();
+        const result = Object.create(null);
+        if (source[offset] === "}") { offset++; return result; }
+        for (;;) {
+          if (source[offset] !== "\"") throw error("object keys must be strings");
+          const key = string();
+          whitespace();
+          expect(":");
+          result[key] = value(depth + 1);
+          whitespace();
+          if (source[offset] === "}") { offset++; return result; }
+          expect(",");
+          whitespace();
+          if (source[offset] === "}") throw error("trailing comma");
+        }
+      }
+      default: return number();
+    }
+  };
+  const result = value();
+  whitespace();
+  if (offset !== source.length) throw error("trailing content");
+  return result;
+}
+
 function toPlain(value) {
   if (value instanceof Map) {
     return Object.fromEntries([...value].map(([key, entry]) => [
@@ -542,6 +666,29 @@ function toHta(value) {
     return new Map(Object.entries(value).map(([key, entry]) => [key, toHta(entry)]));
   }
   return value;
+}
+
+export function stringifyJson(value) {
+  const encode = (value, inArray = false) => {
+    if (value === null || value === undefined) return "null";
+    if (typeof value === "boolean") return value ? "true" : "false";
+    if (typeof value === "bigint") return value.toString();
+    if (typeof value === "number") {
+      if (!Number.isFinite(value)) throw new TypeError("json/write cannot encode non-finite numbers");
+      return Object.is(value, -0) ? "0" : String(value);
+    }
+    if (typeof value === "string") return JSON.stringify(value);
+    if (Array.isArray(value)) return `[${value.map((item) => encode(item, true)).join(",")}]`;
+    if (typeof value === "object") {
+      const entries = Object.entries(value)
+        .filter(([, item]) => item !== undefined && typeof item !== "function" && typeof item !== "symbol")
+        .map(([key, item]) => `${JSON.stringify(key)}:${encode(item)}`);
+      return `{${entries.join(",")}}`;
+    }
+    if (inArray) return "null";
+    throw new TypeError("json/write cannot encode this value");
+  };
+  return encode(value);
 }
 
 async function request(store, method, ...arguments_) {

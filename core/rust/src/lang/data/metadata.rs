@@ -1,4 +1,5 @@
 use super::{Keyword, Symbol};
+use num_bigint::BigInt;
 use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -7,7 +8,7 @@ pub enum MetadataValue {
     Boolean(bool),
     Number(i64),
     Float(f64),
-    BigInteger(String),
+    BigInteger(BigInt),
     Character(char),
     Regex(String),
     Tagged(String, Box<MetadataValue>),

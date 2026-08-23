@@ -51,9 +51,9 @@ public class StdJsonTest {
         IllegalArgumentException.class,
         () -> StrictJson.parseValue("{\"a\":1,\"a\":2}"));
     assertThrows(IllegalArgumentException.class, () -> StrictJson.parseValue("1e3"));
-    assertThrows(
-        IllegalArgumentException.class,
-        () -> StrictJson.parseValue("9223372036854775808"));
+    assertEquals(
+        new java.math.BigInteger("9223372036854775808"),
+        StrictJson.parseValue("9223372036854775808").as(java.math.BigInteger.class));
     String nested = "[".repeat(StrictJson.MAX_DEPTH + 1) + "0" + "]".repeat(StrictJson.MAX_DEPTH + 1);
     assertThrows(IllegalArgumentException.class, () -> StrictJson.parseValue(nested));
   }

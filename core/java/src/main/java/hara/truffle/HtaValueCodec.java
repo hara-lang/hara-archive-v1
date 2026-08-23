@@ -2,6 +2,7 @@ package hara.truffle;
 
 import hara.lang.data.Keyword;
 import hara.lang.data.Symbol;
+import hara.lang.base.NumUtils;
 import hara.lang.data.types.ILinearType;
 import hara.lang.data.types.IMapType;
 import hara.lang.data.types.ISetType;
@@ -108,8 +109,14 @@ public final class HtaValueCodec {
       output.write(CHARACTER);
       writeInt(output, (Character) value);
     } else if (value instanceof BigInteger) {
-      output.write(BIG_INTEGER);
-      writeText(output, value.toString());
+      Number normalized = NumUtils.normalizeInteger((BigInteger) value);
+      if (normalized instanceof Long integer) {
+        output.write(I64);
+        writeLong(output, integer);
+      } else {
+        output.write(BIG_INTEGER);
+        writeText(output, normalized.toString());
+      }
     } else if (value instanceof Pattern) {
       output.write(REGEX);
       writeText(output, ((Pattern) value).pattern());
@@ -356,7 +363,7 @@ public final class HtaValueCodec {
               ? Character.valueOf((char) codePoint)
               : new String(Character.toChars(codePoint));
         case BIG_INTEGER:
-          return new BigInteger(text());
+          return NumUtils.normalizeInteger(new BigInteger(text()));
         case REGEX:
           return Pattern.compile(text());
         case STRING:

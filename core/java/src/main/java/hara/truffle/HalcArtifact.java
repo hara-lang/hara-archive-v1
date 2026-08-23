@@ -456,8 +456,14 @@ final class HalcArtifact {
       output.writeByte(DOUBLE);
       output.writeDouble(((Number) value).doubleValue());
     } else if (value instanceof BigInteger number) {
-      output.writeByte(BIG_INTEGER);
-      writeString(output, number.toString());
+      Number normalized = hara.lang.base.NumUtils.normalizeInteger(number);
+      if (normalized instanceof Long integer) {
+        output.writeByte(LONG);
+        output.writeLong(integer);
+      } else {
+        output.writeByte(BIG_INTEGER);
+        writeString(output, normalized.toString());
+      }
     } else if (value instanceof String string) {
       output.writeByte(STRING);
       writeString(output, string);
@@ -522,7 +528,7 @@ final class HalcArtifact {
       case TRUE -> Boolean.TRUE;
       case LONG -> input.readLong();
       case DOUBLE -> input.readDouble();
-      case BIG_INTEGER -> new BigInteger(readString(input));
+      case BIG_INTEGER -> hara.lang.base.NumUtils.normalizeInteger(new BigInteger(readString(input)));
       case STRING -> readString(input);
       case CHARACTER -> (char) input.readInt();
       case SYMBOL ->
