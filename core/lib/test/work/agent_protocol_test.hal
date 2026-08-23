@@ -1,6 +1,9 @@
 (ns work.agent-protocol-test
   (:require [work.agent.protocol :as protocol]
-            [work.agent.ephemeral :as ephemeral]))
+            [work.agent.ephemeral :as ephemeral]
+            [work.agent :as agent]
+            [work.base :as work]
+            [std.foundation.string :as string]))
 
 (def agent-value
   (ephemeral/agent {:agent/id :fixture}))
@@ -15,6 +18,25 @@
 
 (def authority-value
   (ephemeral/authority :fixture-authority))
+
+(defn agent-protocol-name?
+  [entry]
+  (string/starts-with? (str entry) "IAgent"))
+
+(def cross-runtime-driver
+  (ephemeral/driver
+   (fn [agent intent context]
+     (work/step
+      :agent-cross-runtime
+      (fn [input work-context]
+        [(:agent/id agent) intent context input])))))
+
+(def canonical-agent
+  {:agent/id :cross-runtime
+   :agent/driver cross-runtime-driver})
+
+(def projected-agent
+  (ephemeral/agent canonical-agent))
 
 (defn retired-protocol-symbol
   [suffix]
@@ -31,6 +53,19 @@
     [true true true true])
 
    (test-check
+    "the public agent protocol inventory is exactly the frozen family"
+    (vec
+     (sort-by
+      str
+      (filter
+       agent-protocol-name?
+       (keys (ns-publics 'work.agent.protocol)))))
+    (vec
+     (map
+      symbol
+      ["IAgent" "IAgentAuthority" "IAgentCoordinator" "IAgentDriver"])))
+
+   (test-check
     "IAgent projects to ordinary Agent data"
     (protocol/agent-spec agent-value)
     {:agent/id :fixture})
@@ -39,8 +74,39 @@
     "the retired Work-prefixed agent capability names are not interned"
     [(nil? (resolve (retired-protocol-symbol "Driver")))
      (nil? (resolve (retired-protocol-symbol "Coordinator")))
-     (nil? (resolve (retired-protocol-symbol "Authority")))]
-    [true true true])
+     (nil? (resolve (retired-protocol-symbol "Authority")))
+     (nil? (resolve (retired-protocol-symbol "Runtime")))
+     (nil? (resolve (retired-protocol-symbol "Store")))
+     (nil? (resolve (retired-protocol-symbol "Host")))
+     (nil? (resolve (retired-protocol-symbol "Run")))
+     (nil? (resolve (retired-protocol-symbol "Ref")))]
+    [true true true true true true true true])
+
+   (test-check
+    "IAgentDriver dispatch stays lazy and lowers to Work"
+    (let [direct-work
+          (protocol/agent-drive
+           cross-runtime-driver
+           canonical-agent
+           :inspect
+           {:source :cross-runtime})
+          facade-work
+          (agent/drive canonical-agent :inspect {:source :cross-runtime})]
+      [(satisfies? IWork direct-work)
+       (:op (work/work-spec direct-work))
+       (work/run direct-work :payload)
+       (work/run facade-work :payload)])
+    [true
+     :step
+     [:cross-runtime :inspect {:source :cross-runtime} :payload]
+     [:cross-runtime :inspect {:source :cross-runtime} :payload]])
+
+   (test-check
+    "plain and protocol-backed Agents project to the same canonical map"
+    [(agent/agent-spec canonical-agent)
+     (agent/agent-spec projected-agent)
+     (agent/agent-id projected-agent)]
+    [canonical-agent canonical-agent :cross-runtime])
 
    (test-check
     "coordinator and authority dispatch return ordinary immutable values"

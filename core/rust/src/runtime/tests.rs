@@ -7914,6 +7914,82 @@ mod tests {
     }
 
     #[test]
+    fn agent_protocol_cross_runtime_fixture_runs_on_rust_runtime() {
+        let root = std::path::Path::new(env!("HARA_SOURCE_ROOT"));
+        let source = std::fs::read_to_string(root.join("../lib/test/work/agent_protocol_test.hal"))
+            .expect("the shared agent protocol fixture must be available");
+        let mut runtime = development_runtime();
+        runtime.eval_text(&source).unwrap();
+        assert_eq!(
+            runtime
+                .eval_text(
+                    "(let [summary (code.test/run {:namespace \"work.agent-protocol-test\"})] \
+                       [(:status summary) \
+                        (:facts summary) \
+                        (:checks summary) \
+                        (:passed summary) \
+                        (:failed summary)])",
+                )
+                .unwrap(),
+            "[:passed 7 23 23 0]"
+        );
+    }
+
+    #[test]
+    fn agent_protocol_production_surface_has_no_retired_protocols() {
+        fn visit(path: &std::path::Path, retired: &[&str], violations: &mut Vec<String>) {
+            if path.is_dir() {
+                for entry in std::fs::read_dir(path).unwrap() {
+                    visit(&entry.unwrap().path(), retired, violations);
+                }
+                return;
+            }
+            if !path.is_file()
+                || path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.ends_with("tests.rs"))
+            {
+                return;
+            }
+            let Some(extension) = path.extension().and_then(|value| value.to_str()) else {
+                return;
+            };
+            if !matches!(extension, "hal" | "java" | "rs") {
+                return;
+            }
+            let source = std::fs::read_to_string(path).unwrap();
+            for name in retired {
+                if source.contains(name) {
+                    violations.push(format!("{} contains {name}", path.display()));
+                }
+            }
+        }
+
+        let source_root = std::path::Path::new(env!("HARA_SOURCE_ROOT"));
+        let roots = [
+            source_root.join("../lib/src"),
+            source_root.join("../java/src/main"),
+            source_root.join("src"),
+        ];
+        let retired = [
+            "IWorkAgent",
+            "IAgentRuntime",
+            "IAgentStore",
+            "IAgentHost",
+            "IAgentRun",
+            "IAgentRef",
+            "IAgentObserver",
+            "IAgentMachine",
+        ];
+        let mut violations = Vec::new();
+        for root in roots {
+            visit(&root, &retired, &mut violations);
+        }
+        assert!(violations.is_empty(), "{violations:?}");
+    }
+
+    #[test]
     fn rust_native_work_handles_are_available_to_guest_hara() {
         let mut runtime = Runtime::core();
         assert_eq!(

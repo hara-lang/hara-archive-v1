@@ -10,7 +10,12 @@ on:
       - 'core/java/src/main/java/hara/truffle/WorkProtocolLibraryProvider.java'
       - 'core/java/src/test/java/hara/truffle/HaraWorkProtocolTest.java'
       - 'core/lib/src/work/native.hal'
+      - 'core/lib/src/work/agent.hal'
+      - 'core/lib/src/work/agent/**/*.hal'
       - 'core/lib/test/work/native_protocol_test.hal'
+      - 'core/lib/test/work/agent_protocol_test.hal'
+      - 'core/java/src/test/java/hara/truffle/HaraAgentProtocolTest.java'
+      - 'core/rust/src/runtime/tests.rs'
       - 'core/rust/src/core/inventory.rs'
       - 'core/spec/work-capability-abi.md'
   push:
@@ -21,7 +26,12 @@ on:
       - 'core/java/src/main/java/hara/truffle/WorkProtocolLibraryProvider.java'
       - 'core/java/src/test/java/hara/truffle/HaraWorkProtocolTest.java'
       - 'core/lib/src/work/native.hal'
+      - 'core/lib/src/work/agent.hal'
+      - 'core/lib/src/work/agent/**/*.hal'
       - 'core/lib/test/work/native_protocol_test.hal'
+      - 'core/lib/test/work/agent_protocol_test.hal'
+      - 'core/java/src/test/java/hara/truffle/HaraAgentProtocolTest.java'
+      - 'core/rust/src/runtime/tests.rs'
       - 'core/rust/src/core/inventory.rs'
       - 'core/spec/work-capability-abi.md'
   workflow_dispatch:
@@ -60,11 +70,13 @@ jobs:
         run: |
           cargo test --manifest-path core/rust/Cargo.toml \
             native_work_protocol --lib
-
+          cargo test --manifest-path core/rust/Cargo.toml \
+            agent_protocol_cross_runtime --lib
       - name: Run portable Work protocol facts on Rust
         run: |
           scripts/runtime/run-lib-tests \
-            core/lib/test/work/native_protocol_test.hal
+            core/lib/test/work/native_protocol_test.hal \
+            core/lib/test/work/agent_protocol_test.hal
 
   java:
     runs-on: ubuntu-latest
@@ -94,5 +106,5 @@ jobs:
         working-directory: core
         run: |
           mvn -B -Ptruffle \
-            -Dtest=HaraWorkProtocolTest \
+            -Dtest=HaraWorkProtocolTest,HaraAgentProtocolTest \
             test --file java/pom.xml
