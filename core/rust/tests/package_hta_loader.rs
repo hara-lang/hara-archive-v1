@@ -68,7 +68,7 @@ fn root(name: &str, bytes: &[u8]) -> PathBuf {
 #[test]
 fn rejects_tampered_hta_artifact_before_wasmtime() {
     let manifest = manifest(b"trusted", "hta");
-    let root = root("tampered", b"tampered");
+    let root = root("tampered", b"changed");
     let result = load_hta_require_package(
         &manifest,
         &root,
