@@ -115,4 +115,28 @@ world calculator-world {
             .name,
         "add"
     );
+
+    let qualified_import = interface_export.replace(
+        "  export calculator: interface;",
+        "  import wasi:io/streams;\n  export calculator: interface;",
+    );
+    let imported = import_wit(
+        &qualified_import,
+        "qualified-import.wit",
+        &WitImportOptions::default(),
+    )
+    .unwrap();
+    assert_eq!(imported.route, WitRoute::HtaRequire);
+    assert!(imported
+        .diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.code == "world-import"));
+
+    let malformed = [interface_export, "}"].concat();
+    assert!(import_wit(
+        &malformed,
+        "trailing-token.wit",
+        &WitImportOptions::default()
+    )
+    .is_err());
 }

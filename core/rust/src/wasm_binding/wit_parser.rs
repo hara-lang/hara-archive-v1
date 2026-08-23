@@ -175,29 +175,27 @@ impl Parser {
         let mut interfaces = BTreeMap::new();
         let mut worlds = BTreeMap::new();
         while !self.done() {
-            match self.word().as_deref() {
-                Some(value) if value.starts_with('@') => {
+            let declaration = self.required_word("top-level declaration")?;
+            match declaration.as_str() {
+                value if value.starts_with('@') => {
                     self.skip_annotation()?;
                 }
-                Some("package") => {
+                "package" => {
                     package = Some(self.package_id()?);
                     self.semicolon()?;
                 }
-                Some("interface") => {
+                "interface" => {
                     let name = self.required_word("interface name")?;
                     interfaces.insert(name, self.interface_body()?);
                 }
-                Some("world") => {
+                "world" => {
                     let name = self.required_word("world name")?;
                     worlds.insert(name, self.world_body()?);
                 }
-                Some("use") | Some("include") | Some("import") | Some("export") => {
+                "use" | "include" | "import" | "export" => {
                     self.skip_declaration()?;
                 }
-                Some(other) => {
-                    return Err(format!("unsupported top-level declaration {other}"));
-                }
-                None => break,
+                other => return Err(format!("unsupported top-level declaration {other}")),
             }
         }
         if interfaces.is_empty() && worlds.is_empty() {
