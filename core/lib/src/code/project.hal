@@ -291,6 +291,76 @@
 (defn missing-keys [document]
   (vec (filter (fn [key] (not (has? document key))) +required-keys+)))
 
+(defn project-path-under-root?
+  "Returns true when a project path resolves inside the supplied project root."
+  [root path]
+  (try
+    (let [root (normalized-path (File/resolve root ""))
+          path (normalized-path (File/resolve root path))]
+      (or (= root path)
+          (str/starts-with? path (str root "/"))))
+    (catch Throwable error
+      false)))
+
+(defn validate-project-path
+  "Validates one manifest path without granting access outside the project root."
+  [root option path]
+  (if (and (string? path) (not (str/blank? path)))
+    (if (project-path-under-root? root path)
+      path
+      (throw
+       (ex :serialization {:type :serialization :option option :path path}
+           :ex/message (str "project.edn " option " cannot escape the project root"))))
+    (throw
+     (ex :serialization {:type :serialization :option option :path path}
+         :ex/message (str "project.edn " option " expects a non-empty path string")))))
+
+(defn validate-project-path-vector
+  "Validates a vector of project-relative paths and preserves its order."
+  [root option paths]
+  (if (vector? paths)
+    (vec (map (fn [path] (validate-project-path root option path)) paths))
+    (throw
+     (ex :serialization {:type :serialization :option option :paths paths}
+         :ex/message (str "project.edn " option " expects a vector of path strings")))))
+
+(defn validate-project-paths
+  "Validates shared and runtime-specific paths against a project root."
+  [root project]
+  (validate-project-path-vector root ":project/source-paths"
+                                (:project/source-paths project))
+  (validate-project-path-vector root ":project/test-paths"
+                                (:project/test-paths project))
+  (validate-project-path-vector root ":project/extension-paths"
+                                (:project/extension-paths project))
+  (reduce
+   (fn [output [runtime profile]]
+     (validate-project-path-vector
+      root
+      (str ":project/runtime-profiles " runtime " :runtime/source-paths")
+      (or (:runtime/source-paths profile) []))
+     (validate-project-path-vector
+      root
+      (str ":project/runtime-profiles " runtime " :runtime/test-paths")
+      (or (:runtime/test-paths profile) []))
+     (validate-project-path-vector
+      root
+      (str ":project/runtime-profiles " runtime " :runtime/extension-paths")
+      (or (:runtime/extension-paths profile) []))
+     (validate-project-path-vector
+      root
+      (str ":project/runtime-profiles " runtime " :runtime/native-source-paths")
+      (or (:runtime/native-source-paths profile) []))
+     (if (:runtime/target-path profile)
+       (validate-project-path root
+                              (str ":project/runtime-profiles " runtime " :runtime/target-path")
+                              (:runtime/target-path profile))
+       nil)
+     output)
+   project
+   (:project/runtime-profiles project))
+  project)
+
 (defn validate [document]
   (let [document (validate-runtime-profiles document)
         missing (missing-keys document)]
@@ -313,6 +383,7 @@
          project (assoc document
                         :project/root (File/parent manifest-path)
                         :project/manifest-path manifest-path)]
+     (validate-project-paths (:project/root project) project)
      (if (:runtime options)
        (select-runtime project (:runtime options))
        project))))

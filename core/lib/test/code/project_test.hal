@@ -134,6 +134,62 @@
       (:replacement (ex-data error))))
   [:project/runtime-profiles :jvm :runtime/native-source-paths])
 
+ ^{:refer code.project/project-path-under-root?}
+ (test-check "project paths classify root boundaries exactly"
+  [(project/project-path-under-root? "/project" "/project")
+   (project/project-path-under-root? "/project" "/project/src/demo.hal")
+   (project/project-path-under-root? "/project" "/project-next/demo.hal")]
+  [true true false])
+
+ ^{:refer code.project/validate-project-path}
+ (test-check "project path validation preserves relative paths and rejects escapes"
+  [(project/validate-project-path "/project" ":project/source-paths" "src")
+   (try
+     (do
+       (project/validate-project-path "/project" ":project/source-paths" "../../sources")
+       nil)
+     (catch Throwable error
+       [(:type (ex-data error)) (ex-message error)]))]
+  ["src"
+   [:serialization "project.edn :project/source-paths cannot escape the project root"]])
+
+ ^{:refer code.project/validate-project-path-vector}
+ (test-check "project path vectors retain order and reject invalid shapes"
+  [(project/validate-project-path-vector "/project" ":project/test-paths" ["test" "test-jvm"])
+   (try
+     (do
+       (project/validate-project-path-vector "/project" ":project/test-paths" "test")
+       nil)
+     (catch Throwable error
+       [(:type (ex-data error)) (ex-message error)]))]
+  [["test" "test-jvm"]
+   [:serialization "project.edn :project/test-paths expects a vector of path strings"]])
+
+ ^{:refer code.project/validate-project-paths}
+ (test-check "project path validation covers runtime profile roots"
+  (let [project (assoc
+                 valid-project
+                 :project/runtime-profiles
+                 {:jvm
+                  {:runtime/source-paths ["src-jvm"]
+                   :runtime/test-paths ["test-jvm"]
+                   :runtime/extension-paths ["extensions-jvm"]
+                   :runtime/native-source-paths ["src-java"]
+                   :runtime/target-path "target/jvm"}})]
+    [(= (project/validate-project-paths "/project" project) project)
+     (try
+       (do
+         (project/validate-project-paths
+          "/project"
+         (assoc-in project
+                    [:project/runtime-profiles :jvm :runtime/target-path]
+                    "../../target"))
+         nil)
+       (catch Throwable error
+         [(:type (ex-data error)) (ex-message error)]))])
+  [true
+   [:serialization "project.edn :project/runtime-profiles :jvm :runtime/target-path cannot escape the project root"]])
+
  (test-check "shared and runtime Hara requirements fail closed on conflict"
   (try
     (do

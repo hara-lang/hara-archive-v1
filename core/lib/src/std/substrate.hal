@@ -89,7 +89,7 @@
   "Wraps a transport implementation."
   [transport-id implementation]
   (let [implementation
-        (if (fn? implementation)
+        (if (function? implementation)
           {"send_fn" implementation}
           (or implementation {}))]
     {"::" "substrate.transport"
