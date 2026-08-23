@@ -7,8 +7,7 @@
             [std.block.parse :as parse]
             [std.block.source :as source]
             [std.block.type :as type]
-            [std.block.value :as block-value]
-            [std.block.zip :as block-zip]))
+            [std.block.value :as block-value]))
 
 (intern-in
  [block? base/block?]
@@ -69,7 +68,5 @@
  [container? type/container-block?]
  [modifier? type/modifier-block?]
  [error? type/error-block?]
- [block-context block-zip/block-context]
- [block-zip block-zip/block-zip]
  [namespace-name source/namespace-name]
  [grep-source source/grep-source])

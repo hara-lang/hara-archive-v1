@@ -62,13 +62,6 @@
    :phase :p1
    :reason :strict-facade
    :status :planned}
-  {:source-namespace std.block
-   :target-namespace std.block.zip
-   :symbols [block-context block-zip]
-   :kind :function
-   :phase :p1
-   :reason :strict-facade
-   :status :planned}
   {:source-namespace std.block.layout
    :target-namespace std.block.layout.classify
    :symbols [is-binding? is-def?]

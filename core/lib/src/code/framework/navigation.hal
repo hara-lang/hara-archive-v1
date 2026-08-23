@@ -2,6 +2,7 @@
   (:config {:blank true})
   (:require [std.foundation :refer :all :exclude [form?]]
             [std.block :as block]
+            [std.block.navigate :as navigate]
             [std.lib.zip :as zip]))
 
 (defn location?
@@ -23,7 +24,7 @@
   [input]
   (if (location? input)
     input
-    (block/block-zip (block-input input))))
+    (navigate/navigator (block-input input))))
 
 (defn current
   [input]

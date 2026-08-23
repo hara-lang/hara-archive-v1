@@ -201,7 +201,7 @@ Create `std.config.session` for `get-session`, `swap-session`, and `clear-sessio
 
 ### `std.block`
 
-Mark base, construct, parse, type, value, layout, and related children internal. Move root-local zipper functions to `std.block.zip` and source-inspection helpers (`namespace-name`, `grep-source`) to `std.block.source`. The root then becomes a curated facade using `intern-in`, including its deliberate renames.
+Mark base, construct, parse, type, value, layout, and related children internal. Use `std.block.navigate` for navigation and move source-inspection helpers (`namespace-name`, `grep-source`) to `std.block.source`. The root then becomes a curated facade using `intern-in`, including its deliberate renames.
 
 ### `code.vm`
 

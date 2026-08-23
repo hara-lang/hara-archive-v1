@@ -231,7 +231,6 @@ std.block.source
 std.block.template
 std.block.type
 std.block.value
-std.block.zip
 std.config
 std.config.common
 std.config.ext.json
