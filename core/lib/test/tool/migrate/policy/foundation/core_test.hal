@@ -2,8 +2,21 @@
   (:use code.test)
   (:require [tool.migrate.policy.foundation.core :as core]))
 
+[
 ^{:refer tool.migrate.policy.foundation.core/plan}
-(fact "Foundation policy loads behind its dedicated namespace"
-  (function? core/plan) => true)
+(test-check
+ "Foundation policy loads behind its dedicated namespace"
+ (function? core/plan)
+ true)
 
-(pr-str (run {:namespace "tool.migrate.policy.foundation.core-test"}))
+^{:refer tool.migrate.policy.foundation.core/rewrite-requires}
+(test-check
+ "rewrite-requires emits only the canonical Work frontend requires"
+ (let [canonical
+       (core/rewrite-requires
+        "(:require [std.task :as task] [std.work :as work])")
+       retired "[std.work.template.task :as task]"]
+   [(str/includes? canonical "[work.flow.task :as task]")
+    (str/includes? canonical "[work.base :as work :refer [def.work]]")
+    (not (str/includes? canonical retired))])
+ [true true true])]

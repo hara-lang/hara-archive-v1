@@ -1440,9 +1440,7 @@
       (str/replace "[std.task :as task]"
                    "[work.base :as work :refer [def.work]]\n            [work.flow.task :as task]")
       (str/replace "[std.work :as work]"
-                   "[work.base :as work :refer [def.work]]")
-      (str/replace "[std.work.template.task :as task]"
-                   "[work.flow.task :as task]")))
+                   "[work.base :as work :refer [def.work]]")))
 
 (defn migrate-source
   [source]
