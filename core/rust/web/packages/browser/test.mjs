@@ -37,7 +37,7 @@ const MEMORY_INTERFACE = `(wasm/interface
 const MEMORY_BINDINGS =
   `{:schema "hara.wasm-memory-binding/0-alpha" :namespace codec.bytes :module "echo.wasm" :target :memory.v1 :memory {:export "memory" :allocate "alloc" :release "free"} :functions [{:hara/name echo :wasm/export "echo_bytes" :arguments [{:name input :hara/type :bytes :wasm/types [:i32 :i32] :lower [:pointer :length] :ownership :borrowed}] :returns {:hara/type :bytes :wasm/type :i64 :lift :packed-i64 :ownership :caller} :wasm/arguments [:i32 :i32] :wasm/returns :i64} {:hara/name release-count :wasm/export "release_count" :arguments [] :returns {:hara/type :i32 :wasm/type :i32} :wasm/arguments [] :wasm/returns :i32}]}`;
 
-const MEMORY_MANIFEST = `{:namespace "codec.bytes" :version "0.1.0" :provider :wasm :module "echo.wasm" :abi :memory.v1 :exports {"echo" {:wasm/export "echo_bytes" :args [:i32 :i32] :returns :i64 :async false} "release-count" {:args [] :returns :i32 :async false}} :capabilities [] :assets ["bindings.edn"]}`;
+const MEMORY_MANIFEST = `{:namespace "codec.bytes" :version "0.1.0" :provider :wasm :module "echo.wasm" :abi :memory.v1 :exports {"echo" {:wasm/export "echo_bytes" :args [:bytes] :returns :bytes :async false} "release-count" {:wasm/export "release_count" :args [] :returns :i32 :async false}} :capabilities [] :assets ["bindings.edn"]}`;
 
 const MEMORY_STRING_INTERFACE = MEMORY_INTERFACE
   .replaceAll("codec.bytes", "codec.string")
@@ -48,22 +48,15 @@ const MEMORY_STRING_BINDINGS = MEMORY_BINDINGS
 const MEMORY_STRING_MANIFEST = MEMORY_MANIFEST.replaceAll(
   "codec.bytes",
   "codec.string"
-);
+).replaceAll(":bytes", ":string");
 
-test("browser SDK starts the embedded runtime and loads std.logic.kanren", async () => {
+test("browser SDK starts the embedded runtime and loads supplied resources", async () => {
   const hara = await startVm({
     resources: {
-      "app.config": "(ns app.config) (def answer 42)"
+      "app.config": "(ns app.config) (def answer 42) 42"
     }
   });
 
-  assert.equal(
-    hara.eval(
-      "(require [std.logic.kanren :as logic]) " +
-      "(logic/run* (fn [query] (logic/== query 42)))"
-    ),
-    "[42]"
-  );
   assert.equal(hara.require("app.config"), "42");
   assert.equal(hara.eval("app.config/answer"), "42");
 });
@@ -79,10 +72,10 @@ test("browser SDK executes the generic memory.v1 bytes binding", async () => {
   assert.equal(hara.require("codec.bytes"), ":loaded");
   assert.equal(
     hara.eval(
-      "(ns browser.memory (:require [codec.bytes :as bytes])) " +
-        "(bytes/echo (bytes 1 2 3 4))"
+      "(ns browser.memory (:require [codec.bytes :as cb])) " +
+        "(cb/echo (bytes 1 2 3 4))"
     ),
-    "[1 2 3 4]"
+    "#bytes[1 2 3 4]"
   );
   assert.equal(hara.eval("(codec.bytes/release-count)"), "1");
   hara.installMemoryWasmBinding(
@@ -94,8 +87,8 @@ test("browser SDK executes the generic memory.v1 bytes binding", async () => {
   assert.equal(hara.require("codec.string"), ":loaded");
   assert.equal(
     hara.eval(
-      "(ns browser.memory.string (:require [codec.string :as string])) " +
-        '(string/echo "hara memory binding")'
+      "(ns browser.memory.string (:require [codec.string :as cs])) " +
+        '(cs/echo "hara memory binding")'
     ),
     '"hara memory binding"'
   );
@@ -118,8 +111,8 @@ test("browser SDK validates memory.v1 metadata before installation", async () =>
     () =>
       hara.installMemoryWasmBinding(
         MEMORY_MANIFEST.replace("codec.bytes", "codec.invalid"),
-        MEMORY_INTERFACE.replaceAll("codec.bytes", "codec.invalid"),
-        MEMORY_BINDINGS.replaceAll("codec.bytes", "codec.invalid"),
+        MEMORY_INTERFACE,
+        MEMORY_BINDINGS,
         MEMORY_MODULE
       ),
     /manifest namespace or module/

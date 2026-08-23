@@ -355,14 +355,14 @@ impl Runtime {
                     )
                 })?;
             let arguments = function
-                .raw_arguments
+                .arguments
                 .iter()
-                .map(|value| value.as_keyword().to_owned())
+                .map(|argument| Self::hara_type_keyword(&argument.hara_type))
                 .collect::<Vec<_>>();
             if specification.raw_name(&function.name) != function.wasm_export
                 || specification.asynchronous
                 || specification.arguments != arguments
-                || specification.returns != function.raw_returns.as_keyword()
+                || specification.returns != Self::hara_type_keyword(&function.returns.hara_type)
             {
                 return Err(format!(
                     "native/manifest-mismatch: manifest export {} differs from bindings.edn",
@@ -380,6 +380,24 @@ impl Runtime {
             );
         }
         Ok(())
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn hara_type_keyword(value: &crate::wasm_binding::HaraValueType) -> String {
+        match value {
+            crate::wasm_binding::HaraValueType::I32 => "i32".into(),
+            crate::wasm_binding::HaraValueType::I64 => "i64".into(),
+            crate::wasm_binding::HaraValueType::F32 => "f32".into(),
+            crate::wasm_binding::HaraValueType::F64 => "f64".into(),
+            crate::wasm_binding::HaraValueType::Boolean => "boolean".into(),
+            crate::wasm_binding::HaraValueType::String => "string".into(),
+            crate::wasm_binding::HaraValueType::Bytes => "bytes".into(),
+            crate::wasm_binding::HaraValueType::Record(name) => format!("[record {name}]"),
+            crate::wasm_binding::HaraValueType::Variant(name) => format!("[variant {name}]"),
+            crate::wasm_binding::HaraValueType::Handle(name) => format!("[handle {name}]"),
+            crate::wasm_binding::HaraValueType::Callback(name) => format!("[callback {name}]"),
+            crate::wasm_binding::HaraValueType::Void => "void".into(),
+        }
     }
 
     fn bind_direct_wasm_imports(
