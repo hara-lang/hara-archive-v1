@@ -44,8 +44,8 @@ fn manifest(bytes: &[u8], artifact_type: &str) -> PackageManifest {
     :artifact/target "wasm32-wasi-preview1"
     :artifact/abi "hta.v1"
     :artifact/entry-point "hta_start"}}
-   :variant/required-capabilities {{}}
-   :variant/host-calls {{}}
+   :variant/required-capabilities #{{}}
+   :variant/host-calls #{{}}
    :variant/exports #{{"eval"}}}}}}}}"#,
         bytes.len()
     ))
