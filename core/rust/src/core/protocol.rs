@@ -1133,14 +1133,15 @@ fn native_base_values(operation: &str, values: &[Value]) -> Result<Value, String
                 "cons?" => matches!(value, Value::Cons(_)),
                 "vector?" => matches!(value, Value::Vector(_) | Value::Tuple(_)),
                 "tuple?" => matches!(value, Value::Tuple(_)),
-                "map?" => matches!(
-                    value,
+                "map?" => match value {
                     Value::Map(_)
-                        | Value::OrderedMap(_)
-                        | Value::SortedMap(_)
-                        | Value::Trie(_)
-                        | Value::PriorityMap(_)
-                ),
+                    | Value::OrderedMap(_)
+                    | Value::SortedMap(_)
+                    | Value::Trie(_)
+                    | Value::PriorityMap(_) => true,
+                    Value::Extension(receiver) => extension_has_category(receiver, "map"),
+                    _ => false,
+                },
                 "set?" => matches!(
                     value,
                     Value::Set(_) | Value::OrderedSet(_) | Value::SortedSet(_)

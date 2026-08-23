@@ -117,11 +117,17 @@ export function parseHtaManifest(source) {
     }
   }
   const exportsValue = manifestField(value,"exports"), exports = [];
+  const exportArity = {};
   if (exportsValue !== undefined) {
     if (!(exportsValue instanceof Map)) throw new Error("hta/manifest-malformed: exports must be a map");
     for (const [name,spec] of exportsValue) {
       if (typeof name !== "string" || !name.length || !(spec instanceof Map)) throw new Error("hta/manifest-malformed: invalid export");
+      const args = manifestField(spec,"args");
+      if (args !== undefined && (!Array.isArray(args) || args.some(arg => !(arg instanceof HtaKeyword)))) {
+        throw new Error("hta/manifest-malformed: invalid export args");
+      }
       exports.push(name);
+      exportArity[name] = args?.length ?? 0;
     }
   }
   const hostCallsValue = manifestField(value,"host-calls"), hostCalls = {};
@@ -135,9 +141,17 @@ export function parseHtaManifest(source) {
       hostCalls[service] = Object.freeze([...methods]);
     }
   }
+  const capabilitiesValue = manifestField(value,"capabilities"), capabilities = [];
+  if (capabilitiesValue !== undefined) {
+    if (!Array.isArray(capabilitiesValue) || capabilitiesValue.some(capability => !(capability instanceof HtaKeyword))) {
+      throw new Error("hta/manifest-malformed: capabilities must be keywords");
+    }
+    capabilities.push(...capabilitiesValue.map(capability => capability.name));
+  }
   return Object.freeze({
     namespace,identity,provider,module,abi,browserTarget,assets:Object.freeze(assets),
     handleTags:Object.freeze(handleTags),exports:Object.freeze(exports),
+    exportArity:Object.freeze(exportArity),capabilities:Object.freeze(capabilities),
     hostCalls:Object.freeze(hostCalls)
   });
 }

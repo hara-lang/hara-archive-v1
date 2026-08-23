@@ -26,21 +26,19 @@
         :work/hooks}
       nil nil :local :enabled :installed false])
 
-(fact "legacy Runtime structs normalize without gaining separate semantics"
+(fact "runtime accessors read the canonical capability composition"
   (let [registry (atom {})
-        legacy
-        (work.base.model/Runtime
-         :durable
-         :legacy-store
-         :legacy-executor
-         :legacy-receipt
-         :legacy-observer
-         registry
-         3
-         4)
-        runtime (work/normalise-runtime legacy)]
-    [(work/canonical-runtime? runtime)
-     (model/runtime-executor runtime)
+        runtime
+  (work/runtime-map
+   :executor
+   :store
+   registry
+   {:work/mode :local
+    :work/runtime-version 3
+    :work/schema-version 4}
+   {:work/receipt :receipt
+    :work/observer :observer})]
+    [(model/runtime-executor runtime)
      (model/runtime-store runtime)
      (= registry (model/runtime-definitions runtime))
      (model/runtime-mode runtime)
@@ -48,8 +46,8 @@
      (model/runtime-schema-version runtime)
      (model/runtime-receipt runtime)
      (model/runtime-observer runtime)])
-  => [true :legacy-executor :legacy-store true
-      :durable 3 4 :legacy-receipt :legacy-observer])
+  => [:executor :store true
+      :local 3 4 :receipt :observer])
 
 (fact "runtime updates preserve the canonical composition boundary"
   (let [runtime (work/local-runtime)

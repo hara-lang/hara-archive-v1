@@ -29,6 +29,7 @@ import {
 import {
   createBytecodeLiveBackend,
   createInterpreterLiveBackend,
+  createWholeWasmLiveBackend,
 } from "./live-session-backends.js";
 
 export {
@@ -39,6 +40,7 @@ export {
   LiveSessionError,
   createBytecodeLiveBackend,
   createInterpreterLiveBackend,
+  createWholeWasmLiveBackend,
 };
 
 /**
@@ -52,6 +54,7 @@ export class LiveSessionRuntime {
   constructor({ backends = [], maxSessions = 256, diagnostics = () => {} } = {}) {
     this.backends = new Map();
     this.sessions = new Map();
+    this.starting = new Set();
     this.maxSessions = boundedInteger(
       maxSessions,
       "live session limit",
@@ -98,10 +101,55 @@ export class LiveSessionRuntime {
   }
 
   start(request) {
+    const { backend, source } = this.prepareStart(request);
+    let backendSession;
+    try {
+      backendSession = backend.start({
+        sessionId: request.sessionId,
+        source,
+        payload: request.payload,
+      });
+      return this.finishStart(request, backend, source, backendSession);
+    } catch (error) {
+      this.starting.delete(request.sessionId);
+      throw error;
+    }
+  }
+
+  async dispatchAsync(value) {
+    this.assertActive();
+    const request = normalizeRequest(value);
+    if (request.op === "start") return this.startAsync(request);
+    return this.requireSession(request.sessionId).dispatch(request);
+  }
+
+  async startAsync(request) {
+    const { backend, source } = this.prepareStart(request);
+    try {
+      const backendSession = await backend.start({
+        sessionId: request.sessionId,
+        source,
+        payload: request.payload,
+      });
+      if (this.disposed) {
+        disposeBackendSession(backendSession);
+        throw new LiveSessionError(
+          "live-session/runtime-disposed",
+          "live session runtime was disposed during startup",
+        );
+      }
+      return this.finishStart(request, backend, source, backendSession);
+    } catch (error) {
+      this.starting.delete(request.sessionId);
+      throw error;
+    }
+  }
+
+  prepareStart(request) {
     if (request.op !== "start") {
       throw new LiveSessionError("live-session/operation", "start requires op=start");
     }
-    if (this.sessions.has(request.sessionId)) {
+    if (this.sessions.has(request.sessionId) || this.starting.has(request.sessionId)) {
       throw new LiveSessionError(
         "live-session/already-exists",
         `live session identity cannot be reused: ${request.sessionId}`,
@@ -109,7 +157,7 @@ export class LiveSessionRuntime {
       );
     }
     const activeSessions = [...this.sessions.values()]
-      .filter((session) => !session.disposed).length;
+      .filter((session) => !session.disposed).length + this.starting.size;
     if (activeSessions >= this.maxSessions) {
       throw new LiveSessionError(
         "live-session/limit",
@@ -130,12 +178,11 @@ export class LiveSessionRuntime {
         { backend: backend.id, kind: source.kind },
       );
     }
+    this.starting.add(request.sessionId);
+    return { backend, source };
+  }
 
-    const backendSession = backend.start({
-      sessionId: request.sessionId,
-      source,
-      payload: request.payload,
-    });
+  finishStart(request, backend, source, backendSession) {
     let session;
     try {
       session = new BrowserLiveSession({
@@ -146,8 +193,10 @@ export class LiveSessionRuntime {
       });
     } catch (error) {
       disposeBackendSession(backendSession);
+      this.starting.delete(request.sessionId);
       throw error;
     }
+    this.starting.delete(request.sessionId);
     this.sessions.set(request.sessionId, session);
     const reply = session.reply(request.requestId, {
       started: true,
@@ -167,6 +216,7 @@ export class LiveSessionRuntime {
     this.disposed = true;
     for (const session of this.sessions.values()) session.disposeBackend();
     this.sessions.clear();
+    this.starting.clear();
     return true;
   }
 

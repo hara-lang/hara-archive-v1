@@ -327,7 +327,6 @@
 (def memory-backend runtime/memory-backend)
 (def runtime-map runtime/runtime-map)
 (def canonical-runtime? runtime/canonical-runtime?)
-(def normalise-runtime runtime/normalise-runtime)
 (def local-runtime runtime/local-runtime)
 (def durable-runtime runtime/durable-runtime)
 (def observer runtime/observer)

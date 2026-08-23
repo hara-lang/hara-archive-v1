@@ -80,6 +80,18 @@
   (test-check "namespace selectors use source path spelling"
               (cli/selected? "/project/src/code/manage.hal" ["code.manage"])
               true)
+  (test-check "manage handler reaches its parser through the default host"
+              (let [message
+                    (try
+                      (cli/handler
+                       {:request/arguments ["unsupported"]
+                        :request/cwd "/home/runner/work/hara/hara"})
+                      :not-thrown
+                      (catch Throwable error
+                        (ex-message error)))]
+                [(not= :not-thrown message)
+                 (str/includes? message "unsupported manage operation :unsupported")])
+              [true true])
 
 
   ]

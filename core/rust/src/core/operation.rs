@@ -1497,7 +1497,11 @@ fn collection_count(value: &Value) -> Result<Value, String> {
 }
 
 fn iterator_is_finite(value: &Value) -> bool {
-    !matches!(value, Value::Iterator(_) | Value::Seq(_))
+    match value {
+        Value::Iterator(iterator) => iterator.borrow().is_finite(),
+        Value::Seq(_) => false,
+        _ => true,
+    }
 }
 
 fn collection_get(value: &Value, key: &Value, default: Value) -> Result<Value, String> {

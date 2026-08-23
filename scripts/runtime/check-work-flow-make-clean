@@ -2,37 +2,4 @@
 set -euo pipefail
 
 root="$(git rev-parse --show-toplevel)"
-cd "$root"
-
-python3 - <<'PY'
-import re
-import subprocess
-from pathlib import Path
-
-root = Path.cwd()
-patterns = (
-    re.compile(r"^core/private/tmp(?:/.*)?$"),
-    re.compile(r"^core/project-heal--[0-9]+$"),
-    re.compile(r"^core/test-[0-9]+\.clj$"),
-)
-
-def scratch(path):
-    return any(pattern.fullmatch(path) for pattern in patterns)
-
-tracked = subprocess.run(
-    ["git", "ls-files", "-z"],
-    check=True,
-    stdout=subprocess.PIPE,
-).stdout.decode().split("\0")
-matches = {path for path in tracked if path and scratch(path)}
-matches.update(
-    str(path.relative_to(root))
-    for path in root.rglob("*")
-    if scratch(str(path.relative_to(root)))
-)
-
-if matches:
-    print("work.flow.make scratch paths detected:", file=__import__("sys").stderr)
-    print("\n".join(sorted(matches)), file=__import__("sys").stderr)
-    raise SystemExit(1)
-PY
+exec python3 "$root/scripts/runtime/check_work_flow_make_clean.py" --root "$root"

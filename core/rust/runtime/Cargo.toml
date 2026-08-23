@@ -41,7 +41,6 @@ sha2 = "0.10"
 hmac = "0.12"
 regex = "1.11"
 serde_json = "1.0"
-getrandom = { version = "0.2", features = ["js"] }
 ed25519-dalek = "2.1"
 x25519-dalek = { version = "2.0", features = ["static_secrets"] }
 p256 = { version = "0.13", features = ["ecdh", "ecdsa"] }
@@ -55,8 +54,10 @@ wasm-encoder = "0.41.2"
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 console_error_panic_hook = "0.1"
 js-sys = "0.3"
+getrandom = { version = "0.2", default-features = false, features = ["custom"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+getrandom = "0.2"
 hara-db-postgres = { version = "0.1.0", git = "https://github.com/hara-lang/hara-extensions.git", rev = "0432324505d721711d1de5aaeae66ee305730456", package = "hara-db-postgres" }
 russh = "0.62.7"
 russh-sftp = "2.4.0"

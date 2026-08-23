@@ -2,7 +2,7 @@
  * Host-side verified package cache. The WASM evaluator is intentionally never
  * given fetch authority; callers register returned bytes before evaluation.
  */
-import { HtaKeyword, parseEdnData } from "./hta.js";
+import { HtaKeyword, HtaSymbol, parseEdnData } from "./hta.js";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", { fatal: true });
@@ -47,7 +47,11 @@ export async function inspectHarp(input) {
   const declaredFiles = field(manifest, "files");
   const integrity = field(manifest, "integrity");
   const resourceIndex = field(manifest, "resources") ?? new Map();
-  const extensionDeclarations = field(manifest, "extensions") ?? new Map();
+  const declaredExtensions = field(manifest, "extensions");
+  const extensionDeclarations = declaredExtensions === undefined
+    || (Array.isArray(declaredExtensions) && declaredExtensions.length === 0)
+    ? new Map()
+    : declaredExtensions;
   if (!(declaredFiles instanceof Map) || !(integrity instanceof Map)
       || !(resourceIndex instanceof Map) || !(extensionDeclarations instanceof Map)) {
     throw new Error("package/manifest-malformed: invalid files, resources, or extensions");
@@ -86,7 +90,7 @@ export async function inspectHarp(input) {
   }
   const extensions = [];
   for (const [namespace, declaration] of extensionDeclarations) {
-    if (!(namespace instanceof HtaKeyword) && typeof namespace !== "string") {
+    if (!(namespace instanceof HtaKeyword) && !(namespace instanceof HtaSymbol) && typeof namespace !== "string") {
       throw new Error("package/extension-invalid");
     }
     if (!(declaration instanceof Map)) throw new Error("package/extension-invalid");
@@ -103,10 +107,10 @@ export async function inspectHarp(input) {
       ...(field(declaration, "assets") ?? [])
     ]) {
       if (typeof asset !== "string" || !entries.has(`${base}${asset}`)) {
-        throw new Error(`package/extension-asset-missing:${String(namespace)}:${asset}`);
+        throw new Error(`package/extension-asset-missing:${namespaceName(namespace)}:${asset}`);
       }
     }
-    extensions.push(Object.freeze({ namespace, declaration }));
+    extensions.push(Object.freeze({ namespace: namespaceName(namespace), declaration }));
   }
   return Object.freeze({
     manifest,
@@ -153,6 +157,10 @@ function field(map, name) {
     if (key instanceof HtaKeyword && key.name === name) return value;
   }
   return undefined;
+}
+
+function namespaceName(value) {
+  return value instanceof HtaKeyword || value instanceof HtaSymbol ? value.name : value;
 }
 
 function joinBytes(parts) {

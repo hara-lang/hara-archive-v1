@@ -29,8 +29,7 @@
 
 (defn leaf-request
   [runtime frame spec input attempt]
-  (let [executor (base/runtime-executor runtime)
-        context (assoc (frame/leaf-context runtime frame) :attempt attempt)
+  (let [context (assoc (frame/leaf-context runtime frame) :attempt attempt)
         request
         {:work/request :execute-leaf
          :run/id (:run/id frame)
@@ -45,13 +44,7 @@
          :work/attempt attempt
          :work/deadline
          (or (:deadline spec) (:deadline (:options frame)))}]
-    (if (:legacy executor)
-      (assoc request
-             :work/compatibility
-             {:runtime runtime
-              :frame frame
-              :work (base/work-value spec)})
-      request)))
+    request))
 
 (declare step-attempt)
 

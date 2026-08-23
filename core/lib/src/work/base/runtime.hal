@@ -17,10 +17,7 @@
 (def observer-events base/observer-events)
 (def runtime-map base/runtime-map)
 (def canonical-runtime? base/canonical-runtime?)
-(def normalise-runtime base/normalise-runtime)
 
-;; Retained public compatibility constructor. Runtime construction normalises
-;; this legacy operation map into a role-specific store provider.
 (def memory-backend memory/memory-backend)
 (def memory-store memory/memory-store)
 
@@ -105,14 +102,13 @@
 
 (defn with-handler
   [runtime operation handler]
-  (let [runtime (base/normalise-runtime runtime)]
-    (assoc runtime
-           :work/hooks
-           (assoc (base/runtime-hooks runtime)
-                  :work/handlers
-                  (assoc (base/runtime-handlers runtime)
-                         operation
-                         handler)))))
+  (assoc runtime
+         :work/hooks
+         (assoc (base/runtime-hooks runtime)
+                :work/handlers
+                (assoc (base/runtime-handlers runtime)
+                       operation
+                       handler))))
 
 (defn handler-operations
   [runtime]
