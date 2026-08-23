@@ -698,26 +698,15 @@ impl<V: Clone> NamespaceRegistry<V> {
             }
         }
         for (alias, namespace) in current.aliases.borrow().iter() {
-            names.extend(
-                namespace
-                    .mappings
-                    .borrow()
-                    .iter()
-                    .map(|(name, var)| {
-                        (
-                            format!("{}/{}", alias.as_str(), name.as_str()),
-                            var.hara_metadata()
-                                .is_some_and(|metadata| metadata.flag("public")),
-                        )
-                    }),
-            );
+            names.extend(namespace.mappings.borrow().iter().map(|(name, var)| {
+                (
+                    format!("{}/{}", alias.as_str(), name.as_str()),
+                    var.hara_metadata()
+                        .is_some_and(|metadata| metadata.flag("public")),
+                )
+            }));
         }
-        names.sort_by(|left, right| {
-            right
-                .1
-                .cmp(&left.1)
-                .then(left.0.cmp(&right.0))
-        });
+        names.sort_by(|left, right| right.1.cmp(&left.1).then(left.0.cmp(&right.0)));
         names.dedup_by(|left, right| left.0 == right.0);
         names.into_iter().map(|(name, _)| name).collect()
     }
@@ -821,9 +810,9 @@ mod tests {
             3,
             VarMetadata {
                 hara: Some(crate::lang::data::Metadata::new(vec![(
-                    crate::lang::data::MetadataValue::Keyword(
-                        crate::lang::data::Keyword::from("public"),
-                    ),
+                    crate::lang::data::MetadataValue::Keyword(crate::lang::data::Keyword::from(
+                        "public",
+                    )),
                     crate::lang::data::MetadataValue::Boolean(true),
                 )])),
                 ..VarMetadata::default()
@@ -834,9 +823,9 @@ mod tests {
             4,
             VarMetadata {
                 hara: Some(crate::lang::data::Metadata::new(vec![(
-                    crate::lang::data::MetadataValue::Keyword(
-                        crate::lang::data::Keyword::from("public"),
-                    ),
+                    crate::lang::data::MetadataValue::Keyword(crate::lang::data::Keyword::from(
+                        "public",
+                    )),
                     crate::lang::data::MetadataValue::Boolean(true),
                 )])),
                 ..VarMetadata::default()

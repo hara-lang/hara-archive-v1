@@ -84,6 +84,17 @@ pub(super) fn keyword_set(
         .collect()
 }
 
+pub(super) fn named_set(
+    form: &Form,
+    origin: &str,
+    field: &str,
+) -> Result<BTreeSet<String>, String> {
+    vector(form, origin, field)?
+        .iter()
+        .map(|form| named(form, origin, field).map(str::to_owned))
+        .collect()
+}
+
 pub(super) fn key(form: &Form) -> Option<&str> {
     match form {
         Form::Keyword(value) | Form::Symbol(value) | Form::String(value) => Some(value),

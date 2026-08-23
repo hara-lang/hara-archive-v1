@@ -201,12 +201,12 @@ impl Compiler {
                     } else {
                         current.resolve(&crate::lang::data::Symbol::parse(name))
                     })
-                        .map(|var| var.symbol().as_str().to_owned())
-                        .or_else(|| {
-                            current
-                                .lazy_target(alias)
-                                .map(|target| format!("{}/{}", target.as_str(), local))
-                        })
+                    .map(|var| var.symbol().as_str().to_owned())
+                    .or_else(|| {
+                        current
+                            .lazy_target(alias)
+                            .map(|target| format!("{}/{}", target.as_str(), local))
+                    })
                 } else {
                     registry
                         .resolve(&crate::lang::data::Symbol::parse(name))

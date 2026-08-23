@@ -33,6 +33,7 @@ public final class HaraExtensionManifest {
           "module",
           "abi",
           "exports",
+          "callbacks",
           "capabilities",
           "host-calls",
           "handles",
@@ -41,8 +42,8 @@ public final class HaraExtensionManifest {
   private static final Set<String> REQUIRED_FIELDS =
       Set.of("namespace", "version", "provider", "abi", "exports", "capabilities");
   private static final Set<String> EXPORT_FIELDS =
-      Set.of("wasm/export", "args", "returns", "async");
-  private static final Set<String> HANDLE_FIELDS = Set.of("tag");
+      Set.of("wasm/export", "args", "returns", "async", "operation", "reentrant");
+  private static final Set<String> HANDLE_FIELDS = Set.of("tag", "release");
 
   private final String namespace;
   private final String identity;
@@ -53,9 +54,12 @@ public final class HaraExtensionManifest {
   private final Map<String, Target> targets;
   private final java.util.List<String> assets;
   private final Map<String, Export> exports;
+  private final Map<String, Export> callbacks;
   private final java.util.List<String> capabilities;
   private final Map<String, java.util.List<String>> hostCalls;
+  private final Map<String, java.util.List<String>> hostCallCapabilities;
   private final Map<String, String> handleTags;
+  private final Map<String, String> handleReleases;
 
   private HaraExtensionManifest(
       String namespace,
@@ -67,9 +71,12 @@ public final class HaraExtensionManifest {
       Map<String, Target> targets,
       java.util.List<String> assets,
       Map<String, Export> exports,
+      Map<String, Export> callbacks,
       java.util.List<String> capabilities,
       Map<String, java.util.List<String>> hostCalls,
-      Map<String, String> handleTags) {
+      Map<String, java.util.List<String>> hostCallCapabilities,
+      Map<String, String> handleTags,
+      Map<String, String> handleReleases) {
     this.namespace = namespace;
     this.identity = identity;
     this.version = version;
@@ -79,13 +86,21 @@ public final class HaraExtensionManifest {
     this.targets = Collections.unmodifiableMap(new LinkedHashMap<>(targets));
     this.assets = Collections.unmodifiableList(new ArrayList<>(assets));
     this.exports = Collections.unmodifiableMap(new LinkedHashMap<>(exports));
+    this.callbacks = Collections.unmodifiableMap(new LinkedHashMap<>(callbacks));
     this.capabilities = Collections.unmodifiableList(new ArrayList<>(capabilities));
     LinkedHashMap<String, java.util.List<String>> copiedHostCalls = new LinkedHashMap<>();
     hostCalls.forEach(
         (service, methods) ->
             copiedHostCalls.put(service, Collections.unmodifiableList(new ArrayList<>(methods))));
     this.hostCalls = Collections.unmodifiableMap(copiedHostCalls);
+    LinkedHashMap<String, java.util.List<String>> copiedHostCallCapabilities = new LinkedHashMap<>();
+    hostCallCapabilities.forEach(
+        (call, required) ->
+            copiedHostCallCapabilities.put(
+                call, Collections.unmodifiableList(new ArrayList<>(required))));
+    this.hostCallCapabilities = Collections.unmodifiableMap(copiedHostCallCapabilities);
     this.handleTags = Collections.unmodifiableMap(new LinkedHashMap<>(handleTags));
+    this.handleReleases = Collections.unmodifiableMap(new LinkedHashMap<>(handleReleases));
   }
 
   public static HaraExtensionManifest parse(String source, String origin) {
@@ -128,11 +143,15 @@ public final class HaraExtensionManifest {
       throw invalid(origin, "unsupported provider :" + provider);
     }
     Map<String, Export> exports = parseExports(lookup(map, "exports"), origin);
+    Map<String, Export> callbacks = parseCallbacks(lookup(map, "callbacks"), origin);
     java.util.List<String> capabilities =
         parseKeywords(lookup(map, "capabilities"), origin, "capabilities");
     Map<String, java.util.List<String>> hostCalls =
         parseHostCalls(lookup(map, "host-calls"), origin);
-    Map<String, String> handleTags = parseHandleTags(lookup(map, "handles"), origin);
+    Map<String, java.util.List<String>> hostCallCapabilities =
+        parseHostCallCapabilities(lookup(map, "host-calls"), origin);
+    Map<String, String> handleTags = new LinkedHashMap<>();
+    Map<String, String> handleReleases = parseHandleTags(lookup(map, "handles"), handleTags, origin);
     return new HaraExtensionManifest(
         namespace,
         identity,
@@ -143,9 +162,12 @@ public final class HaraExtensionManifest {
         targets,
         assets,
         exports,
+        callbacks,
         capabilities,
         hostCalls,
-        handleTags);
+        hostCallCapabilities,
+        handleTags,
+        handleReleases);
   }
 
   public String namespace() {
@@ -188,6 +210,10 @@ public final class HaraExtensionManifest {
     return exports;
   }
 
+  public Map<String, Export> callbacks() {
+    return callbacks;
+  }
+
   public java.util.List<String> capabilities() {
     return capabilities;
   }
@@ -196,8 +222,24 @@ public final class HaraExtensionManifest {
     return hostCalls;
   }
 
+  public java.util.List<String> hostCallCapabilities(String service, String method) {
+    return hostCallCapabilities.getOrDefault(service + "/" + method, java.util.List.of());
+  }
+
+  public Map<String, java.util.List<String>> hostCallCapabilities() {
+    return hostCallCapabilities;
+  }
+
   public String handleTag(String type) {
     return handleTags.get(type);
+  }
+
+  public String handleRelease(String type) {
+    return handleReleases.get(type);
+  }
+
+  public boolean declaresHandles() {
+    return !handleTags.isEmpty();
   }
 
   public boolean permitsHostCall(String service, String method) {
@@ -264,7 +306,8 @@ public final class HaraExtensionManifest {
     }
   }
 
-  private static Map<String, String> parseHandleTags(Object value, String origin) {
+  private static Map<String, String> parseHandleTags(
+      Object value, Map<String, String> tags, String origin) {
     if (value == null) return Map.of();
     if (!(value instanceof IMapType<?, ?>)) throw invalid(origin, "handles must be a map");
     LinkedHashMap<String, String> result = new LinkedHashMap<>();
@@ -288,7 +331,9 @@ public final class HaraExtensionManifest {
       if (!HANDLE_TAG.matcher(tag).matches()) {
         throw invalid(origin, "handle tags must be lower-case symbols");
       }
-      result.put((String) entry.getKey(), tag);
+      tags.put((String) entry.getKey(), tag);
+      Object releaseValue = lookup(spec, "release");
+      if (releaseValue != null) result.put((String) entry.getKey(), requireString(spec, "release", origin));
     }
     return result;
   }
@@ -305,9 +350,8 @@ public final class HaraExtensionManifest {
         throw invalid(origin, "host-call services must be non-empty strings");
       }
       Object methods = entry.getValue();
-      if (!(methods instanceof ILinearType<?>)) {
-        throw invalid(origin, "host-call methods must be vectors");
-      }
+      if (methods instanceof IMapType<?, ?>) methods = lookup((IMapType<?, ?>) methods, "methods");
+      if (!(methods instanceof ILinearType<?>)) throw invalid(origin, "host-call methods must be vectors");
       ArrayList<String> names = new ArrayList<>();
       for (Object method : (ILinearType<?>) methods) {
         if (!(method instanceof String) || ((String) method).isBlank()) {
@@ -316,6 +360,40 @@ public final class HaraExtensionManifest {
         names.add((String) method);
       }
       result.put((String) entry.getKey(), names);
+    }
+    return result;
+  }
+
+  private static Map<String, java.util.List<String>> parseHostCallCapabilities(
+      Object value, String origin) {
+    if (value == null) return Map.of();
+    if (!(value instanceof IMapType<?, ?>)) throw invalid(origin, "host-calls must be a map");
+    LinkedHashMap<String, java.util.List<String>> result = new LinkedHashMap<>();
+    Iterator<?> iterator = ((IMapType<?, ?>) value).iterator();
+    while (iterator.hasNext()) {
+      Map.Entry<?, ?> entry = (Map.Entry<?, ?>) iterator.next();
+      if (!(entry.getKey() instanceof String) || !(entry.getValue() instanceof IMapType<?, ?>)) {
+        continue;
+      }
+      String service = (String) entry.getKey();
+      Object methods = lookup((IMapType<?, ?>) entry.getValue(), "methods");
+      Object capabilities = lookup((IMapType<?, ?>) entry.getValue(), "capabilities");
+      if (capabilities == null) continue;
+      if (!(capabilities instanceof ILinearType<?>)) {
+        throw invalid(origin, "host-call capabilities must be a vector");
+      }
+      ArrayList<String> required = new ArrayList<>();
+      for (Object capability : (ILinearType<?>) capabilities) {
+        if (!(capability instanceof Keyword) || ((Keyword) capability).getNamespace() != null) {
+          throw invalid(origin, "host-call capabilities must be keywords");
+        }
+        required.add(((Keyword) capability).getName());
+      }
+      if (!(methods instanceof ILinearType<?>)) throw invalid(origin, "host-call methods must be vectors");
+      for (Object method : (ILinearType<?>) methods) {
+        if (!(method instanceof String)) throw invalid(origin, "host-call methods must be non-empty strings");
+        result.put(service + "/" + method, required);
+      }
     }
     return result;
   }
@@ -329,6 +407,7 @@ public final class HaraExtensionManifest {
       if (!(entry.getKey() instanceof String) || ((String) entry.getKey()).isBlank()) {
         throw invalid(origin, "export names must be non-empty strings");
       }
+
       if (!(entry.getValue() instanceof IMapType<?, ?>)) {
         throw invalid(origin, "export " + entry.getKey() + " must be a map");
       }
@@ -345,12 +424,33 @@ public final class HaraExtensionManifest {
       if (asyncValue != null && !(asyncValue instanceof Boolean)) {
         throw invalid(origin, "export async must be boolean");
       }
+      Object operationValue = lookup(spec, "operation");
+      String operation =
+          operationValue == null ? name : requireString(spec, "operation", origin);
       result.put(
           name,
-          new Export(wasmExport, arguments, returns, Boolean.TRUE.equals(asyncValue)));
+          new Export(wasmExport, operation, arguments, returns, Boolean.TRUE.equals(asyncValue)));
     }
     if (result.isEmpty()) throw invalid(origin, "exports cannot be empty");
     return result;
+  }
+
+  private static Map<String, Export> parseCallbacks(Object value, String origin) {
+    if (value == null) return Map.of();
+    if (!(value instanceof IMapType<?, ?> map)) throw invalid(origin, "callbacks must be a map");
+    Iterator<?> iterator = map.iterator();
+    while (iterator.hasNext()) {
+      Map.Entry<?, ?> entry = (Map.Entry<?, ?>) iterator.next();
+      if (!(entry.getValue() instanceof IMapType<?, ?> specification)) {
+        throw invalid(origin, "callback specification must be a map");
+      }
+      Object reentrant = lookup(specification, "reentrant");
+      if (Boolean.TRUE.equals(reentrant)) {
+        throw invalid(origin, "callbacks cannot be reentrant");
+      }
+    }
+    if (!map.iterator().hasNext()) return Map.of();
+    return parseExports(value, origin);
   }
 
   private static java.util.List<String> parseKeywords(
@@ -438,16 +538,19 @@ public final class HaraExtensionManifest {
 
   public static final class Export {
     private final String wasmExport;
+    private final String operation;
     private final java.util.List<String> arguments;
     private final String returns;
     private final boolean async;
 
     private Export(
         String wasmExport,
+        String operation,
         java.util.List<String> arguments,
         String returns,
         boolean async) {
       this.wasmExport = wasmExport;
+      this.operation = operation;
       this.arguments = Collections.unmodifiableList(new ArrayList<>(arguments));
       this.returns = returns;
       this.async = async;
@@ -455,6 +558,10 @@ public final class HaraExtensionManifest {
 
     public String wasmExport() {
       return wasmExport;
+    }
+
+    public String operation() {
+      return operation;
     }
 
     public java.util.List<String> arguments() {

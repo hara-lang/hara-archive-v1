@@ -170,9 +170,12 @@ fn rejects_ambiguous_and_future_semantics() {
         ":exports",
         ":handles {stream {:tag stream :release \"stream_drop\"}} :exports",
     );
-    assert!(WasmInterface::parse(&handles, "handles")
-        .unwrap_err()
-        .starts_with("wasm-interface/feature-unsupported"));
+    let handles = WasmInterface::parse(&handles, "handles").unwrap();
+    assert_eq!(handles.handles["stream"].tag, "stream");
+    assert_eq!(
+        handles.handles["stream"].release.as_deref(),
+        Some("stream_drop")
+    );
 }
 
 const WIT_SCALAR: &str = r#"

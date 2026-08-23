@@ -121,9 +121,7 @@ pub(super) fn kernel_call(
             })
             .join()
             .map_err(|_| format!("{operation}: package build thread panicked"))??;
-            Ok(Value::String(
-                built.to_string_lossy().into_owned(),
-            ))
+            Ok(Value::String(built.to_string_lossy().into_owned()))
         }
         "package-inspect" => Ok(Value::String(crate::package::inspect_path(
             std::path::Path::new(string_argument(arguments, 0, operation)?),

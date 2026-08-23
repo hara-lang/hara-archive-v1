@@ -1402,9 +1402,7 @@ fn call(f: Rc<Function>, args: Vec<Value>, k: Cont) -> Step {
         return k(crate::core::call_function(&f, args));
     }
     if f.variadic.is_none() && f.params.len() != args.len() {
-        if f.namespace.as_deref() == Some("std.foundation")
-            && f.name.as_deref() == Some("type")
-        {
+        if f.namespace.as_deref() == Some("std.foundation") && f.name.as_deref() == Some("type") {
             return k(Err("type expects one value".into()));
         }
         return k(Err(format!(
@@ -1437,10 +1435,10 @@ fn call(f: Rc<Function>, args: Vec<Value>, k: Cont) -> Step {
             .then_some(())
             .and_then(|_| f.namespace.as_ref())
             .map(|namespace| {
-            let previous = registry.current().name().as_str().to_owned();
-            registry.set_current(namespace);
-            (registry, previous)
-        })
+                let previous = registry.current().name().as_str().to_owned();
+                registry.set_current(namespace);
+                (registry, previous)
+            })
     });
     let mut env = f.captured.borrow().clone();
     for (n, x) in f.params.iter().zip(args.iter()) {

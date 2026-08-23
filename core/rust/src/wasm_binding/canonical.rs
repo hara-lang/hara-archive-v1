@@ -1,8 +1,9 @@
 use crate::kernel::Form;
 
 use super::{
-    BindingFunction, BindingParameter, BindingResult, ErrorContract, HaraValueType, Lifting,
-    Lowering, MemoryContract, Ownership, WasmInterface,
+    BindingFunction, BindingParameter, BindingResult, CallbackContract, CancellationPolicy,
+    ErrorContract, HandleContract, HaraValueType, HostCallContract, Lifting, Lowering,
+    MemoryContract, Ownership, RequestPolicy, WasmInterface,
 };
 
 impl HaraValueType {
@@ -93,6 +94,20 @@ fn payload_form(interface: &WasmInterface) -> Form {
             ),
         ));
     }
+    push_contract_map(
+        &mut entries,
+        "host-calls",
+        &interface.host_calls,
+        host_call_form,
+    );
+    push_contract_map(
+        &mut entries,
+        "callbacks",
+        &interface.callbacks,
+        callback_form,
+    );
+    push_contract_map(&mut entries, "handles", &interface.handles, handle_form);
+    push_contract_map(&mut entries, "resources", &interface.resources, handle_form);
     Form::Map(entries)
 }
 
@@ -116,9 +131,25 @@ fn export_form(export: &BindingFunction) -> Form {
         ),
         (keyword_form("returns"), result_form(&export.returns)),
     ];
-    if export.asynchronous {
+    if let Some(operation) = export.operation.as_ref() {
         entries.push((keyword_form("async"), Form::Bool(true)));
+        entries.push((keyword_form("hta/operation"), string_form(operation)));
+        let request = export.request.clone().unwrap_or_default();
+        if request.timeout_ms.is_some() || request.max_in_flight.is_some() {
+            let mut request_entries = Vec::new();
+            request_form(&mut request_entries, &request);
+            entries.push((keyword_form("hta/request"), Form::Map(request_entries)));
+        }
+        if let Some(cancellation) = export.cancellation {
+            if cancellation != CancellationPolicy::Cooperative {
+                entries.push((
+                    keyword_form("hta/cancellation"),
+                    keyword_form(cancellation.as_keyword()),
+                ));
+            }
+        }
     }
+
     if let Some(errors) = export.errors.as_ref() {
         entries.push((keyword_form("errors"), error_form(errors)));
     }
@@ -134,6 +165,107 @@ fn export_form(export: &BindingFunction) -> Form {
             ),
         ));
     }
+    Form::Map(entries)
+}
+
+fn request_form(entries: &mut Vec<(Form, Form)>, request: &RequestPolicy) {
+    if let Some(timeout_ms) = request.timeout_ms {
+        entries.push((keyword_form("timeout-ms"), Form::Number(timeout_ms as i64)));
+    }
+    if let Some(max_in_flight) = request.max_in_flight {
+        entries.push((
+            keyword_form("max-in-flight"),
+            Form::Number(i64::from(max_in_flight)),
+        ));
+    }
+}
+
+impl CancellationPolicy {
+    fn as_keyword(self) -> &'static str {
+        match self {
+            Self::Cooperative => "cooperative",
+            Self::Abort => "abort",
+            Self::Ignore => "ignore",
+        }
+    }
+}
+
+fn push_contract_map<T>(
+    entries: &mut Vec<(Form, Form)>,
+    name: &str,
+    values: &std::collections::BTreeMap<String, T>,
+    render: fn(&T) -> Form,
+) {
+    if !values.is_empty() {
+        entries.push((
+            keyword_form(name),
+            Form::Map(
+                values
+                    .iter()
+                    .map(|(key, value)| (symbol_form(key), render(value)))
+                    .collect(),
+            ),
+        ));
+    }
+}
+
+fn host_call_form(contract: &HostCallContract) -> Form {
+    let mut entries = vec![(
+        keyword_form("methods"),
+        Form::Vector(
+            contract
+                .methods
+                .iter()
+                .map(|method| keyword_form(method))
+                .collect(),
+        ),
+    )];
+    if !contract.capabilities.is_empty() {
+        entries.push((
+            keyword_form("capabilities"),
+            Form::Vector(
+                contract
+                    .capabilities
+                    .iter()
+                    .map(|capability| keyword_form(capability))
+                    .collect(),
+            ),
+        ));
+    }
+    Form::Map(entries)
+}
+
+fn callback_form(contract: &CallbackContract) -> Form {
+    let arguments = contract
+        .arguments
+        .iter()
+        .map(|argument| {
+            if argument.name.is_empty() {
+                argument.hara_type.canonical_form()
+            } else {
+                Form::Map(vec![
+                    (keyword_form("name"), symbol_form(&argument.name)),
+                    (
+                        keyword_form("hara/type"),
+                        argument.hara_type.canonical_form(),
+                    ),
+                ])
+            }
+        })
+        .collect();
+    let mut entries = vec![
+        (keyword_form("arguments"), Form::Vector(arguments)),
+        (keyword_form("returns"), contract.returns.canonical_form()),
+    ];
+    if contract.reentrant {
+        entries.push((keyword_form("reentrant"), Form::Bool(true)));
+    }
+    Form::Map(entries)
+}
+
+fn handle_form(contract: &HandleContract) -> Form {
+    let mut entries = vec![(keyword_form("tag"), symbol_form(&contract.tag))];
+    push_optional_string(&mut entries, "release", contract.release.as_deref());
     Form::Map(entries)
 }
 

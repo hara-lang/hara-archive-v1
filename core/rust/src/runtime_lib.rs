@@ -52,11 +52,11 @@ mod numeric;
 pub mod package;
 pub mod package_catalog;
 #[cfg(not(target_arch = "wasm32"))]
+pub mod package_hta_loader;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod package_manifest;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod package_wasm_loader;
-#[cfg(not(target_arch = "wasm32"))]
-pub mod package_hta_loader;
 #[cfg(not(target_arch = "wasm32"))]
 mod process_extension;
 #[cfg(not(target_arch = "wasm32"))]

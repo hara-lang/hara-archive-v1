@@ -162,6 +162,51 @@ pub struct ErrorContract {
     pub codes: BTreeMap<i64, String>,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RequestPolicy {
+    pub timeout_ms: Option<u64>,
+    pub max_in_flight: Option<u32>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CancellationPolicy {
+    Cooperative,
+    Abort,
+    Ignore,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AsyncPolicy {
+    pub operation: String,
+    pub request: RequestPolicy,
+    pub cancellation: CancellationPolicy,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HostCallContract {
+    pub methods: BTreeSet<String>,
+    pub capabilities: BTreeSet<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CallbackParameter {
+    pub name: String,
+    pub hara_type: HaraValueType,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CallbackContract {
+    pub arguments: Vec<CallbackParameter>,
+    pub returns: HaraValueType,
+    pub reentrant: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HandleContract {
+    pub tag: String,
+    pub release: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BindingFunction {
     pub name: String,
@@ -169,6 +214,9 @@ pub struct BindingFunction {
     pub arguments: Vec<BindingParameter>,
     pub returns: BindingResult,
     pub asynchronous: bool,
+    pub operation: Option<String>,
+    pub request: Option<RequestPolicy>,
+    pub cancellation: Option<CancellationPolicy>,
     pub errors: Option<ErrorContract>,
     pub capabilities: BTreeSet<String>,
 }
@@ -181,6 +229,10 @@ pub struct WasmInterface {
     pub memory: Option<MemoryContract>,
     pub exports: Vec<BindingFunction>,
     pub capabilities: BTreeSet<String>,
+    pub host_calls: BTreeMap<String, HostCallContract>,
+    pub callbacks: BTreeMap<String, CallbackContract>,
+    pub handles: BTreeMap<String, HandleContract>,
+    pub resources: BTreeMap<String, HandleContract>,
 }
 
 impl WasmInterface {
@@ -195,6 +247,19 @@ impl WasmInterface {
     pub fn digest(&self) -> String {
         let digest = Sha256::digest(self.canonical_source().as_bytes());
         format!("sha256:{digest:x}")
+    }
+
+    pub fn hta_required(&self) -> bool {
+        !self.host_calls.is_empty()
+            || !self.callbacks.is_empty()
+            || !self.handles.is_empty()
+            || !self.resources.is_empty()
+            || self.exports.iter().any(|export| {
+                export.asynchronous
+                    || export.operation.is_some()
+                    || export.request.is_some()
+                    || export.cancellation.is_some()
+            })
     }
 
     pub fn direct_exports(&self) -> Vec<(String, ExtensionExport)> {
