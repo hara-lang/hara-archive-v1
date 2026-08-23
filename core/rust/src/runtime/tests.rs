@@ -1399,6 +1399,20 @@ mod tests {
                 .unwrap(),
             "\"/sandbox/data.bin\""
         );
+        assert_eq!(
+            runtime
+                .eval_text("(std.native.File/parent \"/sandbox/data.bin\")")
+                .unwrap(),
+            "\"/sandbox\""
+        );
+        assert_eq!(
+            runtime.eval_text("(std.native.File/parent \"/\")").unwrap(),
+            "nil"
+        );
+        assert!(runtime
+            .eval_text("(std.native.File/parent \"/../escape\")")
+            .unwrap_err()
+            .contains("file/outside-root"));
         assert!(runtime
             .eval_text("(File/resolve \"/\" \"../escape\")")
             .unwrap_err()
