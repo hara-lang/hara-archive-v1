@@ -74,3 +74,8 @@ and unique HAL namespaces. Resources are registered only after the complete
 lock has passed verification. A lock entry may use `:distribution/url`,
 `:packages/url`, `:release-url`, or `:url`; package distribution URLs take
 precedence and the lock digest remains authoritative.
+
+Verified `:hta` extensions select only their prebuilt `:browser` web-worker
+target. Declared assets are loaded from the archive, and unsupported
+capabilities fail during installation; no Cargo, Maven, or compiler step is
+performed.

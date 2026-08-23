@@ -22,7 +22,8 @@ export interface HaraRuntime {
   compileBytecode(source: string): Uint8Array;
   evalBytecode(artifact: Uint8Array): string;
   compileWholeWasm(source: string): Promise<WholeWasmModule>;
-  dispose(): void;
+  installHostHandler(handler: Function): void;
+  dispose(): Promise<void>;
   readonly raw: unknown;
 }
 
@@ -34,6 +35,14 @@ export interface WholeWasmModule {
 
 export interface LockedPackageOptions {
   fetch?: typeof globalThis.fetch;
+  origin?: string;
+  targets?: string[];
+  capabilities?: string[];
+  hostCalls?: Record<string, Function | Record<string, Function>>;
+  workerFactory?: (url: string, options: WorkerOptions) => Worker;
+  createObjectURL?: (blob: Blob) => string;
+  revokeObjectURL?: (url: string) => void;
+  Blob?: typeof Blob;
 }
 
 export function loadLockedPackageResources(
@@ -52,6 +61,8 @@ export function installPackageProvider(
   lockSource: string,
   options?: LockedPackageOptions
 ): { readonly active: ReadonlySet<string>; readonly handler: Function };
+
+export function disposeBrowserPackageProviders(runtime: HaraRuntime): Promise<void>;
 
 export function start(options?: StartOptions): Promise<HaraRuntime>;
 export const ready: Promise<HaraRuntime>;
