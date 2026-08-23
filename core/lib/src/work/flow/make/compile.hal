@@ -60,20 +60,20 @@
   (let [function (entry-compiler definition entry)]
     (if (not (fn? function))
       (throw
-       (ex :generic {:make/id (:make/id definition)
+       (ex :hara/generic (assoc {:make/id (:make/id definition)
                  :make/target target
                  :make/index index
-                 :make/entry entry} :ex/message "Make entry has no compiler")))
+                 :make/entry entry} :ex/message "Make entry has no compiler"))))
     function))
 
 (defn assert-hook
   [definition target id function]
   (if (and function (not (fn? function)))
     (throw
-     (ex :argument {:make/id (:make/id definition)
+     (ex :hara/argument (assoc {:make/id (:make/id definition)
                :make/target target
                :make/hook id
-               :make/value function} :ex/message "Make target hook must be a function")))
+               :make/value function} :ex/message "Make target hook must be a function"))))
   function)
 
 (defn prepare-work
@@ -229,9 +229,9 @@
         spec (get specs target)]
     (if (nil? spec)
       (throw
-       (ex :generic {:make/id (:make/id plan)
+       (ex :hara/generic (assoc {:make/id (:make/id plan)
                  :make/target target
-                 :make/available (vec (keys specs))} :ex/message "Make target is not defined")))
+                 :make/available (vec (keys specs))} :ex/message "Make target is not defined"))))
     (if (nil? selector)
       (get (:make/targets plan) target)
       (compile-target (:make/definition plan)

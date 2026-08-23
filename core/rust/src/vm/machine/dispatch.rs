@@ -391,6 +391,12 @@ impl Machine {
                     }
                 };
                 let value = Self::into_value(program.clone(), value);
+                if !matches!(value, Value::ExceptionInfo(_)) {
+                    match self.raise(function, "throw expects an Exception value created by ex") {
+                        Ok(target) => return Dispatch::Unwound(target),
+                        Err(error) => return Dispatch::Failed(error),
+                    }
+                }
                 let position = function.source_map.position(self.ip);
                 crate::core::record_exception_throw(
                     &value,

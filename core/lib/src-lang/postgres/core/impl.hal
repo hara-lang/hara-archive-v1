@@ -14,7 +14,7 @@
 
 (defn- require-where [params]
   (when (nil? (:where params))
-    (throw (ex :database params :ex/message "No WHERE clause")))
+    (throw (ex :hara/database (assoc params :ex/message "No WHERE clause"))))
   params)
 
 (defmacro.xt t:get-field [spec params]

@@ -54,15 +54,15 @@
   (work-execute [executor request]
     (if (not= :execute-leaf (:work/request request))
       (throw
-       (ex :io {:work/request (:work/request request)} :ex/message "Inline Work executor requires an execute-leaf request")))
+       (ex :hara/io (assoc {:work/request (:work/request request)} :ex/message "Inline Work executor requires an execute-leaf request"))))
     (if (not= :step (:work/boundary request))
       (throw
-       (ex :io {:work/boundary (:work/boundary request)} :ex/message "Inline Work executor accepts step leaves only")))
+       (ex :hara/io (assoc {:work/boundary (:work/boundary request)} :ex/message "Inline Work executor accepts step leaves only"))))
     (let [function (target-function executor (:work/target request))]
       (if (nil? function)
         (throw
-         (ex :io {:work/target (:work/target request)
-                   :node/id (:node/id request)} :ex/message "Inline Work target is not available")))
+         (ex :hara/io (assoc {:work/target (:work/target request)
+                   :node/id (:node/id request)} :ex/message "Inline Work target is not available"))))
       (function (:work/input request) (:work/context request)))))
 
 (defn inline-executor

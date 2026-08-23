@@ -215,8 +215,10 @@
    "                (let [resolved (resolve reference)]\n"
    "                  (if resolved\n"
    "                    (assoc record field resolved)\n"
-   "                    (throw (ex-info \"Unable to hydrate V1 grammar reference\"\n"
-   "                                    {:field field :reference reference}))))\n"
+   "                    (throw (ex :tool.migrate/grammar-reference\n"
+   "                                    (assoc {:field field :reference reference}\n"
+   "                                           :ex/message\n"
+   "                                           \"Unable to hydrate V1 grammar reference\"))))\n"
    "                record)))\n"
    "          entry\n"
    "          +reference-fields+))\n\n"
@@ -296,8 +298,10 @@
      "                (let [resolved (resolve reference)]\n"
      "                  (if resolved\n"
      "                    (assoc record field resolved)\n"
-     "                    (throw (ex-info \"Unable to hydrate V1 grammar reference\"\n"
-     "                                    {:field field :reference reference}))))\n"
+     "                    (throw (ex :tool.migrate/grammar-reference\n"
+     "                                    (assoc {:field field :reference reference}\n"
+     "                                           :ex/message\n"
+     "                                           \"Unable to hydrate V1 grammar reference\"))))\n"
      "                record)))\n"
      "          entry\n"
      "          +reference-fields+))\n\n"
@@ -1520,9 +1524,9 @@
           (and (:move unit) (not (:move current))) (assoc owners target unit)
           (and (:move current) (not (:move unit))) owners
           :else
-          (throw (ex :io {:target/path target
+          (throw (ex :hara/io (assoc {:target/path target
                            :owners [(:source/path current)
-                                    (:source/path unit)]} :ex/message "Migration target has multiple owners")))))
+                                    (:source/path unit)]} :ex/message "Migration target has multiple owners"))))))
     {}
     edits)))
 
@@ -1539,13 +1543,13 @@
         target-path (or (:target/path unit) (:path unit))]
     (if (or (not (path-under-root? root source-path))
             (not (path-under-root? root target-path)))
-    (throw (ex :io {:root root
+    (throw (ex :hara/io (assoc {:root root
                      :source/path source-path
-                     :target/path target-path} :ex/message "Migration path escapes project root")))
+                     :target/path target-path} :ex/message "Migration path escapes project root"))))
     (let [path (File/resolve root source-path)
           current (str/decode-utf8 (deref (File/read path)))]
     (if (not= current (:before unit))
-      (throw (ex :io {:path path} :ex/message "Migration source changed after planning")))
+      (throw (ex :hara/io (assoc {:path path} :ex/message "Migration source changed after planning"))))
       unit)))
 
 (defn apply-unit
@@ -1573,7 +1577,7 @@
         diagnostics
         (vec (mapcat (fn [unit] (:diagnostics unit)) edits))]
     (if (not (empty? diagnostics))
-      (throw (ex :generic {:diagnostics diagnostics} :ex/message "Migration contains blocking diagnostics")))
+      (throw (ex :hara/generic (assoc {:diagnostics diagnostics} :ex/message "Migration contains blocking diagnostics"))))
     (vec (map (fn [unit] (validate-unit root unit)) edits))
     (vec (map (fn [unit] (apply-unit root unit)) edits))))
 

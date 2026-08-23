@@ -267,8 +267,7 @@
               (let [attempt (swap! second-count inc)]
                 (if (= attempt 1)
                   (throw
-                   (ex :host {:attempt attempt}
-                       :ex/message "interrupt produced child"))
+                   (ex :hara/host (assoc {:attempt attempt} :ex/message "interrupt produced child")))
                   (+ value 100)))))])
         computation
         (work/bind

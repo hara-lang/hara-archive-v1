@@ -7,7 +7,7 @@
 
 (defmethod item-constructor :default [tag]
   (or (:construct (type/metaprops tag))
-      (throw (ex :generic {:tag tag :metaprops (type/metaprops tag)} :ex/message "No constructor"))))
+      (throw (ex :hara/generic (assoc {:tag tag :metaprops (type/metaprops tag)} :ex/message "No constructor")))))
 
 (defmulti item-setters
   (fn [tag] (:metaclass (type/metaprops tag))))
@@ -16,7 +16,7 @@
   (let [metaprops (type/metaprops tag)]
     (if (= :dom/element (:metatype metaprops))
       (:setters metaprops)
-      (throw (ex :generic {:tag tag :metaprops metaprops} :ex/message "No setters")))))
+      (throw (ex :hara/generic (assoc {:tag tag :metaprops metaprops} :ex/message "No setters"))))))
 
 (defmulti item-getters
   (fn [tag] (:metaclass (type/metaprops tag))))
@@ -25,7 +25,7 @@
   (let [metaprops (type/metaprops tag)]
     (if (= :dom/element (:metatype metaprops))
       (:getters metaprops)
-      (throw (ex :generic {:tag tag :metaprops metaprops} :ex/message "No getters")))))
+      (throw (ex :hara/generic (assoc {:tag tag :metaprops metaprops} :ex/message "No getters"))))))
 
 (defn item-access [tag item key]
   (if-let [getter (get-in (item-getters tag) [key :fn])]
@@ -43,8 +43,8 @@
         metatype (:metatype metaprops)]
     (if (= :dom/element metatype)
       item
-      (throw (ex :generic {:metatype metatype :metaprops metaprops
-                       :tag tag :item item :ops ops} :ex/message "Cannot update props")))))
+      (throw (ex :hara/generic (assoc {:metatype metatype :metaprops metaprops
+                       :tag tag :item item :ops ops} :ex/message "Cannot update props"))))))
 
 (defmethod item-props-update :default [tag item ops]
   (item-props-update-default tag item ops))
@@ -58,8 +58,8 @@
      (fn [item key value]
        (if-let [setter (get setters key)]
          (do ((:fn setter) item value) item)
-         (throw (ex :not-found {:metaprops (type/metaprops tag)
-                          :item item :key key :value value} :ex/message "Cannot find set function"))))
+         (throw (ex :hara/not-found (assoc {:metaprops (type/metaprops tag)
+                          :item item :key key :value value} :ex/message "Cannot find set function")))))
      item
      props)))
 
@@ -97,8 +97,8 @@
   (let [setter (get (item-setters tag) key)]
     (if-let [function (:fn setter)]
       (do (function item values) item)
-      (throw (ex :not-found {:metaprops (type/metaprops tag)
-                       :item item :key key :value values} :ex/message "Cannot find set function")))))
+      (throw (ex :hara/not-found (assoc {:metaprops (type/metaprops tag)
+                       :item item :key key :value values} :ex/message "Cannot find set function"))))))
 
 (defmethod item-set-list :default [tag item key values]
   (item-set-list-default tag item key values))

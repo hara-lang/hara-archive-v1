@@ -235,7 +235,7 @@
          tag-table (snake-case table-name)
          id (:id output)]
      (if (not (str/starts-with? id tag-table))
-       (throw (ex :database {:id id :table table-name :assert tag-table} :ex/message "View should start with table name"))
+       (throw (ex :hara/database (assoc {:id id :table table-name :assert tag-table} :ex/message "View should start with table name")))
        (let [tag (str/slice id (inc (str/length tag-table)))
              argument-lookup (to-lookup (filter symbol? args))]
          (merge output

@@ -18,8 +18,8 @@
   [profile qualified-name raw-definition]
   (if (not (map? raw-definition))
     (throw
-     (ex :argument {:workflow/name qualified-name
-               :workflow/definition raw-definition} :ex/message "Make workflow definition must be a map")))
+     (ex :hara/argument (assoc {:workflow/name qualified-name
+               :workflow/definition raw-definition} :ex/message "Make workflow definition must be a map"))))
   (let [options (profile-definition-options profile)
         definition (flow/merge-options options raw-definition)]
     (if (or (:make/id definition) (:id definition))

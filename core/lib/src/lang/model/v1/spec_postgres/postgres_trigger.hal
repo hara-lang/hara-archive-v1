@@ -31,8 +31,8 @@
         _ (if (or (not (vector? table-binding))
                   (not (= 1 (count table-binding))))
             (throw
-             (ex :syntax {:form form
-                       :table-binding table-binding} :ex/message "PostgreSQL trigger requires exactly one table binding")))
+             (ex :hara/syntax (assoc {:form form
+                       :table-binding table-binding} :ex/message "PostgreSQL trigger requires exactly one table binding"))))
         metadata (trigger-metadata symbol definition-metadata)
         next-symbol (IObjType/with-meta symbol metadata)]
     [metadata
@@ -56,7 +56,7 @@
           table-id (or (:table target) (:id target))]
       (if table-id
         {:schema schema :table table-id}
-        (throw (ex :database {:target target} :ex/message "Explicit trigger table coordinate has no table"))))
+        (throw (ex :hara/database (assoc {:target target} :ex/message "Explicit trigger table coordinate has no table")))))
 
     (and (vector? target) (= 2 (count target)))
     {:schema (first target) :table (second target)}
@@ -67,10 +67,10 @@
             entry (second resolved)]
         {:schema (table/linked-entry-schema context link entry)
          :table (:id entry)})
-      (throw (ex :database {:target target} :ex/message "Portable PostgreSQL trigger table is unresolved")))
+      (throw (ex :hara/database (assoc {:target target} :ex/message "Portable PostgreSQL trigger table is unresolved"))))
 
     :else
-    (throw (ex :database {:target target} :ex/message "Unsupported PostgreSQL trigger table coordinate"))))
+    (throw (ex :hara/database (assoc {:target target} :ex/message "Unsupported PostgreSQL trigger table coordinate")))))
 
 (defn- execute-index-step
   [values index]
@@ -124,8 +124,8 @@
       {:schema (table/linked-entry-schema context link entry)
        :function (:id entry)
        :args args}
-      (throw (ex :database {:call call
-                       :target target} :ex/message "Portable PostgreSQL trigger function is unresolved")))))
+      (throw (ex :hara/database (assoc {:call call
+                       :target target} :ex/message "Portable PostgreSQL trigger function is unresolved"))))))
 
 (defn pg-trigger-hydrate
   "Hydrates trigger table and function coordinates without filesystem or host
@@ -216,7 +216,7 @@
                                        resolved-function
                                        grammar context))
            resolved-function grammar context)
-          (throw (ex :security {:body values} :ex/message "EXECUTE FUNCTION requires a target")))
+          (throw (ex :hara/security (assoc {:body values} :ex/message "EXECUTE FUNCTION requires a target"))))
 
         (and (= value :execute) (= next-value :function))
         (let [call-index (+ index 2)
@@ -233,7 +233,7 @@
                                          resolved-function
                                          grammar context))
              resolved-function grammar context)
-            (throw (ex :security {:body values} :ex/message "EXECUTE FUNCTION requires a target"))))
+            (throw (ex :hara/security (assoc {:body values} :ex/message "EXECUTE FUNCTION requires a target")))))
 
         :else
         (vector-body-tokens

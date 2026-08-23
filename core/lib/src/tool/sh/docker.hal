@@ -37,7 +37,7 @@
   (str (key-name (or (:group container) "testing")) "_"
        (key-name
         (or (:id container)
-            (throw (ex :dependency {:container container} :ex/message "Docker container id is required"))))))
+            (throw (ex :hara/dependency (assoc {:container container} :ex/message "Docker container id is required")))))))
 
 (defn append-map
   [arguments flag values]

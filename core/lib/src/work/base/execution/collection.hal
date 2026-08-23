@@ -192,5 +192,5 @@
                       choice
                       input))
            (throw
-            (ex :not-found {:selected selected
-                      :choices (keys (:choices spec))} :ex/message "Work choice does not exist"))))))))
+            (ex :hara/not-found (assoc {:selected selected
+                      :choices (keys (:choices spec))} :ex/message "Work choice does not exist")))))))))

@@ -153,7 +153,7 @@
                    (let [control-block (get control control-key)]
                    (let [forms (or (get control-args control-key) [])
                          _ (if (and (:required control-block) (= 0 (count forms)))
-                             (throw (ex :dependency {:main key :control control-key} :ex/message "Form is required in body"))
+                             (throw (ex :hara/dependency (assoc {:main key :control control-key} :ex/message "Form is required in body")))
                              true)
                          options (merge (get-in grammar [:default :block])
                                         (get-in grammar [:block key :control :default])

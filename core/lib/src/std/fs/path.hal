@@ -11,13 +11,11 @@
 (defn- path-error
   [code operation path message]
   (throw
-   (ex code {:file/operation operation
+   (ex code (assoc {:file/operation operation
              :file/path path
-             :file/target nil}
-       :ex/message message
-       :ex/class (if (= code :file/outside-root)
+             :file/target nil} :ex/message message :ex/class (if (= code :file/outside-root)
                    :ex.class/security
-                   :ex.class/argument))))
+                   :ex.class/argument)))))
 
 (defn- ascii-letter?
   [character]
@@ -205,14 +203,11 @@
 (defn- invalid-subpath
   [path start end]
   (throw
-   (ex :file/invalid-path
-       {:file/operation :subpath
+   (ex :file/invalid-path (assoc {:file/operation :subpath
         :file/path path
         :file/target nil
         :file/start start
-        :file/end end}
-       :ex/message "Logical subpath indexes are outside the path"
-       :ex/class :ex.class/argument)))
+        :file/end end} :ex/message "Logical subpath indexes are outside the path" :ex/class :ex.class/argument))))
 
 (defn ^{:schema [:function [:fn [:str :int] :str]
                             [:fn [:str :int :int] :str]]}

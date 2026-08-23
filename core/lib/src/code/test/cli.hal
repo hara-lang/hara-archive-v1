@@ -93,7 +93,7 @@
   (reduce
    (fn [counts result]
      (if (not (Result/instance? result))
-       (throw (ex :state {} :ex/message "native test result is not a Result"))
+       (throw (ex :hara/state (assoc {} :ex/message "native test result is not a Result")))
        (if (test-result/passed? result)
          (update counts :passed inc)
          (update counts :failed inc))))
@@ -105,10 +105,10 @@
   (let [status (:status summary)
         counts (:counts summary)]
     (if (not (keyword? status))
-      (throw (ex :state {} :ex/message "code.test/run result is missing :status"))
+      (throw (ex :hara/state (assoc {} :ex/message "code.test/run result is missing :status")))
       nil)
     (if (not (map? counts))
-      (throw (ex :state {} :ex/message "code.test/run result is missing :counts"))
+      (throw (ex :hara/state (assoc {} :ex/message "code.test/run result is missing :counts")))
       nil)
     (let [passed (or (:passed counts) 0)
           failed (+ (or (:failed counts) 0)
@@ -130,9 +130,7 @@
 
       :else
       (throw
-       (ex :state {}
-           :ex/message
-           "test file must return a code.test/run summary or native test result vector")))))
+       (ex :hara/state (assoc {} :ex/message "test file must return a code.test/run summary or native test result vector"))))))
 
 (defn absolute-path [cwd path]
   (if (str/starts-with? path "/") path (file/join cwd path)))
@@ -145,15 +143,13 @@
 
 (defn test-files [current-project arguments cwd]
   (if (> (count arguments) 1)
-    (throw (ex :argument {} :ex/message "test accepts at most one path"))
+    (throw (ex :hara/argument (assoc {} :ex/message "test accepts at most one path")))
     (if (empty? arguments)
       (let [files (project/files-in current-project
                                     (:project/test-paths current-project)
                                     ".hal")]
         (if (empty? files)
-          (throw (ex :not-found {}
-                     :ex/message
-                     "project has no .hal files under :project/test-paths"))
+          (throw (ex :hara/not-found (assoc {} :ex/message "project has no .hal files under :project/test-paths")))
           files))
       (let [path (absolute-path cwd (first arguments))
             metadata (deref (file/stat path))]
@@ -161,11 +157,9 @@
           (= :directory (:type metadata)) (project/walk-files path)
           (and (= :file (:type metadata)) (str/ends-with? path ".hal")) [path]
           (= :file (:type metadata))
-          (throw (ex :argument {:path path}
-                     :ex/message "test file must use the .hal extension"))
+          (throw (ex :hara/argument (assoc {:path path} :ex/message "test file must use the .hal extension")))
           :else
-          (throw (ex :not-found {:path path}
-                     :ex/message (str "test path does not exist: " path))))))))
+          (throw (ex :hara/not-found (assoc {:path path} :ex/message (str "test path does not exist: " path)))))))))
 
 (defn run-test-file [path index]
   (let [session (str "tool.cli.test." index)]

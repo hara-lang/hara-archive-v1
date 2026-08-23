@@ -220,9 +220,9 @@
     (cond
       (empty? rest-args) form
       (< 1 (count rest-args))
-      (throw (ex :generic {:form form :args args} :ex/message "Only one rest argument is allowed"))
+      (throw (ex :hara/generic (assoc {:form form :args args} :ex/message "Only one rest argument is allowed")))
       (not= (last args) (first rest-args))
-      (throw (ex :argument {:form form :args args} :ex/message "Rest argument must be final"))
+      (throw (ex :hara/argument (assoc {:form form :args args} :ex/message "Rest argument must be final")))
       :else
       (let [rest-sym (second (first rest-args))
             body (cons (list 'var rest-sym [(list ':- "...")]) body)

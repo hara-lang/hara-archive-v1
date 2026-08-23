@@ -169,11 +169,11 @@
         open-function (compatible-get driver :open)
         options (option entry :options (option entry :defaults {}))]
     (if (nil? driver)
-      (throw (ex :database {:driver driver-id
+      (throw (ex :hara/database (assoc {:driver driver-id
                        :service service-id
-                       :registered (list-drivers node)} :ex/message "Database driver is not registered"))
+                       :registered (list-drivers node)} :ex/message "Database driver is not registered")))
       (if (nil? open-function)
-        (throw (ex :database {:driver driver-id :descriptor driver} :ex/message "Database driver has no open function"))
+        (throw (ex :hara/database (assoc {:driver driver-id :descriptor driver} :ex/message "Database driver has no open function")))
         (promise/then
          (open-function options)
          (fn [connection]
@@ -310,7 +310,7 @@
   (let [service (substrate/get-service node service-id)]
     (if service
       service
-      (throw (ex :database {:service service-id} :ex/message "Database service is not configured")))))
+      (throw (ex :hara/database (assoc {:service service-id} :ex/message "Database service is not configured"))))))
 
 (defn service-info-main
   "Returns provider-neutral metadata for a configured database service."

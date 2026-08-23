@@ -82,18 +82,18 @@
             priority (:priority rule)
             match-key (matcher-key rule)]
         (if (not (rule-valid? rule))
-          (throw (ex :argument {:rule rule
-                           :index index} :ex/message "Invalid Clojure to HAL rule")))
+          (throw (ex :hara/argument (assoc {:rule rule
+                           :index index} :ex/message "Invalid Clojure to HAL rule"))))
         (if (< priority previous-priority)
-          (throw (ex :generic {:previous previous-priority
-                           :rule rule} :ex/message "Clojure to HAL rules are not priority ordered")))
+          (throw (ex :hara/generic (assoc {:previous previous-priority
+                           :rule rule} :ex/message "Clojure to HAL rules are not priority ordered"))))
         (if (has? identifiers identifier)
-          (throw (ex :conflict {:id identifier} :ex/message "Duplicate Clojure to HAL rule identifier")))
+          (throw (ex :hara/conflict (assoc {:id identifier} :ex/message "Duplicate Clojure to HAL rule identifier"))))
         (if (and (automatic? rule)
                  (has? automatic-matchers match-key))
-          (throw (ex :conflict {:matcher match-key
+          (throw (ex :hara/conflict (assoc {:matcher match-key
                            :left (get automatic-matchers match-key)
-                           :right identifier} :ex/message "Conflicting automatic Clojure to HAL rules")))
+                           :right identifier} :ex/message "Conflicting automatic Clojure to HAL rules"))))
         (recur
          (inc index)
          priority
@@ -110,8 +110,8 @@
   [options]
   (let [mode (or (:mode options) :review)]
     (if (not (has? +modes+ mode))
-      (throw (ex :generic {:mode mode
-                       :supported +modes+} :ex/message "Unsupported Clojure to HAL translation mode")))
+      (throw (ex :hara/generic (assoc {:mode mode
+                       :supported +modes+} :ex/message "Unsupported Clojure to HAL translation mode"))))
     mode))
 
 (defn active?
@@ -302,9 +302,7 @@
     (:function-resolver options)
     ((:function-resolver options) value)
     :else
-    (throw (ex :tool.migrate/function-resolver-required
-               {:function value}
-               :ex/message "Function migration rules require an injected resolver"))))
+    (throw (ex :tool.migrate/function-resolver-required (assoc {:function value} :ex/message "Function migration rules require an injected resolver")))))
 
 (defn function-spec
   [rule]

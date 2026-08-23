@@ -16,9 +16,7 @@
 (defn- catalog-error
   [message data]
   (throw
-   (ex :argument
-       (assoc data :type :std.typed.catalog/invalid-catalog)
-       :ex/message message)))
+   (ex :hara/argument (assoc (assoc data :type :std.typed.catalog/invalid-catalog) :ex/message message))))
 
 (defn ^{:schema [:fn [:any] :bool]}
   catalog?

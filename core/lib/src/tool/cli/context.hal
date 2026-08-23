@@ -20,8 +20,7 @@
 
     :else
     (throw
-     (ex :argument {:project value}
-         :ex/message "CLI runtime project must be a project map or path string"))))
+     (ex :hara/argument (assoc {:project value} :ex/message "CLI runtime project must be a project map or path string")))))
 
 (defn normalize
   [context]

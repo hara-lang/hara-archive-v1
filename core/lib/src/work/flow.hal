@@ -41,7 +41,7 @@
   [path]
   (if (not (flow-path? path))
     (throw
-     (ex :io {:workflow/path path} :ex/message "Workflow path must be a non-empty keyword vector")))
+     (ex :hara/io (assoc {:workflow/path path} :ex/message "Workflow path must be a non-empty keyword vector"))))
   path)
 
 (defn removal-path?
@@ -54,10 +54,10 @@
   (let [removals (or removals [])]
     (if (not (vector? removals))
       (throw
-       (ex :io {:workflow/removals removals} :ex/message "Workflow removals must be a vector of paths")))
+       (ex :hara/io (assoc {:workflow/removals removals} :ex/message "Workflow removals must be a vector of paths"))))
     (if (not (every? removal-path? removals))
       (throw
-       (ex :argument {:workflow/removals removals} :ex/message "Each workflow removal must be a non-empty vector")))
+       (ex :hara/argument (assoc {:workflow/removals removals} :ex/message "Each workflow removal must be a non-empty vector"))))
     removals))
 
 (defn remove-option
@@ -90,20 +90,20 @@
   (let [value (get flow key)]
     (if (and required? (nil? value))
       (throw
-       (ex :io {:workflow/path (:flow/path flow)
-                 :workflow/key key} :ex/message "Workflow descriptor requires a function")))
+       (ex :hara/io (assoc {:workflow/path (:flow/path flow)
+                 :workflow/key key} :ex/message "Workflow descriptor requires a function"))))
     (if (and value (not (fn? value)))
       (throw
-       (ex :io {:workflow/path (:flow/path flow)
+       (ex :hara/io (assoc {:workflow/path (:flow/path flow)
                  :workflow/key key
-                 :workflow/value value} :ex/message "Workflow descriptor entry must be a function")))
+                 :workflow/value value} :ex/message "Workflow descriptor entry must be a function"))))
     value))
 
 (defn assert-flow
   [flow]
   (if (not (map? flow))
     (throw
-     (ex :argument {:workflow/flow flow} :ex/message "Workflow descriptor must be a map")))
+     (ex :hara/argument (assoc {:workflow/flow flow} :ex/message "Workflow descriptor must be a map"))))
   (assert-flow-path (:flow/path flow))
   (assert-flow-function flow :flow/compile true)
   (assert-flow-function flow :flow/merge false)
@@ -115,7 +115,7 @@
   (if (and (:flow/defaults flow)
            (not (map? (:flow/defaults flow))))
     (throw
-     (ex :io {:workflow/path (:flow/path flow)} :ex/message "Workflow descriptor :flow/defaults must be a map")))
+     (ex :hara/io (assoc {:workflow/path (:flow/path flow)} :ex/message "Workflow descriptor :flow/defaults must be a map"))))
   (if (:flow/extends flow)
     (assert-flow-path (:flow/extends flow)))
   flow)
@@ -149,8 +149,8 @@
     (loop [candidate path]
       (if (nil? candidate)
         (throw
-         (ex :io {:workflow/path path
-                   :workflow/registered (vec (keys (deref +flows+)))} :ex/message "Workflow path is not registered"))
+         (ex :hara/io (assoc {:workflow/path path
+                   :workflow/registered (vec (keys (deref +flows+)))} :ex/message "Workflow path is not registered")))
         (let [flow (registered-flow candidate)]
           (if flow
             flow
@@ -203,12 +203,12 @@
         overrides (or overrides {})]
     (if (not (map? overrides))
       (throw
-       (ex :io {:workflow/path path
-                 :workflow/overrides overrides} :ex/message "Workflow profile overrides must be a map")))
+       (ex :hara/io (assoc {:workflow/path path
+                 :workflow/overrides overrides} :ex/message "Workflow profile overrides must be a map"))))
     (if (profile-cycle? path ancestry)
       (throw
-       (ex :io {:workflow/path path
-                 :workflow/ancestry ancestry} :ex/message "Workflow profile inheritance contains a cycle")))
+       (ex :hara/io (assoc {:workflow/path path
+                 :workflow/ancestry ancestry} :ex/message "Workflow profile inheritance contains a cycle"))))
     (let [flow (resolve-flow path)
           parent (profile-parent-path path flow overrides)
           parent-profile
@@ -252,8 +252,8 @@
   [profile qualified-name raw-definition]
   (if (not (profile? profile))
     (throw
-     (ex :io {:workflow/profile profile
-               :workflow/name qualified-name} :ex/message "Workflow definition requires a configured profile")))
+     (ex :hara/io (assoc {:workflow/profile profile
+               :workflow/name qualified-name} :ex/message "Workflow definition requires a configured profile"))))
   (let [flow (:workflow/flow profile)
         normalise-function (or (:flow/normalise flow)
                                (fn [profile name definition]
@@ -283,9 +283,9 @@
     (if (and (map? raw-definition)
              (has? raw-definition :workflow))
       (throw
-       (ex :io {:workflow/name qualified-name
+       (ex :hara/io (assoc {:workflow/name qualified-name
                  :workflow/path path
-                 :workflow/definition raw-definition} :ex/message "Workflow path must be supplied to def.work")))
+                 :workflow/definition raw-definition} :ex/message "Workflow path must be supplied to def.work"))))
     (define (configure path)
              qualified-name
              raw-definition)))

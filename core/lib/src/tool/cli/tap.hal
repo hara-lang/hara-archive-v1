@@ -16,7 +16,7 @@
   (if (= :tool.cli.route/tap (:request/route request))
     (let [arguments (:request/arguments request)]
       (if (empty? arguments)
-        (throw (ex :io {} :ex/message "tap requires bootstrap, init, add, mirror, remove, list, or verify"))
+        (throw (ex :hara/io (assoc {} :ex/message "tap requires bootstrap, init, add, mirror, remove, list, or verify")))
         {:operation (keyword (first arguments))
          :arguments (vec (rest arguments))}))
     {:operation (get +route-operations+ (:request/route request))
@@ -31,7 +31,7 @@
       (let [argument (first remaining)]
         (if (str/starts-with? argument "--")
           (if (< (count remaining) 2)
-            (throw (ex :syntax {} :ex/message (str argument " requires a value")))
+            (throw (ex :hara/syntax (assoc {} :ex/message (str argument " requires a value"))))
             (let [key (keyword (str/slice argument 2))
                   value (second remaining)
                   updated (if (not (nil? (get +repeatable-options+ key)))
@@ -44,11 +44,11 @@
 (defn require-positionals [parsed count-value usage]
   (if (= count-value (count (:positionals parsed)))
     (:positionals parsed)
-    (throw (ex :syntax {:arguments (:positionals parsed)} :ex/message usage))))
+    (throw (ex :hara/syntax (assoc {:arguments (:positionals parsed)} :ex/message usage)))))
 
 (defn require-option [parsed key]
   (or (get (:options parsed) key)
-      (throw (ex :dependency {:option key} :ex/message (str "--" (name key) " is required")))))
+      (throw (ex :hara/dependency (assoc {:option key} :ex/message (str "--" (name key) " is required"))))))
 
 (defn tap-line [tap]
   (str (:name tap)
@@ -94,7 +94,7 @@
       (= operation :mirror)
       (let [values (require-positionals parsed 2 "tap mirror add requires NAME")]
         (if (not= "add" (first values))
-          (throw (ex :dependency {} :ex/message "tap mirror currently requires the add operation"))
+          (throw (ex :hara/dependency (assoc {} :ex/message "tap mirror currently requires the add operation")))
           (let [tap (native/tap-mirror-add
                      root (second values)
                      (get (:options parsed) :registry)
@@ -124,7 +124,7 @@
                 " identity=" (:revision result) "\n"))]))
 
       :else
-      (throw (ex :generic {:operation operation} :ex/message (str "tap " (name operation) " is not implemented in Hara yet"))))))
+      (throw (ex :hara/generic (assoc {:operation operation} :ex/message (str "tap " (name operation) " is not implemented in Hara yet")))))))
 
 (def +command-work+
   (work/step {:id 'tool.cli/tap :version 1}

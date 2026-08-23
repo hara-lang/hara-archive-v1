@@ -226,16 +226,16 @@
                   :notify notify})]
             (if (empty? rows)
               (throw
-               (ex :database {:function function-name
+               (ex :hara/database (assoc {:function function-name
                          :aggregate aggregate
-                         :output-shape output-shape} :ex/message "Entity mutation has no typed notification result"))
+                         :output-shape output-shape} :ex/message "Entity mutation has no typed notification result")))
               nil)
             (if (nil? topic-id)
               (throw
-               (ex :database {:function function-name
+               (ex :hara/database (assoc {:function function-name
                          :aggregate aggregate
                          :inputs (vec (map :name inputs))
-                         :output-shape output-shape} :ex/message "Cannot infer entity topic id"))
+                         :output-shape output-shape} :ex/message "Cannot infer entity topic id")))
               nil)
             {:aggregate aggregate
              :topic-id topic-id

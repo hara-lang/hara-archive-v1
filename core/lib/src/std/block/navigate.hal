@@ -742,39 +742,39 @@
   {:added "3.0"}
   [nav data]
   (cond (level-empty? nav)
-        (throw (ex :state {:nav nav} :ex/message "Replace failed - level empty."))
+        (throw (ex :hara/state (assoc {:nav nav} :ex/message "Replace failed - level empty.")))
         :else
         (let [nav (position-right nav)]
           (cond (base/expression? (zip/right-element nav))
                 (zip/replace-right nav data)
                 :else
-                (throw (ex :state {:nav nav} :ex/message "Replace failed - no element"))))))
+                (throw (ex :hara/state (assoc {:nav nav} :ex/message "Replace failed - no element")))))))
 
 (defn replace-splice
   "replaces an element at the cursor"
   {:added "3.0"}
   [nav data]
   (cond (level-empty? nav)
-        (throw (ex :state {:nav nav} :ex/message "Replace failed - level empty."))
+        (throw (ex :hara/state (assoc {:nav nav} :ex/message "Replace failed - level empty.")))
         :else
         (let [nav (position-right nav)]
           (cond (base/expression? (zip/right-element nav))
                 (delete (reduce (fn [nav item] (insert-token-to-right nav item)) nav (reverse data)))
                 :else
-                (throw (ex :state {:nav nav} :ex/message "Replace failed - no element"))))))
+                (throw (ex :hara/state (assoc {:nav nav} :ex/message "Replace failed - no element")))))))
 
 (defn swap
   "applies a function to the element at the current cursor position, replacing it with the result"
   {:added "3.0"}
   [nav f]
   (cond (level-empty? nav)
-        (throw (ex :state {:nav nav} :ex/message "Replace failed - level empty."))
+        (throw (ex :hara/state (assoc {:nav nav} :ex/message "Replace failed - level empty.")))
         :else
         (let [nav (position-right nav) prev (value nav)]
           (cond (base/expression? (zip/right-element nav))
                 (zip/replace-right nav (f prev))
                 :else
-                (throw (ex :state {:nav nav} :ex/message "Replace failed - no element"))))))
+                (throw (ex :hara/state (assoc {:nav nav} :ex/message "Replace failed - no element")))))))
 
 (defn update-children
   "replaces the current children"

@@ -38,8 +38,7 @@
     (if (= 0 (count remaining))
       output
       (if (< (count remaining) 3)
-        (throw (ex :syntax {:remaining remaining :form-meta form-meta}
-                   :ex/message "fact assertions must be actual => expected triples"))
+        (throw (ex :hara/syntax (assoc {:remaining remaining :form-meta form-meta} :ex/message "fact assertions must be actual => expected triples")))
         (let [actual (nth remaining 0)
               arrow (nth remaining 1)
               expected (nth remaining 2)

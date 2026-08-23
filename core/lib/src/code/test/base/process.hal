@@ -27,8 +27,7 @@
                       nil)))]
     (if (and (map? outcome) (= :timeout (:test/status outcome)))
       (throw
-       (ex :timeout {:milliseconds milliseconds}
-           :ex/message "test comparison timed out"))
+       (ex :hara/timeout (assoc {:milliseconds milliseconds} :ex/message "test comparison timed out")))
       (if (and (map? outcome) (= :value (:test/status outcome)))
         (:value outcome)
         outcome))))

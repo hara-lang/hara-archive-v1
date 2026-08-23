@@ -92,7 +92,7 @@
                        (get configuration "meta") {})]
       (if (fn? handler)
         (substrate/register-handler node action handler metadata)
-        (throw (ex :database {:action action :configuration configuration} :ex/message "Invalid database node handler"))))))
+        (throw (ex :hara/database (assoc {:action action :configuration configuration} :ex/message "Invalid database node handler")))))))
 
 (defn install-handlers
   [node handlers]
@@ -136,7 +136,7 @@
      (if transport-id
        (do (set-default-transport node transport-id)
            (install-proxy-handlers node ACTIONS transport-id))
-       (throw (ex :database {:node (substrate/node-id node)} :ex/message "Database node proxy requires a transport"))))))
+       (throw (ex :hara/database (assoc {:node (substrate/node-id node)} :ex/message "Database node proxy requires a transport")))))))
 
 (defn kernel-init
   [node config schema lookup options]

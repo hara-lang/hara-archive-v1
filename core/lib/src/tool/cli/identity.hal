@@ -18,7 +18,7 @@
     (if operation
       {:operation operation :arguments arguments}
       (if (empty? arguments)
-        (throw (ex :io {} :ex/message "id requires login, enroll, status, namespace, or key"))
+        (throw (ex :hara/io (assoc {} :ex/message "id requires login, enroll, status, namespace, or key")))
         {:operation (keyword (first arguments))
          :arguments (vec (rest arguments))}))))
 
@@ -54,7 +54,7 @@
         public (select-keys result [:stdout :stderr :exit])]
     (if (= 0 (:exit public))
       public
-      (throw (ex :host public :ex/message (str/trim (:stderr public)))))))
+      (throw (ex :hara/host (assoc public :ex/message (str/trim (:stderr public))))))))
 
 (defn request [method path body]
   (let [url (str (trim-end-slash (endpoint)) path)
@@ -72,20 +72,20 @@
                             (str "/v1/enrollments/challenge?owner=" owner)
                             nil))]
     (if (str/blank? challenge)
-      (throw (ex :generic {} :ex/message "identity service returned an empty challenge"))
+      (throw (ex :hara/generic (assoc {} :ex/message "identity service returned an empty challenge")))
       challenge)))
 
 (defn sign [source]
   (let [signer (os/getenv "HARA_SIGNER")]
     (if (or (nil? signer) (str/blank? signer))
-      (throw (ex :host {} :ex/message "HARA_SIGNER must name an external signer command"))
+      (throw (ex :hara/host (assoc {} :ex/message "HARA_SIGNER must name an external signer command")))
       nil)
     (let [response (edn/read (:stdout (run-process [signer] source)))
           key-id (:key/id response)
           signature (:signature response)]
       (if (and (string? key-id) (string? signature))
         {:key-id key-id :signature signature}
-        (throw (ex :security {} :ex/message "signer response must contain :key/id and :signature"))))))
+        (throw (ex :hara/security (assoc {} :ex/message "signer response must contain :key/id and :signature")))))))
 
 (defn enroll [request]
   (let [owner (option request :owner)
@@ -93,11 +93,11 @@
         tap (if (= tap-option "official") "hara" tap-option)
         public-key (os/getenv "HARA_SIGNER_PUBLIC_KEY")]
     (if (str/blank? owner)
-      (throw (ex :dependency {} :ex/message "id enroll requires --owner"))
+      (throw (ex :hara/dependency (assoc {} :ex/message "id enroll requires --owner")))
       nil)
     (if (valid-hex? public-key 32)
       nil
-      (throw (ex :argument {} :ex/message "HARA_SIGNER_PUBLIC_KEY must be lowercase 32-byte hex")))
+      (throw (ex :hara/argument (assoc {} :ex/message "HARA_SIGNER_PUBLIC_KEY must be lowercase 32-byte hex"))))
     (let [challenge (or (option request :challenge) (fetch-challenge owner))
           source (canonical-enrollment tap owner public-key challenge)
           signed (sign source)]
@@ -121,8 +121,8 @@
       (if (= 2 (count arguments))
         (request "POST" (str "/v1/keys/" (nth arguments 1) "/revocations")
                  "{:revocation/reason :publisher-request}\n")
-        (throw (ex :dependency {} :ex/message "id key revoke requires KEY_ID")))
-      :else (throw (ex :host {} :ex/message "usage: hara id key <list|rotate|revoke KEY_ID>")))))
+        (throw (ex :hara/dependency (assoc {} :ex/message "id key revoke requires KEY_ID"))))
+      :else (throw (ex :hara/host (assoc {} :ex/message "usage: hara id key <list|rotate|revoke KEY_ID>"))))))
 
 (defn execute [request]
   (let [resolved (operation-request request)
@@ -142,7 +142,7 @@
       (= operation :key)
       (let [response (key-command arguments)]
         (model/success response [(model/message response)]))
-      :else (throw (ex :host {} :ex/message (str "unknown id command: " (name operation)))))))
+      :else (throw (ex :hara/host (assoc {} :ex/message (str "unknown id command: " (name operation))))))))
 
 (def +command-work+
   (work/step {:id 'tool.cli/identity :version 1}

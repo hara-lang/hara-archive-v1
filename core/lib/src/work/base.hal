@@ -16,7 +16,7 @@
   [definition-name path definition]
   (if (not (symbol? definition-name))
     (throw
-     (ex :dependency {:work/name definition-name} :ex/message "def.work requires a symbol name")))
+     (ex :hara/dependency (assoc {:work/name definition-name} :ex/message "def.work requires a symbol name"))))
   (let [path (flow/assert-flow-path path)
         namespace (get &env :ns)
         qualified-name
@@ -115,21 +115,21 @@
   [definitions]
   (if (not (map? definitions))
     (throw
-     (ex :argument {:work/error :work/invalid-graph} :ex/message "Work graph definitions must be a map")))
+     (ex :hara/argument (assoc {:work/error :work/invalid-graph} :ex/message "Work graph definitions must be a map"))))
   (reduce
    (fn [_ key]
      (let [definition (get definitions key)]
        (if (not (or (instance? work.base/GraphInput definition)
                     (instance? work.base/GraphNode definition)))
          (throw
-          (ex :argument {:work/error :work/invalid-graph-entry
+          (ex :hara/argument (assoc {:work/error :work/invalid-graph-entry
                     :graph/key key
-                    :graph/value definition} :ex/message "Work graph entry must be an input or node")))
+                    :graph/value definition} :ex/message "Work graph entry must be an input or node"))))
        (if (and (instance? work.base/GraphNode definition)
                 (not (fn? (:function definition))))
          (throw
-          (ex :dependency {:work/error :work/invalid-graph-node
-                    :graph/key key} :ex/message "Work graph node requires a function")))
+          (ex :hara/dependency (assoc {:work/error :work/invalid-graph-node
+                    :graph/key key} :ex/message "Work graph node requires a function"))))
        true))
    true
    (keys definitions))
@@ -144,9 +144,9 @@
         (fn [_ dependency]
           (if (not (contains-value? all-keys dependency))
             (throw
-             (ex :not-found {:work/error :work/missing-graph-dependency
+             (ex :hara/not-found (assoc {:work/error :work/missing-graph-dependency
                        :graph/key key
-                       :graph/dependency dependency} :ex/message "Work graph dependency does not exist")))
+                       :graph/dependency dependency} :ex/message "Work graph dependency does not exist"))))
           true)
         true
         (IDeps/dep-entries dependencies key)))
@@ -173,8 +173,8 @@
             remaining))]
       (if (empty? ready)
         (throw
-         (ex :dependency {:work/error :work/graph-cycle
-                   :graph/remaining remaining} :ex/message "Work graph contains a dependency cycle")))
+         (ex :hara/dependency (assoc {:work/error :work/graph-cycle
+                   :graph/remaining remaining} :ex/message "Work graph contains a dependency cycle"))))
       (graph-order-loop
        dependencies
        (concat resolved ready)
@@ -214,8 +214,8 @@
          evaluation (or (:evaluation options) :eager)]
      (if (not (or (= :eager evaluation) (= :lazy evaluation)))
        (throw
-        (ex :argument {:work/error :work/invalid-graph-evaluation
-                  :evaluation evaluation} :ex/message "Work graph evaluation must be :eager or :lazy")))
+        (ex :hara/argument (assoc {:work/error :work/invalid-graph-evaluation
+                  :evaluation evaluation} :ex/message "Work graph evaluation must be :eager or :lazy"))))
      (work.base/GraphWork
       (merge
        options
@@ -370,7 +370,7 @@
      (if emitter
        (emitter event data)
        (throw
-        (ex :generic {:event event} :ex/message "Work event emission is not available in this context"))))))
+        (ex :hara/generic (assoc {:event event} :ex/message "Work event emission is not available in this context")))))))
 
 (defn register
   ([runtime work]
@@ -442,9 +442,9 @@
         (error runtime reference)
         (fn [run-error]
           (throw
-           (ex :host {:run/id (runtime/reference-id reference)
+           (ex :hara/host (assoc {:run/id (runtime/reference-id reference)
                      :status run-status
-                     :error run-error} :ex/message "Work run did not complete"))))))))
+                     :error run-error} :ex/message "Work run did not complete")))))))))
 
 (defn run
   ([work input]

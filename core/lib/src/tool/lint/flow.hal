@@ -99,8 +99,8 @@
     (if (empty? errors)
       (vec (map :data (:results output)))
       (throw
-       (ex :state {:tool.lint/error :tool.lint/work-flow-failed
-                 :errors errors} :ex/message "Project lint flow failed")))))
+       (ex :hara/state (assoc {:tool.lint/error :tool.lint/work-flow-failed
+                 :errors errors} :ex/message "Project lint flow failed"))))))
 
 (defn run-scans
   "Runs portable analyses through the canonical work.flow.task definition."

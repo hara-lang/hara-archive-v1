@@ -71,7 +71,7 @@
 (defn topo-visit [graph node visiting visited output]
   (when (not (has? @visited node))
     (when (has? @visiting node)
-      (throw (ex :database {:node node} :ex/message "Graph cycle")))
+      (throw (ex :hara/database (assoc {:node node} :ex/message "Graph cycle"))))
     (swap! visiting conj node)
     (reduce (fn [_ dependency]
               (topo-visit graph dependency visiting visited output) nil)

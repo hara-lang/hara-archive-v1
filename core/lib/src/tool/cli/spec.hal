@@ -43,14 +43,14 @@
       (let [format (keyword (nth arguments (dec size)))]
         (if (or (= format :text) (= format :edn))
           {:format format :arguments (vec (take (- size 2) arguments))}
-          (throw (ex :syntax {} :ex/message "spec format must be --format text or --format edn"))))
+          (throw (ex :hara/syntax (assoc {} :ex/message "spec format must be --format text or --format edn")))))
       {:format :text :arguments (vec arguments)})))
 
 (defn operation-request [request]
   (if (= :tool.cli.route/spec (:request/route request))
     (let [arguments (:request/arguments request)]
       (if (empty? arguments)
-        (throw (ex :io {} :ex/message "spec requires lint, verify, validate, template, check-contribution, check, to-edn, from-edn, normalize, graph, obligations, or explain"))
+        (throw (ex :hara/io (assoc {} :ex/message "spec requires lint, verify, validate, template, check-contribution, check, to-edn, from-edn, normalize, graph, obligations, or explain")))
         {:operation (keyword (first arguments))
          :arguments (vec (rest arguments))}))
     {:operation (get +route-operations+ (:request/route request))
@@ -60,7 +60,7 @@
   (let [document (edn/read (project/read-text path))]
     (if (map? document)
       document
-      (throw (ex :io {:path path} :ex/message "meta-spec root must be an EDN map")))))
+      (throw (ex :hara/io (assoc {:path path} :ex/message "meta-spec root must be an EDN map"))))))
 
 (defn text-report [document report]
   (let [findings (:findings report)
@@ -89,7 +89,7 @@
   (let [parsed (parse-format arguments)
         values (:arguments parsed)]
     (if (not= 1 (count values))
-      (throw (ex :io {} :ex/message (str "spec " (name operation) " requires FILE")))
+      (throw (ex :hara/io (assoc {} :ex/message (str "spec " (name operation) " requires FILE"))))
       (let [document (read-document (first values))
             report (if (= operation :lint)
                      (metaspec/lint-report document)
@@ -100,13 +100,13 @@
   (let [parsed (parse-format arguments)
         values (:arguments parsed)]
     (if (or (not= 3 (count values)) (not= "--against" (second values)))
-      (throw (ex :io {} :ex/message "spec validate requires FILE --against METASPEC"))
+      (throw (ex :hara/io (assoc {} :ex/message "spec validate requires FILE --against METASPEC")))
       (let [path (first values)
             document (read-document path)
             against (read-document (nth values 2))
             structural (metaspec/lint against)]
         (if (not (empty? structural))
-          (throw (ex :generic {:findings structural} :ex/message "the --against meta-spec does not pass structural lint"))
+          (throw (ex :hara/generic (assoc {:findings structural} :ex/message "the --against meta-spec does not pass structural lint")))
           (report-result
            document
            (metaspec/conforms document {:metaspec against :document-path path})
@@ -114,11 +114,11 @@
 
 (defn template [arguments]
   (if (not (empty? arguments))
-    (throw (ex :io {} :ex/message "spec template accepts no file"))
+    (throw (ex :hara/io (assoc {} :ex/message "spec template accepts no file")))
     (model/success +template+ [(model/message (str (pr-str +template+) "\n"))])))
 
 (defn unavailable [operation]
-  (throw (ex :state {:operation operation} :ex/message (str "spec " (name operation) " is not implemented in Hara yet"))))
+  (throw (ex :hara/state (assoc {:operation operation} :ex/message (str "spec " (name operation) " is not implemented in Hara yet")))))
 
 (defn execute [request]
   (let [resolved (operation-request request)

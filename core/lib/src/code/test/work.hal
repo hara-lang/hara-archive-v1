@@ -194,9 +194,8 @@
     (if fact
       fact
       (throw
-       (ex :not-found {:namespace namespace
-                       :name name}
-           :ex/message "Registered test fact does not exist")))))
+       (ex :hara/not-found (assoc {:namespace namespace
+                       :name name} :ex/message "Registered test fact does not exist"))))))
 
 (defn resolve-subject-fact
   "Resolves a prepared fact and rejects definition drift before execution."
@@ -206,11 +205,10 @@
         actual (fact-definition-token fact (:test/revision subject))]
     (if (and expected (not= expected actual))
       (throw
-       (ex :conflict {:namespace (:namespace subject)
+       (ex :hara/conflict (assoc {:namespace (:namespace subject)
                       :name (:name subject)
                       :expected expected
-                      :actual actual}
-           :ex/message "Registered test fact definition changed after preparation")))
+                      :actual actual} :ex/message "Registered test fact definition changed after preparation"))))
     fact))
 
 (def fact-result-identity process/fact-result-identity)

@@ -32,12 +32,12 @@
                      (collect-process-output (Process/stderr child))
                      nil)]
         (throw
-         (ex :host {:source source
+         (ex :hara/host (assoc {:source source
            :alive-before-stop alive-before-stop
            :transport-state transport-state
            :stdout stdout
            :stderr stderr
-           :cause-data (ex-data error)} :ex/message "Persistent runtime evaluation failed" :ex/cause error))))))
+           :cause-data (ex-data error)} :ex/message "Persistent runtime evaluation failed" :ex/cause error)))))))
 
 (def js-command-source
   (emit/emit '(console.log (+ 19 23))
@@ -187,7 +187,7 @@
            :state {:js js-basic-state
                    :python python-basic-state}}}
   (throw
-   (ex :argument {:bootstrap tahto/+bootstrap+
+   (ex :hara/argument (assoc {:bootstrap tahto/+bootstrap+
              :sources {:js-command js-command-source
                        :python-command python-command-source
                        :lua-command lua-command-source
@@ -210,4 +210,4 @@
                      :transport {:js js-basic-transport
                                  :python python-basic-transport}
                      :state {:js js-basic-state
-                             :python python-basic-state}}} :ex/message "Tahto runtime bootstrap smoke failed")))
+                             :python python-basic-state}}} :ex/message "Tahto runtime bootstrap smoke failed"))))

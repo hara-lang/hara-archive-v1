@@ -15,11 +15,11 @@
       {:format format :paths paths}
       (if (= "--format" (first remaining))
         (if (< (count remaining) 2)
-          (throw (ex :syntax {} :ex/message "lint --format requires text or edn"))
+          (throw (ex :hara/syntax (assoc {} :ex/message "lint --format requires text or edn")))
           (let [selected (keyword (second remaining))]
             (if (or (= selected :text) (= selected :edn))
               (recur (vec (drop 2 remaining)) selected paths)
-              (throw (ex :syntax {} :ex/message "lint --format requires text or edn")))))
+              (throw (ex :hara/syntax (assoc {} :ex/message "lint --format requires text or edn"))))))
         (recur (vec (rest remaining)) format (conj paths (first remaining)))))))
 
 (defn lint-report

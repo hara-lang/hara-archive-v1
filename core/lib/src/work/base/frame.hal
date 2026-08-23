@@ -174,7 +174,7 @@
      (fn [cancelled]
        (if (and (not (:work/cleanup? frame)) cancelled)
          (throw
-          (ex :generic {:run/id (:run/id frame)} :ex/message "Work run has been cancelled")))
+          (ex :hara/generic (assoc {:run/id (:run/id frame)} :ex/message "Work run has been cancelled"))))
        nil))))
 
 (defn explicit-item?
@@ -187,8 +187,8 @@
   [id value item index]
   (if (nil? id)
     (throw
-     (ex :argument {:item item
-               :index index} :ex/message "Work item identity cannot be nil")))
+     (ex :hara/argument (assoc {:item item
+               :index index} :ex/message "Work item identity cannot be nil"))))
   {:item/id id
    :item/value value})
 
@@ -213,8 +213,8 @@
 
     :else
     (throw
-     (ex :dependency {:item item
-       :index index} :ex/message "Durable collection work requires :item/id or an :item-key function"))))
+     (ex :hara/dependency (assoc {:item item
+       :index index} :ex/message "Durable collection work requires :item/id or an :item-key function")))))
 
 (defn manifest-contains-id?
   [manifest item-id]
@@ -238,8 +238,8 @@
                               index)]
           (if (manifest-contains-id? output (:item/id item))
             (throw
-             (ex :conflict {:item/id (:item/id item)
-                       :index index} :ex/message "Work manifest contains duplicate :item/id"))
+             (ex :hara/conflict (assoc {:item/id (:item/id item)
+                       :index index} :ex/message "Work manifest contains duplicate :item/id")))
             (recur (inc index)
                    (conj output item))))))))
 

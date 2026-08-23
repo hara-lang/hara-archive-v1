@@ -11,13 +11,13 @@
     (if (str/starts-with? argument prefix)
       (let [value (str/slice argument (count prefix))]
         (if (str/blank? value)
-          (throw (ex :dependency {:option option} :ex/message (str option " requires a value")))
+          (throw (ex :hara/dependency (assoc {:option option} :ex/message (str option " requires a value"))))
           value))
       nil)))
 
 (defn required-value [remaining option]
   (if (empty? remaining)
-    (throw (ex :dependency {:option option} :ex/message (str option " requires a value")))
+    (throw (ex :hara/dependency (assoc {:option option} :ex/message (str option " requires a value"))))
     (first remaining)))
 
 (defn decimal [value]
@@ -33,7 +33,7 @@
   (let [port (decimal value)]
     (if (and port (<= 0 port) (<= port 65535))
       port
-      (throw (ex :syntax {:value value} :ex/message "--port must be between 0 and 65535")))))
+      (throw (ex :hara/syntax (assoc {:value value} :ex/message "--port must be between 0 and 65535"))))))
 
 (defn parse
   "Parses launcher-global options and preserves the remaining command argv."
@@ -78,7 +78,7 @@
           inline-history (recur more (assoc options :history inline-history))
           inline-port (recur more (assoc options :port (parse-port inline-port)))
           (str/starts-with? argument "-")
-          (throw (ex :syntax {:option argument} :ex/message (str "unknown option: " argument)))
+          (throw (ex :hara/syntax (assoc {:option argument} :ex/message (str "unknown option: " argument))))
           :else {:action :run
                  :options options
                  :arguments (vec (concat [argument] more))})))))

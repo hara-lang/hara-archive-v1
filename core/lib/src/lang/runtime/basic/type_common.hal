@@ -60,8 +60,8 @@
   (if (+valid-contexts+ context)
     context
     (throw
-     (ex :argument {:runtime context
-               :valid +valid-contexts+} :ex/message "Invalid runtime context"))))
+     (ex :hara/argument (assoc {:runtime context
+               :valid +valid-contexts+} :ex/message "Invalid runtime context")))))
 
 (defn require-runtime
   "Loads the runtime implementation registered by lang.core.registry."
@@ -69,9 +69,9 @@
   (valid-context context)
   (or (registry/registry-runtime language context)
       (throw
-       (ex :dependency {:lang language
+       (ex :hara/dependency (assoc {:lang language
                  :runtime context
-                 :available (available-runtimes language)} :ex/message "Runtime not installed"))))
+                 :available (available-runtimes language)} :ex/message "Runtime not installed")))))
 
 (defn get-program-default
   [language context program]
@@ -80,9 +80,9 @@
     (or program
         (get-in all [:default context])
         (throw
-         (ex :host {:lang language
+         (ex :hara/host (assoc {:lang language
                    :runtime context
-                   :available (keys (get all :env))} :ex/message "No program found for runtime")))))
+                   :available (keys (get all :env))} :ex/message "No program found for runtime"))))))
 
 (defn get-program-flags
   [language program]
@@ -98,9 +98,9 @@
     (if arguments
       (vec (concat [executable] arguments))
       (throw
-       (ex :host {:lang language
+       (ex :hara/host (assoc {:lang language
                  :runtime context
-                 :program program} :ex/message "Program does not support runtime")))))
+                 :program program} :ex/message "Program does not support runtime"))))))
 
 (defn get-options
   [language context program]
@@ -112,6 +112,6 @@
        (grammar/deep-merge (get context-options :default) program-options)
        (get context-options program))
       (throw
-       (ex :host {:lang language
+       (ex :hara/host (assoc {:lang language
                  :runtime context
-                 :available (available-runtimes language)} :ex/message "Runtime configuration not installed")))))
+                 :available (available-runtimes language)} :ex/message "Runtime configuration not installed"))))))

@@ -27,9 +27,7 @@
               (work/step :failing-body
                 (fn [body-input body-context]
                   (throw
-                   (ex :host
-                       {:value body-input}
-                       :ex/message "produced body failed"))))
+                   (ex :hara/host (assoc {:value body-input} :ex/message "produced body failed")))))
               (work/step :cleanup
                 (fn [outcome cleanup-context]
                   (swap! cleanup-count inc)

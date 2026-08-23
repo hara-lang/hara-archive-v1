@@ -66,7 +66,7 @@
 
 (defn lead-symbol [args]
   (let [found (first (filter symbol? args))]
-    (if found found (throw (ex :database {:args args} :ex/message "No lead symbol found")))))
+    (if found found (throw (ex :hara/database (assoc {:args args} :ex/message "No lead symbol found"))))))
 
 (defn substitute [form replacements]
   (cond
@@ -91,7 +91,7 @@
   (or (:table-entry descriptor)
       (get @*tables* (:key descriptor))
       (get @*tables* (symbol (name (:key descriptor))))
-      (throw (ex :database {:view descriptor} :ex/message "View table not registered"))))
+      (throw (ex :hara/database (assoc {:view descriptor} :ex/message "View table not registered")))))
 
 (defn run-select [descriptor values]
   (let [symbols (argument-symbols (:args descriptor))
@@ -154,7 +154,7 @@
       (get @*views* (symbol (name view)))
       (let [resolved (foundation/resolve view)]
         (when resolved (:static/view (meta (deref resolved)))))
-      (throw (ex :not-found {:view view} :ex/message "View not found"))))
+      (throw (ex :hara/not-found (assoc {:view view} :ex/message "View not found")))))
 
 (defn view-descriptor [view]
   (descriptor view))
@@ -178,17 +178,17 @@
         return-descriptor (descriptor return-symbol)
         select-descriptor (descriptor select-symbol)]
     (when (not= (:table return-descriptor) (:table select-descriptor))
-      (throw (ex :database {} :ex/message "Not the same table")))
+      (throw (ex :hara/database (assoc {} :ex/message "Not the same table"))))
     (when (not= :return (:type return-descriptor))
-      (throw (ex :database {:view return-symbol} :ex/message "Not a return type")))
+      (throw (ex :hara/database (assoc {:view return-symbol} :ex/message "Not a return type"))))
     (when (not= :select (:type select-descriptor))
-      (throw (ex :database {:view select-symbol} :ex/message "Not a select type")))
+      (throw (ex :hara/database (assoc {:view select-symbol} :ex/message "Not a select type"))))
     (let [return-symbols (vec (rest (argument-symbols (:args return-descriptor))))
           select-symbols (argument-symbols (:args select-descriptor))]
       (when (not= (count return-values) (count return-symbols))
-        (throw (ex :database {:input return-values :template return-symbols} :ex/message "Args need to be the same length")))
+        (throw (ex :hara/database (assoc {:input return-values :template return-symbols} :ex/message "Args need to be the same length"))))
       (when (not= (count select-values) (count select-symbols))
-        (throw (ex :database {:input select-values :template select-symbols} :ex/message "Args need to be the same length")))
+        (throw (ex :hara/database (assoc {:input select-values :template select-symbols} :ex/message "Args need to be the same length"))))
       [(descriptor-entry return-descriptor)
        (merge {:where (substitute (:query-base select-descriptor)
                                   (replacements select-symbols select-values))

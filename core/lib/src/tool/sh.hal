@@ -16,10 +16,8 @@
            (every? string? argv))
     argv
     (throw
-     (ex :dependency
-         {:tool.sh/error :invalid-command
-          :command argv}
-         :ex/message "tool.sh requires a non-empty argv vector of strings"))))
+     (ex :hara/dependency (assoc {:tool.sh/error :invalid-command
+          :command argv} :ex/message "tool.sh requires a non-empty argv vector of strings")))))
 
 (defn- string-map?
   [value]
@@ -38,10 +36,8 @@
   (let [value (or value {})]
     (if (not (map? value))
       (throw
-       (ex :dependency
-           {:tool.sh/error :invalid-options
-            :options value}
-           :ex/message "tool.sh options must be a map")))
+       (ex :hara/dependency (assoc {:tool.sh/error :invalid-options
+            :options value} :ex/message "tool.sh options must be a map"))))
     (let [unknown (vec (sort-by str
                                (filter
                                 (fn [key]
@@ -49,33 +45,25 @@
                                 (keys value))))]
       (if (not (empty? unknown))
         (throw
-         (ex :dependency
-             {:tool.sh/error :unknown-options
+         (ex :hara/dependency (assoc {:tool.sh/error :unknown-options
               :options value
-              :unknown unknown}
-             :ex/message "tool.sh received unknown process options"))))
+              :unknown unknown} :ex/message "tool.sh received unknown process options")))))
     (if (and (has? value :cwd)
              (not (string? (:cwd value))))
       (throw
-       (ex :dependency
-           {:tool.sh/error :invalid-cwd
-            :options value}
-           :ex/message "tool.sh :cwd must be a string")))
+       (ex :hara/dependency (assoc {:tool.sh/error :invalid-cwd
+            :options value} :ex/message "tool.sh :cwd must be a string"))))
     (if (and (has? value :env)
              (not (string-map? (:env value))))
       (throw
-       (ex :dependency
-           {:tool.sh/error :invalid-env
-            :options value}
-           :ex/message "tool.sh :env must be a string-to-string map")))
+       (ex :hara/dependency (assoc {:tool.sh/error :invalid-env
+            :options value} :ex/message "tool.sh :env must be a string-to-string map"))))
     (if (and (has? value :stdin)
              (not (or (string? (:stdin value))
                       (Bytes/instance? (:stdin value)))))
       (throw
-       (ex :dependency
-           {:tool.sh/error :invalid-stdin
-            :options value}
-           :ex/message "tool.sh :stdin must be a string or Bytes")))
+       (ex :hara/dependency (assoc {:tool.sh/error :invalid-stdin
+            :options value} :ex/message "tool.sh :stdin must be a string or Bytes"))))
     value))
 
 (defn process-options
@@ -86,14 +74,11 @@
 (defn- process-failure
   [operation argv error]
   (throw
-   (ex :host
-       {:tool.sh/error :process-unavailable
+   (ex :hara/host (assoc {:tool.sh/error :process-unavailable
         :tool.sh/operation operation
         :command argv
         :cause/message (ex-message error)
-        :cause/data (ex-data error)}
-       :ex/message "tool.sh process access is unavailable or failed"
-       :ex/cause error)))
+        :cause/data (ex-data error)} :ex/message "tool.sh process access is unavailable or failed" :ex/cause error))))
 
 (defn spawn
   "Starts one argv vector and returns the native process without closing stdin."
@@ -133,10 +118,8 @@
     (if (Bytes/instance? bytes)
       (Process/write process bytes)
       (throw
-       (ex :dependency
-           {:tool.sh/error :invalid-stdin
-            :stdin value}
-           :ex/message "tool.sh/write requires a string or Bytes")))))
+       (ex :hara/dependency (assoc {:tool.sh/error :invalid-stdin
+            :stdin value} :ex/message "tool.sh/write requires a string or Bytes"))))))
 
 (defn close-input
   "Closes process stdin."
@@ -201,7 +184,7 @@
   ([message value]
    (if (= 0 (:exit value))
      value
-     (throw (ex :dependency value :ex/message message)))))
+     (throw (ex :hara/dependency (assoc value :ex/message message))))))
 
 (defn run-checked
   "Runs argv and throws a structured exception on non-zero exit."

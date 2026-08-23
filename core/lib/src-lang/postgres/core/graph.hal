@@ -13,12 +13,12 @@
 
 (defmacro.xt g:where [spec where]
   (when (or (nil? where) (empty? where))
-    (throw (ex :database {:where where} :ex/message "No WHERE clause")))
+    (throw (ex :hara/database (assoc {:where where} :ex/message "No WHERE clause"))))
   (base/id-where-fn spec {:where where}))
 
 (defmacro.xt g:id [spec params]
   (when (nil? (:where params))
-    (throw (ex :database params :ex/message "No WHERE clause")))
+    (throw (ex :hara/database (assoc params :ex/message "No WHERE clause"))))
   (base/id-fn spec (or params {})))
 
 (defmacro.xt g:count [spec params] (base/count-fn spec (or params {})))
@@ -27,7 +27,7 @@
 
 (defmacro.xt g:get [spec params]
   (when (nil? (:where params))
-    (throw (ex :database params :ex/message "No WHERE clause")))
+    (throw (ex :hara/database (assoc params :ex/message "No WHERE clause"))))
   (with-meta (base/select-fn spec (merge {:single true} params))
              {:op/type :get}))
 

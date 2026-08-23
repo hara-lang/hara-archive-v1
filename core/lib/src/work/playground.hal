@@ -23,12 +23,10 @@
            produced (execute-pure (:continuation spec) source-value)]
        (if (not (satisfies? IWork produced))
          (throw
-          (ex :state
-              {:work/error :work/bind-not-work
-               :operation :bind}
-              :ex/message "Playground bind continuation must return Work")))
+          (ex :hara/state (assoc {:work/error :work/bind-not-work
+               :operation :bind} :ex/message "Playground bind continuation must return Work"))))
        (execute-pure produced source-value))
 
      :else
      (throw
-      (ex :generic {:operation (:op spec)} :ex/message "Unsupported playground operation")))))
+      (ex :hara/generic (assoc {:operation (:op spec)} :ex/message "Unsupported playground operation"))))))

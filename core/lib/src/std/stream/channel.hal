@@ -6,20 +6,20 @@
 
 (defn fixed-buffer [capacity]
   (if (< capacity 1)
-    (throw (ex :limit {:error/type :stream.channel/invalid-capacity
-                     :capacity capacity} :ex/message "Fixed buffer capacity must be positive")))
+    (throw (ex :hara/limit (assoc {:error/type :stream.channel/invalid-capacity
+                     :capacity capacity} :ex/message "Fixed buffer capacity must be positive"))))
   {:mode :fixed :capacity capacity})
 
 (defn sliding-buffer [capacity]
   (if (< capacity 1)
-    (throw (ex :limit {:error/type :stream.channel/invalid-capacity
-                     :capacity capacity} :ex/message "Sliding buffer capacity must be positive")))
+    (throw (ex :hara/limit (assoc {:error/type :stream.channel/invalid-capacity
+                     :capacity capacity} :ex/message "Sliding buffer capacity must be positive"))))
   {:mode :sliding :capacity capacity})
 
 (defn dropping-buffer [capacity]
   (if (< capacity 1)
-    (throw (ex :limit {:error/type :stream.channel/invalid-capacity
-                     :capacity capacity} :ex/message "Dropping buffer capacity must be positive")))
+    (throw (ex :hara/limit (assoc {:error/type :stream.channel/invalid-capacity
+                     :capacity capacity} :ex/message "Dropping buffer capacity must be positive"))))
   {:mode :dropping :capacity capacity})
 
 (defn normalize-buffer [buffer]
@@ -32,8 +32,8 @@
          (not (nil? (get #{:fixed :sliding :dropping} (:mode buffer))))
          (integer? (:capacity buffer))
          (> (:capacity buffer) 0)) buffer
-    :else (throw (ex :io {:error/type :stream.channel/invalid-buffer
-                           :buffer buffer} :ex/message "Invalid channel buffer"))))
+    :else (throw (ex :hara/io (assoc {:error/type :stream.channel/invalid-buffer
+                           :buffer buffer} :ex/message "Invalid channel buffer")))))
 
 (defn create
   ([] (create nil))
@@ -59,7 +59,7 @@
 
 (defn reject-nil [value]
   (if (nil? value)
-    (throw (ex :io {:error/type :stream.channel/nil-value} :ex/message "Channel values cannot be nil")))
+    (throw (ex :hara/io (assoc {:error/type :stream.channel/nil-value} :ex/message "Channel values cannot be nil"))))
   value)
 
 (defn settle [entries operation value]
@@ -274,7 +274,7 @@
             (recur)))))))
 
 (defn abort [channel error]
-  (let [error (or error (ex :io {:error/type :stream.channel/aborted} :ex/message "Channel aborted"))]
+  (let [error (or error (ex :hara/io (assoc {:error/type :stream.channel/aborted} :ex/message "Channel aborted")))]
     (loop []
       (let [current (state channel)]
         (if (:closed current)

@@ -75,8 +75,8 @@
   (cond (= lang :js) (node-source port)
         (= lang :python) (python-source port)
         (= lang :lua) (lua-source port)
-        :else (throw (ex :host {:error/type :lang/runtime-unavailable
-                               :lang lang} :ex/message "Persistent basic transport is unavailable"))))
+        :else (throw (ex :hara/host (assoc {:error/type :lang/runtime-unavailable
+                               :lang lang} :ex/message "Persistent basic transport is unavailable")))))
 
 (defn create
   ([exec process-options timeout] (create :js exec process-options timeout))
@@ -111,9 +111,9 @@
       (= kind :open) event
       (= kind :error)
       (throw
-       (ex :io {:error/type :lang/transport
+       (ex :hara/io (assoc {:error/type :lang/transport
                  :lang (get node :lang)
-                 :error (get event :error)} :ex/message "Process transport socket failed"))
+                 :error (get event :error)} :ex/message "Process transport socket failed")))
       :else
       (await-open node))))
 
@@ -143,10 +143,10 @@
               {:status :failed
                :error data})
       (throw
-       (ex :host data :ex/message (str "Failed to start "
+       (ex :hara/host (assoc data :ex/message (str "Failed to start "
                      (name (get node :lang))
                      " basic runtime: "
-                     (or (ex-message error) (str error))) :ex/cause error)))))
+                     (or (ex-message error) (str error))) :ex/cause error))))))
 
 (defn start
   [node]
@@ -205,9 +205,9 @@
   [node source options]
   (if-not (started? node)
     (throw
-     (ex :host {:error/type :lang/transport
+     (ex :hara/host (assoc {:error/type :lang/transport
                :lang (get node :lang)
-               :state (state node)} :ex/message "Process transport is not started"))
+               :state (state node)} :ex/message "Process transport is not started")))
     (let [timeout (or (get options :timeout) (get node :timeout))
           request {"source" source
                    "timeout" timeout}
@@ -257,13 +257,13 @@
                 :value (wire-value (wire-get response :value))}))
       (let [error (wire-get wire :error)]
         (throw
-         (ex :io {:error/type :lang/target
+         (ex :hara/io (assoc {:error/type :lang/target
                    :target (get-in frame [:context :lang])
                    :target-source-tail (vec (take-last 4
                                             (str/split-lines
                                              (get-in frame [:exchange :request "source"]))))
                    :target-error error} :ex/message (or (wire-get error :message)
-                      "Target evaluation failed")))))))
+                      "Target evaluation failed"))))))))
 
 (def +response-plugin+
   (evaluation/register-plugin

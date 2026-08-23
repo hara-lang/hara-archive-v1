@@ -91,7 +91,7 @@
   [namespace tag]
   (let [record (tag-info-in namespace tag)]
     (if (nil? record)
-      (throw (ex :dependency {:namespace namespace :tag tag} :ex/message "Script annex tag is not registered"))
+      (throw (ex :hara/dependency (assoc {:namespace namespace :tag tag} :ex/message "Script annex tag is not registered")))
       (let [lang (:lang record)
             runtime-id (:runtime record)
             config (:config record)
@@ -205,9 +205,9 @@
   (let [record (tag-info-in namespace tag)
         instance (runtime-in namespace tag)]
     (if (nil? record)
-      (throw (ex :dependency {:namespace namespace :tag tag} :ex/message "Script annex tag is not registered"))
+      (throw (ex :hara/dependency (assoc {:namespace namespace :tag tag} :ex/message "Script annex tag is not registered")))
       (if (nil? instance)
-        (throw (ex :dependency {:namespace namespace :tag tag} :ex/message "Script annex tag is not started"))
+        (throw (ex :hara/dependency (assoc {:namespace namespace :tag tag} :ex/message "Script annex tag is not started")))
         (let [config (:config record)
               module (or (:module config) namespace)
               source (script/compile-form (:lang record) module form)]

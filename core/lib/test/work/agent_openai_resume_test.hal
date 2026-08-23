@@ -43,9 +43,7 @@
 
               (= attempt 2)
               (throw
-               (ex :io
-                   {:attempt attempt}
-                   :ex/message "next model request unavailable"))
+               (ex :hara/io (assoc {:attempt attempt} :ex/message "next model request unavailable")))
 
               (= attempt 3)
               (let [function-output (if (= 3 (count input))
@@ -61,9 +59,7 @@
                               (Json/read
                                (get function-output "output"))))
                   (throw
-                   (ex :state
-                       {:input input}
-                       :ex/message "resumed transcript lost tool output")))
+                   (ex :hara/state (assoc {:input input} :ex/message "resumed transcript lost tool output"))))
                 {:status 200
                  :body
                  (Json/write
@@ -79,9 +75,7 @@
 
               :else
               (throw
-               (ex :state
-                   {:attempt attempt}
-                   :ex/message "unexpected extra model request")))))
+               (ex :hara/state (assoc {:attempt attempt} :ex/message "unexpected extra model request"))))))
         client
         (agent/openai-client
          {:model "gpt-5"

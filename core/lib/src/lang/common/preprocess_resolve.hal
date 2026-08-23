@@ -4,7 +4,7 @@
             ))
 
 (defn- fail [message data]
-  (throw (ex :host data :ex/message message)))
+  (throw (ex :hara/host (assoc data :ex/message message))))
 
 (defn get-fragment
   [symbol modules options]

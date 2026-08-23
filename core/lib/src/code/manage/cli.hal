@@ -23,7 +23,7 @@
 
 (defn required [remaining option]
   (if (empty? remaining)
-    (throw (ex :dependency {:option option} :ex/message (str option " requires a value")))
+    (throw (ex :hara/dependency (assoc {:option option} :ex/message (str option " requires a value"))))
     (first remaining)))
 
 (defn validate-parsed
@@ -34,13 +34,13 @@
         options (dissoc raw-options :format)]
     (cond
       (not (has? +formats+ format))
-      (throw (ex :syntax {:format format} :ex/message (str "unsupported manage format " format)))
+      (throw (ex :hara/syntax (assoc {:format format} :ex/message (str "unsupported manage format " format))))
 
       (and (= operation :import) (:form options))
-      (throw (ex :syntax {:operation operation :option "--form"} :ex/message "import --form is obsolete; import reads matching fact titles"))
+      (throw (ex :hara/syntax (assoc {:operation operation :option "--form"} :ex/message "import --form is obsolete; import reads matching fact titles")))
 
       (and (= operation :purge) (:patterns options))
-      (throw (ex :syntax {:operation operation :option "--pattern"} :ex/message "purge --pattern is obsolete; purge removes docstrings and :added metadata"))
+      (throw (ex :hara/syntax (assoc {:operation operation :option "--pattern"} :ex/message "purge --pattern is obsolete; purge removes docstrings and :added metadata")))
 
       :else
       (assoc (assoc parsed :format format) :options options))))
@@ -48,7 +48,7 @@
 (defn parse-arguments [arguments]
   (let [operation (keyword (or (first arguments) "analyse"))]
     (if (nil? (get manage/parity-inventory operation))
-      (throw (ex :syntax {:operation operation} :ex/message (str "unsupported manage operation " operation)))
+      (throw (ex :hara/syntax (assoc {:operation operation} :ex/message (str "unsupported manage operation " operation))))
       (loop [remaining (tail arguments)
              write false
              namespaces []
@@ -89,7 +89,7 @@
                    :options (assoc options option-key (required more argument))}
 
                   (str/starts-with? argument "-")
-                  (throw (ex :syntax {:option argument} :ex/message (str "unknown manage option " argument)))
+                  (throw (ex :hara/syntax (assoc {:option argument} :ex/message (str "unknown manage option " argument))))
 
                   :else
                   {:remaining more
@@ -236,7 +236,7 @@
     (if (path-under-root? resolved-root resolved-path)
       resolved-path
       (throw
-       (ex :io {:root resolved-root :path path :resolved resolved-path} :ex/message (str "code.manage edit escapes project root: " path))))))
+       (ex :hara/io (assoc {:root resolved-root :path path :resolved resolved-path} :ex/message (str "code.manage edit escapes project root: " path)))))))
 
 (defn validate-edit
   [root edit]
@@ -244,7 +244,7 @@
         current (current-source path)]
     (if (= (:before edit) current)
       (assoc edit :resolved-path path)
-      (throw (ex :conflict {:path path} :ex/message (str "code.manage stale edit: " path))))))
+      (throw (ex :hara/conflict (assoc {:path path} :ex/message (str "code.manage stale edit: " path)))))))
 
 (defn preflight
   [root edits]

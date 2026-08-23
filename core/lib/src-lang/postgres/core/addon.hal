@@ -12,7 +12,7 @@
         value (if resolved (deref resolved) table)]
     (if (map? value)
       value
-      (throw (ex :database {:table table :value value} :ex/message "PostgreSQL entity metadata is unavailable")))))
+      (throw (ex :hara/database (assoc {:table table :value value} :ex/message "PostgreSQL entity metadata is unavailable"))))))
 
 (defn- entry-id
   [entry]

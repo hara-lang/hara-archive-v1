@@ -440,7 +440,7 @@
 (defn code-migrate-plan
   [migration]
   (when (not (:valid migration))
-    (throw (ex :argument {:diagnostics (:diagnostics migration)} :ex/message "Cannot adapt an invalid bang-name migration")))
+    (throw (ex :hara/argument (assoc {:diagnostics (:diagnostics migration)} :ex/message "Cannot adapt an invalid bang-name migration"))))
   {:records
    (vec
     (map

@@ -57,7 +57,7 @@
     (let [form (entry-form entry)
           hook (:format (reserved-entry entry selected))]
       (if (nil? form)
-        (throw (ex :generic {:entry entry} :ex/message "Entry has no input form"))
+        (throw (ex :hara/generic (assoc {:entry entry} :ex/message "Entry has no input form")))
         (if hook
           (format-result entry (hook form))
           (assoc entry :form-input form))))))
@@ -269,7 +269,7 @@
   (cond (nil? dependencies) +empty-dependencies+
         (set? dependencies) (assoc +empty-dependencies+ :code dependencies)
         (map? dependencies) (merge +empty-dependencies+ dependencies)
-        :else (throw (ex :argument {:dependencies dependencies} :ex/message "Invalid staged dependencies"))))
+        :else (throw (ex :hara/argument (assoc {:dependencies dependencies} :ex/message "Invalid staged dependencies")))))
 
 (defn- stage-result
   [value]

@@ -77,7 +77,7 @@
                  (if (= tag "#ptr")
                    (let [form-start (skip-reader-layout source tag-end)]
                      (if (= form-start (str/length source))
-                       (throw (ex :syntax {:path path :offset index} :ex/message "#ptr requires a value"))
+                       (throw (ex :hara/syntax (assoc {:path path :offset index} :ex/message "#ptr requires a value")))
                        (let [[form form-end] (parse/parse-at source form-start)
                              replacement
                              (str "(pointer "
@@ -90,7 +90,7 @@
                                 (conj output
                                       (str (str/slice source segment-start index)
                                            replacement))))))
-                   (throw (ex :syntax {:path path :offset index :reader tag} :ex/message "tagged reader macros are not allowed in code"))))))
+                   (throw (ex :hara/syntax (assoc {:path path :offset index :reader tag} :ex/message "tagged reader macros are not allowed in code")))))))
 
            :else
            (recur (inc index) segment-start :code false output)))))))
@@ -395,7 +395,7 @@
 (defn render-fact
   [fact]
   (if (nil? (:refer fact))
-    (throw (ex :generic {:fact fact} :ex/message "cannot render an unresolved test fact"))
+    (throw (ex :hara/generic (assoc {:fact fact} :ex/message "cannot render an unresolved test fact")))
     (str "^" (pr-str (normalized-meta fact)) "\n" (:source fact))))
 
 (defn render-entry
@@ -408,8 +408,8 @@
   [document]
   (let [unresolved (filter (fn [fact] (nil? (:refer fact))) (:facts document))]
     (if (not (empty? unresolved))
-      (throw (ex :io {:test-path (:test-path document)
-                       :unresolved (count unresolved)} :ex/message "cannot render a test document with unresolved facts"))
+      (throw (ex :hara/io (assoc {:test-path (:test-path document)
+                       :unresolved (count unresolved)} :ex/message "cannot render a test document with unresolved facts")))
       (let [support
             (map (fn [form]
                    {:kind :support :order (:order form) :source (:source form)})
@@ -441,7 +441,7 @@
 (defn relative-path
   [path root]
   (if (not (str/starts-with? path root))
-    (throw (ex :io {:path path :root root} :ex/message "path is not under the supplied root"))
+    (throw (ex :hara/io (assoc {:path path :root root} :ex/message "path is not under the supplied root")))
     (strip-leading-separators
      (str/slice path (str/length root) (str/length path)))))
 
@@ -502,7 +502,7 @@
 (defn export
   [test-root options]
   (if (nil? (:document-root options))
-    (throw (ex :dependency {} :ex/message "test document export requires :document-root"))
+    (throw (ex :hara/dependency (assoc {} :ex/message "test document export requires :document-root")))
     (mapv-loop
      (fn [unit]
        (export-one unit (assoc options :test-root test-root)))
@@ -522,7 +522,7 @@
   (let [value (Edn/read (project/read-text path))]
     (if (= +document-format+ (:format value))
       value
-      (throw (ex :io {:path path :format (:format value)} :ex/message "unsupported test document format")))))
+      (throw (ex :hara/io (assoc {:path path :format (:format value)} :ex/message "unsupported test document format"))))))
 
 (defn generate-one
   [document-path options]
@@ -547,7 +547,7 @@
 (defn generate
   [document-root options]
   (if (nil? (:generated-root options))
-    (throw (ex :dependency {} :ex/message "test generation requires :generated-root"))
+    (throw (ex :hara/dependency (assoc {} :ex/message "test generation requires :generated-root")))
     (mapv-loop
      (fn [path]
        (generate-one path (assoc options :document-root document-root)))
@@ -575,7 +575,7 @@
   (let [required [:document-root :generated-root :project-root :hara-test]
         missing (vec (filter (fn [key] (nil? (get options key))) required))]
     (if (not (empty? missing))
-      (throw (ex :not-found {:missing missing} :ex/message "test migration requires explicit roots and runner"))
+      (throw (ex :hara/not-found (assoc {:missing missing} :ex/message "test migration requires explicit roots and runner")))
       (let [exported (export test-root options)
             generated (generate (:document-root options) options)
             ready (filter (fn [entry] (= :generated (:status entry))) generated)

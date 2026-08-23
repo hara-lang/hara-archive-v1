@@ -66,8 +66,8 @@
       (cond
         (nil? item)
         (if pending
-          (throw (ex :security {:pending pending
-                           :args args-form} :ex/message "Dangling type token in function args"))
+          (throw (ex :hara/security (assoc {:pending pending
+                           :args args-form} :ex/message "Dangling type token in function args")))
           out)
 
         pending
@@ -75,14 +75,14 @@
           (recur (conj out (types/make-arg item pending []))
                  nil
                  more)
-          (throw (ex :security {:pending pending
+          (throw (ex :hara/security (assoc {:pending pending
                            :item item
-                           :args args-form} :ex/message "Expected symbol after typed arg token")))
+                           :args args-form} :ex/message "Expected symbol after typed arg token"))))
 
         (rest-arg-form? item)
         (if (seq more)
-          (throw (ex :syntax {:item item
-                           :args args-form} :ex/message "Rest argument must be final"))
+          (throw (ex :hara/syntax (assoc {:item item
+                           :args args-form} :ex/message "Rest argument must be final")))
           (recur (conj out
                        (types/make-arg (second item)
                                        (rest-arg-type)
@@ -135,8 +135,8 @@
                more)
 
         :else
-        (throw (ex :syntax {:item item
-                         :args args-form} :ex/message "Unsupported function arg form"))))))
+        (throw (ex :hara/syntax (assoc {:item item
+                         :args args-form} :ex/message "Unsupported function arg form")))))))
 
 (defn parse-decl-preamble
   [items form-sym]
@@ -299,9 +299,9 @@
   [ns-sym]
   (let [module (get (deref script/+modules+) ns-sym)]
     (when (nil? module)
-      (throw (ex :not-found {:ns ns-sym
+      (throw (ex :hara/not-found (assoc {:ns ns-sym
                        :available (sort-by str
-                                           (keys (deref script/+modules+)))} :ex/message "Tahto script module not found")))
+                                           (keys (deref script/+modules+)))} :ex/message "Tahto script module not found"))))
     (let [aliases (module-aliases module)
           specs (->> (deref script/+specs+)
                      vals

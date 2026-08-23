@@ -22,7 +22,7 @@
   (if (= :tool.cli.route/asset (:request/route request))
     (let [arguments (:request/arguments request)]
       (if (empty? arguments)
-        (throw (ex :io {} :ex/message "asset requires check, build, inspect, publish, status, search, info, pull, sync, or yank"))
+        (throw (ex :hara/io (assoc {} :ex/message "asset requires check, build, inspect, publish, status, search, info, pull, sync, or yank")))
         {:operation (keyword (first arguments))
          :arguments (vec (rest arguments))}))
     {:operation (get +route-operations+ (:request/route request))
@@ -36,18 +36,18 @@
             (not (every? (fn [part]
                            (and (not= part ".") (not= part "..")))
                          parts)))
-      (throw (ex :io {:path value} :ex/message (str "unsafe asset path: " value)))
+      (throw (ex :hara/io (assoc {:path value} :ex/message (str "unsafe asset path: " value))))
       normalized)))
 
 (defn required [document key]
   (if (has? document key)
     (get document key)
-    (throw (ex :not-found {:key key} :ex/message (str "asset.edn is missing " key)))))
+    (throw (ex :hara/not-found (assoc {:key key} :ex/message (str "asset.edn is missing " key))))))
 
 (defn string-value [value label]
   (if (or (string? value) (symbol? value))
     (str value)
-    (throw (ex :argument {:value value} :ex/message (str label " must be a string or symbol")))))
+    (throw (ex :hara/argument (assoc {:value value} :ex/message (str label " must be a string or symbol"))))))
 
 (defn descriptor-path [input]
   (let [metadata (deref (file/stat input))]
@@ -59,10 +59,10 @@
   (let [descriptor (descriptor-path input)
         document (edn/read (project/read-text descriptor))]
     (if (not (map? document))
-      (throw (ex :io {:path descriptor} :ex/message "asset.edn must be an EDN map"))
+      (throw (ex :hara/io (assoc {:path descriptor} :ex/message "asset.edn must be an EDN map")))
       nil)
     (if (not= "0.0.0-alpha" (required document :asset/format))
-      (throw (ex :dependency {} :ex/message "asset.edn requires alpha asset format"))
+      (throw (ex :hara/dependency (assoc {} :ex/message "asset.edn requires alpha asset format")))
       nil)
     (let [coordinate (project-command/normalize-coordinate
                       (string-value (required document :asset/coordinate)
@@ -71,17 +71,17 @@
                                 ":asset/version")
           declared (required document :asset/entries)]
       (if (not (schema/version-string? version))
-        (throw (ex :serialization {:version version} :ex/message (str "asset.edn :asset/version is invalid: " version)))
+        (throw (ex :hara/serialization (assoc {:version version} :ex/message (str "asset.edn :asset/version is invalid: " version))))
         nil)
       (if (not (vector? declared))
-        (throw (ex :argument {} :ex/message ":asset/entries must be a vector"))
+        (throw (ex :hara/argument (assoc {} :ex/message ":asset/entries must be a vector")))
         nil)
       (let [entries
             (vec
              (map
               (fn [entry]
                 (if (not (map? entry))
-                  (throw (ex :argument {:entry entry} :ex/message "asset entry must be a map"))
+                  (throw (ex :hara/argument (assoc {:entry entry} :ex/message "asset entry must be a map")))
                   {:entry/path
                    (safe-path
                     (string-value (required entry :entry/path) ":entry/path"))
@@ -91,10 +91,10 @@
               declared))
             paths (map (fn [entry] (:entry/path entry)) entries)]
         (if (empty? entries)
-          (throw (ex :serialization {} :ex/message "asset.edn :asset/entries must not be empty"))
+          (throw (ex :hara/serialization (assoc {} :ex/message "asset.edn :asset/entries must not be empty")))
           nil)
         (if (not= (count paths) (count (set paths)))
-          (throw (ex :conflict {} :ex/message "asset.edn contains duplicate :entry/path values"))
+          (throw (ex :hara/conflict (assoc {} :ex/message "asset.edn contains duplicate :entry/path values")))
           nil)
         {:asset/root (path/parent descriptor)
          :asset/descriptor descriptor
@@ -109,7 +109,7 @@
        (if (and (deref (file/exists? path))
                 (= :file (:type (deref (file/stat path)))))
          verified
-         (throw (ex :not-found {:path path} :ex/message (str "asset entry does not exist: " path))))))
+         (throw (ex :hara/not-found (assoc {:path path} :ex/message (str "asset entry does not exist: " path)))))))
    collection
    (:asset/entries collection)))
 
@@ -168,11 +168,11 @@
   (if (= 1 (count arguments))
     (let [source (project/read-text (first arguments))]
       (model/success source [(model/message source)]))
-    (throw (ex :dependency {} :ex/message "asset inspect requires MANIFEST"))))
+    (throw (ex :hara/dependency (assoc {} :ex/message "asset inspect requires MANIFEST")))))
 
 (defn unavailable [operation]
-  (throw (ex :dependency {:operation operation} :ex/message (str "unavailable: hara asset " (name operation)
-               " requires the packages.hara-lang.org registry client"))))
+  (throw (ex :hara/dependency (assoc {:operation operation} :ex/message (str "unavailable: hara asset " (name operation)
+               " requires the packages.hara-lang.org registry client")))))
 
 (defn execute [request]
   (let [resolved (operation-request request)
@@ -185,7 +185,7 @@
       (get #{:publish :status :search :info :pull :sync :yank} operation)
       (unavailable operation)
       :else
-      (throw (ex :host {} :ex/message (str "unknown asset command: " (name operation)))))))
+      (throw (ex :hara/host (assoc {} :ex/message (str "unknown asset command: " (name operation))))))))
 
 (def +command-work+
   (work/step {:id 'tool.cli/asset :version 1}

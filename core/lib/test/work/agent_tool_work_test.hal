@@ -38,9 +38,7 @@
     :additionalProperties false}
    (fn [arguments]
      (throw
-      (ex :host
-          {:reason :tool-test}
-          :ex/message "pure tool failed")))))
+      (ex :hara/host (assoc {:reason :tool-test} :ex/message "pure tool failed"))))))
 
 (def effect-tool
   (agent/tool

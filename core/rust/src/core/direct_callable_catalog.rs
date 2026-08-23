@@ -312,7 +312,7 @@ pub(crate) const DIRECT_CALLABLE_CATALOG: &[DirectCallableSpec] = &[
     ),
     direct!(
         "ex",
-        DirectCallableArity::EvenAtLeast(2),
+        DirectCallableArity::Exact(2),
         RuntimePrimitive,
         Exception
     ),

@@ -28,9 +28,7 @@
   (let [value (Edn/read (str/decode-utf8 (fs/read-bytes path)))]
     (if (map? value)
       value
-      (throw (ex :tool.migrate/invalid-catalog
-                 {:path path}
-                 :ex/message "Migration catalog must contain an EDN map")))))
+      (throw (ex :tool.migrate/invalid-catalog (assoc {:path path} :ex/message "Migration catalog must contain an EDN map"))))))
 
 (defn catalog-rules
   [catalog]
@@ -177,9 +175,7 @@
             (not (keyword? (:document/type catalog)))
             (not (empty? duplicates))
             (not (empty? missing)))
-      (throw (ex :tool.migrate/invalid-catalog
-                 {:duplicates duplicates :missing missing}
-                 :ex/message "Migration catalog failed structural validation")))
+      (throw (ex :tool.migrate/invalid-catalog (assoc {:duplicates duplicates :missing missing} :ex/message "Migration catalog failed structural validation"))))
     {:valid true
      :document/id (:document/id catalog)
      :rules (count rules)

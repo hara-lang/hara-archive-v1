@@ -15,10 +15,10 @@
   "Creates the structured error used for deliberately deferred Foundation
    features."
   [feature category]
-  (ex :database {:error/type :std.config/unsupported-feature
+  (ex :hara/database (assoc {:error/type :std.config/unsupported-feature
     :feature feature
     :feature/category category
-    :feature/status :host-adapted} :ex/message (str "Unsupported portable configuration feature: " feature)))
+    :feature/status :host-adapted} :ex/message (str "Unsupported portable configuration feature: " feature))))
 
 (defn assert-portable-options
   [options]
@@ -76,10 +76,10 @@
     (if found
       found
       (throw
-       (ex :not-found {:error/type :std.config/missing-file
+       (ex :hara/not-found (assoc {:error/type :std.config/missing-file
          :path path
          :candidates candidates
-         :include/stack (vec (or (:config/include-stack context) []))} :ex/message (str "Configuration file does not exist: " path))))))
+         :include/stack (vec (or (:config/include-stack context) []))} :ex/message (str "Configuration file does not exist: " path)))))))
 
 (defn extension-type
   [path default-type]

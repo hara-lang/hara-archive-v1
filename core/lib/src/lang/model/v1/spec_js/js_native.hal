@@ -39,7 +39,7 @@
                                (common/*emit-fn* value grammar mopts)
 
                                :else
-                               (throw (ex :host {:entry value} :ex/message "Not allowed in JavaScript set form"))))
+                               (throw (ex :hara/host (assoc {:entry value} :ex/message "Not allowed in JavaScript set form")))))
                          ordered)]
         (str "{" (str/join "," emitted) "}")))))
 

@@ -57,7 +57,7 @@
 (defn make-config-map-fn [config]
   (let [_ (if (:default config)
             true
-            (throw (ex :dependency {:input config} :ex/message "Requires a default entry.")))
+            (throw (ex :hara/dependency (assoc {:input config} :ex/message "Requires a default entry."))))
         merged (merge (make-config-defaults) config)
         root (or (:root merged) ".")]
     (assoc merged :root root)))

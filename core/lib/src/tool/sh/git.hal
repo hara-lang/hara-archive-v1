@@ -47,7 +47,7 @@
                          true)
          result (git-result args options)]
      (if (and (not= 0 (:exit result)) (not ignore-errors))
-       (throw (ex :host result :ex/message "Git command failed"))
+       (throw (ex :hara/host (assoc result :ex/message "Git command failed")))
        result))))
 
 (defn git
@@ -233,7 +233,7 @@
                      (str "HEAD~" (:n options))
                      nil))]
     (if (nil? target)
-      (throw (ex :dependency {:options options} :ex/message "Git squash requires :n or :base")))
+      (throw (ex :hara/dependency (assoc {:options options} :ex/message "Git squash requires :n or :base"))))
     (reset target (assoc options :mode :soft :ignore-errors false))
     (commit (or (:message options) "squashed commit")
             (assoc options :ignore-errors false))))
@@ -247,7 +247,7 @@
        result
        (do
          (git-run ["rebase" "--abort"] options)
-         (throw (ex :state result :ex/message "Git rebase failed and was aborted")))))))
+         (throw (ex :hara/state (assoc result :ex/message "Git rebase failed and was aborted"))))))))
 
 (defn submodule
   ([action] (submodule action {}))

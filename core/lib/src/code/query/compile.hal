@@ -30,11 +30,11 @@
             _           (case
                          type                                                                                       :form
                          (if
-                          (not= i max) (throw (ex :generic {} :ex/message "Form should be in the last position of the selectors"))) :cursor
+                          (not= i max) (throw (ex :hara/generic (assoc {} :ex/message "Form should be in the last position of the selectors")))) :cursor
                          (if
-                          (= i max) (throw (ex :generic {} :ex/message "Cursor cannot be in the last position of the selectors"))))]
+                          (= i max) (throw (ex :hara/generic (assoc {} :ex/message "Cursor cannot be in the last position of the selectors")))))]
         candidate)
-      (throw (ex :io {:candidates candidates} :ex/message (format "There should only be one of %s in the path."))))))
+      (throw (ex :hara/io (assoc {:candidates candidates} :ex/message (format "There should only be one of %s in the path.")))))))
 
 (defn expand-all-metas
   "converts the shorthand meta into a map-based meta\n   (meta (expand-all-metas '^:%? sym?))\n   => {:? true, :% true}\n \n   (-> (expand-all-metas '(^:%+ + 1 2))\n       first meta)\n   => {:+ true, :% true}"
@@ -54,7 +54,7 @@
                    (nil? idx)        [[] selectors]
                    (= :cursor ctype) [(reverse (subvec selectors 0 idx)) (subvec selectors (inc idx) (count selectors))]
                    (= :form ctype)   [(reverse (subvec selectors 0 idx)) (subvec selectors idx (count selectors))]
-                   :else             (throw (ex :io {} :ex/message "Should not be here")))]
+                   :else             (throw (ex :hara/io (assoc {} :ex/message "Should not be here"))))]
     {:down down :up up}))
 
 (defn process-special
@@ -65,7 +65,7 @@
     (or (if (= :* ele) {:type :multi})
       (if-let [step (try (parse-long (name ele)) (catch Throwable e nil))]
         (if (> step 0) {:step step :type :nth}))
-      (throw (ex :host {:value ele} :ex/message "Not a valid keyword (either :* or :<natural number>)")))))
+      (throw (ex :hara/host (assoc {:value ele} :ex/message "Not a valid keyword (either :* or :<natural number>)"))))))
 
 (defn process-path
   "converts a path into more information\n   (process-path '[defn if try])\n   => '[{:type :step, :element defn}\n        {:type :step, :element if}\n        {:type :step, :element try}]\n \n   (process-path '[defn :* try :3 if])\n   => '[{:type :step, :element defn}\n        {:element try, :type :multi}\n        {:element if, :type :nth, :step 3}]"

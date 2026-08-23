@@ -63,7 +63,7 @@
   (let [value (get props key)
         new-value (cond (dom/dom? value) (dom-apply value ops)
                         (sequential? value) (update-list node key value ops)
-                        :else (throw (ex :generic {:dom node :val value :op op} :ex/message "Not Supported")))]
+                        :else (throw (ex :hara/generic (assoc {:dom node :val value :op op} :ex/message "Not Supported"))))]
     (assoc props key new-value)))
 
 (defn update-props [node props ops]
@@ -72,7 +72,7 @@
               :set (update-set props op)
               :delete (update-props-delete props op)
               :update (update-props-update node props op)
-              (throw (ex :generic {:props props :op op} :ex/message "Not Supported"))))
+              (throw (ex :hara/generic (assoc {:props props :op op} :ex/message "Not Supported")))))
           props
           ops))
 

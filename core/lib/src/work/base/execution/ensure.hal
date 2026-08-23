@@ -9,9 +9,9 @@
     (if work
       work
       (throw
-       (ex :dependency {:operation (:op spec)
+       (ex :hara/dependency (assoc {:operation (:op spec)
                  :child key
-                 :work/id (:id spec)} :ex/message "Work scope requires a child")))))
+                 :work/id (:id spec)} :ex/message "Work scope requires a child"))))))
 
 (defn cleanup-input
   [input status value error]
@@ -78,8 +78,8 @@
       (and (not body-completed)
            (= :failed (:status cleanup-outcome)))
       (throw
-       (ex :state {:body/error (str (:error body-outcome))
-                 :cleanup/error (str (:error cleanup-outcome))} :ex/message "Work body and cleanup both failed"))
+       (ex :hara/state (assoc {:body/error (str (:error body-outcome))
+                 :cleanup/error (str (:error cleanup-outcome))} :ex/message "Work body and cleanup both failed")))
 
       (not body-completed)
       (throw (:error body-outcome))

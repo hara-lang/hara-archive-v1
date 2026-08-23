@@ -53,7 +53,7 @@
   [runtime]
   (let [{:keys [id lang type container notify]} runtime]
     (if (not id)
-      (throw (ex :dependency {:runtime runtime} :ex/message "Runtime Id Required."))
+      (throw (ex :hara/dependency (assoc {:runtime runtime} :ex/message "Runtime Id Required.")))
       (let [notify (notify-defaults notify)
             tag (or (get runtime :tag) type)
             http? (or (= tag :websocket)
@@ -82,7 +82,7 @@
   [lang]
   (cond (keyword? lang)
         (or (registered-runtime lang)
-            (throw (ex :host {:lang lang} :ex/message "Runtime not started.")))
+            (throw (ex :hara/host (assoc {:lang lang} :ex/message "Runtime not started."))))
 
         (vector? lang)
         (notify-ceremony-rt (first lang))
@@ -95,10 +95,10 @@
 
         (nil? lang)
         (or (registered-runtime nil)
-            (throw (ex :host {} :ex/message "No runtimes found.")))
+            (throw (ex :hara/host (assoc {} :ex/message "No runtimes found."))))
 
         :else
-        (throw (ex :host {:runtime lang} :ex/message "Not a valid runtime."))))
+        (throw (ex :hara/host (assoc {:runtime lang} :ex/message "Not a valid runtime.")))))
 
 ;;
 ;; WAIT

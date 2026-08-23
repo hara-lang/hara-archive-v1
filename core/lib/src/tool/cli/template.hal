@@ -22,11 +22,11 @@
   [template-type options]
   (if (not (keyword? template-type))
     (throw
-     (ex :argument {:template template-type} :ex/message "CLI template type must be a keyword")))
+     (ex :hara/argument (assoc {:template template-type} :ex/message "CLI template type must be a keyword"))))
   (if (not (map? options))
     (throw
-     (ex :argument {:template template-type
-               :defaults options} :ex/message "CLI template defaults must be a map")))
+     (ex :hara/argument (assoc {:template template-type
+               :defaults options} :ex/message "CLI template defaults must be a map"))))
   (swap! *template-defaults*
          (fn [registry]
            (assoc registry
@@ -42,7 +42,7 @@
   [template-type]
   (if (= :default template-type)
     (throw
-     (ex :io {:template template-type} :ex/message "The default CLI template profile cannot be removed"))
+     (ex :hara/io (assoc {:template template-type} :ex/message "The default CLI template profile cannot be removed")))
     (swap! *template-defaults* dissoc template-type)))
 
 (defn assert-main
@@ -52,14 +52,14 @@
         argcount (:argcount main)]
     (if (not (map? main))
       (throw
-       (ex :dependency {:definition definition} :ex/message "CLI template requires :main to be a map")))
+       (ex :hara/dependency (assoc {:definition definition} :ex/message "CLI template requires :main to be a map"))))
     (if (not (fn? function))
       (throw
-       (ex :dependency {:id (:id definition)} :ex/message "CLI template requires :main :fn")))
+       (ex :hara/dependency (assoc {:id (:id definition)} :ex/message "CLI template requires :main :fn"))))
     (if (not (or (= 1 argcount) (= 2 argcount)))
       (throw
-       (ex :argument {:id (:id definition)
-                 :argcount argcount} :ex/message "CLI template :main :argcount must be 1 or 2"))))
+       (ex :hara/argument (assoc {:id (:id definition)
+                 :argcount argcount} :ex/message "CLI template :main :argcount must be 1 or 2")))))
   definition)
 
 (defn normalise-definition
@@ -67,7 +67,7 @@
   [raw-definition]
   (if (not (map? raw-definition))
     (throw
-     (ex :argument {:definition raw-definition} :ex/message "CLI template definition must be a map")))
+     (ex :hara/argument (assoc {:definition raw-definition} :ex/message "CLI template definition must be a map"))))
   (let [template-type (or (:template raw-definition) :default)
         defaults (merge-nested
                   (template-defaults template-type)
@@ -78,21 +78,21 @@
         runtime-fn (or (:runtime-fn definition)
                        (fn [] std-work/default-host))]
     (if (nil? id)
-      (throw (ex :dependency {} :ex/message "CLI template requires :id")))
+      (throw (ex :hara/dependency (assoc {} :ex/message "CLI template requires :id"))))
     (if (not (number? version))
       (throw
-       (ex :argument {:id id :version version} :ex/message "CLI template :version must be numeric")))
+       (ex :hara/argument (assoc {:id id :version version} :ex/message "CLI template :version must be numeric"))))
     (if (and (:prepare definition)
              (not (fn? (:prepare definition))))
       (throw
-       (ex :argument {:id id} :ex/message "CLI template :prepare must be a function")))
+       (ex :hara/argument (assoc {:id id} :ex/message "CLI template :prepare must be a function"))))
     (if (and (:finish definition)
              (not (fn? (:finish definition))))
       (throw
-       (ex :argument {:id id} :ex/message "CLI template :finish must be a function")))
+       (ex :hara/argument (assoc {:id id} :ex/message "CLI template :finish must be a function"))))
     (if (not (fn? runtime-fn))
       (throw
-       (ex :argument {:id id} :ex/message "CLI template :runtime-fn must be a function")))
+       (ex :hara/argument (assoc {:id id} :ex/message "CLI template :runtime-fn must be a function"))))
     (assert-main
      (assoc definition
             :schema schema-id
@@ -119,25 +119,25 @@
   [result]
   (if (not (map? result))
     (throw
-     (ex :generic {:result result} :ex/message "CLI handler returned a non-map result")))
+     (ex :hara/generic (assoc {:result result} :ex/message "CLI handler returned a non-map result"))))
   (let [outcome (:result/outcome result)
         exit (:result/exit result)
         messages (:result/messages result)]
     (if (not (has? model/+outcome-exits+ outcome))
       (throw
-       (ex :generic {:outcome outcome
-                 :result result} :ex/message "CLI handler returned an unknown outcome")))
+       (ex :hara/generic (assoc {:outcome outcome
+                 :result result} :ex/message "CLI handler returned an unknown outcome"))))
     (if (not= exit (model/outcome-exit outcome))
       (throw
-       (ex :argument {:outcome outcome
+       (ex :hara/argument (assoc {:outcome outcome
                  :exit exit
-                 :expected (model/outcome-exit outcome)} :ex/message "CLI handler result exit does not match its outcome")))
+                 :expected (model/outcome-exit outcome)} :ex/message "CLI handler result exit does not match its outcome"))))
     (if (not (vector? messages))
       (throw
-       (ex :argument {:messages messages} :ex/message "CLI handler :result/messages must be a vector")))
+       (ex :hara/argument (assoc {:messages messages} :ex/message "CLI handler :result/messages must be a vector"))))
     (if (not (every? valid-message? messages))
       (throw
-       (ex :argument {:messages messages} :ex/message "CLI handler returned an invalid message envelope"))))
+       (ex :hara/argument (assoc {:messages messages} :ex/message "CLI handler returned an invalid message envelope")))))
   result)
 
 (defn stage-id

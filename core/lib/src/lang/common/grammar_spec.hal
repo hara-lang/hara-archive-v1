@@ -73,8 +73,7 @@
           (let [resolved (resolve operation)]
             (if resolved
               (apply (deref resolved) arguments)
-              (throw (ex :dependency {:form form}
-                         :ex/message "Unable to resolve mixin form")))))))
+              (throw (ex :hara/dependency (assoc {:form form} :ex/message "Unable to resolve mixin form"))))))))
 
 (defn format-defn-mixins
   "applies all mixins in order"

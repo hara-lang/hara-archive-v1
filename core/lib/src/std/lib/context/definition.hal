@@ -33,7 +33,7 @@
   [family]
   (let [id (:id family)]
     (if (nil? id)
-      (throw (ex :dependency {:family family} :ex/message "Definition family requires :id"))
+      (throw (ex :hara/dependency (assoc {:family family} :ex/message "Definition family requires :id")))
       (assoc family
              :exact (normalize-text-set (:exact family))
              :prefix (normalize-text-set (:prefix family))

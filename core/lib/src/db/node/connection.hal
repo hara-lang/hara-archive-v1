@@ -14,7 +14,7 @@
 (defn- ensure-open
   [connection]
   (if (deref (:closed connection))
-    (throw (ex :database {:service (:service-id connection)} :ex/message "Database runtime connection is closed"))
+    (throw (ex :hara/database (assoc {:service (:service-id connection)} :ex/message "Database runtime connection is closed")))
     connection))
 
 (extend-type RuntimeConnection protocol/IDatabase

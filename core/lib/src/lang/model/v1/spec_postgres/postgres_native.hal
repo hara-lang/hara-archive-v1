@@ -482,7 +482,7 @@
                 (str (str/replace (name target) "-" "_")
                      " " (pg-type-output types)))
           :else
-          (throw (ex :syntax {:binding binding} :ex/message "Unsupported PostgreSQL let binding")))))
+          (throw (ex :hara/syntax (assoc {:binding binding} :ex/message "Unsupported PostgreSQL let binding"))))))
 
 (declare pg-statement-form?)
 
@@ -583,7 +583,7 @@
           statement (if (vector? form) form [:select form])]
       (pg-indent
        (pg-terminated (pg-section statement grammar context))))
-    (throw (ex :database {:body body} :ex/message "PostgreSQL SQL functions require one expression"))))
+    (throw (ex :hara/database (assoc {:body body} :ex/message "PostgreSQL SQL functions require one expression")))))
 
 (defn pg-defn-body
   [language body grammar context]
@@ -595,7 +595,7 @@
         (pg-sql-body body grammar context)
 
         :else
-        (throw (ex :database {:language language} :ex/message "Portable PostgreSQL function language is unsupported"))))
+        (throw (ex :hara/database (assoc {:language language} :ex/message "Portable PostgreSQL function language is unsupported")))))
 
 (defn pg-property-output
   [props]

@@ -245,10 +245,10 @@
                  nil)]
     (if (:function? context)
       (list 'throw
-            (list 'ex-info
-                  "XTalk function return"
+            (list 'ex :lang.hara/return
                   {:lang.hara/return true
-                   :value result}))
+                   :value result
+                   :ex/message "XTalk function return"}))
       result)))
 
 (defn indexed-target
@@ -289,8 +289,8 @@
 
     :else
     (throw
-     (ex :generic {:target target
-               :lang/error-code :lang.hara/unsupported-assignment} :ex/message "Unsupported Hara assignment target"))))
+     (ex :hara/generic (assoc {:target target
+               :lang/error-code :lang.hara/unsupported-assignment} :ex/message "Unsupported Hara assignment target")))))
 
 (defn lower-index
   [value context]
@@ -322,7 +322,7 @@
 
                :else
                (throw
-                (ex :argument {:clause clause} :ex/message "Invalid XTalk branch clause")))))
+                (ex :hara/argument (assoc {:clause clause} :ex/message "Invalid XTalk branch clause"))))))
          []
          clauses)]
     (form (concat ['cond] pairs))))
@@ -445,17 +445,25 @@
         "x:len" (list 'count (lowered (argument 0)))
         "x:nil?" (list 'nil? (lowered (argument 0)))
         "x:not-nil?" (list 'not (list 'nil? (lowered (argument 0))))
-        "x:err" (list 'throw (list 'ex-info (lowered (argument 0)) {}))
-        "x:ex" (list 'ex-info
-                     (lowered (argument 0))
-                     (if (> (count arguments) 1)
-                       (lowered (argument 1))
-                       {}))
-        "x:ex-new" (list 'ex-info
-                         (lowered (argument 0))
-                         (if (> (count arguments) 1)
-                           (lowered (argument 1))
-                           {}))
+        "x:err" (list 'throw
+                      (list 'ex :hara/generic
+                            (list 'assoc {}
+                                  :ex/message
+                                  (lowered (argument 0)))))
+        "x:ex" (list 'ex :hara/generic
+                     (list 'assoc
+                           (if (> (count arguments) 1)
+                             (lowered (argument 1))
+                             {})
+                           :ex/message
+                           (lowered (argument 0))))
+        "x:ex-new" (list 'ex :hara/generic
+                         (list 'assoc
+                               (if (> (count arguments) 1)
+                                 (lowered (argument 1))
+                                 {})
+                               :ex/message
+                               (lowered (argument 0))))
         "x:ex-native?" (list 'instance? 'Throwable (lowered (argument 0)))
         "x:ex-message" (list 'ex-message (lowered (argument 0)))
         "x:ex-data" (list 'ex-data (lowered (argument 0)))
@@ -694,15 +702,15 @@
                                          (map #(lower % context) (rest value))))
         (= 'var operation)
         (throw
-         (ex :generic {:form value
-                   :lang/error-code :lang.hara/unscoped-var} :ex/message "XTalk var must occur within a body"))
+         (ex :hara/generic (assoc {:form value
+                   :lang/error-code :lang.hara/unscoped-var} :ex/message "XTalk var must occur within a body")))
         (and (symbol? operation)
              (not (namespace operation))
              (str/starts-with? (name operation) "x:"))
         (throw
-         (ex :generic {:operation operation
+         (ex :hara/generic (assoc {:operation operation
                    :form value
-                   :lang/error-code :lang.hara/unsupported-operation} :ex/message "XTalk operation is not implemented by the Hara target"))
+                   :lang/error-code :lang.hara/unsupported-operation} :ex/message "XTalk operation is not implemented by the Hara target")))
         :else
         (form (concat [(lower operation context)]
                       (map #(lower % context) (rest value))))))))

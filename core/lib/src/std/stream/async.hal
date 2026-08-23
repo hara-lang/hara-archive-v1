@@ -48,8 +48,8 @@
           value (nth operation 1)]
       (if (not (and (satisfies? std.protocol.istreamoffer.IStreamOffer target)
                     (satisfies? std.protocol.iclosed.IClosed target)))
-        (throw (ex :io {:error/type :stream.async/invalid-alternative
-                         :operation operation} :ex/message "Write alternatives require offer and closed capabilities")))
+        (throw (ex :hara/io (assoc {:error/type :stream.async/invalid-alternative
+                         :operation operation} :ex/message "Write alternatives require offer and closed capabilities"))))
       (if (std.protocol.istreamoffer.IStreamOffer/offer target value)
         {:ready true :result [true target]}
         (if (std.protocol.iclosed.IClosed/closed? target)
@@ -57,8 +57,8 @@
           nil)))
     (do
       (if (not (satisfies? std.protocol.istreampoll.IStreamPoll operation))
-        (throw (ex :io {:error/type :stream.async/invalid-alternative
-                         :operation operation} :ex/message "Read alternatives require a poll capability")))
+        (throw (ex :hara/io (assoc {:error/type :stream.async/invalid-alternative
+                         :operation operation} :ex/message "Read alternatives require a poll capability"))))
       (let [result (std.protocol.istreampoll.IStreamPoll/poll operation)]
         (if result
           {:ready true :result [(:value result) operation]}
@@ -90,7 +90,7 @@
   ([operations] (alts operations {}))
   ([operations options]
    (if (= 0 (count operations))
-     (throw (ex :io {:error/type :stream.async/no-alternatives} :ex/message "alts requires at least one operation")))
+     (throw (ex :hara/io (assoc {:error/type :stream.async/no-alternatives} :ex/message "alts requires at least one operation"))))
    (go (fn [] (alts-loop operations options)))))
 
 (defn pump-stream [source output]

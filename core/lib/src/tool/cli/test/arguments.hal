@@ -6,8 +6,7 @@
   (if (or (empty? remaining)
           (str/starts-with? (first remaining) "--"))
     (throw
-     (ex :syntax {:option option}
-         :ex/message (str "usage: " option " requires a value")))
+     (ex :hara/syntax (assoc {:option option} :ex/message (str "usage: " option " requires a value"))))
     (first remaining)))
 
 (defn selector-value
@@ -16,17 +15,13 @@
     (let [selected (read-string value)]
       (if (nil? selected)
         (throw
-         (ex :syntax {:option option :value value}
-             :ex/message
-             (str "usage: " option " requires a non-nil EDN selector"))))
+         (ex :hara/syntax (assoc {:option option :value value} :ex/message (str "usage: " option " requires a non-nil EDN selector")))))
       selected)
     (catch Throwable error
       (if (= :syntax (:ex/type (ex-data error)))
         (throw error)
         (throw
-         (ex :syntax {:option option :value value}
-             :ex/message
-             (str "usage: " option " requires an EDN selector")))))))
+         (ex :hara/syntax (assoc {:option option :value value} :ex/message (str "usage: " option " requires an EDN selector"))))))))
 
 (defn parse
   "Parses public `hara test` command arguments. Positional paths are not
@@ -42,8 +37,7 @@
           (= argument "--only")
           (if (:selector-mode output)
             (throw
-             (ex :syntax {:arguments arguments}
-                 :ex/message "usage: --only and --use cannot be combined"))
+             (ex :hara/syntax (assoc {:arguments arguments} :ex/message "usage: --only and --use cannot be combined")))
             (let [value (required-value argument tail)]
               (recur (vec (rest tail))
                      (assoc output
@@ -53,8 +47,7 @@
           (= argument "--use")
           (if (:selector-mode output)
             (throw
-             (ex :syntax {:arguments arguments}
-                 :ex/message "usage: --only and --use cannot be combined"))
+             (ex :hara/syntax (assoc {:arguments arguments} :ex/message "usage: --only and --use cannot be combined")))
             (let [value (required-value argument tail)]
               (recur (vec (rest tail))
                      (assoc output
@@ -68,11 +61,8 @@
 
           (str/starts-with? argument "-")
           (throw
-           (ex :syntax {:option argument}
-               :ex/message (str "usage: unknown test option " argument)))
+           (ex :hara/syntax (assoc {:option argument} :ex/message (str "usage: unknown test option " argument))))
 
           :else
           (throw
-           (ex :syntax {:argument argument}
-               :ex/message
-               (str "usage: test does not accept positional paths: " argument))))))))
+           (ex :hara/syntax (assoc {:argument argument} :ex/message (str "usage: test does not accept positional paths: " argument)))))))))

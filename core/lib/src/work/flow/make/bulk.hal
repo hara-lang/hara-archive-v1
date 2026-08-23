@@ -27,7 +27,7 @@
                                  (empty? (get remaining key)))
                                (keys remaining)))]
         (if (empty? ready)
-          (throw (ex :generic {:graph remaining :ordered ordered} :ex/message "Cyclic bulk dependencies"))
+          (throw (ex :hara/generic (assoc {:graph remaining :ordered ordered} :ex/message "Cyclic bulk dependencies")))
           (let [ready-set (set ready)
                 next-remaining
                 (reduce-kv
@@ -101,9 +101,9 @@
                        [output key]
                        (let
                         [config   (or (get configs key)
-                                      (throw (ex :not-found {:key key :options (keys configs)} :ex/message "CONFIGS NOT FOUND")))
+                                      (throw (ex :hara/not-found (assoc {:key key :options (keys configs)} :ex/message "CONFIGS NOT FOUND"))))
                          action   (or (:action (get actions key))
-                                      (throw (ex :not-found {:key key :options (keys actions)} :ex/message "ACTIONS NOT FOUND")))
+                                      (throw (ex :hara/not-found (assoc {:key key :options (keys actions)} :ex/message "ACTIONS NOT FOUND"))))
                          measured (measure (fn [] (first (common/make-run-internal config action))))]
                         (assoc output key measured)))
                       {}

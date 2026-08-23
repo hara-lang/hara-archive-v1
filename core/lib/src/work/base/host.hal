@@ -36,17 +36,17 @@
   [locator]
   (if (not (map? locator))
     (throw
-     (ex :argument {:work/error :work/invalid-host-locator
-               :host/locator locator} :ex/message "Work host locator must be a map")))
+     (ex :hara/argument (assoc {:work/error :work/invalid-host-locator
+               :host/locator locator} :ex/message "Work host locator must be a map"))))
   (let [type (:host/type locator)
         id (:host/id locator)]
     (if (nil? type)
       (throw
-       (ex :dependency {:work/error :work/invalid-host-locator} :ex/message "Work host locator requires :host/type")))
+       (ex :hara/dependency (assoc {:work/error :work/invalid-host-locator} :ex/message "Work host locator requires :host/type"))))
     (if (nil? id)
       (throw
-       (ex :dependency {:work/error :work/invalid-host-locator
-                 :host/type type} :ex/message "Work host locator requires :host/id")))
+       (ex :hara/dependency (assoc {:work/error :work/invalid-host-locator
+                 :host/type type} :ex/message "Work host locator requires :host/id"))))
     (reduce
      (fn [portable key]
        (if (has? locator key)
@@ -76,28 +76,28 @@
   [provider locator]
   (if (not (map? provider))
     (throw
-     (ex :argument {:work/error :work/invalid-host-provider} :ex/message "Work host provider must be a descriptor map")))
+     (ex :hara/argument (assoc {:work/error :work/invalid-host-provider} :ex/message "Work host provider must be a descriptor map"))))
   (if (not= :work/host (:provider/role provider))
     (throw
-     (ex :argument {:work/error :work/invalid-host-provider
-               :provider/role (:provider/role provider)} :ex/message "Work provider does not have the host role")))
+     (ex :hara/argument (assoc {:work/error :work/invalid-host-provider
+               :provider/role (:provider/role provider)} :ex/message "Work provider does not have the host role"))))
   (if (not= host-api (:provider/api provider))
     (throw
-     (ex :generic {:work/error :work/unsupported-host-api
-               :provider/api (:provider/api provider)} :ex/message "Work host provider API is not supported")))
+     (ex :hara/generic (assoc {:work/error :work/unsupported-host-api
+               :provider/api (:provider/api provider)} :ex/message "Work host provider API is not supported"))))
   (let [missing (missing-operations provider)]
     (if (not (empty? missing))
       (throw
-       (ex :not-found {:work/error :work/invalid-host-provider
-                 :provider/missing missing} :ex/message "Work host provider is missing required operations"))))
+       (ex :hara/not-found (assoc {:work/error :work/invalid-host-provider
+                 :provider/missing missing} :ex/message "Work host provider is missing required operations")))))
   (let [provider-locator
         (normalise-locator
          (or (:provider/locator provider) locator))]
     (if (not= locator provider-locator)
       (throw
-       (ex :generic {:work/error :work/host-mismatch
+       (ex :hara/generic (assoc {:work/error :work/host-mismatch
                  :host/locator locator
-                 :provider/locator provider-locator} :ex/message "Work host provider locator does not match its host"))))
+                 :provider/locator provider-locator} :ex/message "Work host provider locator does not match its host")))))
   provider)
 
 (defn host
@@ -139,10 +139,10 @@
         actual (:host reference)]
     (if (not= expected actual)
       (throw
-       (ex :argument {:work/error :work/host-mismatch
+       (ex :hara/argument (assoc {:work/error :work/host-mismatch
                  :host/expected expected
                  :host/actual actual
-                 :run/id (:id reference)} :ex/message "Work reference belongs to another host"))))
+                 :run/id (:id reference)} :ex/message "Work reference belongs to another host")))))
   reference)
 
 (defn- admitted-run
@@ -150,8 +150,8 @@
   (let [id (:run/id admission)]
     (if (nil? id)
       (throw
-       (ex :argument {:work/error :work/invalid-admission
-                 :host/locator (locator host)} :ex/message "Work host admission did not return :run/id")))
+       (ex :hara/argument (assoc {:work/error :work/invalid-admission
+                 :host/locator (locator host)} :ex/message "Work host admission did not return :run/id"))))
     (work.base.host/WorkRun
      (work.base.host/WorkRef (locator host) id)
      (:provider host)

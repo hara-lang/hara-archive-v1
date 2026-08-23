@@ -63,9 +63,9 @@
                               (get-in book [:modules (first pair)]))})
                 nil)]
     (if (nil? entry)
-      (throw (ex :not-found {:lang (:lang mopts) :input link} :ex/message "Cannot find inline entry"))
+      (throw (ex :hara/not-found (assoc {:lang (:lang mopts) :input link} :ex/message "Cannot find inline entry")))
       (if (not (empty? (:deps entry)))
-        (throw (ex :generic {:lang (:lang mopts) :input link :deps (:deps entry)} :ex/message "Inline cannot have additional dependencies"))
+        (throw (ex :hara/generic (assoc {:lang (:lang mopts) :input link :deps (:deps entry)} :ex/message "Inline cannot have additional dependencies")))
       (let [definition (vec (:form entry))
             args (nth definition 2)
             return-ref (atom nil)
@@ -74,7 +74,7 @@
                     (if (list? form)
                       (if (= 'return (first form))
                         (if (deref return-ref)
-                          (throw (ex :generic {:input (deref return-ref)} :ex/message "Inline cannot have multiple returns"))
+                          (throw (ex :hara/generic (assoc {:input (deref return-ref)} :ex/message "Inline cannot have multiple returns")))
                           (do (reset! return-ref (second form)) '<RETURN>))
                         (apply list
                                (reduce (fn [output value]
@@ -92,7 +92,7 @@
             returned (deref return-ref)
             _ (if (or (list? returned) (vector? returned)
                       (map? returned) (set? returned))
-                (throw (ex :security {:input returned} :ex/message "Return should be a token"))
+                (throw (ex :hara/security (assoc {:input returned} :ex/message "Return should be a token")))
                 true)
             assign-ref (atom nil)
             _ (std.foundation/postwalk
@@ -100,7 +100,7 @@
                  (if (and (list? form) (= 'var (first form)))
                    (let [declared (first (filter symbol? (rest form)))]
                      (if (not (= returned declared))
-                       (throw (ex :generic {:link link :form body} :ex/message "Inlined with unaccounted for declarations"))
+                       (throw (ex :hara/generic (assoc {:link link :form body} :ex/message "Inlined with unaccounted for declarations")))
                        (reset! assign-ref declared)))
                    nil)
                  form)

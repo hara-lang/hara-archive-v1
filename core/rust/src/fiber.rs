@@ -373,7 +373,11 @@ pub struct EvalFiber {
 }
 impl EvalFiber {
     pub fn start(source: &str, env: HashMap<String, Value>) -> Result<Self, String> {
-        let forms = parse_forms(source)?;
+        let forms = crate::kernel::read_forms(source)
+            .map_err(|error| error.to_string())?
+            .into_iter()
+            .map(|form| crate::core::exception_located_form(&form))
+            .collect();
         Self::start_forms(forms, env)
     }
     pub fn start_forms(forms: Vec<Form>, env: HashMap<String, Value>) -> Result<Self, String> {
@@ -580,6 +584,7 @@ fn one(form: Form, env: Rc<RefCell<HashMap<String, Value>>>, k: Cont) -> Step {
     if let Err(error) = super::check_evaluation_interrupt() {
         return k(Err(error));
     }
+
     match form {
         Form::Map(entries) => {
             let flat = Rc::new(entries.into_iter().flat_map(|(a, b)| [a, b]).collect());
@@ -627,6 +632,43 @@ fn one(form: Form, env: Rc<RefCell<HashMap<String, Value>>>, k: Cont) -> Step {
         simple => sync(simple, env, k),
     }
 }
+
+fn with_exception_site_step(site: ExceptionSite, step: Step) -> Step {
+    match step {
+        Step::Done(result) => Step::Done(result),
+        Step::Continue(next) => {
+            let next_site = site.clone();
+            Step::Continue(Box::new(move || {
+                crate::core::with_exception_site(site, || {
+                    with_exception_site_step(next_site, next())
+                })
+            }))
+        }
+        Step::Wait(promise, resume) => {
+            let next_site = site.clone();
+            Step::Wait(
+                promise,
+                Box::new(move |state| {
+                    crate::core::with_exception_site(site, || {
+                        with_exception_site_step(next_site, resume(state))
+                    })
+                }),
+            )
+        }
+        Step::Yield(value, resume) => {
+            let next_site = site.clone();
+            Step::Yield(
+                value,
+                Box::new(move |input| {
+                    crate::core::with_exception_site(site, || {
+                        with_exception_site_step(next_site, resume(input))
+                    })
+                }),
+            )
+        }
+    }
+}
+
 fn sync(form: Form, env: Rc<RefCell<HashMap<String, Value>>>, k: Cont) -> Step {
     let result = {
         let mut borrowed = env.borrow_mut();
@@ -685,10 +727,29 @@ fn list(v: Vec<Form>, env: Rc<RefCell<HashMap<String, Value>>>, k: Cont) -> Step
                 value.clone(),
                 env,
                 Box::new(move |result| match result {
-                    Ok(value) => k(Err(thrown_error_at(value, site.clone()))),
+                    Ok(value) if matches!(value, Value::ExceptionInfo(_)) => {
+                        k(Err(thrown_error_at(value, site.clone())))
+                    }
+                    Ok(_) => k(Err("throw expects an Exception value created by ex".into())),
                     Err(error) => k(Err(error)),
                 }),
             )
+        }
+        Some("__ex-at") => {
+            let [_, Form::Number(line), Form::Number(column), code, attributes] = v.as_slice()
+            else {
+                return k(Err("internal exception location marker is malformed".into()));
+            };
+            let form = Form::List(vec![
+                Form::Symbol("ex".into()),
+                code.clone(),
+                attributes.clone(),
+            ]);
+            let site = crate::core::exception_site_at(*line as usize, *column as usize)
+                .expect("exception location marker always has a site");
+            crate::core::with_exception_site(site.clone(), || {
+                with_exception_site_step(site, one(form, env, k))
+            })
         }
         Some("throw") => {
             if v.len() != 2 {
@@ -698,7 +759,8 @@ fn list(v: Vec<Form>, env: Rc<RefCell<HashMap<String, Value>>>, k: Cont) -> Step
                 v[1].clone(),
                 env,
                 Box::new(move |r| match r {
-                    Ok(x) => k(Err(thrown_error(x))),
+                    Ok(x) if matches!(x, Value::ExceptionInfo(_)) => k(Err(thrown_error(x))),
+                    Ok(_) => k(Err("throw expects an Exception value created by ex".into())),
                     Err(x) => k(Err(x)),
                 }),
             )

@@ -124,12 +124,12 @@
   [document]
   (let [declared (or (:project/inrepl-capabilities document) #{})]
     (if (not (set? declared))
-      (throw (ex :argument {:value declared} :ex/message ":project/inrepl-capabilities must be a set")))
+      (throw (ex :hara/argument (assoc {:value declared} :ex/message ":project/inrepl-capabilities must be a set"))))
     (let [unknown (filter (fn [capability]
                             (not (has? +inrepl-capabilities+ capability)))
                           declared)]
       (if (not (empty? unknown))
-        (throw (ex :serialization {:unknown (vec unknown)} :ex/message "project.edn declares an unknown in-REPL capability")))
+        (throw (ex :hara/serialization (assoc {:unknown (vec unknown)} :ex/message "project.edn declares an unknown in-REPL capability"))))
       declared)))
 
 (defn inrepl-loopback?
@@ -159,10 +159,10 @@
     (if legacy-key
       (let [replacement (get +legacy-runtime-keys+ legacy-key)]
         (throw
-         (ex :serialization {:type :legacy-runtime-key
+         (ex :hara/serialization (assoc {:type :legacy-runtime-key
            :key legacy-key
            :replacement replacement} :ex/message (str "project.edn " legacy-key
-               " is no longer supported; use " replacement))))
+               " is no longer supported; use " replacement)))))
       document)))
 
 (defn- runtime-path-vector
@@ -171,9 +171,9 @@
     (if (vector? value)
       value
       (throw
-       (ex :io {:type :invalid-runtime-profile
+       (ex :hara/io (assoc {:type :invalid-runtime-profile
          :key key
-         :value value} :ex/message (str label " must be a vector of project-relative path strings"))))))
+         :value value} :ex/message (str label " must be a vector of project-relative path strings")))))))
 
 (defn- runtime-map
   [value label]
@@ -181,15 +181,15 @@
     (if (map? value)
       value
       (throw
-       (ex :io {:type :invalid-runtime-profile
-         :value value} :ex/message (str label " must be a map"))))))
+       (ex :hara/io (assoc {:type :invalid-runtime-profile
+         :value value} :ex/message (str label " must be a map")))))))
 
 (defn runtime-profile
   [document runtime]
   (if-not (or (= runtime :jvm) (= runtime :rust))
     (throw
-     (ex :io {:type :invalid-runtime-profile
-       :runtime runtime} :ex/message (str "unsupported project runtime profile " runtime))))
+     (ex :hara/io (assoc {:type :invalid-runtime-profile
+       :runtime runtime} :ex/message (str "unsupported project runtime profile " runtime)))))
   (let [profiles (runtime-map (:project/runtime-profiles document)
                               ":project/runtime-profiles")
         profile (or (get profiles runtime) {})]
@@ -202,12 +202,12 @@
      (if (and (has? output coordinate)
               (not= (get output coordinate) declaration))
        (throw
-        (ex :conflict {:type :runtime-profile-conflict
+        (ex :hara/conflict (assoc {:type :runtime-profile-conflict
           :runtime runtime
           :coordinate coordinate
           :shared (get output coordinate)
           :runtime-requirement declaration} :ex/message (str "conflicting Hara dependency requirements for " coordinate
-              " in runtime profile " runtime)))
+              " in runtime profile " runtime))))
        (assoc output coordinate declaration)))
    shared
    additions))
@@ -309,11 +309,9 @@
     (if (project-path-under-root? root path)
       path
       (throw
-       (ex :serialization {:type :serialization :option option :path path}
-           :ex/message (str "project.edn " option " cannot escape the project root"))))
+       (ex :hara/serialization (assoc {:type :serialization :option option :path path} :ex/message (str "project.edn " option " cannot escape the project root")))))
     (throw
-     (ex :serialization {:type :serialization :option option :path path}
-         :ex/message (str "project.edn " option " expects a non-empty path string")))))
+     (ex :hara/serialization (assoc {:type :serialization :option option :path path} :ex/message (str "project.edn " option " expects a non-empty path string"))))))
 
 (defn validate-project-path-vector
   "Validates a vector of project-relative paths and preserves its order."
@@ -321,8 +319,7 @@
   (if (vector? paths)
     (vec (map (fn [path] (validate-project-path root option path)) paths))
     (throw
-     (ex :serialization {:type :serialization :option option :paths paths}
-         :ex/message (str "project.edn " option " expects a vector of path strings")))))
+     (ex :hara/serialization (assoc {:type :serialization :option option :paths paths} :ex/message (str "project.edn " option " expects a vector of path strings"))))))
 
 (defn validate-project-paths
   "Validates shared and runtime-specific paths against a project root."
@@ -366,11 +363,11 @@
         missing (missing-keys document)]
     (cond
       (not (map? document))
-      (throw (ex :serialization {} :ex/message "project.edn must be an EDN map"))
+      (throw (ex :hara/serialization (assoc {} :ex/message "project.edn must be an EDN map")))
       (not (empty? missing))
-      (throw (ex :not-found {:missing missing} :ex/message (str "project.edn missing required keys: " missing)))
+      (throw (ex :hara/not-found (assoc {:missing missing} :ex/message (str "project.edn missing required keys: " missing))))
       (not= :project (:hara/type document))
-      (throw (ex :serialization {} :ex/message "project.edn :hara/type must be :project"))
+      (throw (ex :hara/serialization (assoc {} :ex/message "project.edn :hara/type must be :project")))
       :else (production/normalize-project document))))
 
 (defn read-text [path]
@@ -395,7 +392,7 @@
 (defn discover [start]
   (loop [current (start-directory start)]
     (if (nil? current)
-      (throw (ex :serialization {:start start} :ex/message (str "no project.edn found above " start)))
+      (throw (ex :hara/serialization (assoc {:start start} :ex/message (str "no project.edn found above " start))))
       (let [manifest (File/join current "project.edn")]
         (if (deref (File/exists? manifest))
           (read-project manifest)
@@ -458,11 +455,11 @@
       (let [source (read-text path)
             namespace (namespace-from-forms (read-forms path))]
         (if (nil? namespace)
-          (throw (ex :io {:path path} :ex/message (str path " does not declare an ns or ns+ namespace"))))
+          (throw (ex :hara/io (assoc {:path path} :ex/message (str path " does not declare an ns or ns+ namespace")))))
         (if (has? (:names state) namespace)
-          (throw (ex :conflict {:type :duplicate-namespace
+          (throw (ex :hara/conflict (assoc {:type :duplicate-namespace
                            :namespace namespace
-                           :paths [(get (:names state) namespace) path]} :ex/message "duplicate namespace in effective project profile")))
+                           :paths [(get (:names state) namespace) path]} :ex/message "duplicate namespace in effective project profile"))))
         {:names (assoc (:names state) namespace path)
          :resources
          (conj (:resources state)
@@ -487,7 +484,7 @@
 (defn main-file [project]
   (let [main (:project/main project)]
     (if (nil? main)
-      (throw (ex :not-found {} :ex/message "project.edn is missing :project/main"))
+      (throw (ex :hara/not-found (assoc {} :ex/message "project.edn is missing :project/main")))
       (let [relative (namespace-path main)
             found (first
                    (filter
@@ -499,8 +496,8 @@
                          (:project/source-paths project))))]
         (if found
           found
-          (throw (ex :not-found {:project/main main} :ex/message (str "cannot find :project/main " main
-                       " in :project/source-paths"))))))))
+          (throw (ex :hara/not-found (assoc {:project/main main} :ex/message (str "cannot find :project/main " main
+                       " in :project/source-paths")))))))))
 
 (defn strip-trailing-separator [path]
   (if (and (> (str/length path) 1) (str/ends-with? path "/"))
@@ -626,9 +623,9 @@
    (fn [index entry]
      (let [namespace (:namespace entry)]
        (if (has? (:namespaces index) namespace)
-         (throw (ex :conflict {:type :duplicate-namespace :namespace namespace
+         (throw (ex :hara/conflict (assoc {:type :duplicate-namespace :namespace namespace
                           :paths [(:path (get (:namespaces index) namespace))
-                                  (:path entry)]} :ex/message "duplicate namespace in project source and test roots"))
+                                  (:path entry)]} :ex/message "duplicate namespace in project source and test roots")))
          {:project project :paths (assoc (:paths index) (:path entry) entry)
           :namespaces (assoc (:namespaces index) namespace entry)})))
    {:project project :paths {} :namespaces {}}

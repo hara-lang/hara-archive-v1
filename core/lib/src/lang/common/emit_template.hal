@@ -33,7 +33,7 @@
   ([entry reserved grammar modules mopts]
    (let [key [(:lang entry) (:module entry) (:id entry)]]
      (if (member? *computing-entries* key)
-       (throw (ex :state {:entry key :stack (vec *computing-entries*)} :ex/message "Recursive code-state computation"))
+       (throw (ex :hara/state (assoc {:entry key :stack (vec *computing-entries*)} :ex/message "Recursive code-state computation")))
        (binding [*computing-entries* (conj *computing-entries* key)]
          (let [module (or (:module mopts) (get modules (:module entry)))
                context (merge {:module module :entry entry} mopts)

@@ -22,7 +22,7 @@
         status (compatible-get output :status)
         data (compatible-get output :data)]
     (if (= "error" status)
-      (throw (ex :database {:output output} :ex/message "Database API returned an error"))
+      (throw (ex :hara/database (assoc {:output output} :ex/message "Database API returned an error")))
       data)))
 
 (defn- format-input-loop
@@ -94,7 +94,7 @@
   [connection spec arguments]
   (let [validation (validation-result spec arguments)]
     (if (not (first validation))
-      (throw (ex :database {:validation (second validation)} :ex/message "Invalid database function arguments"))
+      (throw (ex :hara/database (assoc {:validation (second validation)} :ex/message "Invalid database function arguments")))
       (promise/then
        (protocol/db-query connection (call-format-query spec arguments) [])
        (fn [result]

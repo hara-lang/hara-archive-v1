@@ -67,7 +67,7 @@
                      ['to-jsonb (t-insert-record table-sym data params)]
                      ['to-jsonb (t-insert-symbol table-schema data (:columns params)
                                                  params options)])
-                   :else (throw (ex :database {:input data} :ex/message "Invalid data type")))
+                   :else (throw (ex :hara/database (assoc {:input data} :ex/message "Invalid data type"))))
         form (into [:insert-into table-sym] (second pair))
         extended (base/t-wrap-args form (:args params) {})
         returned (base/t-wrap-returning extended returning {})

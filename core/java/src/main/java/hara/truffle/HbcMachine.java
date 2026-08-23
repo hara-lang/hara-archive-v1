@@ -522,18 +522,20 @@ public final class HbcMachine {
         }
         case THROW -> {
           Object error = pop(stack);
-          if (error instanceof hara.lang.base.Ex.Info info) {
-            HbcProgram.Position position = function.sourceMap().get(ip);
-            info.recordThrow(
-                new hara.lang.base.Ex.Info.Site(
-                    program.namespace(),
-                    null,
-                    position == null ? 0 : position.line(),
-                    position == null ? 0 : position.column()));
+          if (!(error instanceof IExInfo)) {
+            throw new HaraException("throw expects an Exception value created by ex");
           }
+          recordThrow(program, function, ip, error);
           throw new HbcThrown(error);
         }
-        case RETHROW -> throw new HbcThrown(pop(stack));
+        case RETHROW -> {
+          Object error = pop(stack);
+          if (!(error instanceof IExInfo)) {
+            throw new HaraException("rethrow expects an Exception value created by ex");
+          }
+          recordThrow(program, function, ip, error);
+          throw new HbcThrown(error);
+        }
         }
       } catch (RuntimeException failure) {
         Integer target = routeFailure(function, ip, failure, locals, stack);
@@ -570,6 +572,17 @@ public final class HbcMachine {
       }
       ip++;
     }
+  }
+
+  private static void recordThrow(HbcProgram program, Function function, int ip, Object error) {
+    if (!(error instanceof hara.lang.base.Ex.Info info)) return;
+    HbcProgram.Position position = function.sourceMap().get(ip);
+    info.recordThrow(
+        new hara.lang.base.Ex.Info.Site(
+            program.namespace(),
+            null,
+            position == null ? 0 : position.line(),
+            position == null ? 0 : position.column()));
   }
 
   private static HbcSuspended suspend(

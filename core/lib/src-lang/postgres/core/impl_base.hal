@@ -58,8 +58,8 @@
                         (portable-entry value))]
           (if (map? entry)
             [nil entry]
-            (throw (ex :database {:input value :options options} :ex/message "No entry found"))))
-        :else (throw (ex :database {:input value :options options} :ex/message "No entry found"))))
+            (throw (ex :hara/database (assoc {:input value :options options} :ex/message "No entry found")))))
+        :else (throw (ex :hara/database (assoc {:input value :options options} :ex/message "No entry found")))))
 
 (defn prep-table
   "Prepares a table entry that already carries a portable table schema."
@@ -72,7 +72,7 @@
                      (keyword (name (:id entry)))]))]
     (if table-schema
       [entry table-schema options]
-      (throw (ex :not-found {:entry (:id entry) :full full} :ex/message "Table not found in schema")))))
+      (throw (ex :hara/not-found (assoc {:entry (:id entry) :full full} :ex/message "Table not found in schema"))))))
 
 (defn t-input-check
   ([table-schema input] (t-input-check table-schema input {}))
@@ -88,9 +88,9 @@
                           (keys table-schema))
          absent (filter (fn [key] (nil? (get input key))) required)]
      (cond (and valid? (seq invalid))
-           (throw (ex :database {:keys (vec invalid) :data input} :ex/message "Invalid keys"))
+           (throw (ex :hara/database (assoc {:keys (vec invalid) :data input} :ex/message "Invalid keys")))
            (and missing? (seq absent))
-           (throw (ex :not-found {:keys (vec absent) :data input} :ex/message "Missing keys"))
+           (throw (ex :hara/not-found (assoc {:keys (vec absent) :data input} :ex/message "Missing keys")))
            :else input))))
 
 (defn t-input-collect
@@ -228,7 +228,7 @@
            (set? returning) (list '--- (t-returning-cols table-schema returning key-fn))
            (or (map? returning) (keyword? returning) (symbol? returning))
            (list '--- (t-returning-cols table-schema #{returning} key-fn))
-           :else (throw (ex :database {:value returning} :ex/message "Not valid"))))))
+           :else (throw (ex :hara/database (assoc {:value returning} :ex/message "Not valid")))))))
 
 (defn t-where-hashvec-transform
   [clauses transform]
@@ -270,7 +270,7 @@
            (fn [out key value]
              (if (not (schema-key? table-schema key))
                (if *skip-checks* out
-                   (throw (ex :database {:key key :data input} :ex/message "Invalid columns")))
+                   (throw (ex :hara/database (assoc {:key key :data input} :ex/message "Invalid columns"))))
                (let [attrs (schema-attrs table-schema key)
                      type (:type attrs)
                      pair (cond (nil? value) [:is-null]
@@ -284,7 +284,7 @@
            input))]
     (cond (util/hashvec? where) (t-where-hashvec where transform)
           (map? where) (transform where)
-          :else (throw (ex :database {:value where} :ex/message "Not Allowed")))))
+          :else (throw (ex :hara/database (assoc {:value where} :ex/message "Not Allowed"))))))
 
 (defn t-wrap-json [form as json-output into field]
   (if (or (= :json as) (= :jsonb as) (and (= :record as) into))
@@ -302,7 +302,7 @@
                              (conj out [:left-join target :on
                                         [:= (list '. #{source-sym} #{(t-key-fn table-schema value)})
                                          (list '. target #{"id"})]]))
-                           (throw (ex :database {:key value} :ex/message "Key is not a ref"))))
+                           (throw (ex :hara/database (assoc {:key value} :ex/message "Key is not a ref")))))
                        :else (conj out value)))
                [] join)))
 
@@ -351,7 +351,7 @@
                        :no-key-update [:for :no :key :update]} mode)
           suffix (get {:skip-locked [:skip :locked] :nowait [:nowait]} option)]
       (if (nil? clause)
-        (throw (ex :database {:input mode} :ex/message "Invalid lock mode"))
+        (throw (ex :hara/database (assoc {:input mode} :ex/message "Invalid lock mode")))
         (into (newline form (:newline params))
               (if suffix (into clause suffix) clause))))))
 

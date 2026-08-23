@@ -11,11 +11,9 @@
 (defn- document-error
   [finding message data]
   (throw
-   (ex :argument
-       (assoc
+   (ex :hara/argument (assoc (assoc
         (assoc data :type :std.typed.catalog/invalid-document)
-        :finding/type finding)
-       :ex/message message)))
+        :finding/type finding) :ex/message message))))
 
 (defn- ensure
   [condition finding message data]

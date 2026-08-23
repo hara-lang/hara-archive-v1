@@ -74,7 +74,7 @@
       (if function
         (apply function work arguments)
         (throw
-         (ex :generic {:work/id (:id (:spec work))} :ex/message "Work value is not directly callable"))))))
+         (ex :hara/generic (assoc {:work/id (:id (:spec work))} :ex/message "Work value is not directly callable")))))))
 
 (extend-type WorkRef IWorkRef
   (work-id [reference]
@@ -94,13 +94,13 @@
            (has? work :op))
     work
     (if (nil? work)
-      (throw (ex :argument {} :ex/message "Work value cannot be nil"))
+      (throw (ex :hara/argument (assoc {} :ex/message "Work value cannot be nil")))
       (let [spec (IWork/work-spec work)]
         (if (map? spec)
           spec
           (throw
-           (ex :generic {:work work
-                     :spec spec} :ex/message "IWork/work-spec must return a map")))))))
+           (ex :hara/generic (assoc {:work work
+                     :spec spec} :ex/message "IWork/work-spec must return a map"))))))))
 
 (defn work-reference
   [id]

@@ -253,7 +253,7 @@
 
 (defn partition-stream [size source partial?]
   (if (< size 1)
-    (throw (ex :io {:size size} :ex/message "Partition size must be positive")))
+    (throw (ex :hara/io (assoc {:size size} :ex/message "Partition size must be positive"))))
   (own
    (stream
     (fn []

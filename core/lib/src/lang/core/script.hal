@@ -302,9 +302,8 @@
                      source)
           value (get (deref +modules+) module)]
       (if (nil? value)
-        (throw (ex :dependency {:module module
-                         :source source}
-                   :ex/message "Required namespace did not provide a script module"))
+        (throw (ex :hara/dependency (assoc {:module module
+                         :source source} :ex/message "Required namespace did not provide a script module")))
         (do
           (swap! +loaded-modules+ assoc module true)
           module)))))
@@ -329,7 +328,7 @@
     (empty? options) [(namespace-symbol) {}]
     (map? (first options)) [(namespace-symbol) (first options)]
     (symbol? (first options)) [(first options) (or (second options) {})]
-    :else (throw (ex :dependency {:options options} :ex/message "script expects an optional module symbol and config map"))))
+    :else (throw (ex :hara/dependency (assoc {:options options} :ex/message "script expects an optional module symbol and config map")))))
 
 (defn script-form
   [lang options]
@@ -449,8 +448,8 @@
     [emitted []]
     (let [entry (dependency-entry qualified)]
       (if (nil? entry)
-        (throw (ex :not-found {:dependency qualified
-                         :lang lang} :ex/message "Tahto dependency entry is missing"))
+        (throw (ex :hara/not-found (assoc {:dependency qualified
+                         :lang lang} :ex/message "Tahto dependency entry is missing")))
         (let [module (get (deref +modules+) (:module entry))
               result (compile-one lang (:form-input entry) module entry)
               dependencies (vec (:code (:dependencies result)))
@@ -598,9 +597,9 @@
         script (get (deref +scripts+) [module lang])
         instance (:runtime script)]
     (if (nil? script)
-      (throw (ex :dependency {:module module :lang lang} :ex/message "Tahto script is not configured"))
+      (throw (ex :hara/dependency (assoc {:module module :lang lang} :ex/message "Tahto script is not configured")))
       (if (nil? instance)
-        (throw (ex :dependency {:module module :lang lang} :ex/message "Tahto script runtime is not started"))
+        (throw (ex :hara/dependency (assoc {:module module :lang lang} :ex/message "Tahto script runtime is not started")))
         (let [source (compile-form lang module form)
               response (evaluation/eval-await instance source {})]
           (if (and (map? response) (has? response :value))

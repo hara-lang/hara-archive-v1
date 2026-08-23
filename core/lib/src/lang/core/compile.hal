@@ -268,7 +268,7 @@
         book (or (:book options)
                  (registry/registry-book lang :default nil))]
     (if (nil? book)
-      (throw (ex :generic {:lang lang} :ex/message "Tahto language book is not registered"))
+      (throw (ex :hara/generic (assoc {:lang lang} :ex/message "Tahto language book is not registered")))
       (let [selected (:selection book)
             all-modules (merge (or (:modules book) {}) modules)
             context {:book (assoc book :modules all-modules)

@@ -53,8 +53,8 @@
     (if entry
       (if (:value entry)
         (or (:free entry) (:raw entry)
-            (throw (ex :generic {:form form :entry entry} :ex/message "Reserved value has no emitted representation")))
-        (throw (ex :generic {:form form :entry entry} :ex/message "Reserved operation cannot be used as a value")))
+            (throw (ex :hara/generic (assoc {:form form :entry entry} :ex/message "Reserved value has no emitted representation"))))
+        (throw (ex :hara/generic (assoc {:form form :entry entry} :ex/message "Reserved operation cannot be used as a value"))))
       nil)))
 
 (defn emit-free-raw
@@ -117,7 +117,7 @@
         macro-fn (or (:macro entry) (:value/template entry))]
     (if macro-fn
       (*emit-fn* (macro-fn form) grammar mopts)
-      (throw (ex :generic {:form form :entry entry} :ex/message "Macro operation has no expansion function")))))
+      (throw (ex :hara/generic (assoc {:form form :entry entry} :ex/message "Macro operation has no expansion function"))))))
 
 (defn emit-array
   "returns an array of emitted strings"
@@ -195,7 +195,7 @@
   {:added "3.0"}
   [raw args grammar mopts]
   (if (not (= 1 (count args)))
-    (throw (ex :dependency {:raw raw :arguments args} :ex/message "Single argument required"))
+    (throw (ex :hara/dependency (assoc {:raw raw :arguments args} :ex/message "Single argument required")))
     (str raw (emit-wrapping (first args) grammar mopts))))
 
 (defn emit-post
@@ -203,7 +203,7 @@
   {:added "3.0"}
   [raw args grammar mopts]
   (if (not (= 1 (count args)))
-    (throw (ex :dependency {:raw raw :arguments args} :ex/message "Single argument required"))
+    (throw (ex :hara/dependency (assoc {:raw raw :arguments args} :ex/message "Single argument required")))
     (str (emit-wrapping (first args) grammar mopts) raw)))
 
 (defn emit-prefix
@@ -211,7 +211,7 @@
   {:added "4.0"}
   [raw args grammar mopts]
   (if (not (= 1 (count args)))
-    (throw (ex :dependency {:raw raw :arguments args} :ex/message "Single argument required"))
+    (throw (ex :hara/dependency (assoc {:raw raw :arguments args} :ex/message "Single argument required")))
     (str raw (get-in grammar [:default :common :space])
          (emit-wrapping (first args) grammar mopts))))
 
@@ -220,7 +220,7 @@
   {:added "4.0"}
   [raw args grammar mopts]
   (if (not (= 1 (count args)))
-    (throw (ex :dependency {:raw raw :arguments args} :ex/message "Single argument required"))
+    (throw (ex :hara/dependency (assoc {:raw raw :arguments args} :ex/message "Single argument required")))
     (str (emit-wrapping (first args) grammar mopts)
          (get-in grammar [:default :common :space]) raw)))
 
@@ -229,7 +229,7 @@
   {:added "3.0"}
   [raw args grammar mopts]
   (if (= 0 (count args))
-    (throw (ex :dependency {:raw raw} :ex/message "One or more arguments required"))
+    (throw (ex :hara/dependency (assoc {:raw raw} :ex/message "One or more arguments required")))
     (let [space (get-in grammar [:default :common :space])]
       (str/join (str space raw space)
                    (emit-array args grammar mopts emit-wrapping)))))
@@ -256,7 +256,7 @@
   [form grammar mopts]
   (let [arguments (vec (rest form))]
     (if (not (= 3 (count arguments)))
-      (throw (ex :argument {:form form} :ex/message "Ternary operation expects three arguments"))
+      (throw (ex :hara/argument (assoc {:form form} :ex/message "Ternary operation expects three arguments")))
       (let [space (get-in grammar [:default :common :space])
             infix (get-in grammar [:default :infix :if])]
         (str (emit-wrapping (nth arguments 0) grammar mopts)
@@ -283,7 +283,7 @@
       (let [pairs (vec (partition 2 forms))
             final-pair (last pairs)]
         (if (not (= :else (first final-pair)))
-          (throw (ex :generic {:form final-pair} :ex/message "ternary cond has to end with :else"))
+          (throw (ex :hara/generic (assoc {:form final-pair} :ex/message "ternary cond has to end with :else")))
           (emit-infix-if-single
            (reduce (fn [acc pair]
                      (list :? (first pair) (second pair) acc))
@@ -302,7 +302,7 @@
   {:added "3.0"}
   [raw args grammar mopts]
   (if (not (= 2 (count args)))
-    (throw (ex :dependency {:raw raw :arguments args} :ex/message "Two arguments required"))
+    (throw (ex :hara/dependency (assoc {:raw raw :arguments args} :ex/message "Two arguments required")))
     (emit-infix raw args grammar mopts)))
 
 (defn emit-assign
@@ -310,7 +310,7 @@
   {:added "3.0"}
   [raw args grammar mopts]
   (if (not (= 2 (count args)))
-    (throw (ex :dependency {:arguments args} :ex/message "Two assignment arguments required"))
+    (throw (ex :hara/dependency (assoc {:arguments args} :ex/message "Two assignment arguments required")))
     (let [space (get-in grammar [:default :common :space])
           assign (or raw (get-in grammar [:default :common :assign]))]
       (str/join (str space assign space)
@@ -334,7 +334,7 @@
         space (get-in grammar [:default :common :space])
         separator (get-in grammar [:default :common :sep])]
     (if (and (not multi) (> (count values) 1))
-      (throw (ex :generic {:raw raw :arguments values} :ex/message "One or zero arguments for return"))
+      (throw (ex :hara/generic (assoc {:raw raw :arguments values} :ex/message "One or zero arguments for return")))
       (str raw
            (if (empty? values) "" space)
            (str/join (str separator space)
@@ -423,11 +423,11 @@
                                      grammar mopts)
                    (= kind :unknown)
                    (if target-ns
-                     (throw (ex :dependency {:lang (:lang mopts)
+                     (throw (ex :hara/dependency (assoc {:lang (:lang mopts)
                                       :namespace target-ns
                                       :input sym
                                       :layout layout
-                                      :classify classification} :ex/message "Unknown namespace"))
+                                      :classify classification} :ex/message "Unknown namespace")))
                      (name sym))
                    link-fn (*emit-fn* (link-fn sym mopts) grammar mopts)
                    (or (= layout :full) (= layout :host))
@@ -601,7 +601,7 @@
   (let [sym (first args)
         target (if (keyword? sym) (name sym) sym)]
     (if (nil? sym)
-      (throw (ex :dependency {:raw raw :arguments args} :ex/message "One or more arguments required for constructor"))
+      (throw (ex :hara/dependency (assoc {:raw raw :arguments args} :ex/message "One or more arguments required for constructor")))
       (str raw " "
            (*emit-fn* target grammar mopts)
            (emit-invoke-layout
@@ -626,7 +626,7 @@
   [entry grammar mopts]
   (cond (symbol? entry)
         (if (namespace entry)
-          (throw (ex :dependency {:entry entry} :ex/message "Index symbol cannot be namespaced"))
+          (throw (ex :hara/dependency (assoc {:entry entry} :ex/message "Index symbol cannot be namespaced")))
           (str "." (emit-symbol entry grammar mopts)))
 
         (list? entry)
@@ -635,7 +635,7 @@
               apply-token (:apply (helper/get-options grammar [:default :invoke]))
               braces (meta operation)]
           (if (not (symbol? operation))
-            (throw (ex :dependency {:entry entry} :ex/message "Index invocation requires a symbol"))
+            (throw (ex :hara/dependency (assoc {:entry entry} :ex/message "Index invocation requires a symbol")))
             (emit-invoke-raw
              (str apply-token
                   (emit-symbol operation grammar mopts)
@@ -644,21 +644,21 @@
 
         (vector? entry)
         (if (not (= 1 (count entry)))
-          (throw (ex :dependency {:entry entry} :ex/message "Index vector requires one value"))
+          (throw (ex :hara/dependency (assoc {:entry entry} :ex/message "Index vector requires one value")))
           (let [options (helper/get-options grammar [:default :index])]
             (str (:start options)
                  (*emit-fn* (first entry) grammar mopts)
                  (:end options))))
 
         (set? entry) (str "." (*emit-fn* entry grammar mopts))
-        :else (throw (ex :argument {:entry entry} :ex/message "Invalid index entry"))))
+        :else (throw (ex :hara/argument (assoc {:entry entry} :ex/message "Invalid index entry")))))
 
 (defn emit-index
   "emits an indexed expression"
   {:added "3.0"}
   [_ args grammar mopts]
   (if (< (count args) 2)
-    (throw (ex :dependency {:arguments args} :ex/message "Indexed expression requires two or more arguments"))
+    (throw (ex :hara/dependency (assoc {:arguments args} :ex/message "Indexed expression requires two or more arguments")))
     (let [target (emit-wrapping (first args) grammar mopts)
           entries (map (fn [entry] (emit-index-entry entry grammar mopts))
                        (rest args))]
@@ -710,9 +710,9 @@
            (= mode :with-uuid) (emit-with-uuid key form grammar mopts)
            (= mode :with-rand) (emit-with-rand key form grammar mopts)
            (= mode :throw)
-           (throw (ex :generic {:symbol (first form) :form form} :ex/message "Not allowed as op"))
+           (throw (ex :hara/generic (assoc {:symbol (first form) :form form} :ex/message "Not allowed as op")))
            custom (custom key entry form grammar mopts)
-           :else (throw (ex :generic {:emit mode :key key :form form :entry entry} :ex/message "No matching emit clause"))))))
+           :else (throw (ex :hara/generic (assoc {:emit mode :key key :form form :entry entry} :ex/message "No matching emit clause")))))))
 
 (defn form-key
   "returns the grammar key and type associated with a form"
@@ -734,7 +734,7 @@
                   (or found (= banned-key key)))
                 false
                 (or (:banned grammar) #{}))
-      (throw (ex :generic {:form form :key key :type (second classified)} :ex/message "Disallowed in form"))
+      (throw (ex :hara/generic (assoc {:form form :key key :type (second classified)} :ex/message "Disallowed in form")))
       classified)))
 
 (def +emit-lookup+

@@ -42,9 +42,7 @@
 
     :else
     (throw
-     (ex :dependency
-         {:descriptor value}
-         :ex/message "wget file descriptors must be strings or [source output]"))))
+     (ex :hara/dependency (assoc {:descriptor value} :ex/message "wget file descriptors must be strings or [source output]")))))
 
 (defn download
   ([url]

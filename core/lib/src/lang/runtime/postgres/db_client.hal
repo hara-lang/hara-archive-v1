@@ -61,7 +61,7 @@
   [runtime source]
   (let [value (deref (:connection runtime))]
     (if (nil? value)
-      (throw (ex :database {:id (:id runtime)} :ex/message "PostgreSQL runtime is not started"))
+      (throw (ex :hara/database (assoc {:id (:id runtime)} :ex/message "PostgreSQL runtime is not started")))
       (if (execute-only? source)
         (deref (connection/exec value source))
         (normalize-query
@@ -85,7 +85,7 @@
     (let [compiled (module-compile module)
           diagnostics (:diagnostics compiled)]
       (if (not (empty? diagnostics))
-        (throw (ex :database {:module module :diagnostics diagnostics} :ex/message "PostgreSQL module compilation failed")))
+        (throw (ex :hara/database (assoc {:module module :diagnostics diagnostics} :ex/message "PostgreSQL module compilation failed"))))
       (deref (connection/batch-exec (deref (:connection runtime)) (:output compiled)))
       (swap! (:modules runtime) conj module)
       runtime)))

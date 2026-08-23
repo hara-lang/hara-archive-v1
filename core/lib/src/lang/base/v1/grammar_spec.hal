@@ -18,8 +18,7 @@
                 (let [resolved (resolve reference)]
                   (if resolved
                     (assoc record field resolved)
-                    (throw (ex :dependency {:field field :reference reference}
-                               :ex/message "Unable to hydrate V1 grammar reference"))))
+                    (throw (ex :hara/dependency (assoc {:field field :reference reference} :ex/message "Unable to hydrate V1 grammar reference")))))
                 record)))
           entry
           +reference-fields+))

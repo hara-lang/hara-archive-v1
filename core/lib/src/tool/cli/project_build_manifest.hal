@@ -34,11 +34,11 @@
         route (:route extension)
         handler (:handler extension)]
     (if (nil? (entry-by (:cli/apps manifest) :app/id app-id))
-      (throw (ex :not-found {:app/id app-id} :ex/message (str "CLI manifest is missing app " app-id)))
+      (throw (ex :hara/not-found (assoc {:app/id app-id} :ex/message (str "CLI manifest is missing app " app-id))))
       nil)
     (if (not= (:route/handler route) (:handler/id handler))
-      (throw (ex :generic {:route/handler (:route/handler route)
-                       :handler/id (:handler/id handler)} :ex/message "CLI route and handler ids do not match"))
+      (throw (ex :hara/generic (assoc {:route/handler (:route/handler route)
+                       :handler/id (:handler/id handler)} :ex/message "CLI route and handler ids do not match")))
       nil)
     (assoc manifest
            :cli/apps

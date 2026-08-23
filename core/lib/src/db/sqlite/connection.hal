@@ -33,9 +33,9 @@
     (if function
       (apply function (cons (:id value) arguments))
       (throw
-       (ex :database {:type :db/sqlite-operation-unavailable
+       (ex :hara/database (assoc {:type :db/sqlite-operation-unavailable
          :provider (:provider value)
-         :operation operation} :ex/message "SQLite backend operation is unavailable")))))
+         :operation operation} :ex/message "SQLite backend operation is unavailable"))))))
 
 (extend-type SQLiteConnection protocol/IDatabase
   (db-engine [_] :sqlite)

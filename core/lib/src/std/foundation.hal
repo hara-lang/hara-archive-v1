@@ -1021,7 +1021,7 @@
             (<= start end)
             (<= end (count value)))
      (vec (take (- end start) (drop start value)))
-     (throw (ex :foundation/invalid-subvec-bounds {:value value :start start :end end} :ex/message "subvec requires a vector and valid bounds" :ex/class :ex.class/argument)))))
+     (throw (ex :foundation/invalid-subvec-bounds (assoc {:value value :start start :end end} :ex/message "subvec requires a vector and valid bounds" :ex/class :ex.class/argument))))))
 
 (defn ^{:schema [:function [:fn [:fn] :fn]
                             [:fn [:fn :any] :any]]}
@@ -1408,7 +1408,7 @@
   "Returns every amount-th item as a vector. Throws on non-positive amount."
   [amount values]
   (if (<= amount 0)
-    (throw (ex :foundation/invalid-take-nth {:amount amount} :ex/message "take-nth expects a positive amount" :ex/class :ex.class/argument))
+    (throw (ex :foundation/invalid-take-nth (assoc {:amount amount} :ex/message "take-nth expects a positive amount" :ex/class :ex.class/argument)))
     (let [it (iter values)]
       (loop [index 0
              result []]
@@ -1849,8 +1849,8 @@
                             (keys remaining))]
           (if (empty? ready)
             (let [cycle (find-cycle remaining)]
-              (throw (ex :foundation/circular-dependency {:data remaining :list ordered :cycle cycle} :ex/message (str "Graph Contains Circular Dependency: "
-                                   (pr-str cycle)) :ex/class :ex.class/state)))
+              (throw (ex :foundation/circular-dependency (assoc {:data remaining :list ordered :cycle cycle} :ex/message (str "Graph Contains Circular Dependency: "
+                                   (pr-str cycle)) :ex/class :ex.class/state))))
             (let [nodes (set ready)
                   next-remaining
                   (reduce-kv (fn [output node dependencies]
@@ -1966,9 +1966,9 @@
       (if (= expanded current)
         current
         (if (>= expansions 1000)
-          (throw (ex :foundation/macro-expansion-limit {:form current
+          (throw (ex :foundation/macro-expansion-limit (assoc {:form current
                            :expansions expansions
-                           :limit 1000} :ex/message "macro expansion exceeded 1000 steps" :ex/class :ex.class/limit))
+                           :limit 1000} :ex/message "macro expansion exceeded 1000 steps" :ex/class :ex.class/limit)))
           (recur expanded (+ expansions 1)))))))
 
 (declare macroexpand-all)
@@ -2165,7 +2165,7 @@
         then
 
         (= 1 (count bindings))
-        (throw (ex :foundation/invalid-if-let-bindings {:bindings bindings} :ex/message "if-let requires an even binding vector" :ex/class :ex.class/syntax))
+        (throw (ex :foundation/invalid-if-let-bindings (assoc {:bindings bindings} :ex/message "if-let requires an even binding vector" :ex/class :ex.class/syntax)))
 
         :else
         (let [binding (first bindings)
@@ -2182,7 +2182,7 @@
   comprehension-error
   "Throws a comprehension binding error with the original binding form."
   [message bindings]
-  (throw (ex :foundation/invalid-comprehension-bindings {:bindings bindings} :ex/message message :ex/class :ex.class/syntax)))
+  (throw (ex :foundation/invalid-comprehension-bindings (assoc {:bindings bindings} :ex/message message :ex/class :ex.class/syntax))))
 
 (defn- ^{:schema [:fn [:vector :vector :bool :vector] :map]}
   comprehension-group
@@ -2515,7 +2515,7 @@
   (if (or (not (vector? binding))
           (not (= 2 (count binding)))
           (not (symbol? (first binding))))
-    (throw (ex :foundation/invalid-dotimes-binding {:binding binding} :ex/message "dotimes requires [index count]" :ex/class :ex.class/syntax))
+    (throw (ex :foundation/invalid-dotimes-binding (assoc {:binding binding} :ex/message "dotimes requires [index count]" :ex/class :ex.class/syntax)))
     (let [index (first binding)
           amount (second binding)
           limit (gensym "limit")]

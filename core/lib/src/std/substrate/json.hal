@@ -207,7 +207,7 @@
   [value]
   (let [output (normalize-frame value)]
     (if (not (valid-frame? output))
-      (throw (ex :serialization {:frame output} :ex/message "invalid node json frame"))
+      (throw (ex :hara/serialization (assoc {:frame output} :ex/message "invalid node json frame")))
       (Json/write output))))
 
 (defn decode-frame
@@ -216,5 +216,5 @@
   (let [output (normalize-frame
                 (if (string? input) (Json/read input) input))]
     (if (not (valid-frame? output))
-      (throw (ex :serialization {:frame output} :ex/message "invalid node json frame"))
+      (throw (ex :hara/serialization (assoc {:frame output} :ex/message "invalid node json frame")))
       output)))

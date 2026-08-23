@@ -46,9 +46,7 @@
     (string? command) (conj argv command)
     :else
     (throw
-     (ex :dependency
-         {:command command}
-         :ex/message "tmux command must be a string or argv vector"))))
+     (ex :hara/dependency (assoc {:command command} :ex/message "tmux command must be a string or argv vector")))))
 
 (defn kill-server-command
   []
@@ -98,9 +96,7 @@
 
       :else
       (throw
-       (ex :dependency
-           {:command command}
-           :ex/message "tmux command must be a string or argv vector")))))
+       (ex :hara/dependency (assoc {:command command} :ex/message "tmux command must be a string or argv vector"))))))
 
 (defn new-window-command
   ([session key]

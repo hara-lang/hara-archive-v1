@@ -71,7 +71,7 @@
                      (or (member? #{:full :host} (:layout mopts))
                          (= key :defglobal)))
         _ (if (and qualify (nil? module-id))
-            (throw (ex :not-found (select-keys mopts [:module :entry]) :ex/message "Module not found"))
+            (throw (ex :hara/not-found (assoc (select-keys mopts [:module :entry]) :ex/message "Module not found")))
             true)
         target-symbol (if qualify
                         (with-meta (symbol (name module-id)
@@ -85,7 +85,7 @@
           (or (= key :defn) (= key :defgen))
           (function/emit-fn key target-form grammar mopts)
           (= key :declare) (emit-declare key target-form grammar mopts)
-          :else (throw (ex :generic {:key key :form target-form} :ex/message "Unsupported top-level form")))))
+          :else (throw (ex :hara/generic (assoc {:key key :form target-form} :ex/message "Unsupported top-level form"))))))
 
 (def +emit-lookup+
   (assoc common/+emit-lookup+
@@ -114,7 +114,7 @@
                              :with-deref special/emit-with-deref})
             (= type :fn) (function/emit-fn key form grammar mopts)
             (= type :def) (emit-top-level key form grammar mopts)
-            :else (throw (ex :not-found {:key key :symbol sym :entry entry} :ex/message "Missing emitter")))
+            :else (throw (ex :hara/not-found (assoc {:key key :symbol sym :entry entry} :ex/message "Missing emitter"))))
       (catch Throwable error
         (provenance/throw-with-provenance
          "lang.core emit form failed"

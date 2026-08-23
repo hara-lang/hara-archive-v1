@@ -27,21 +27,19 @@
     (if operation
       {:operation operation :arguments arguments}
       (if (empty? arguments)
-        (throw (ex :io {} :ex/message
-                   "extension requires inspect, wit-import, wit-project, bind, check, build, install, or test"))
+        (throw (ex :hara/io (assoc {} :ex/message "extension requires inspect, wit-import, wit-project, bind, check, build, install, or test")))
         {:operation (keyword (first arguments))
          :arguments (vec (rest arguments))}))))
 
 (defn required [document key origin]
   (if (has? document key)
     (get document key)
-    (throw (ex :dependency {:key key} :ex/message (str origin " requires " key)))))
+    (throw (ex :hara/dependency (assoc {:key key} :ex/message (str origin " requires " key))))))
 
 (defn non-empty-string [value label]
   (if (and (string? value) (not (str/blank? value)))
     value
-    (throw (ex :argument {:value value} :ex/message
-               (str label " must be a non-empty string")))))
+    (throw (ex :hara/argument (assoc {:value value} :ex/message (str label " must be a non-empty string"))))))
 
 (defn tail [values]
   (vec (rest values)))
@@ -56,22 +54,18 @@
 
 (defn required-flag-value [remaining option]
   (if (empty? remaining)
-    (throw (ex :dependency {:option option} :ex/message
-               (str option " requires a value")))
+    (throw (ex :hara/dependency (assoc {:option option} :ex/message (str option " requires a value"))))
     (let [value (first remaining)]
       (if (str/starts-with? value "--")
-        (throw (ex :dependency {:option option} :ex/message
-                   (str option " requires a value")))
+        (throw (ex :hara/dependency (assoc {:option option} :ex/message (str option " requires a value"))))
         value))))
 
 (defn add-authoring-option [options allowed key spelling value]
   (if (not (get allowed key))
-    (throw (ex :syntax {:option spelling} :ex/message
-               (str "unknown extension option: " spelling)))
+    (throw (ex :hara/syntax (assoc {:option spelling} :ex/message (str "unknown extension option: " spelling))))
     nil)
   (if (has? options key)
-    (throw (ex :syntax {:option spelling} :ex/message
-               (str "duplicate extension option: " spelling)))
+    (throw (ex :hara/syntax (assoc {:option spelling} :ex/message (str "duplicate extension option: " spelling))))
     (assoc options key (non-empty-string value spelling))))
 
 (defn parse-authoring-arguments [arguments allowed]
@@ -134,11 +128,9 @@
 
           (= argument "--strict")
           (if (not (get allowed :strict))
-            (throw (ex :syntax {:option argument} :ex/message
-                       (str "unknown extension option: " argument)))
+            (throw (ex :hara/syntax (assoc {:option argument} :ex/message (str "unknown extension option: " argument))))
             (if (has? options :strict)
-              (throw (ex :syntax {:option argument} :ex/message
-                         (str "duplicate extension option: " argument)))
+              (throw (ex :hara/syntax (assoc {:option argument} :ex/message (str "duplicate extension option: " argument))))
               (recur more positionals (assoc options :strict true))))
 
           inline-out
@@ -173,8 +165,7 @@
                  (add-authoring-option options allowed :ir "--ir" inline-ir))
 
           (str/starts-with? argument "-")
-          (throw (ex :syntax {:option argument} :ex/message
-                     (str "unknown extension option: " argument)))
+          (throw (ex :hara/syntax (assoc {:option argument} :ex/message (str "unknown extension option: " argument))))
 
           :else
           (recur more (conj positionals argument) options))))))
@@ -182,8 +173,7 @@
 (defn required-authoring-option [options key spelling operation]
   (if (has? options key)
     (get options key)
-    (throw (ex :dependency {:option spelling} :ex/message
-               (str "extension " operation " requires " spelling)))))
+    (throw (ex :hara/dependency (assoc {:option spelling} :ex/message (str "extension " operation " requires " spelling))))))
 
 (defn inspect-command [arguments]
   (let [parsed (parse-authoring-arguments arguments {:out true :namespace true})
@@ -191,8 +181,7 @@
         options (:options parsed)]
     (if (= 1 (count positionals))
       nil
-      (throw (ex :io {:arguments arguments} :ex/message
-                 "extension inspect requires one WASM module")))
+      (throw (ex :hara/io (assoc {:arguments arguments} :ex/message "extension inspect requires one WASM module"))))
     (let [module (first positionals)
           output (required-authoring-option options :out "--out" "inspect")
           namespace (:namespace options)
@@ -213,8 +202,7 @@
        options (:options parsed)]
     (if (= 1 (count positionals))
       nil
-      (throw (ex :io {:arguments arguments} :ex/message
-                "extension wit-import requires one .wit source")))
+      (throw (ex :hara/io (assoc {:arguments arguments} :ex/message "extension wit-import requires one .wit source"))))
     (let [source (first positionals)
          output (required-authoring-option options :out "--out" "wit-import")
          flags (vec (concat
@@ -237,8 +225,7 @@
        options (:options parsed)]
     (if (= 1 (count positionals))
       nil
-      (throw (ex :io {:arguments arguments} :ex/message
-                "extension wit-project requires one .hal interface")))
+      (throw (ex :hara/io (assoc {:arguments arguments} :ex/message "extension wit-project requires one .hal interface"))))
     (let [interface (first positionals)
          output (required-authoring-option options :out "--out" "wit-project")
          flags (vec (concat
@@ -257,8 +244,7 @@
         options (:options parsed)]
     (if (= 1 (count positionals))
       nil
-      (throw (ex :io {:arguments arguments} :ex/message
-                 "extension bind requires one .hal interface")))
+      (throw (ex :hara/io (assoc {:arguments arguments} :ex/message "extension bind requires one .hal interface"))))
     (let [interface (first positionals)
           module (required-authoring-option options :module "--module" "bind")
           output (required-authoring-option options :out "--out" "bind")]
@@ -275,12 +261,10 @@
 
 (defn validate-export [name export]
   (if (not (map? export))
-    (throw (ex :argument {:export name} :ex/message
-               "extension export must be a map"))
+    (throw (ex :hara/argument (assoc {:export name} :ex/message "extension export must be a map")))
     nil)
   (if (not (vector? (required export :args "extension export")))
-    (throw (ex :argument {:export name} :ex/message
-               "extension export :args must be a vector"))
+    (throw (ex :hara/argument (assoc {:export name} :ex/message "extension export :args must be a vector")))
     nil)
   (required export :returns "extension export")
   (if-let [raw-export (:wasm/export export)]
@@ -292,12 +276,12 @@
   (if (nil? targets)
     []
     (if (not (map? targets))
-      (throw (ex :io {} :ex/message "extension :targets must be a map"))
+      (throw (ex :hara/io (assoc {} :ex/message "extension :targets must be a map")))
       (vec
        (map (fn [entry]
               (let [target (val entry)]
                 (if (not (map? target))
-                  (throw (ex :io {} :ex/message "extension target must be a map"))
+                  (throw (ex :hara/io (assoc {} :ex/message "extension target must be a map")))
                   (asset/safe-path
                    (non-empty-string
                     (required target :module "extension target")
@@ -310,16 +294,14 @@
 
 (defn validate-manifest [namespace document origin]
   (if (not (map? document))
-    (throw (ex :syntax {} :ex/message
-               (str "extension/malformed " origin ": manifest must be a map")))
+    (throw (ex :hara/syntax (assoc {} :ex/message (str "extension/malformed " origin ": manifest must be a map"))))
     nil)
   (let [unknown (vec (filter (fn [key] (not (get +manifest-fields+ key)))
                              (keys document)))]
     (if (empty? unknown)
       nil
-      (throw (ex :syntax {:fields unknown} :ex/message
-                 (str "extension/malformed " origin
-                      ": unknown manifest fields " unknown)))))
+      (throw (ex :hara/syntax (assoc {:fields unknown} :ex/message (str "extension/malformed " origin
+                      ": unknown manifest fields " unknown))))))
   (let [namespace (str namespace)
         provider (required document :provider origin)
         abi (required document :abi origin)
@@ -332,23 +314,19 @@
         root (if-let [value (:root document)] (asset/safe-path value) nil)]
     (if (valid-namespace? namespace)
       nil
-      (throw (ex :dependency {:namespace namespace} :ex/message
-                 "namespace must be a qualified lower-case symbol")))
+      (throw (ex :hara/dependency (assoc {:namespace namespace} :ex/message "namespace must be a qualified lower-case symbol"))))
     (if (and (map? exports)
              (every? (fn [entry]
                        (do (validate-export (key entry) (val entry)) true))
                      exports))
       nil
-      (throw (ex :argument {} :ex/message
-                 "extension :exports must be a map")))
+      (throw (ex :hara/argument (assoc {} :ex/message "extension :exports must be a map"))))
     (if (and (vector? capabilities) (every? keyword? capabilities))
       nil
-      (throw (ex :argument {} :ex/message
-                 "extension :capabilities must be a keyword vector")))
+      (throw (ex :hara/argument (assoc {} :ex/message "extension :capabilities must be a keyword vector"))))
     (if (and (vector? assets) (every? string? assets))
       nil
-      (throw (ex :argument {} :ex/message
-                 "extension :assets must be a string vector")))
+      (throw (ex :hara/argument (assoc {} :ex/message "extension :assets must be a string vector"))))
     (cond
       (= provider :wasm)
       (let [memory? (= abi :memory.v1)
@@ -359,16 +337,13 @@
                  (or (= abi :core.v1)
                      (and memory? (empty? capabilities) bindings?)))
           nil
-          (throw (ex :dependency {} :ex/message
-                     "WASM providers require :abi :core.v1 or :memory.v1; memory.v1 requires empty capabilities and a bindings.edn asset"))))
+          (throw (ex :hara/dependency (assoc {} :ex/message "WASM providers require :abi :core.v1 or :memory.v1; memory.v1 requires empty capabilities and a bindings.edn asset")))))
       (= provider :hta)
       (if (and (nil? module) (not (empty? target-paths)) (= abi :hta.v1))
         nil
-        (throw (ex :dependency {} :ex/message
-                   "HTA providers require :targets, :abi :hta.v1, and cannot declare :module")))
+        (throw (ex :hara/dependency (assoc {} :ex/message "HTA providers require :targets, :abi :hta.v1, and cannot declare :module"))))
       :else
-      (throw (ex :generic {} :ex/message
-                 (str "unsupported extension provider " provider))))
+      (throw (ex :hara/generic (assoc {} :ex/message (str "unsupported extension provider " provider)))))
     (assoc document
            :namespace namespace
            :declared/files
@@ -382,14 +357,12 @@
   (let [descriptor (file/join root "project.edn")]
     (if (deref (file/exists? descriptor))
       nil
-      (throw (ex :not-found {:path descriptor} :ex/message
-                 (str "extension/malformed: missing project.edn at " descriptor))))
+      (throw (ex :hara/not-found (assoc {:path descriptor} :ex/message (str "extension/malformed: missing project.edn at " descriptor)))))
     (let [project-document (project/read-project descriptor)
           declarations (:project/extensions project-document)]
       (if (and (map? declarations) (not (empty? declarations)))
         nil
-        (throw (ex :dependency {} :ex/message
-                   "project.edn :project/extensions must be a non-empty map")))
+        (throw (ex :hara/dependency (assoc {} :ex/message "project.edn :project/extensions must be a non-empty map"))))
       (let [extensions
             (vec (map (fn [entry]
                         (validate-manifest (key entry) (val entry) descriptor))
@@ -409,17 +382,15 @@
              (if (and (deref (file/exists? path))
                       (= :file (:type (deref (file/stat path)))))
                verified
-               (throw (ex :io {:path path} :ex/message
-                          (str "extension/asset-unavailable: " relative))))))
+               (throw (ex :hara/io (assoc {:path path} :ex/message (str "extension/asset-unavailable: " relative)))))))
          package
          (:declared/files package))))))
 
 (defn package-argument [arguments operation]
   (if (= 1 (count arguments))
     (first arguments)
-    (throw (ex :io {:arguments arguments} :ex/message
-               (str "extension " (name operation)
-                    " requires one package directory")))))
+    (throw (ex :hara/io (assoc {:arguments arguments} :ex/message (str "extension " (name operation)
+                    " requires one package directory"))))))
 
 (defn checked-result [package operation]
   (let [identity (:project/id package)
@@ -441,8 +412,7 @@
         build (:project/build document)]
     (if (map? build)
       build
-      (throw (ex :dependency {} :ex/message
-                 "project.edn requires a :project/build map")))))
+      (throw (ex :hara/dependency (assoc {} :ex/message "project.edn requires a :project/build map"))))))
 
 (defn build-command [request root]
   (let [document (read-build root)
@@ -452,19 +422,16 @@
     (if (= adapter :command)
       (let [argv (required document :command ":project/build")]
         (if (not (:allow-process (:request/options request)))
-          (throw (ex :security {} :ex/message
-                     "extension/capability-denied: build requires --allow-process"))
+          (throw (ex :hara/security (assoc {} :ex/message "extension/capability-denied: build requires --allow-process")))
           nil)
         (if (and (vector? argv) (not (empty? argv)) (every? string? argv))
           (sh/run-checked
            argv
            {:cwd (file/join root (or (:working-directory document) "."))})
-          (throw (ex :host {} :ex/message
-                     ":project/build :command cannot be empty"))))
+          (throw (ex :hara/host (assoc {} :ex/message ":project/build :command cannot be empty")))))
       (if (= adapter :prebuilt)
         nil
-        (throw (ex :host {} :ex/message
-                   (str "unsupported extension build adapter: " adapter)))))
+        (throw (ex :hara/host (assoc {} :ex/message (str "unsupported extension build adapter: " adapter))))))
     (let [result (file/join root output)
           package (read-package result)]
       (model/success package
@@ -484,8 +451,7 @@
                      (file/join (:project/root project) extension-root)
                      (str/replace (str (:project/id package)) "/" "_"))]
     (if (deref (file/exists? destination))
-      (throw (ex :host {} :ex/message
-                 (str "Extension is already installed: " destination)))
+      (throw (ex :hara/host (assoc {} :ex/message (str "Extension is already installed: " destination))))
       nil)
     (reduce
      (fn [installed relative]
@@ -517,9 +483,8 @@
           (= operation :test) (checked-result (read-package root) operation)
           (= operation :build) (build-command request root)
           (= operation :install) (install-command request root)
-          :else (throw (ex :host {} :ex/message
-                           (str "unknown extension command: "
-                                (name operation)))))))))
+          :else (throw (ex :hara/host (assoc {} :ex/message (str "unknown extension command: "
+                                (name operation))))))))))
 
 (def +command-work+
   (work/step {:id 'tool.cli/extension :version 1}

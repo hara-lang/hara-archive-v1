@@ -134,7 +134,7 @@
   (let [service (substrate/get-service node service-id)]
     (if service
       service
-      (throw (ex :generic {:service service-id} :ex/message "Supabase service is not configured")))))
+      (throw (ex :hara/generic (assoc {:service service-id} :ex/message "Supabase service is not configured"))))))
 
 (defn get-session
   "Returns the session stored by service."
@@ -205,9 +205,9 @@
           body (compatible-get response :body)]
       (if (>= status 400)
         (let [data (supabase-error-data response)]
-          (throw (ex :io data :ex/message (or (compatible-get data :message)
+          (throw (ex :hara/io (assoc data :ex/message (or (compatible-get data :message)
                               (compatible-get body :message)
-                              "Supabase request failed"))))
+                              "Supabase request failed")))))
         (if (and (map? body)
                  (or (has? body :data) (has? body "data")))
           (compatible-get body :data)
@@ -220,7 +220,7 @@
   (let [service (get-service node service-id)
         request-function (compatible-get service :request)]
     (if (nil? request-function)
-      (throw (ex :io {:service service-id :operation operation} :ex/message "Supabase service has no request adapter"))
+      (throw (ex :hara/io (assoc {:service service-id :operation operation} :ex/message "Supabase service has no request adapter")))
       (promise/then
        (call-promise request-function [operation arguments options service])
        supabase-response-data))))
@@ -287,7 +287,7 @@
       (get-session (get-service node service-id))
 
       (nil? operation)
-      (throw (ex :host {:action action} :ex/message "Unknown Supabase runtime action"))
+      (throw (ex :hara/host (assoc {:action action} :ex/message "Unknown Supabase runtime action")))
 
       :else
       (supabase-request node service-id operation payload options))))

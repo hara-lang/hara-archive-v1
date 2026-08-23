@@ -164,7 +164,7 @@
         boot-function (compatible-get adapter :boot)
         ready (ready-signal transport-id worker-id)]
     (if (nil? boot-function)
-      (throw (ex :database {:kind kind :adapter adapter} :ex/message "Database runtime adapter requires :boot"))
+      (throw (ex :hara/database (assoc {:kind kind :adapter adapter} :ex/message "Database runtime adapter requires :boot")))
       (do
         (install-drivers node drivers)
         (init-server node)
@@ -213,7 +213,7 @@
         worker-id (or (compatible-get options :worker-id) DEFAULT-WORKER)
         connect-function (compatible-get adapter :connect)]
     (if (nil? connect-function)
-      (throw (ex :database {:kind kind :adapter adapter} :ex/message "Database runtime adapter requires :connect"))
+      (throw (ex :hara/database (assoc {:kind kind :adapter adapter} :ex/message "Database runtime adapter requires :connect")))
       (do
         (init-server-proxy client-node)
         (promise/catch
@@ -282,7 +282,7 @@
    (let [node (runtime-node runtime)]
      (if node
        (connection/open node service-id options)
-       (throw (ex :database {:runtime runtime :service service-id} :ex/message "Database runtime has no accessible node"))))))
+       (throw (ex :hara/database (assoc {:runtime runtime :service service-id} :ex/message "Database runtime has no accessible node")))))))
 
 (defn- teardown-databases
   [client-node server-node transport-id config]

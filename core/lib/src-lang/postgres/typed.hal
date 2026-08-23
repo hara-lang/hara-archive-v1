@@ -24,8 +24,8 @@
         (= :openapi format) (openapi/shape->openapi jsonb-shape)
         (= :json-schema format) (json-schema/shape->json-schema jsonb-shape)
         (= :typescript format) (ts-schema/shape->ts-interface jsonb-shape)
-        :else (throw (ex :database {:format format
-                               :available [:shape :openapi :json-schema :typescript]} :ex/message "Unknown schema format"))))
+        :else (throw (ex :hara/database (assoc {:format format
+                               :available [:shape :openapi :json-schema :typescript]} :ex/message "Unknown schema format")))))
 
 (defn report-json
   ([report] (analyze/report-json report))
@@ -146,7 +146,7 @@
         (= :openapi format) (json-schema/resolve-type value :openapi)
         (= :json-schema format) (json-schema/resolve-type value :jschema)
         (= :typescript format) (json-schema/resolve-type value :ts)
-        :else (throw (ex :database {:format format} :ex/message "Unknown schema format"))))
+        :else (throw (ex :hara/database (assoc {:format format} :ex/message "Unknown schema format")))))
 
 (defn registry->typed
   "Builds a typed payload from a flat registry map."
@@ -204,10 +204,10 @@
         (get (:registry ctx) (keyword short-name)))))
 
 (defn throw-missing-function [fn-ref]
-  (throw (ex :not-found {:type :typed/missing-function :fn fn-ref} :ex/message "Typed function not found")))
+  (throw (ex :hara/not-found (assoc {:type :typed/missing-function :fn fn-ref} :ex/message "Typed function not found"))))
 
 (defn throw-missing-argument [fn-ref arg-sym]
-  (throw (ex :not-found {:type :typed/missing-argument :fn fn-ref :arg arg-sym} :ex/message "Typed function argument not found")))
+  (throw (ex :hara/not-found (assoc {:type :typed/missing-argument :fn fn-ref :arg arg-sym} :ex/message "Typed function argument not found"))))
 
 (defn function-def
   [ctx fn-ref]

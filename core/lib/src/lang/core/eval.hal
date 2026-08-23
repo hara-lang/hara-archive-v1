@@ -26,8 +26,8 @@
   (let [coordinate (compat/canonical-coordinate coordinate)]
     (or (get (deref +plugins+) coordinate)
         (throw
-         (ex :generic {:plugin coordinate
-                   :registered (keys (deref +plugins+))} :ex/message "Evaluation plugin is not registered")))))
+         (ex :hara/generic (assoc {:plugin coordinate
+                   :registered (keys (deref +plugins+))} :ex/message "Evaluation plugin is not registered"))))))
 
 (defn request
   ([input]
@@ -49,7 +49,7 @@
     (map? descriptor) (get descriptor :transform)
     :else
     (throw
-     (ex :argument {:plugin descriptor} :ex/message "Invalid evaluation plugin descriptor"))))
+     (ex :hara/argument (assoc {:plugin descriptor} :ex/message "Invalid evaluation plugin descriptor")))))
 
 (defn- run-phase
   [frame descriptors]
@@ -86,7 +86,7 @@
                            (get request :input)
                            options))
       (throw
-       (ex :generic {:context context} :ex/message "Evaluation context has no transport")))))
+       (ex :hara/generic (assoc {:context context} :ex/message "Evaluation context has no transport"))))))
 
 (defn eval-context
   "Runs the runtime-owned input/source/response profile and returns a promise."
@@ -142,7 +142,7 @@
        (do
          (promise/cancel pending)
          (throw
-          (ex :timeout {:timeout timeout} :ex/message "Evaluation timed out")))
+          (ex :hara/timeout (assoc {:timeout timeout} :ex/message "Evaluation timed out"))))
        value))))
 
 (defn eval-await

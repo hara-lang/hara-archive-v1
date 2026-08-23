@@ -55,12 +55,12 @@
         function (get (:operations store) operation)]
     (if (nil? operation)
       (throw
-       (ex :generic {:work/query (:work/query query)} :ex/message "Work store query is not supported")))
+       (ex :hara/generic (assoc {:work/query (:work/query query)} :ex/message "Work store query is not supported"))))
     (if (nil? function)
       (throw
-       (ex :generic {:work/query (:work/query query)
+       (ex :hara/generic (assoc {:work/query (:work/query query)
                  :provider/id (:provider/id (:descriptor store))
-                 :operation operation} :ex/message "Work store query operation is not installed")))
+                 :operation operation} :ex/message "Work store query operation is not installed"))))
     (apply function (query-arguments query))))
 
 (extend-type StoreAdapter IWorkStore
@@ -71,7 +71,7 @@
       (if function
         (function transition)
         (throw
-         (ex :database {:provider/id (:provider/id (:descriptor store))} :ex/message "Work store transaction operation is not installed"))))))
+         (ex :hara/database (assoc {:provider/id (:provider/id (:descriptor store))} :ex/message "Work store transaction operation is not installed")))))))
 
 (defn operations-installed?
   [provider required]
@@ -120,8 +120,8 @@
   [provider]
   (if (not= :work/store (:provider/role provider))
     (throw
-     (ex :generic {:provider/role (:provider/role provider)
-               :provider/id (:provider/id provider)} :ex/message "Work provider does not have the store role")))
+     (ex :hara/generic (assoc {:provider/role (:provider/role provider)
+               :provider/id (:provider/id provider)} :ex/message "Work provider does not have the store role"))))
   provider)
 
 (defn assert-operations
@@ -129,17 +129,17 @@
   (let [missing (missing-operations provider required)]
     (if (not (empty? missing))
       (throw
-       (ex :not-found {:provider/id (:provider/id provider)
+       (ex :hara/not-found (assoc {:provider/id (:provider/id provider)
                  :provider/capability capability
-                 :provider/missing missing} :ex/message "Work store provider is missing required operations"))))
+                 :provider/missing missing} :ex/message "Work store provider is missing required operations")))))
   provider)
 
 (defn require-capability
   [provider capability]
   (if (not (capability? provider capability))
     (throw
-     (ex :dependency {:provider/id (:provider/id (descriptor provider))
-               :provider/capability capability} :ex/message "Work store provider does not support the required capability")))
+     (ex :hara/dependency (assoc {:provider/id (:provider/id (descriptor provider))
+               :provider/capability capability} :ex/message "Work store provider does not support the required capability"))))
   provider)
 
 (defn validate-descriptor
@@ -179,7 +179,7 @@
   [provider]
   (cond
     (nil? provider)
-    (throw (ex :dependency {} :ex/message "Work runtime requires a store provider"))
+    (throw (ex :hara/dependency (assoc {} :ex/message "Work runtime requires a store provider")))
 
     (satisfies? IWorkStore provider)
     provider
@@ -197,7 +197,7 @@
 
     :else
     (throw
-     (ex :generic {:provider provider} :ex/message "Work store must implement IWorkStore or be a legacy provider"))))
+     (ex :hara/generic (assoc {:provider provider} :ex/message "Work store must implement IWorkStore or be a legacy provider")))))
 
 (defn assert-profile
   [provider mode]
@@ -224,8 +224,8 @@
     (if function
       (apply function arguments)
       (throw
-       (ex :generic {:provider/id (:provider/id (descriptor provider))
-                 :operation operation} :ex/message "Work store compatibility operation is not installed")))))
+       (ex :hara/generic (assoc {:provider/id (:provider/id (descriptor provider))
+                 :operation operation} :ex/message "Work store compatibility operation is not installed"))))))
 
 (defn load-run
   [provider run-id]
@@ -233,7 +233,7 @@
    (query provider {:work/query :run/load :run/id run-id})
    (fn [run]
      (if (nil? run)
-       (throw (ex :not-found {:run/id run-id} :ex/message "Work run does not exist")))
+       (throw (ex :hara/not-found (assoc {:run/id run-id} :ex/message "Work run does not exist"))))
      run)))
 
 (defn transition-request

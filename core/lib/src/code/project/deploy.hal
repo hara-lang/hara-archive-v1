@@ -25,8 +25,8 @@
   [operation]
   (or (get +operations+ operation)
       (throw
-       (ex :dependency {:operation operation
-                 :supported (vec (sort (keys +operations+)))} :ex/message "Unsupported Hara package operation"))))
+       (ex :hara/dependency (assoc {:operation operation
+                 :supported (vec (sort (keys +operations+)))} :ex/message "Unsupported Hara package operation")))))
 
 (defn package-root
   "Returns a package root from a catalog entry. Catalog values may be a path
@@ -39,7 +39,7 @@
     (if (and (string? root) (not (empty? root)))
       root
       (throw
-       (ex :io {:package entry} :ex/message "Deploy package requires a path")))))
+       (ex :hara/io (assoc {:package entry} :ex/message "Deploy package requires a path"))))))
 
 (defn- option-string
   [value]
@@ -113,7 +113,7 @@
   (let [missing (undeclared-dependencies packages)]
     (if (seq missing)
       (throw
-       (ex :not-found (first missing) :ex/message "Deploy package dependency is not declared"))
+       (ex :hara/not-found (assoc (first missing) :ex/message "Deploy package dependency is not declared")))
       (loop [remaining (vec (sort (keys packages)))
              completed []]
         (if (empty? remaining)
@@ -126,7 +126,7 @@
                         remaining))]
             (if (nil? ready)
               (throw
-               (ex :dependency {:packages remaining} :ex/message "Deploy package dependency cycle"))
+               (ex :hara/dependency (assoc {:packages remaining} :ex/message "Deploy package dependency cycle")))
               (recur
                (vec (filter (fn [package] (not (= package ready)))
                             remaining))
@@ -162,7 +162,7 @@
 
     :else
     (throw
-     (ex :argument {:selector selector} :ex/message "Deploy selector is not valid"))))
+     (ex :hara/argument (assoc {:selector selector} :ex/message "Deploy selector is not valid")))))
 
 (defn prepare-input
   "Normalises serializable deployment input before package graph execution."
@@ -171,12 +171,12 @@
         _ (if (map? input)
             nil
             (throw
-             (ex :argument {:input input} :ex/message "Deploy work input must be a map")))
+             (ex :hara/argument (assoc {:input input} :ex/message "Deploy work input must be a map"))))
         packages (or (:packages input) {})
         _ (if (map? packages)
             nil
             (throw
-             (ex :dependency {:packages packages} :ex/message "Deploy :packages must be a map")))
+             (ex :hara/dependency (assoc {:packages packages} :ex/message "Deploy :packages must be a map"))))
         selector (if (has? input :selector)
                    (:selector input)
                    :all)]

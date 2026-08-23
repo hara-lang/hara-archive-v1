@@ -117,8 +117,8 @@
         (set? form) [:set :data]
         :else
         (throw
-         (ex :argument {:input form
-                   :type (type form)} :ex/message "Not Valid"))))
+         (ex :hara/argument (assoc {:input form
+                   :type (type form)} :ex/message "Not Valid")))))
 
 (defn basic-typed-args
   "typed args without grammar checks
@@ -204,7 +204,7 @@
               :modifiers (vec (drop-last-one modifiers))
               :assign true)]
       (throw
-       (ex :generic {:curr current :all all} :ex/message "Cannot assign to non symbol")))))
+       (ex :hara/generic (assoc {:curr current :all all} :ex/message "Cannot assign to non symbol"))))))
 
 (defn- emit-typed-args-loop
   [grammar shorthand all current remaining]
@@ -258,9 +258,9 @@
                        (and (not (:symbol current))
                             (> (count (:modifiers current)) 0)))
                  (throw
-                  (ex :argument {:input value
+                  (ex :hara/argument (assoc {:input value
                             :args remaining
-                            :curr current} :ex/message "Rest argument must be the final declared argument"))
+                            :curr current} :ex/message "Rest argument must be the final declared argument")))
                  (emit-typed-args-loop
                   grammar shorthand next-all
                   {:modifiers []
@@ -358,9 +358,9 @@
 
              :else
              (throw
-              (ex :generic {:input value
+              (ex :hara/generic (assoc {:input value
                         :all all
-                        :curr current} :ex/message "Not a valid input"))))))
+                        :curr current} :ex/message "Not a valid input")))))))
 
 (defn emit-typed-args
   "create types args from declarationns"

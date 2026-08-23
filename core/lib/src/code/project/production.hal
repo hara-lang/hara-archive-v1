@@ -12,7 +12,7 @@
 (defn fail
   ([message] (fail message {}))
   ([message data]
-   (throw (ex :generic data :ex/message message))))
+   (throw (ex :hara/generic (assoc data :ex/message message)))))
 
 (defn identifier-text [value label]
   (cond

@@ -21,7 +21,7 @@
   [value]
   (if (not (host? value))
     (throw
-     (ex :argument {:make/value value} :ex/message "Expected a live make host")))
+     (ex :hara/argument (assoc {:make/value value} :ex/message "Expected a live make host"))))
   value)
 
 (defn state

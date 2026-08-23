@@ -235,8 +235,7 @@
   [path]
   (if (deref (File/exists? path))
     (read-string (read-text path))
-    (throw (ex :not-found {:path path}
-               :ex/message "Report file not found"))))
+    (throw (ex :hara/not-found (assoc {:path path} :ex/message "Report file not found")))))
 
 (defn report-failed-facts
   [report]

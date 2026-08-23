@@ -53,7 +53,7 @@
   (if command
     (if (fn? command)
       (command runtime)
-      (throw (ex :database {:command command} :ex/message "PostgreSQL lifecycle hooks must be functions in HAL")))
+      (throw (ex :hara/database (assoc {:command command} :ex/message "PostgreSQL lifecycle hooks must be functions in HAL"))))
     runtime))
 
 (defn connection-options

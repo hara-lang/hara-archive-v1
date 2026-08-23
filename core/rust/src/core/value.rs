@@ -20,29 +20,6 @@ pub struct ExceptionInfo {
     pub provenance: Rc<RefCell<ExceptionProvenance>>,
 }
 
-fn portable_host_error(message: String) -> Value {
-    let data = Value::Map(
-        [
-            (
-                Value::Keyword("ex/code".into()),
-                Value::Keyword("host/native-error".into()),
-            ),
-            (
-                Value::Keyword("ex/message".into()),
-                Value::String(message.clone()),
-            ),
-        ]
-        .into_iter()
-        .collect(),
-    );
-    Value::ExceptionInfo(Rc::new(ExceptionInfo {
-        message,
-        data: Box::new(data),
-        cause: None,
-        provenance: Rc::new(RefCell::new(ExceptionProvenance::default())),
-    }))
-}
-
 fn default_exception_class(code: &Keyword) -> Option<Keyword> {
     if code.get_namespace() != Some("hara") {
         return None;
@@ -58,16 +35,11 @@ fn default_exception_class(code: &Keyword) -> Option<Keyword> {
     Keyword::parse(&format!("ex.class/{class}")).ok()
 }
 
-fn normalize_exception_code(code: &Keyword) -> Result<Keyword, String> {
+fn validate_exception_code(code: &Keyword) -> Result<Keyword, String> {
     if code.get_namespace().is_some() {
         return Ok(code.clone());
     }
-    let canonical = Keyword::parse(&format!("hara/{}", code.get_name()))?;
-    if default_exception_class(&canonical).is_some() {
-        Ok(canonical)
-    } else {
-        Err("ex expects a registered standard keyword or namespaced keyword code".into())
-    }
+    Err("ex expects a namespaced keyword code".into())
 }
 
 pub(crate) fn record_exception_throw(value: &Value, site: Option<ExceptionSite>) {
@@ -665,21 +637,12 @@ pub(crate) fn exception_function_values() -> Vec<(&'static str, Value)> {
     vec![
         (
             "ex",
-            native_variadic_function("ex", |arguments| {
-                if arguments.len() < 2 || arguments.len() % 2 != 0 {
-                    return Err("ex expects a code, attributes map, and key/value pairs".into());
-                }
+            native_function("ex", 2, |arguments| {
                 let Value::Keyword(input_code) = &arguments[0] else {
-                    return Err(
-                        "ex expects a registered standard keyword or namespaced keyword code"
-                            .into(),
-                    );
+                    return Err("ex expects a namespaced keyword code".into());
                 };
-                let code = normalize_exception_code(input_code)?;
-                let mut attributes = arguments[1].clone();
-                for pair in arguments[2..].chunks_exact(2) {
-                    attributes = map_assoc_value(&attributes, pair[0].clone(), pair[1].clone())?;
-                }
+                let code = validate_exception_code(input_code)?;
+                let attributes = arguments[1].clone();
                 let Some(entries) = map_entries(&attributes) else {
                     return Err("ex expects an attributes map".into());
                 };
@@ -711,8 +674,7 @@ pub(crate) fn exception_function_values() -> Vec<(&'static str, Value)> {
                 }
                 let cause = match lookup("ex/cause") {
                     Some(cause @ Value::ExceptionInfo(_)) => Some(cause.clone()),
-                    Some(Value::String(message)) => Some(portable_host_error(message.clone())),
-                    Some(_) => return Err(":ex/cause must be an Exception or host error".into()),
+                    Some(_) => return Err(":ex/cause must be an Exception".into()),
                     None => None,
                 };
                 if let Some(context) = lookup("ex/context") {
@@ -743,7 +705,7 @@ pub(crate) fn exception_function_values() -> Vec<(&'static str, Value)> {
                     cause: cause.map(Box::new),
                     data: Box::new(data),
                     provenance: Rc::new(RefCell::new(ExceptionProvenance {
-                        created_at: None,
+                        created_at: current_exception_site(),
                         throws: Vec::new(),
                     })),
                 })))

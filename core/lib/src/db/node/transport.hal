@@ -207,9 +207,9 @@
   (let [send-function (compatible-get endpoint :send)
         listen-function (compatible-get endpoint :listen)]
     (when (nil? send-function)
-      (throw (ex :database {:endpoint endpoint} :ex/message "Database endpoint requires :send")))
+      (throw (ex :hara/database (assoc {:endpoint endpoint} :ex/message "Database endpoint requires :send"))))
     (when (nil? listen-function)
-      (throw (ex :database {:endpoint endpoint} :ex/message "Database endpoint requires :listen")))
+      (throw (ex :hara/database (assoc {:endpoint endpoint} :ex/message "Database endpoint requires :listen"))))
     (substrate/attach-transport
      node
      transport-id

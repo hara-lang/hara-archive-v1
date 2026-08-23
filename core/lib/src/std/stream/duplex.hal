@@ -11,10 +11,10 @@
   ([source write-fn close-fn] (create source write-fn close-fn nil))
   ([source write-fn close-fn abort-fn]
    (if (not (satisfies? std.protocol.istream.IStream source))
-     (throw (ex :io {:error/type :stream.duplex/invalid-source
-                      :source source} :ex/message "Duplex source must satisfy IStream")))
+     (throw (ex :hara/io (assoc {:error/type :stream.duplex/invalid-source
+                      :source source} :ex/message "Duplex source must satisfy IStream"))))
    (if (not (fn? write-fn))
-     (throw (ex :io {:error/type :stream.duplex/invalid-write} :ex/message "Duplex write callback must be callable")))
+     (throw (ex :hara/io (assoc {:error/type :stream.duplex/invalid-write} :ex/message "Duplex write callback must be callable"))))
    (Duplex source write-fn close-fn abort-fn
            (atom {:closed false :error nil}))))
 
@@ -42,7 +42,7 @@
     (cond
       (:error current) (rejected (:error current))
       (:closed current) (rejected
-                         (ex :io {:error/type :stream.duplex/closed} :ex/message "Cannot write to a closed Duplex"))
+                         (ex :hara/io (assoc {:error/type :stream.duplex/closed} :ex/message "Cannot write to a closed Duplex")))
       :else (promise/from ((:write-fn duplex) value)))))
 
 (defn close [duplex]
@@ -60,7 +60,7 @@
 
 (defn abort [duplex error]
   (let [error (or error
-                  (ex :io {:error/type :stream.duplex/aborted} :ex/message "Duplex aborted"))]
+                  (ex :hara/io (assoc {:error/type :stream.duplex/aborted} :ex/message "Duplex aborted")))]
     (loop []
       (let [current (state duplex)]
         (if (:closed current)

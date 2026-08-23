@@ -52,7 +52,7 @@
   (let [action (get request "action")
         entry (get (state/node-section node :handlers) action)]
     (if (nil? entry)
-      (throw (ex :not-found {:action action} :ex/message (str "handler not found - " action)))
+      (throw (ex :hara/not-found (assoc {:action action} :ex/message (str "handler not found - " action))))
       (let [handler (entry-function entry)
             current-space
             (space/ensure-space node (get request "space") nil)]

@@ -18,7 +18,7 @@
 
 (defn- invalid
   [message data]
-  (throw (ex :argument data :ex/message message)))
+  (throw (ex :hara/argument (assoc data :ex/message message))))
 
 (defn- map-value
   [label value]

@@ -17,8 +17,8 @@
   (let [module-id (current-module-id)
         module (get (deref script/+modules+) module-id)
         _ (if (nil? module)
-            (throw (ex :dependency {:module module-id
-                             :fragment id} :ex/message "Tahto module must be configured before def$")))
+            (throw (ex :hara/dependency (assoc {:module module-id
+                             :fragment id} :ex/message "Tahto module must be configured before def$"))))
         fragment-id (symbol (name id))
         qualified (symbol (str module-id) (name fragment-id))
         return-value (fragment-return metadata)

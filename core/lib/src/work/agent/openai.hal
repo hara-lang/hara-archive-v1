@@ -38,7 +38,7 @@
              (symbol? key) (str key)
              :else
              (throw
-              (ex :dependency {:key key} :ex/message "OpenAI JSON maps require string, keyword, or symbol keys")))]
+              (ex :hara/dependency (assoc {:key key} :ex/message "OpenAI JSON maps require string, keyword, or symbol keys"))))]
        (assoc output wire-key
               (work.agent.openai/wire-value (get value key)))))
    {}
@@ -86,10 +86,10 @@
     (if (or (not (string? model))
             (= model ""))
       (throw
-       (ex :dependency {:model model} :ex/message "OpenAI client requires a model string")))
+       (ex :hara/dependency (assoc {:model model} :ex/message "OpenAI client requires a model string"))))
     (if (not (fn? transport))
       (throw
-       (ex :dependency {} :ex/message "OpenAI client requires a transport function")))
+       (ex :hara/dependency (assoc {} :ex/message "OpenAI client requires a transport function"))))
     {:openai/model model
      :openai/api-key (:api-key options)
      :openai/endpoint (or (:endpoint options) default-endpoint)
@@ -159,7 +159,7 @@
 
     :else
     (throw
-     (ex :syntax {:body body} :ex/message "OpenAI transport body must be JSON text or a map"))))
+     (ex :hara/syntax (assoc {:body body} :ex/message "OpenAI transport body must be JSON text or a map")))))
 
 (defn response-value
   "Parses a direct OpenAI response or an HTTP transport envelope."
@@ -177,13 +177,13 @@
           (if (and (number? status)
                    (>= status 400))
             (throw
-             (ex :syntax {:status status
-                       :response parsed} :ex/message "OpenAI request failed"))
+             (ex :hara/syntax (assoc {:status status
+                       :response parsed} :ex/message "OpenAI request failed")))
             parsed))))
 
     :else
     (throw
-     (ex :io {:value value} :ex/message "OpenAI transport returned an unsupported value"))))
+     (ex :hara/io (assoc {:value value} :ex/message "OpenAI transport returned an unsupported value")))))
 
 (defn- output-items
   [response]
@@ -221,7 +221,7 @@
 
       :else
       (throw
-       (ex :serialization {:call call} :ex/message "OpenAI function-call arguments must be JSON text or a map")))))
+       (ex :hara/serialization (assoc {:call call} :ex/message "OpenAI function-call arguments must be JSON text or a map"))))))
 
 (defn- function-call
   [item]

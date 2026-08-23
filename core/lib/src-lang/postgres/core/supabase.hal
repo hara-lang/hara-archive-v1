@@ -142,8 +142,7 @@
    (let [request (resolve-literal request)
          event (request-event request)]
      (when (nil? event)
-       (throw (ex :argument {:request request}
-                  :ex/message "Unsupported xt.db realtime request")))
+       (throw (ex :hara/argument (assoc {:request request} :ex/message "Unsupported xt.db realtime request"))))
      (list 'realtime.send
            (normalize-realtime-payload request)
            event topic (if private? true false)))))
@@ -159,8 +158,7 @@
     (map? form) :jsonb
     (:type (meta form)) (:type (meta form))
     (and (list? form) (keyword? (first form))) (first form)
-    :else (throw (ex :argument {:form form}
-                     :ex/message "Cannot determine type"))))
+    :else (throw (ex :hara/argument (assoc {:form form} :ex/message "Cannot determine type")))))
 
 (defn- role-symbol [role]
   (cond (= role :admin) 'service_role

@@ -230,7 +230,7 @@
                         (string/tag (or (:suffix descriptor) (:format options))))
                    nil)
                  (:file descriptor)
-                 (throw (ex :io {:input options} :ex/message "Need a :file or :name entry")))
+                 (throw (ex :hara/io (assoc {:input options} :ex/message "Need a :file or :name entry"))))
         output (compile-out-path (assoc options :file file))]
     (compile-write output full)))
 
@@ -279,7 +279,7 @@
                   (set? comparison) (has? comparison value)
                   :else (= comparison value))))
             pattern)
-    :else (throw (ex :argument {:pattern pattern} :ex/message "Invalid compile filter"))))
+    :else (throw (ex :hara/argument (assoc {:pattern pattern} :ex/message "Invalid compile filter")))))
 
 (defn compile-directive [config sections directive]
   (cond

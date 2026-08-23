@@ -235,8 +235,7 @@
                    (let [attempt (swap! commit-count inc)]
                      (if (= attempt 1)
                        (throw
-                        (ex :host {:attempt attempt}
-                            :ex/message "publish interrupted"))
+                        (ex :hara/host (assoc {:attempt attempt} :ex/message "publish interrupted")))
                        {:published value}))))]))
            {:effect :external})
           transport
@@ -277,10 +276,8 @@
 
                     :else
                     (throw
-                     (ex :state
-                         {:request-number request-number
-                          :request/body body}
-                         :ex/message "Unexpected publish transcript")))]
+                     (ex :hara/state (assoc {:request-number request-number
+                          :request/body body} :ex/message "Unexpected publish transcript"))))]
               {:status 200
                :body (Json/write (openai/wire-value response))}))
           effect-client

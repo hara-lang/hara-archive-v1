@@ -21,8 +21,7 @@
     (= #{:in-any-order} modifiers) (util/contains-any-order data checkers)
     (= #{:gaps-ok} modifiers) (util/contains-with-gaps data checkers)
     (= #{:in-any-order :gaps-ok} modifiers) (util/contains-all data checkers)
-    :else (throw (ex :argument {:modifiers modifiers}
-                     :ex/message "modifiers can only be :gaps-ok and :in-any-order"))))
+    :else (throw (ex :hara/argument (assoc {:modifiers modifiers} :ex/message "modifiers can only be :gaps-ok and :in-any-order")))))
 
 (defn contains-map [value]
   (let [checkers (map-checkers value)]
@@ -59,8 +58,7 @@
     (or (vector? value) (list? value))
     (contains-vector value (set modifiers))
     :else
-    (throw (ex :argument {:input (vec (cons value modifiers))}
-               :ex/message "Cannot create contains checker"))))
+    (throw (ex :hara/argument (assoc {:input (vec (cons value modifiers))} :ex/message "Cannot create contains checker")))))
 
 (defn just-map [value]
   (let [checkers (map-checkers value)]
@@ -100,8 +98,7 @@
     (or (vector? value) (list? value))
     (just-vector value (set modifiers))
     :else
-    (throw (ex :argument {:input (vec (cons value modifiers))}
-               :ex/message "Cannot create just checker"))))
+    (throw (ex :hara/argument (assoc {:input (vec (cons value modifiers))} :ex/message "Cannot create just checker")))))
 
 (defn nested-form [checker-symbol value]
   (cond

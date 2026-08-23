@@ -12,7 +12,7 @@
 
 (defn- assert-valid-keys [schema keys]
   (let [invalid (filter (fn [key] (nil? (get schema key))) keys)]
-    (when (seq invalid) (throw (ex :database {:keys (vec invalid)} :ex/message "Invalid columns")))))
+    (when (seq invalid) (throw (ex :hara/database (assoc {:keys (vec invalid)} :ex/message "Invalid columns"))))))
 
 (defn t-update-symbol [schema sym params options]
   (let [columns (or (:columns params)

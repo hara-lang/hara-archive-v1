@@ -31,9 +31,7 @@
                  (let [attempt (swap! commit-count inc)]
                    (if (= attempt 1)
                      (throw
-                      (ex :host
-                          {:attempt attempt}
-                          :ex/message "commit interrupted"))
+                      (ex :hara/host (assoc {:attempt attempt} :ex/message "commit interrupted")))
                      {:published value}))))]))
          {:effect :external})
         tool-index (agent-tool/index [tool])

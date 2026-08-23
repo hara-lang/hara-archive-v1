@@ -148,7 +148,7 @@
                     (partition 2 (drop 1 input))))
         final-pair (last pairs)]
     (if (not (= :else (first final-pair)))
-      (throw (ex :generic {:form final-pair} :ex/message "ternary cond has to end with :else"))
+      (throw (ex :hara/generic (assoc {:form final-pair} :ex/message "ternary cond has to end with :else")))
       (reduce (fn [result pair]
                 (form [:? (first pair) [(second pair) result]]))
               (second final-pair)

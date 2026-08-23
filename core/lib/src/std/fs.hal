@@ -156,12 +156,9 @@
          options (merge delete-default-options options)]
      (if (= value "/")
        (throw
-        (ex :file/permission-denied
-            {:file/operation :delete
+        (ex :file/permission-denied (assoc {:file/operation :delete
              :file/path value
-             :file/target nil}
-            :ex/message "The mounted filesystem root cannot be deleted"
-            :ex/class :ex.class/security))
+             :file/target nil} :ex/message "The mounted filesystem root cannot be deleted" :ex/class :ex.class/security)))
        (if (:recursive? options)
          (if (exists? value)
            (delete-tree value options)
@@ -180,12 +177,9 @@
                           {:parents? (:parents? options)
                            :exists-ok? false}))
       (throw
-       (ex :file/already-exists
-           {:file/operation :copy
+       (ex :file/already-exists (assoc {:file/operation :copy
             :file/path target
-            :file/target target}
-           :ex/message "Copy target already exists"
-           :ex/class :ex.class/conflict)))
+            :file/target target} :ex/message "Copy target already exists" :ex/class :ex.class/conflict))))
     (create-directory target
                       {:parents? (:parents? options)
                        :exists-ok? false})))
@@ -217,12 +211,9 @@
 
                 :else
                 (throw
-                 (ex :file/unsupported
-                     {:file/operation :copy
+                 (ex :file/unsupported (assoc {:file/operation :copy
                       :file/path current-source
-                      :file/target current-target}
-                     :ex/message "Only regular files and directories can be copied"
-                     :ex/class :ex.class/io)))))]
+                      :file/target current-target} :ex/message "Only regular files and directories can be copied" :ex/class :ex.class/io))))))]
     (copy-node source target)))
 
 (defn copy
@@ -236,12 +227,9 @@
          options (merge copy-default-options options)]
      (if (copy-invalid-target? source target)
        (throw
-        (ex :file/invalid-path
-            {:file/operation :copy
+        (ex :file/invalid-path (assoc {:file/operation :copy
              :file/path source
-             :file/target target}
-            :ex/message "Copy target must not be the source or one of its descendants"
-            :ex/class :ex.class/argument))
+             :file/target target} :ex/message "Copy target must not be the source or one of its descendants" :ex/class :ex.class/argument)))
        (copy-tree source target options)))))
 
 (defn copy-into
@@ -254,10 +242,7 @@
          name (path/file-name source)]
      (if (nil? name)
        (throw
-        (ex :file/invalid-path
-            {:file/operation :copy
+        (ex :file/invalid-path (assoc {:file/operation :copy
              :file/path source
-             :file/target directory}
-            :ex/message "The mounted root has no filename for copy-into"
-            :ex/class :ex.class/argument))
+             :file/target directory} :ex/message "The mounted root has no filename for copy-into" :ex/class :ex.class/argument)))
        (copy source (path/join directory name) options)))))

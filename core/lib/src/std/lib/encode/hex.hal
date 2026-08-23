@@ -9,7 +9,7 @@
   [value]
   (if (Bytes/instance? value)
     value
-    (throw (ex :serialization {:value value} :ex/message "Hex encode expects Bytes"))))
+    (throw (ex :hara/serialization (assoc {:value value} :ex/message "Hex encode expects Bytes")))))
 
 (defn ^{:public true} encode
   [value]
@@ -28,16 +28,16 @@
   [value index]
   (let [number (str/index-of +digits+ (str/lower-case value))]
     (if (neg? number)
-      (throw (ex :serialization {:value value :index index} :ex/message "Invalid hexadecimal digit"))
+      (throw (ex :hara/serialization (assoc {:value value :index index} :ex/message "Invalid hexadecimal digit")))
       number)))
 
 (defn ^{:public true} decode
   [value]
   (if (not (string? value))
-    (throw (ex :serialization {:value value} :ex/message "Hex decode expects a string")))
+    (throw (ex :hara/serialization (assoc {:value value} :ex/message "Hex decode expects a string"))))
   (let [length (str/length value)]
     (if (odd? length)
-      (throw (ex :serialization {:value value :length length} :ex/message "Hex input must contain an even number of digits")))
+      (throw (ex :hara/serialization (assoc {:value value :length length} :ex/message "Hex input must contain an even number of digits"))))
     (loop [index 0 output []]
       (if (= index length)
         (apply bytes output)

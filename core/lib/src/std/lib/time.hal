@@ -12,7 +12,7 @@
   {:weeks 604800000 :days 86400000 :hours 3600000
    :minutes 60000 :seconds 1000 :milliseconds 1})
 
-(defn- fail [message data] (throw (ex :generic data :ex/message message)))
+(defn- fail [message data] (throw (ex :hara/generic (assoc data :ex/message message))))
 
 (defn instant? [value] (instance? Instant value))
 (defn duration? [value] (instance? Duration value))

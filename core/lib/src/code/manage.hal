@@ -24,7 +24,7 @@
       (if input-var
         ((deref input-var) operation (current-namespace))
         (throw
-         (ex :state {:operation operation} :ex/message "code.manage.cli/current-input is unavailable"))))))
+         (ex :hara/state (assoc {:operation operation} :ex/message "code.manage.cli/current-input is unavailable")))))))
 
 (defn- composed-task
   [operation tasklet-reference tasklet argcount]
@@ -384,7 +384,7 @@
   (or
    (get +tasks+ operation)
    (throw
-   (ex :host {:operation operation} :ex/message "Unsupported code.manage workflow"))))
+   (ex :hara/host (assoc {:operation operation} :ex/message "Unsupported code.manage workflow")))))
 
 (defn result-edit
   [value]

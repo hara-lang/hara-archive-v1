@@ -77,9 +77,9 @@
                 params (if (map? second-value) fourth-value third-value)
                 attr (attrs schema key)]
             (when (nil? attr)
-              (throw (ex :database {:column key :data marker} :ex/message "Not valid")))
+              (throw (ex :hara/database (assoc {:column key :data marker} :ex/message "Not valid"))))
             (when (not= :ref (:type attr))
-              (throw (ex :database {:column key :attrs attr} :ex/message "Column not a ref")))
+              (throw (ex :hara/database (assoc {:column key :attrs attr} :ex/message "Column not a ref"))))
             {:expr (returning-block entry (assoc attr :ident key) where returning params
                                     query-transform options)}))
         markers)))

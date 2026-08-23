@@ -66,8 +66,8 @@
   ([id kind entries options]
    (if (not (contains-value? section-kinds kind))
      (throw
-      (ex :generic {:section/id id
-                :section/kind kind} :ex/message "Work report section kind is not supported")))
+      (ex :hara/generic (assoc {:section/id id
+                :section/kind kind} :ex/message "Work report section kind is not supported"))))
    (merge
     {:section/id id
      :section/kind kind

@@ -121,7 +121,7 @@
   (cond
     (= value true) "TRUE"
     (= value false) "FALSE"
-    :else (throw (ex :database {:input value} :ex/message "Not Valid"))))
+    :else (throw (ex :hara/database (assoc {:input value} :ex/message "Not Valid")))))
 
 (defn ^{:schema [:fn [:num] :str]}
   encode-number
@@ -275,8 +275,8 @@
           (apply (compatible-field replacement :fn "fn") encoded)
 
           :else
-          (throw (ex :database {:spec replacement} :ex/message (str "Invalid Spec Type - "
-                       (compatible-field replacement :type "type")))))))))
+          (throw (ex :hara/database (assoc {:spec replacement} :ex/message (str "Invalid Spec Type - "
+                       (compatible-field replacement :type "type"))))))))))
 
 (declare encode-sql)
 (declare encode-loop-fn)
@@ -318,7 +318,7 @@
   (let [type-class (compatible-get value "::")
         encoder (get ENCODE_SQL type-class)]
     (if (nil? encoder)
-      (throw (ex :database {:type type-class :input value} :ex/message (str "Unsupported Type - " type-class)))
+      (throw (ex :hara/database (assoc {:type type-class :input value} :ex/message (str "Unsupported Type - " type-class))))
       (encoder value column-function options loop-function))))
 
 (defn ^{:schema [:fn [:any :fn :map :fn] :str]}
@@ -480,7 +480,7 @@
     (column-function input)
 
     :else
-    (throw (ex :database {:input input} :ex/message (str "Invalid input - " input)))))
+    (throw (ex :hara/database (assoc {:input input} :ex/message (str "Invalid input - " input))))))
 
 (defn ^{:schema [:fn [:str :map] :str]}
   default-table-fn
@@ -531,7 +531,7 @@
     (str "'" input "', " (column-function input))
 
     :else
-    (throw (ex :database {:input input} :ex/message (str "Invalid input - " input)))))
+    (throw (ex :hara/database (assoc {:input input} :ex/message (str "Invalid input - " input))))))
 
 (defn ^{:schema [:fn [:any] :any]}
   sqlite-to-boolean

@@ -45,8 +45,8 @@
   (let [form (linked-entry-form entry)
         _ (if (or (nil? form)
                   (not (= 'deftype (first form))))
-            (throw (ex :database {:entry (:id entry)
-                             :form form} :ex/message "Referenced PostgreSQL entry is not a table")))
+            (throw (ex :hara/database (assoc {:entry (:id entry)
+                             :form form} :ex/message "Referenced PostgreSQL entry is not a table"))))
         formatted (pg-deftype-format form)
         normalized (second formatted)
         symbol (second normalized)
@@ -100,14 +100,14 @@
           (let [column (or (:column reference) :id)
                 attributes (linked-column-attributes entry column context)]
             (if (nil? attributes)
-              (throw (ex :not-found {:reference reference
+              (throw (ex :hara/not-found (assoc {:reference reference
                                :column column
-                               :entry (:id entry)} :ex/message "Referenced PostgreSQL table column is missing"))
+                               :entry (:id entry)} :ex/message "Referenced PostgreSQL table column is missing")))
               {:schema (linked-entry-schema context link entry)
                :table (:id entry)
                :type (or (:type attributes) :uuid)
                :column column}))
-          (throw (ex :database {:reference reference} :ex/message "Portable PostgreSQL reference requires an explicit target or module link"))))))
+          (throw (ex :hara/database (assoc {:reference reference} :ex/message "Portable PostgreSQL reference requires an explicit target or module link")))))))
 
 (defn resolve-enum
   [enum context]
@@ -126,11 +126,11 @@
       (if entry
         {:schema (linked-entry-schema context link entry)
          :id (:id entry)}
-        (throw (ex :not-found {:enum enum
-                         :link link} :ex/message "Referenced PostgreSQL enum is missing"))))
+        (throw (ex :hara/not-found (assoc {:enum enum
+                         :link link} :ex/message "Referenced PostgreSQL enum is missing")))))
 
     :else
-    (throw (ex :database {:enum enum} :ex/message "Portable PostgreSQL enum requires an explicit target or module link"))))
+    (throw (ex :hara/database (assoc {:enum enum} :ex/message "Portable PostgreSQL enum requires an explicit target or module link")))))
 
 (defn hydrate-column
   [column attributes context]
@@ -172,7 +172,7 @@
                       normalized-columns))
         primaries (primary-descriptors columns)]
     (if (= 0 (count primaries))
-      (throw (ex :database {:table symbol} :ex/message "PostgreSQL deftype requires a primary column"))
+      (throw (ex :hara/database (assoc {:table symbol} :ex/message "PostgreSQL deftype requires a primary column")))
       (let [static (module-static (:module context))
             schema-primary (if (= 1 (count primaries))
                              (first primaries)

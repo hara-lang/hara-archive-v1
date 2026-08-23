@@ -73,7 +73,7 @@
            (str/ends-with? path ".clj"))
     (str (str/slice path 0 (- (count path) 4)) ".hal")
     (throw
-     (ex :io {:source/path path} :ex/message "Clojure source path must end in .clj"))))
+     (ex :hara/io (assoc {:source/path path} :ex/message "Clojure source path must end in .clj")))))
 
 (defn join-path
   [root path]
@@ -103,13 +103,13 @@
   [unit]
   (if (not (map? unit))
     (throw
-     (ex :argument {:unit unit} :ex/message "Clojure translation source unit must be a map")))
+     (ex :hara/argument (assoc {:unit unit} :ex/message "Clojure translation source unit must be a map"))))
   (if (not (string? (source-path unit)))
     (throw
-     (ex :io {:unit unit} :ex/message "Clojure translation source unit requires :source/path")))
+     (ex :hara/io (assoc {:unit unit} :ex/message "Clojure translation source unit requires :source/path"))))
   (if (not (string? (source-text unit)))
     (throw
-     (ex :io {:source/path (source-path unit)} :ex/message "Clojure translation source unit requires :source/text")))
+     (ex :hara/io (assoc {:source/path (source-path unit)} :ex/message "Clojure translation source unit requires :source/text"))))
   unit)
 
 (defn source-unit

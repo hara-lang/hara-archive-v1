@@ -19,7 +19,7 @@
   (let [book (or (get-in snapshot [lang :book]) (get snapshot lang))
         module (get-in book [:modules module-id])]
     (if (nil? module)
-      (throw (ex :not-found {:lang lang :module module-id} :ex/message "Module not found"))
+      (throw (ex :hara/not-found (assoc {:lang lang :module module-id} :ex/message "Module not found")))
       (let [entries (sort-by (fn [entry]
                                [(or (:priority entry) 0)
                                 (or (:time entry) 0)
@@ -65,13 +65,13 @@
   "marks host evaluation as an explicit unavailable capability"
   {:added "4.0"}
   [key props form grammar mopts]
-  (throw (ex :database {:form form :capability :host/eval} :ex/message "Host eval is not available in portable Hara emission")))
+  (throw (ex :hara/database (assoc {:form form :capability :host/eval} :ex/message "Host eval is not available in portable Hara emission"))))
 
 (defn emit-with-deref
   "marks host Var dereference as an unavailable capability"
   {:added "4.0"}
   [key props form grammar mopts]
-  (throw (ex :database {:form form :capability :host/var-deref} :ex/message "Host Var dereference is not available in portable Hara emission")))
+  (throw (ex :hara/database (assoc {:form form :capability :host/var-deref} :ex/message "Host Var dereference is not available in portable Hara emission"))))
 
 (defn emit-with-lang
   "emits a form with a language book selected from the snapshot"
@@ -82,7 +82,7 @@
         book (or (get-in (:snapshot mopts) [lang :book])
                  (get (:snapshot mopts) lang))]
     (if (nil? book)
-      (throw (ex :not-found {:lang lang :available (keys (:snapshot mopts))} :ex/message "Language not found"))
+      (throw (ex :hara/not-found (assoc {:lang lang :available (keys (:snapshot mopts))} :ex/message "Language not found")))
       (emit-with-preprocess (nth form 2) (:grammar book)
                             (merge mopts options {:book book})))))
 

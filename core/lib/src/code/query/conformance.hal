@@ -80,7 +80,7 @@
   (let [result (sh/run (vec (concat +foundation-runner+ [fixture-path]))
                        {:cwd foundation-root})]
     (if (not= 0 (:exit result))
-      (throw (ex :dependency result :ex/message "Foundation conformance runner failed")))
+      (throw (ex :hara/dependency (assoc result :ex/message "Foundation conformance runner failed"))))
     (Edn/read (:stdout result))))
 
 (defn compare-results

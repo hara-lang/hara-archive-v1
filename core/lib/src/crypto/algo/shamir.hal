@@ -36,7 +36,7 @@
 (defn gf-inverse
   [value]
   (if (= value 0)
-    (throw (ex :generic {:value value} :ex/message "cannot invert zero in GF(256)"))
+    (throw (ex :hara/generic (assoc {:value value} :ex/message "cannot invert zero in GF(256)")))
     (gf-power value 254)))
 
 (defn share-byte
@@ -74,17 +74,17 @@
   (let [length (Bytes/count secret)
         expected (* length (- threshold 1))]
     (if (= length 0)
-      (throw (ex :generic {} :ex/message "secret must not be empty"))
+      (throw (ex :hara/generic (assoc {} :ex/message "secret must not be empty")))
       nil)
     (if (or (< threshold 2) (> threshold 255))
-      (throw (ex :argument {:threshold threshold} :ex/message "invalid threshold"))
+      (throw (ex :hara/argument (assoc {:threshold threshold} :ex/message "invalid threshold")))
       nil)
     (if (or (< shares threshold) (> shares 255))
-      (throw (ex :argument {:shares shares} :ex/message "invalid share count"))
+      (throw (ex :hara/argument (assoc {:shares shares} :ex/message "invalid share count")))
       nil)
     (if (not (= expected (Bytes/count coefficient-bytes)))
-      (throw (ex :argument {:expected expected
-                       :actual (Bytes/count coefficient-bytes)} :ex/message "invalid coefficient byte count"))
+      (throw (ex :hara/argument (assoc {:expected expected
+                       :actual (Bytes/count coefficient-bytes)} :ex/message "invalid coefficient byte count")))
       nil)
     true))
 
@@ -93,13 +93,13 @@
   [secret shares threshold]
   (let [length (Bytes/count secret)]
     (if (= length 0)
-      (throw (ex :generic {} :ex/message "secret must not be empty"))
+      (throw (ex :hara/generic (assoc {} :ex/message "secret must not be empty")))
       nil)
     (if (or (< threshold 2) (> threshold 255))
-      (throw (ex :argument {:threshold threshold} :ex/message "invalid threshold"))
+      (throw (ex :hara/argument (assoc {:threshold threshold} :ex/message "invalid threshold")))
       nil)
     (if (or (< shares threshold) (> shares 255))
-      (throw (ex :argument {:shares shares} :ex/message "invalid share count"))
+      (throw (ex :hara/argument (assoc {:shares shares} :ex/message "invalid share count")))
       nil)
     (* length (- threshold 1))))
 
@@ -156,23 +156,23 @@
 (defn validate-shares
   [shares]
   (if (< (count shares) 2)
-    (throw (ex :dependency {} :ex/message "at least two shares required"))
+    (throw (ex :hara/dependency (assoc {} :ex/message "at least two shares required")))
     nil)
   (let [length (Bytes/count (nth shares 0))
         indexes (indexes-of shares)]
     (if (< length 2)
-      (throw (ex :argument {:length length} :ex/message "invalid share length"))
+      (throw (ex :hara/argument (assoc {:length length} :ex/message "invalid share length")))
       nil)
     (loop [index 0]
       (if (< index (count shares))
         (let [share (nth shares index)
               share-index (nth indexes index)]
           (if (not (= length (Bytes/count share)))
-            (throw (ex :generic {:index index} :ex/message "inconsistent shares"))
+            (throw (ex :hara/generic (assoc {:index index} :ex/message "inconsistent shares")))
             nil)
           (if (or (= share-index 0)
                   (contains-index? indexes share-index index))
-            (throw (ex :conflict {:index share-index} :ex/message "invalid or duplicate share indexes"))
+            (throw (ex :hara/conflict (assoc {:index share-index} :ex/message "invalid or duplicate share indexes")))
             nil)
           (recur (inc index)))
         nil))

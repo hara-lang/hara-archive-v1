@@ -56,9 +56,9 @@
              (let [candidate (dissoc (:options descriptor) :group)]
                (if (not (= normalized-options candidate))
                  (throw
-                  (ex :database {:group group
+                  (ex :hara/database (assoc {:group group
                     :options normalized-options
-                    :candidate candidate} :ex/message "Grouped PostgreSQL index options must match"))
+                    :candidate candidate} :ex/message "Grouped PostgreSQL index options must match")))
                  nil)))
            nil
            descriptors)]

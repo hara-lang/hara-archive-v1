@@ -6,7 +6,7 @@
 
 (defn- fail
   [message data]
-  (throw (ex :generic data :ex/message message)))
+  (throw (ex :hara/generic (assoc data :ex/message message))))
 
 (defn- require-fields
   [source fields]

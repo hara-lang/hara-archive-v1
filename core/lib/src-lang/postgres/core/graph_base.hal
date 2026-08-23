@@ -71,7 +71,7 @@
         key (normalize-key raw-key)
         attr (attrs schema key)]
     (when (nil? attr)
-      (throw (ex :not-found {:key key :allowed (keys schema)} :ex/message "Key not found")))
+      (throw (ex :hara/not-found (assoc {:key key :allowed (keys schema)} :ex/message "Key not found"))))
     (if (= :ref (:type attr))
       (where-pair-ref [key value] where-transform attr options)
       [key (if (vector? value) value [:eq value])])))
@@ -95,7 +95,7 @@
      (fn [input]
        (pairs-output (transform-pairs schema input options))))
     (nil? where) nil
-    :else (throw (ex :database {:schema (keys schema) :input where} :ex/message "Entry not valid"))))
+    :else (throw (ex :hara/database (assoc {:schema (keys schema) :input where} :ex/message "Entry not valid")))))
 
 (defn id-where-fn [spec params]
   (let [prepared (prepare spec)

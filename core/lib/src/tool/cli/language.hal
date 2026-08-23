@@ -6,7 +6,7 @@
 (defn one-argument [arguments label]
   (if (= 1 (count arguments))
     (first arguments)
-    (throw (ex :dependency {:arguments arguments} :ex/message (str label " requires exactly one argument")))))
+    (throw (ex :hara/dependency (assoc {:arguments arguments} :ex/message (str label " requires exactly one argument"))))))
 
 (defn project-start [request]
   (or (:project (:request/options request))
@@ -38,13 +38,13 @@
         stderr (or (:hara.app/stderr value) "")
         exit (or (:hara.app/exit value) 0)]
     (if (not (string? stdout))
-      (throw (ex :argument {} :ex/message ":hara.app/stdout must be a string or nil"))
+      (throw (ex :hara/argument (assoc {} :ex/message ":hara.app/stdout must be a string or nil")))
       nil)
     (if (not (string? stderr))
-      (throw (ex :argument {} :ex/message ":hara.app/stderr must be a string or nil"))
+      (throw (ex :hara/argument (assoc {} :ex/message ":hara.app/stderr must be a string or nil")))
       nil)
     (if (or (< exit 0) (> exit 255))
-      (throw (ex :argument {} :ex/message ":hara.app/exit must be between 0 and 255"))
+      (throw (ex :hara/argument (assoc {} :ex/message ":hara.app/exit must be between 0 and 255")))
       nil)
     (assoc (model/success
             (merge {:application/result value} metadata)

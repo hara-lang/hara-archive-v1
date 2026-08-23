@@ -71,8 +71,7 @@
   [work-value]
   (if (not (work-value? work-value))
     (throw
-     (ex :argument {:work/value work-value}
-         :ex/message "Work lowering requires an IWork value")))
+     (ex :hara/argument (assoc {:work/value work-value} :ex/message "Work lowering requires an IWork value"))))
   {:ir/version lowering-version
    :ir/work (ir-value work-value)})
 
@@ -99,8 +98,7 @@
   (let [value (get-in (deref closure-state) [:values token])]
     (if (nil? value)
       (throw
-       (ex :not-found {:closure/token token}
-           :ex/message "Work lowering closure reference is not available")))
+       (ex :hara/not-found (assoc {:closure/token token} :ex/message "Work lowering closure reference is not available"))))
     value))
 
 (defn form-value
@@ -154,11 +152,9 @@
    (let [version (or (:ir/version options) lowering-version)]
      (if (not= version lowering-version)
        (throw
-        (ex :argument {:ir/version version}
-            :ex/message "Unsupported Work lowering version")))
+        (ex :hara/argument (assoc {:ir/version version} :ex/message "Unsupported Work lowering version"))))
      (if (not (work-value? work-value))
        (throw
-        (ex :argument {:work/value work-value}
-            :ex/message "Work lowering requires an IWork value")))
+        (ex :hara/argument (assoc {:work/value work-value} :ex/message "Work lowering requires an IWork value"))))
      (list 'work.base/definition
            (form-value (work/work-spec work-value))))))

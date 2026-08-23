@@ -75,5 +75,5 @@
       (substrate/request node nil action args (assoc request-options :local true))
       (if (get request-options :transport-id)
         (substrate/request node nil action args request-options)
-        (throw (ex :database {:action action
-                         :transports (substrate/transport-list node)} :ex/message "No database runtime transport is attached"))))))
+        (throw (ex :hara/database (assoc {:action action
+                         :transports (substrate/transport-list node)} :ex/message "No database runtime transport is attached")))))))

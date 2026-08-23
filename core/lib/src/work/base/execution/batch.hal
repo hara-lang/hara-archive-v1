@@ -293,8 +293,8 @@
   (let [work (get spec stage)]
     (if (nil? work)
       (throw
-       (ex :dependency {:stage stage
-                 :work/id (:id spec)} :ex/message "Batch work requires a stage"))
+       (ex :hara/dependency (assoc {:stage stage
+                 :work/id (:id spec)} :ex/message "Batch work requires a stage")))
       work)))
 
 (defn finish-batch

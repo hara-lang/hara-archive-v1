@@ -45,9 +45,9 @@
 
                      :else
                      (throw
-                      (ex :conflict {:run/id id
+                      (ex :hara/conflict (assoc {:run/id id
                                 :existing/work (:run/work-root existing)
-                                :proposed/work (:run/work-root run)} :ex/message "Work run identity conflicts with existing input"))))))]
+                                :proposed/work (:run/work-root run)} :ex/message "Work run identity conflicts with existing input")))))))]
     (get-in updated [:runs id])))
 
 (defn memory-load-run
@@ -97,16 +97,16 @@
               key (:checkpoint/key proposed)]
           (if (nil? key)
             (throw
-             (ex :dependency {:run/id run-id
-                       :checkpoint proposed} :ex/message "Checkpoint requires :checkpoint/key")))
+             (ex :hara/dependency (assoc {:run/id run-id
+                       :checkpoint proposed} :ex/message "Checkpoint requires :checkpoint/key"))))
           (let [existing (get-in data [:checkpoints key])]
             (if (and existing
                      (= :completed (:checkpoint/status existing)))
               (if (same-checkpoint? existing proposed)
                 (recur (inc index) data (conj committed existing))
                 (throw
-                 (ex :database {:run/id run-id
-                           :checkpoint/key key} :ex/message "Completed work checkpoint is immutable")))
+                 (ex :hara/database (assoc {:run/id run-id
+                           :checkpoint/key key} :ex/message "Completed work checkpoint is immutable"))))
               (let [sequence (inc (or (:checkpoint-sequence data) 0))
                     record (assoc proposed :checkpoint/sequence sequence)
                     data
@@ -161,8 +161,8 @@
               key (:outbox/key proposed)]
           (if (nil? key)
             (throw
-             (ex :dependency {:run/id run-id
-                       :outbox proposed} :ex/message "Outbox entry requires :outbox/key")))
+             (ex :hara/dependency (assoc {:run/id run-id
+                       :outbox proposed} :ex/message "Outbox entry requires :outbox/key"))))
           (let [existing-id (get-in data [:outbox-keys key])
                 existing (if existing-id
                            (get-in data [:outbox existing-id])
@@ -171,8 +171,8 @@
               (if (same-outbox-intent? existing proposed)
                 (recur (inc index) data (conj committed existing))
                 (throw
-                 (ex :conflict {:run/id run-id
-                           :outbox/key key} :ex/message "Outbox key conflicts with an existing intent")))
+                 (ex :hara/conflict (assoc {:run/id run-id
+                           :outbox/key key} :ex/message "Outbox key conflicts with an existing intent"))))
               (let [sequence (inc (or (:outbox-sequence data) 0))
                     id (or (:outbox/id proposed)
                            (str "outbox-" sequence))
@@ -202,9 +202,9 @@
         existing (get-in data [:runs run-id])]
     (if (not= :absent (:transition/expected-revision transition))
       (throw
-       (ex :dependency {:run/id run-id
+       (ex :hara/dependency (assoc {:run/id run-id
                  :transition/expected-revision
-                 (:transition/expected-revision transition)} :ex/message "Work run creation requires an absent revision condition")))
+                 (:transition/expected-revision transition)} :ex/message "Work run creation requires an absent revision condition"))))
     (cond
       (nil? existing)
       (let [result
@@ -228,9 +228,9 @@
 
       :else
       (throw
-       (ex :conflict {:run/id run-id
+       (ex :hara/conflict (assoc {:run/id run-id
                  :existing/work (:run/work-root existing)
-                 :proposed/work (:run/work-root proposed)} :ex/message "Work run identity conflicts with existing input")))))
+                 :proposed/work (:run/work-root proposed)} :ex/message "Work run identity conflicts with existing input"))))))
 
 (defn memory-commit-transition
   [data transition]
@@ -239,7 +239,7 @@
   (let [run-id (memory-validate-run-id (:transition/run-id transition))
         run (get-in data [:runs run-id])]
     (if (nil? run)
-      (throw (ex :not-found {:run/id run-id} :ex/message "Work run does not exist")))
+      (throw (ex :hara/not-found (assoc {:run/id run-id} :ex/message "Work run does not exist"))))
     (assert-transition-revision run transition)
     (let [updates (canonical-run-updates (:transition/run-updates transition))
           _ (assert-status-transition run updates)
@@ -284,7 +284,7 @@
   [state run-id changes]
   (let [run (memory-load-run state run-id)]
     (if (nil? run)
-      (throw (ex :not-found {:run/id run-id} :ex/message "Work run does not exist")))
+      (throw (ex :hara/not-found (assoc {:run/id run-id} :ex/message "Work run does not exist"))))
     (memory-transact
      state
      (store/transition-request run-id
@@ -416,15 +416,15 @@
                  (let [entry (get-in data [:outbox id])]
                    (if (nil? entry)
                      (throw
-                      (ex :not-found {:outbox/id id} :ex/message "Outbox entry does not exist")))
+                      (ex :hara/not-found (assoc {:outbox/id id} :ex/message "Outbox entry does not exist"))))
                    (if (and (:claim/id options)
                             (:outbox/claim-id entry)
                             (not= (:claim/id options)
                                   (:outbox/claim-id entry)))
                      (throw
-                      (ex :generic {:outbox/id id
+                      (ex :hara/generic (assoc {:outbox/id id
                                 :claim/id (:claim/id options)
-                                :outbox/claim-id (:outbox/claim-id entry)} :ex/message "Outbox acknowledgement claim does not match")))
+                                :outbox/claim-id (:outbox/claim-id entry)} :ex/message "Outbox acknowledgement claim does not match"))))
                    (let [record
                          (if (= :acked (:outbox/status entry))
                            entry

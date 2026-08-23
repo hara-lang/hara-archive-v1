@@ -67,13 +67,13 @@
     (if (empty? remaining)
       loc
       (if (not (block/container? (current loc)))
-        (throw (ex :security {:path indexes
-                         :resolved (path loc)} :ex/message "Block location path descends through a token"))
+        (throw (ex :hara/security (assoc {:path indexes
+                         :resolved (path loc)} :ex/message "Block location path descends through a token")))
         (let [inside (zip/step-inside loc)
               selected (step-right-n inside (first remaining))]
           (if (nil? (zip/right-element selected))
-            (throw (ex :io {:path indexes
-                             :resolved (path selected)} :ex/message "Block location path is outside the source")))
+            (throw (ex :hara/io (assoc {:path indexes
+                             :resolved (path selected)} :ex/message "Block location path is outside the source"))))
           (recur selected (vec (rest remaining))))))))
 
 (defn location-range
@@ -312,8 +312,8 @@
           values (anchor-children root)]
       (if (= 1 (count values))
         (first values)
-        (throw (ex :dependency {:source input
-                         :forms (count values)} :ex/message "Structural replacement requires exactly one source block"))))
+        (throw (ex :hara/dependency (assoc {:source input
+                         :forms (count values)} :ex/message "Structural replacement requires exactly one source block")))))
     :else (block/block input)))
 
 (defn coerce-blocks

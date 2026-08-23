@@ -79,8 +79,7 @@
   [value]
   (cond (string? value) (parse value)
         (map? value) value
-        :else (throw (ex :argument {:input value}
-                          :ex/message "Not a valid input"))))
+        :else (throw (ex :hara/argument (assoc {:input value} :ex/message "Not a valid input")))))
 
 (defn order
   "Returns the fields used for version comparison."
@@ -152,10 +151,8 @@
    (let [predicate (std.foundation/get +lookup+ comparison)]
      (if predicate
        (predicate current constraint)
-       (throw (ex :argument
-                  {:input comparison
-                   :options (keys +lookup+)}
-                  :ex/message "input not valid"))))))
+       (throw (ex :hara/argument (assoc {:input comparison
+                   :options (keys +lookup+)} :ex/message "input not valid")))))))
 
 (defmacro init
   "Expands the supplied forms only when all constraints are satisfied."

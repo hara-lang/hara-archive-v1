@@ -17,7 +17,7 @@
     (lang.common.emit/emit-node form grammar context)))
 
 (defn- fail [message data]
-  (throw (ex :generic data :ex/message message)))
+  (throw (ex :hara/generic (assoc data :ex/message message))))
 
 (defn- common-options [grammar]
   (merge {:start "(" :end ")" :space " " :assign "=" :sep ","
@@ -608,7 +608,7 @@
                                                   grammar
                                                   (assoc mopts :book book))]
             [rewritten (nth staged 1) (nth staged 2) (nth staged 3)])
-          :else (throw (ex :generic {:step step :form form} :ex/message "Unknown preparation step")))))
+          :else (throw (ex :hara/generic (assoc {:step step :form form} :ex/message "Unknown preparation step"))))))
 
 (defstruct Emitter [])
 (defn emitter [] (lang.common.emit/Emitter))

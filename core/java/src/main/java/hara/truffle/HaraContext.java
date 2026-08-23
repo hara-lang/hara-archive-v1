@@ -2483,25 +2483,17 @@ public final class HaraContext {
         new VariadicBuiltin(
             "ex",
             values -> {
-              if (values.length < 2 || values.length % 2 != 0) {
-                throw new HaraException("ex expects a code, attributes map, and key/value pairs");
+              if (values.length != 2) {
+                throw new HaraException("ex expects a code and attributes map");
               }
               Object codeValue = values[0];
-              Object attributesValue;
-              if (values.length == 2) {
-                attributesValue = values[1];
-              } else {
-                Object[] assocValues = new Object[values.length - 1];
-                System.arraycopy(values, 1, assocValues, 0, assocValues.length);
-                attributesValue = associateValues(assocValues);
-              }
+              Object attributesValue = values[1];
               Object rawCode = HaraBox.unwrap(codeValue);
               Object rawAttributes = HaraBox.unwrap(attributesValue);
               if (!(rawCode instanceof Keyword inputCode)) {
-                throw new HaraException(
-                    "ex expects a registered standard keyword or namespaced keyword code");
+                throw new HaraException("ex expects a namespaced keyword code");
               }
-              Keyword code = normalizeExceptionCode(inputCode);
+              Keyword code = validateExceptionCode(inputCode);
               if (!(rawAttributes instanceof IMapType attributes)) {
                 throw new HaraException("ex expects an attributes map");
               }
@@ -2527,28 +2519,17 @@ public final class HaraContext {
                     ":ex/class conflicts with the registered class for :ex/code");
               }
               Object causeValue = attributes.lookup(Keyword.create("ex", "cause"));
-              if (causeValue != null && !(causeValue instanceof Throwable)) {
-                throw new HaraException(":ex/cause must be an Exception or host error");
+              if (causeValue != null && !(causeValue instanceof hara.lang.base.Ex.Info)) {
+                throw new HaraException(":ex/cause must be an Exception");
               }
               Object contextValue = attributes.lookup(Keyword.create("ex", "context"));
               if (contextValue != null && !(contextValue instanceof IMapType)) {
                 throw new HaraException(":ex/context must be a map");
               }
-              Throwable cause = causeValue instanceof Throwable ? (Throwable) causeValue : null;
-              if (cause != null && !(cause instanceof hara.lang.base.Ex.Info)) {
-                IMetadata hostData =
-                    (IMetadata)
-                        hara.lang.data.Map.Standard.from(
-                            null,
-                            Keyword.create("ex", "code"),
-                            Keyword.create("host", "native-error"),
-                            Keyword.create("ex", "message"),
-                            cause.getMessage() == null ? cause.toString() : cause.getMessage());
-                cause = new hara.lang.base.Ex.Info(
-                    cause.getMessage() == null ? cause.toString() : cause.getMessage(), hostData);
-                attributes =
-                    (IMapType) attributes.assoc(Keyword.create("ex", "cause"), cause);
-              }
+              Throwable cause =
+                  causeValue instanceof hara.lang.base.Ex.Info
+                      ? (hara.lang.base.Ex.Info) causeValue
+                      : null;
               IMetadata data =
                   (IMetadata) attributes.assoc(Keyword.create("ex", "code"), code);
               if (classValue == null && registeredClass != null) {
@@ -3104,12 +3085,9 @@ public final class HaraContext {
     };
   }
 
-  private static Keyword normalizeExceptionCode(Keyword code) {
+  private static Keyword validateExceptionCode(Keyword code) {
     if (code.getNamespace() != null) return code;
-    Keyword canonical = Keyword.create("hara", code.getName());
-    if (defaultExceptionClass(canonical) != null) return canonical;
-    throw new HaraException(
-        "ex expects a registered standard keyword or namespaced keyword code");
+    throw new HaraException("ex expects a namespaced keyword code");
   }
 
   private void installCoreBuiltins(HaraNamespace target) {

@@ -7,13 +7,13 @@
 (defn encode-component
   [value]
   (if (not (string? value))
-    (throw (ex :dependency {:value value} :ex/message "Form component encode expects a string")))
+    (throw (ex :hara/dependency (assoc {:value value} :ex/message "Form component encode expects a string"))))
   (str/replace (url/encode value) "%20" "+"))
 
 (defn decode-component
   [value]
   (if (not (string? value))
-    (throw (ex :dependency {:value value} :ex/message "Form component decode expects a string")))
+    (throw (ex :hara/dependency (assoc {:value value} :ex/message "Form component decode expects a string"))))
   (url/decode (str/replace value "+" "%20")))
 
 (defn- valid-pair?
@@ -26,13 +26,13 @@
 (defn- checked-pairs
   [value]
   (if (not (vector? value))
-    (throw (ex :serialization {:value value} :ex/message "Form encoding expects an ordered vector of string pairs")))
+    (throw (ex :hara/serialization (assoc {:value value} :ex/message "Form encoding expects an ordered vector of string pairs"))))
   (loop [index 0 output []]
     (if (= index (count value))
       output
       (let [pair (nth value index)]
         (if (not (valid-pair? pair))
-          (throw (ex :syntax {:value pair :index index} :ex/message "Malformed form pair")))
+          (throw (ex :hara/syntax (assoc {:value pair :index index} :ex/message "Malformed form pair"))))
         (recur (inc index) (conj output pair))))))
 
 (defn encode
@@ -49,14 +49,14 @@
   [value index offset]
   (let [separator (str/index-of value "=")]
     (if (neg? separator)
-      (throw (ex :syntax {:value value :index index :offset offset} :ex/message "Malformed form pair")))
+      (throw (ex :hara/syntax (assoc {:value value :index index :offset offset} :ex/message "Malformed form pair"))))
     [(decode-component (str/slice value 0 separator))
      (decode-component (str/slice value (inc separator)))]))
 
 (defn decode
   [source]
   (if (not (string? source))
-    (throw (ex :serialization {:value source} :ex/message "Form decode expects a string")))
+    (throw (ex :hara/serialization (assoc {:value source} :ex/message "Form decode expects a string"))))
   (if (= source "")
     []
     (let [length (str/length source)]

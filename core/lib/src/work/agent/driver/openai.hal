@@ -14,8 +14,7 @@
         tools (agent-tool/normalize-all (:tools options))]
     (if (nil? client)
       (throw
-       (ex :dependency {:agent/id (:agent/id agent)}
-           :ex/message "OpenAI agent driver requires a client")))
+       (ex :hara/dependency (assoc {:agent/id (:agent/id agent)} :ex/message "OpenAI agent driver requires a client"))))
     {:client client
      :instructions (:instructions options)
      :tools tools

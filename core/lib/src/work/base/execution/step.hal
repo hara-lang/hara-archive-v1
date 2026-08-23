@@ -91,7 +91,7 @@
   (if (and (base/durable? runtime)
            (nil? (:id spec)))
     (throw
-     (ex :database {:operation (:op spec)} :ex/message "Durable step work requires a stable :id")))
+     (ex :hara/database (assoc {:operation (:op spec)} :ex/message "Durable step work requires a stable :id"))))
   spec)
 
 (defn checkpoint-record

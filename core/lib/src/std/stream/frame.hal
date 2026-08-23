@@ -30,8 +30,8 @@
                      (conj frames (decode-line codec current)))
         (let [next-current (conj current value)]
           (if (> (count next-current) (:max-frame-bytes codec))
-            (throw (ex :limit {:error/type :codec/frame-too-large
-                             :max-frame-bytes (:max-frame-bytes codec)} :ex/message "Frame exceeds maximum byte length"))
+            (throw (ex :hara/limit (assoc {:error/type :codec/frame-too-large
+                             :max-frame-bytes (:max-frame-bytes codec)} :ex/message "Frame exceeds maximum byte length")))
             (feed-values codec values (inc index) next-current frames)))))))
 
 (extend-type LineCodec IFrameCodec
@@ -39,17 +39,17 @@
   (encode-frame [codec value]
     (let [encoded ((:encode-value codec) value)]
       (if (not (string? encoded))
-        (throw (ex :io {:value encoded} :ex/message "Frame encoder must return a string")))
+        (throw (ex :hara/io (assoc {:value encoded} :ex/message "Frame encoder must return a string"))))
       (if (or (str/includes? encoded "\n") (str/includes? encoded "\r"))
-        (throw (ex :io {:value encoded} :ex/message "Line frame contains a newline")))
+        (throw (ex :hara/io (assoc {:value encoded} :ex/message "Line frame contains a newline"))))
       (let [payload (str/encode-utf8 encoded)]
         (if (> (bytes/count payload) (:max-frame-bytes codec))
-          (throw (ex :limit {:error/type :codec/frame-too-large
-                           :max-frame-bytes (:max-frame-bytes codec)} :ex/message "Frame exceeds maximum byte length"))
+          (throw (ex :hara/limit (assoc {:error/type :codec/frame-too-large
+                           :max-frame-bytes (:max-frame-bytes codec)} :ex/message "Frame exceeds maximum byte length")))
           (apply bytes (conj (append-bytes [] payload) 10))))))
   (feed-frame [codec state chunk]
     (if (not (Bytes/instance? chunk))
-      (throw (ex :io {:value chunk} :ex/message "Frame codec expects Bytes")))
+      (throw (ex :hara/io (assoc {:value chunk} :ex/message "Frame codec expects Bytes"))))
     (feed-values codec (append-bytes [] chunk) 0 state []))
   (finish-frame [codec state]
     {:state []

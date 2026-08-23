@@ -9,7 +9,7 @@
 (defn- registry-error
   [message data]
   (throw
-   (ex :argument (assoc data :type :std.typed.registry/invalid-registry) :ex/message message)))
+   (ex :hara/argument (assoc (assoc data :type :std.typed.registry/invalid-registry) :ex/message message))))
 
 (defn ^{:schema [:fn [:any] :bool]}
   registry?

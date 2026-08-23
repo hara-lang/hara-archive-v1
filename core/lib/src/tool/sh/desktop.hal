@@ -7,11 +7,9 @@
 (defn- unsupported
   [operation platform]
   (throw
-   (ex :host
-       {:tool.sh/error :unsupported-platform
+   (ex :hara/host (assoc {:tool.sh/error :unsupported-platform
         :tool.sh/operation operation
-        :platform platform}
-       :ex/message "Desktop operation is unsupported on this platform")))
+        :platform platform} :ex/message "Desktop operation is unsupported on this platform"))))
 
 (defn- platform
   [value]
@@ -54,9 +52,7 @@
   [platform command]
   (if (not (vector? command))
     (throw
-     (ex :dependency
-         {:command command}
-         :ex/message "Terminal commands must be argv vectors")))
+     (ex :hara/dependency (assoc {:command command} :ex/message "Terminal commands must be argv vectors"))))
   (cond
     (= platform :macos)
     (into ["ttab"] command)

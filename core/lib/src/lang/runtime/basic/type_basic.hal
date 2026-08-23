@@ -85,9 +85,9 @@
         (fn []
           (oneshot/raw-eval-oneshot runtime source))))
      (throw
-      (ex :host {:id (get runtime :id)
+      (ex :hara/host (assoc {:id (get runtime :id)
                 :lang (get runtime :lang)
-                :state (basic-state runtime)} :ex/message "Basic runtime is not started")))))
+                :state (basic-state runtime)} :ex/message "Basic runtime is not started"))))))
 
 (defn eval-raw-basic
   "Promise-first raw exchange evaluation, bypassing semantic plugins."
@@ -101,9 +101,9 @@
         (fn []
           (oneshot/raw-eval-oneshot runtime source))))
      (throw
-      (ex :host {:id (get runtime :id)
+      (ex :hara/host (assoc {:id (get runtime :id)
                 :lang (get runtime :lang)
-                :state (basic-state runtime)} :ex/message "Basic runtime is not started")))))
+                :state (basic-state runtime)} :ex/message "Basic runtime is not started"))))))
 
 (defn raw-eval-basic
   "Blocking compatibility adapter. Target errors are thrown."

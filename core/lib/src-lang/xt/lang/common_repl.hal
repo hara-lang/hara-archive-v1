@@ -180,7 +180,7 @@
   [value & [id tag]]
   (notify-form (or id
                    notify/*override-id*
-                   (throw (ex :generic {} :ex/message "No ID for Notify")))
+                   (throw (ex :hara/generic (assoc {} :ex/message "No ID for Notify"))))
                value {:tag tag}))
 
 

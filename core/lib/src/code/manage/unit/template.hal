@@ -67,7 +67,7 @@
     1 (tasklet unit)
     2 (tasklet unit options)
     (throw
-     (ex :generic {:argcount argcount} :ex/message "code.manage tasklets support one or two arguments"))))
+     (ex :hara/generic (assoc {:argcount argcount} :ex/message "code.manage tasklets support one or two arguments")))))
 
 (defn result-record
   [item]
@@ -134,16 +134,16 @@
   [config]
   (if (not (map? config))
     (throw
-     (ex :argument {:config config} :ex/message "code.manage task configuration must be a map")))
+     (ex :hara/argument (assoc {:config config} :ex/message "code.manage task configuration must be a map"))))
   (if (nil? (:operation config))
     (throw
-     (ex :dependency {} :ex/message "code.manage task requires :operation")))
+     (ex :hara/dependency (assoc {} :ex/message "code.manage task requires :operation"))))
   (if (nil? (get-in config [:main :fn]))
     (throw
-     (ex :dependency {:operation (:operation config)} :ex/message "code.manage task requires :main :fn")))
+     (ex :hara/dependency (assoc {:operation (:operation config)} :ex/message "code.manage task requires :main :fn"))))
   (if (nil? (get-in config [:main :symbol]))
     (throw
-     (ex :dependency {:operation (:operation config)} :ex/message "code.manage task requires :main :symbol")))
+     (ex :hara/dependency (assoc {:operation (:operation config)} :ex/message "code.manage task requires :main :symbol"))))
   config)
 
 (task-template/register-profile

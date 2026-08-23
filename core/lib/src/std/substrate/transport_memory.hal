@@ -74,10 +74,10 @@
     (let [peer-id (nth peer-ids index)
           peer (get (get @network "states") peer-id)]
       (if (nil? peer)
-        (throw (ex :not-found {:peer peer-id} :ex/message (str "wire peer not found - " peer-id)))
+        (throw (ex :hara/not-found (assoc {:peer peer-id} :ex/message (str "wire peer not found - " peer-id))))
         (let [listener (get @peer "listener")]
           (if (nil? listener)
-            (throw (ex :io {:peer peer-id} :ex/message (str "wire peer not started - " peer-id)))
+            (throw (ex :hara/io (assoc {:peer peer-id} :ex/message (str "wire peer not started - " peer-id))))
             (promise/then
              (promise/from
               (listener {"text" text}
@@ -99,14 +99,14 @@
        (if network
          (let [peer-ids (get current "peers")]
            (if (= 0 (count peer-ids))
-             (throw (ex :not-found {:endpoint (get current "id")} :ex/message "wire endpoint missing peers"))
+             (throw (ex :hara/not-found (assoc {:endpoint (get current "id")} :ex/message "wire endpoint missing peers")))
              (deliver-network-loop network state peer-ids text 0)))
          (let [peer (get current "peer")]
            (if (nil? peer)
-             (throw (ex :not-found {:endpoint (get current "id")} :ex/message "wire endpoint missing peer"))
+             (throw (ex :hara/not-found (assoc {:endpoint (get current "id")} :ex/message "wire endpoint missing peer")))
              (let [listener (get @peer "listener")]
                (if (nil? listener)
-                 (throw (ex :serialization {:endpoint (get current "id")} :ex/message "wire peer not started"))
+                 (throw (ex :hara/serialization (assoc {:endpoint (get current "id")} :ex/message "wire peer not started")))
                  (promise/from
                   (listener {"text" text}
                             {"wire" (get current "id")
@@ -146,10 +146,10 @@
              (or @current-endpoint
                  (if (fn? source-create-function) nil endpoint-source))]
          (if (nil? endpoint)
-           (throw (ex :serialization {} :ex/message "json endpoint not started"))
+           (throw (ex :hara/serialization (assoc {} :ex/message "json endpoint not started")))
            (let [write-function (get endpoint "write_fn")]
              (if (not (fn? write-function))
-               (throw (ex :not-found {} :ex/message "json endpoint missing write implementation"))
+               (throw (ex :hara/not-found (assoc {} :ex/message "json endpoint missing write implementation")))
                (write-function (substrate-json/encode-frame outgoing)))))))
      "start_fn"
      (fn [listener]

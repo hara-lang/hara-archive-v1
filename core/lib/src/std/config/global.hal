@@ -45,4 +45,4 @@
      :session (session)
      :all (global-all context)
      (throw
-      (ex :generic {:source kind} :ex/message "Unknown global configuration source")))))
+      (ex :hara/generic (assoc {:source kind} :ex/message "Unknown global configuration source"))))))

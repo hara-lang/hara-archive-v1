@@ -12,10 +12,10 @@
   "Parses the deliberately narrow host:port syntax accepted by the prototype."
   [value]
   (if (not (string? value))
-    (throw (ex :argument {:endpoint value} :ex/message "Hara in-REPL endpoint must be HOST:PORT")))
+    (throw (ex :hara/argument (assoc {:endpoint value} :ex/message "Hara in-REPL endpoint must be HOST:PORT"))))
   (let [index (str/last-index-of value ":")]
     (if (<= index 0)
-      (throw (ex :argument {:endpoint value} :ex/message "Hara in-REPL endpoint must be HOST:PORT")))
+      (throw (ex :hara/argument (assoc {:endpoint value} :ex/message "Hara in-REPL endpoint must be HOST:PORT"))))
     (let [host (str/slice value 0 index)
           port (try (Edn/read (str/slice value (inc index)))
                     (catch Throwable error nil))]
@@ -23,7 +23,7 @@
               (not (long? port))
               (< port 1)
               (> port 65535))
-        (throw (ex :dependency {:endpoint value :host host :port port} :ex/message "Hara in-REPL requires a loopback HOST:PORT endpoint")))
+        (throw (ex :hara/dependency (assoc {:endpoint value :host host :port port} :ex/message "Hara in-REPL requires a loopback HOST:PORT endpoint"))))
       {:host host :port port :endpoint value})))
 
 (defn- append-bytes [left right]
@@ -47,7 +47,7 @@
   (let [value (try (Edn/read text) (catch Throwable error nil))]
     (if (long? value)
       value
-      (throw (ex :argument {:text text :offset offset} :ex/message "Invalid RESP frame length")))))
+      (throw (ex :hara/argument (assoc {:text text :offset offset} :ex/message "Invalid RESP frame length"))))))
 
 (declare parse-at)
 
@@ -66,7 +66,7 @@
   "Returns one decoded RESP frame and the next byte offset, or nil when incomplete."
   [value offset depth]
   (if (> depth +max-frame-depth+)
-    (throw (ex :limit {:depth depth} :ex/message "RESP nesting limit exceeded")))
+    (throw (ex :hara/limit (assoc {:depth depth} :ex/message "RESP nesting limit exceeded"))))
   (if (>= offset (bytes/count value))
     nil
     (let [prefix (byte-at value offset)
@@ -87,11 +87,11 @@
               (= size -1) {:value {:resp/type :bulk :resp/value nil}
                            :next (:next line)}
               (or (< size 0) (> size +max-frame-bytes+))
-              (throw (ex :syntax {:length size} :ex/message "Invalid RESP bulk length"))
+              (throw (ex :hara/syntax (assoc {:length size} :ex/message "Invalid RESP bulk length")))
               (> (+ (:next line) size 2) (bytes/count value)) nil
               (or (not (= 13 (byte-at value (+ (:next line) size))))
                   (not (= 10 (byte-at value (+ (:next line) size 1)))))
-              (throw (ex :syntax {:offset offset} :ex/message "Invalid RESP bulk ending"))
+              (throw (ex :hara/syntax (assoc {:offset offset} :ex/message "Invalid RESP bulk ending")))
               :else
               {:value {:resp/type :bulk
                        :resp/value (str/decode-utf8
@@ -103,18 +103,18 @@
               (= count -1) {:value {:resp/type :array :resp/value nil}
                             :next (:next line)}
               (or (< count 0) (> count +max-frame-bytes+))
-              (throw (ex :syntax {:length count} :ex/message "Invalid RESP array length"))
+              (throw (ex :hara/syntax (assoc {:length count} :ex/message "Invalid RESP array length")))
               :else (parse-array value (:next line) count depth)))
-          :else (throw (ex :syntax {:prefix prefix} :ex/message "Unknown RESP frame prefix")))))))
+          :else (throw (ex :hara/syntax (assoc {:prefix prefix} :ex/message "Unknown RESP frame prefix"))))))))
 
 (defn decode
   "Decodes a single complete RESP value."
   [value]
   (let [parsed (parse-at value 0 0)]
     (if (nil? parsed)
-      (throw (ex :serialization {} :ex/message "Incomplete RESP frame")))
+      (throw (ex :hara/serialization (assoc {} :ex/message "Incomplete RESP frame"))))
     (if (not= (:next parsed) (bytes/count value))
-      (throw (ex :syntax {:next (:next parsed)} :ex/message "RESP input contains trailing bytes")))
+      (throw (ex :hara/syntax (assoc {:next (:next parsed)} :ex/message "RESP input contains trailing bytes"))))
     (:value parsed)))
 
 (defn encode-array [values]
@@ -137,7 +137,7 @@
                       (reset! result {:error error :connection connection})))
     (let [{:keys [error connection]} (deref result)]
       (if error
-        (throw (ex :io {:endpoint value :error error} :ex/message "Hara in-REPL connection failed")))
+        (throw (ex :hara/io (assoc {:endpoint value :error error} :ex/message "Hara in-REPL connection failed"))))
       connection)))
 
 (defn- receive [state stream]
@@ -153,9 +153,9 @@
             (do (swap! state update :buffer append-bytes (:bytes event))
                 (recur))
             (= :close (:type event))
-            (throw (ex :state {} :ex/message "Hara in-REPL closed before responding"))
+            (throw (ex :hara/state (assoc {} :ex/message "Hara in-REPL closed before responding")))
             (= :error (:type event))
-            (throw (ex :io {:error (:error event)} :ex/message "Hara in-REPL socket failed"))
+            (throw (ex :hara/io (assoc {:error (:error event)} :ex/message "Hara in-REPL socket failed")))
             :else (recur)))))))
 
 (defn- send [connection values]
@@ -164,7 +164,7 @@
 (defn- expect [frame type]
   (if (= type (:resp/type frame))
     frame
-    (throw (ex :io {:expected type :actual frame} :ex/message "Unexpected Hara RESP response"))))
+    (throw (ex :hara/io (assoc {:expected type :actual frame} :ex/message "Unexpected Hara RESP response")))))
 
 (defn- hello [connection stream state]
   (send connection ["HELLO" "4" "CLIENT" "HARA-INREPL"])
@@ -172,7 +172,7 @@
         values (map frame-text (:resp/value frame))]
     (if (and (= "SERVER" (first values)) (= "HARA" (second values)))
       values
-      (throw (ex :io {:response values} :ex/message "Endpoint is not a Hara RESP server")))))
+      (throw (ex :hara/io (assoc {:response values} :ex/message "Endpoint is not a Hara RESP server"))))))
 
 (defn- request [connection stream state id operation arguments]
   (send connection (vec (concat [operation id] arguments)))
@@ -181,13 +181,13 @@
         result-values (:resp/value result)
         done-values (map frame-text (:resp/value done))]
     (if (not= ["DONE" id] (vec (take 2 done-values)))
-      (throw (ex :io {:id id :done done-values} :ex/message "Hara RESP completion id mismatch")))
+      (throw (ex :hara/io (assoc {:id id :done done-values} :ex/message "Hara RESP completion id mismatch"))))
     (if (= "ERROR" (frame-text (first result-values)))
-      (throw (ex :io {:id id
+      (throw (ex :hara/io (assoc {:id id
                        :code (frame-text (nth result-values 2))
-                       :message (frame-text (nth result-values 3))} :ex/message "Hara in-REPL evaluation failed")))
+                       :message (frame-text (nth result-values 3))} :ex/message "Hara in-REPL evaluation failed"))))
     (if (not= "RESULT" (frame-text (first result-values)))
-      (throw (ex :io {:response result-values} :ex/message "Unexpected Hara RESP result")))
+      (throw (ex :hara/io (assoc {:response result-values} :ex/message "Unexpected Hara RESP result"))))
     (nth result-values 2)))
 
 (defn- with-client [endpoint-value f]
@@ -215,7 +215,7 @@
 (defn- require-loopback-project [start]
   (let [current (project/discover start)]
     (if (not (project/inrepl-loopback? current))
-      (throw (ex :dependency {:project (:project/id current)} :ex/message "project.edn must opt in with :project/inrepl-capabilities #{:inrepl/loopback}")))
+      (throw (ex :hara/dependency (assoc {:project (:project/id current)} :ex/message "project.edn must opt in with :project/inrepl-capabilities #{:inrepl/loopback}"))))
     current))
 
 (defn eval-source
@@ -247,7 +247,7 @@
   ([endpoint] (reset endpoint +agent-session+))
   ([endpoint session]
    (if (= session "ROOT")
-     (throw (ex :generic {:session session} :ex/message "Hara in-REPL never resets ROOT")))
+     (throw (ex :hara/generic (assoc {:session session} :ex/message "Hara in-REPL never resets ROOT"))))
    (with-client endpoint
      (fn [connection stream state]
        (let [sessions (session-names (request-next connection stream state "SESSION" ["LIST"]))]

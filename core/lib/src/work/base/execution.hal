@@ -13,14 +13,14 @@
   [provider]
   (cond
     (nil? provider)
-    (throw (ex :dependency {} :ex/message "Work runtime requires an executor provider"))
+    (throw (ex :hara/dependency (assoc {} :ex/message "Work runtime requires an executor provider")))
 
     (satisfies? IWorkExecutor provider)
     provider
 
     :else
     (throw
-     (ex :generic {:provider provider} :ex/message "Work executor must implement IWorkExecutor"))))
+     (ex :hara/generic (assoc {:provider provider} :ex/message "Work executor must implement IWorkExecutor")))))
 
 (defn executor-descriptor
   [executor]
@@ -89,8 +89,8 @@
            handler (get (evaluator-handlers runtime) operation)]
        (if (nil? handler)
          (throw
-          (ex :io {:operation operation
-                    :node/path (:node/path frame)} :ex/message "Work operation is not installed"))
+          (ex :hara/io (assoc {:operation operation
+                    :node/path (:node/path frame)} :ex/message "Work operation is not installed")))
          (result/then
           (frame/emit runtime frame :work/node-started
                        {:operation operation

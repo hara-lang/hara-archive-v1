@@ -25,7 +25,7 @@
         (reduce (fn [matched part] (or matched (matches? part identifier)))
                 false selector)
         :else
-        (throw (ex :argument {:selector selector :identifier identifier} :ex/message "Command selector is not valid"))))
+        (throw (ex :hara/argument (assoc {:selector selector :identifier identifier} :ex/message "Command selector is not valid")))))
 
 (defn select
   [selector values]

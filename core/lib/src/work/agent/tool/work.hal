@@ -33,22 +33,18 @@
   (let [produced ((:tool/invoke value) (:call/arguments call))]
     (if (not (satisfies? IWork produced))
       (throw
-       (ex :state
-           {:work/error :work/agent-tool-not-work
+       (ex :hara/state (assoc {:work/error :work/agent-tool-not-work
             :tool/name (:tool/name value)
             :tool/effect (:tool/effect value)
-            :call/id (:call/id call)}
-           :ex/message "Effectful agent tool factory must return Work")))
+            :call/id (:call/id call)} :ex/message "Effectful agent tool factory must return Work"))))
     (let [spec (work/work-spec produced)]
       (if (nil? (:id spec))
         (throw
-         (ex :dependency
-             {:work/error :work/agent-tool-unstable-work
+         (ex :hara/dependency (assoc {:work/error :work/agent-tool-unstable-work
               :tool/name (:tool/name value)
               :tool/effect (:tool/effect value)
               :call/id (:call/id call)
-              :produced/op (:op spec)}
-             :ex/message "Effectful agent tool Work requires a stable :id"))))
+              :produced/op (:op spec)} :ex/message "Effectful agent tool Work requires a stable :id")))))
     produced))
 
 (defn effect-call-work

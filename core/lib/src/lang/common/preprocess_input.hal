@@ -38,7 +38,7 @@
                                  (if resolved
                                    (foundation/var-sym resolved)
                                    (throw
-                                    (ex :security {:input (second token)} :ex/message "Var not found"))))
+                                    (ex :hara/security (assoc {:input (second token)} :ex/message "Var not found")))))
                            (if input
                              (cons input more)
                              more))))
@@ -51,7 +51,7 @@
                    more)))
 
         (= 'unquote (first tag))
-        (throw (ex :host {:input x} :ex/message "Not supported")))
+        (throw (ex :hara/host (assoc {:input x} :ex/message "Not supported"))))
 
       (= 'deref tag)
       (if (and (list? input)
@@ -62,7 +62,7 @@
                       (if resolved
                         (foundation/var-sym resolved)
                         (throw
-                         (ex :not-found {:input (second input)} :ex/message "Var not found"))))))
+                         (ex :hara/not-found (assoc {:input (second input)} :ex/message "Var not found")))))))
         (list '!:eval input)))))
 
 (defn to-input

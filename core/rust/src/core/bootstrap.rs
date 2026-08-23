@@ -37,6 +37,9 @@ pub fn minimal_namespace_registry() -> NamespaceRegistry<Value> {
             .find_or_create(namespace)
             .intern_with_origin(name, method, VarOrigin::RuntimePrimitive);
     }
+    for (name, value) in exception_function_values() {
+        foundation.intern_with_origin(name, value, VarOrigin::RuntimePrimitive);
+    }
 
     namespaces
 }

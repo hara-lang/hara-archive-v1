@@ -56,7 +56,7 @@
 
 (defn spec-get [type]
   (or (get (deref *resource-registry*) type)
-      (throw (ex :generic {:type type :options (spec-list)} :ex/message "No resource spec available"))))
+      (throw (ex :hara/generic (assoc {:type type :options (spec-list)} :ex/message "No resource spec available")))))
 
 (defn variant-list
   ([] (map-vals (fn [spec] (keys (:variant spec)))
@@ -84,8 +84,8 @@
          variant (get-in spec [:variant id])]
      (if variant
        (resource-merge-config (dissoc spec :variant) variant)
-       (throw (ex :generic {:type type :variant id
-                        :options (keys (:variant spec))} :ex/message "No resource variant available"))))))
+       (throw (ex :hara/generic (assoc {:type type :variant id
+                        :options (keys (:variant spec))} :ex/message "No resource variant available")))))))
 
 (defn resource-mode
   ([type] (resource-mode type :default))
@@ -156,7 +156,7 @@
                                            [:mode :key])]
                   (key-function input))
                 input)
-      (throw (ex :generic {:mode mode} :ex/message "Unsupported resource mode")))))
+      (throw (ex :hara/generic (assoc {:mode mode} :ex/message "Unsupported resource mode"))))))
 
 (defn resource-active-path [mode type variant input]
   (let [resource-key (resource-key mode type variant input)]
@@ -177,7 +177,7 @@
 
 (defn resource-active-start [mode type variant key config]
   (if (resource-active-get mode type variant key)
-    (throw (ex :generic {:type type :variant variant :key key} :ex/message "Resource already started"))
+    (throw (ex :hara/generic (assoc {:type type :variant variant :key key} :ex/message "Resource already started")))
     (let [instance (resource-setup type variant config)]
       (resource-active-set mode type variant key
                            {:key key :config config :instance instance})
@@ -205,7 +205,7 @@
   (let [spec (variant-get type variant)
         allowed (get-in spec [:mode :allow])]
     (if (not (has? allowed mode))
-      (throw (ex :generic {:mode mode :options allowed} :ex/message "Resource mode not allowed")))
+      (throw (ex :hara/generic (assoc {:mode mode :options allowed} :ex/message "Resource mode not allowed"))))
     (or (:instance (resource-active-get mode type variant key))
         (resource-active-start mode type variant key config))))
 
@@ -215,7 +215,7 @@
     (map? input) [:default input]
     (symbol? input) [:default input]
     (string? input) [:default input]
-    :else (throw (ex :argument {:input input} :ex/message "Invalid resource input"))))
+    :else (throw (ex :hara/argument (assoc {:input input} :ex/message "Invalid resource input")))))
 
 (defn resource-call-fn [function]
   (fn [& call-arguments]
@@ -255,8 +255,7 @@
         (apply function call-arguments)
 
         :else
-        (throw (ex :argument {:arguments call-arguments}
-                   :ex/message "Invalid resource call arity"))))))
+        (throw (ex :hara/argument (assoc {:arguments call-arguments} :ex/message "Invalid resource call arity")))))))
 
 (defn resource-api-fn [function extra post default]
   (let [call-function (resource-call-fn function)]

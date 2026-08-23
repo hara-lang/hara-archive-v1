@@ -27,7 +27,7 @@
 (defn throw-reader
   [reader message & input]
   (let [[row column] (reader-position reader)]
-    (throw (ex :syntax {:data (vec input) :row row :col column} :ex/message (str message " [row " row ", column " column "]")))))
+    (throw (ex :hara/syntax (assoc {:data (vec input) :row row :col column} :ex/message (str message " [row " row ", column " column "]"))))))
 
 (defn read-char
   [reader]

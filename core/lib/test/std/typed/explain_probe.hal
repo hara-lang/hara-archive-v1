@@ -50,7 +50,5 @@
   (if (every? true? checks)
     (pr-str checks)
     (throw
-     (ex :state
-         {:checks checks
-          :components components}
-         :ex/message "std.typed Truffle probe failed"))))
+     (ex :hara/state (assoc {:checks checks
+          :components components} :ex/message "std.typed Truffle probe failed")))))

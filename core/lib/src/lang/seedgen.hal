@@ -85,7 +85,7 @@
                                 (= operation :list) (seedgen-list unit)
                                 (= operation :incomplete) (incomplete unit)
                                 (= operation :benchadd) (bench-plan unit (:language unit) (:test-root unit))
-                                :else (throw (ex :generic {:operation operation} :ex/message "Unsupported seedgen workflow")))))
+                                :else (throw (ex :hara/generic (assoc {:operation operation} :ex/message "Unsupported seedgen workflow"))))))
     :summarise (work/pure :summarise
                           (fn [batch context]
                             {:operation operation :count (count (:results batch))}))}))

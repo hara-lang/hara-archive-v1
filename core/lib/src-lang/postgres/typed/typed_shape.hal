@@ -75,7 +75,7 @@
   "Converts a TableDef into its canonical JsonbShape."
   [table-def]
   (if (not (types/table-def? table-def))
-    (throw (ex :database {:value table-def} :ex/message "Expected a TableDef"))
+    (throw (ex :hara/database (assoc {:value table-def} :ex/message "Expected a TableDef")))
     (let [columns (:columns table-def)
           column-names (map (fn [column] (:name column)) columns)
           primary-key (:primary-key table-def)

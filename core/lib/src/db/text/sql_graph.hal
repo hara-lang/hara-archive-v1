@@ -55,7 +55,7 @@
     (column-function input)
 
     :else
-    (throw (ex :database {:input input} :ex/message "Invalid graph return input"))))
+    (throw (ex :hara/database (assoc {:input input} :ex/message "Invalid graph return input")))))
 
 (declare select-where)
 (declare select-return)
@@ -77,7 +77,7 @@
         table (compatible-get schema table-name)
         attribute (compatible-get table key-string)]
     (if (nil? attribute)
-      (throw (ex :not-found {:table table-name :attribute key-string} :ex/message "Attribute not found"))
+      (throw (ex :hara/not-found (assoc {:table table-name :attribute key-string} :ex/message "Attribute not found")))
       nil)
     (let [reference (compatible-get attribute :ref)
           reference-type (compatible-get reference :type)
@@ -131,14 +131,14 @@
               (and (vector? normalized) (map? (first normalized)))
               (or-subqueries reverse normalized)
               :else
-              (throw (ex :database {:table table-name
+              (throw (ex :hara/database (assoc {:table table-name
                                :attribute key-string
-                               :clause clause} :ex/message "Invalid reverse-reference clause"))))
+                               :clause clause} :ex/message "Invalid reverse-reference clause")))))
 
           :else
-          (throw (ex :database {:table table-name
+          (throw (ex :hara/database (assoc {:table table-name
                            :attribute key-string
-                           :reference reference} :ex/message "Invalid reference direction")))
+                           :reference reference} :ex/message "Invalid reference direction"))))
         (sql/encode-query-segment key-string clause column-function options)))))
 
 (defn select-where

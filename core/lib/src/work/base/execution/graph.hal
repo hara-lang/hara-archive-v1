@@ -15,8 +15,8 @@
   [available output]
   (if (not (contains-value? available output))
     (throw
-     (ex :not-found {:work/error :work/missing-graph-output
-               :graph/output output} :ex/message "Work graph output does not exist")))
+     (ex :hara/not-found (assoc {:work/error :work/missing-graph-output
+               :graph/output output} :ex/message "Work graph output does not exist"))))
   output)
 
 (defn- graph-needed-loop
@@ -112,8 +112,8 @@
   [execute runtime frame spec input]
   (if (not (map? input))
     (throw
-     (ex :argument {:work/error :work/invalid-graph-input
-               :input input} :ex/message "Work graph input must be a map")))
+     (ex :hara/argument (assoc {:work/error :work/invalid-graph-input
+               :input input} :ex/message "Work graph input must be a map"))))
   (let [options (or (:options frame) {})
         evaluation (or (:evaluation options) (:evaluation spec) :eager)
         default-outputs
@@ -124,19 +124,19 @@
         available (concat (:inputs spec) (:order spec))]
     (if (not (or (= :eager evaluation) (= :lazy evaluation)))
       (throw
-       (ex :argument {:work/error :work/invalid-graph-evaluation
-                 :evaluation evaluation} :ex/message "Work graph evaluation must be :eager or :lazy")))
+       (ex :hara/argument (assoc {:work/error :work/invalid-graph-evaluation
+                 :evaluation evaluation} :ex/message "Work graph evaluation must be :eager or :lazy"))))
     (if (empty? outputs)
       (throw
-       (ex :not-found {:work/error :work/missing-graph-outputs} :ex/message "Lazy work graph evaluation requires :outputs")))
+       (ex :hara/not-found (assoc {:work/error :work/missing-graph-outputs} :ex/message "Lazy work graph evaluation requires :outputs"))))
     (reduce (fn [_ output] (assert-output available output)) true outputs)
     (let [dependencies (:dependencies spec)
           needed (graph-needed spec dependencies evaluation outputs)
           missing (missing-inputs input (:inputs spec) needed)]
       (if (not (empty? missing))
         (throw
-         (ex :not-found {:work/error :work/missing-graph-input
-                   :graph/missing missing} :ex/message "Work graph input is missing required values")))
+         (ex :hara/not-found (assoc {:work/error :work/missing-graph-input
+                   :graph/missing missing} :ex/message "Work graph input is missing required values"))))
       (run-graph-loop execute
                       runtime
                       frame

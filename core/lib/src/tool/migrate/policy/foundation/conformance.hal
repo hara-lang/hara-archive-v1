@@ -416,10 +416,8 @@
              (every? string? paths))
       paths
       (throw
-       (ex :serialization
-           {:family/id (:family/id descriptor)
-            :metadata/path (metadata-path descriptor)}
-           :ex/message "family metadata must contain string :target/test-paths")))))
+       (ex :hara/serialization (assoc {:family/id (:family/id descriptor)
+            :metadata/path (metadata-path descriptor)} :ex/message "family metadata must contain string :target/test-paths"))))))
 
 (defn metadata-path
   "Returns the registry-relative metadata document for a family."
@@ -442,10 +440,8 @@
              (every? string? paths))
       paths
       (throw
-       (ex :serialization
-           {:family/id (:family/id descriptor)
-            :metadata/path (metadata-path descriptor)}
-           :ex/message "family metadata must contain string :target/test-paths")))))
+       (ex :hara/serialization (assoc {:family/id (:family/id descriptor)
+            :metadata/path (metadata-path descriptor)} :ex/message "family metadata must contain string :target/test-paths"))))))
 
 (defn source-path-for-test-path
   "Maps a migrated Hara test path to its sibling Hara source path."
@@ -596,9 +592,7 @@
               pairs))
       pairs
       (throw
-       (ex :serialization
-           {:metadata/key key}
-           :ex/message "metadata source/test pairs must contain string paths")))))
+       (ex :hara/serialization (assoc {:metadata/key key} :ex/message "metadata source/test pairs must contain string paths"))))))
 
 (defn pair-namespace
   [function]
@@ -1149,10 +1143,8 @@
                                                  (:contract/source artifacts))]
     (if (= :immutable-conflict origin-state)
       (throw
-       (ex :tool.migrate/origin-immutable-conflict
-           {:family/id (:family/id descriptor)
-            :path origin-path}
-           :ex/message "Generated origin.edn differs from the immutable registry origin")))
+       (ex :tool.migrate/origin-immutable-conflict (assoc {:family/id (:family/id descriptor)
+            :path origin-path} :ex/message "Generated origin.edn differs from the immutable registry origin"))))
     (host-write metadata-path (:metadata/source artifacts))
     (if (has? #{:create :replace-legacy} origin-state)
       (host-write origin-path (:origin/source artifacts))

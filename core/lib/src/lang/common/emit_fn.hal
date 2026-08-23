@@ -19,7 +19,7 @@
     (let [rest-emitter (get-in grammar [:default :function :args :rest])]
       (if rest-emitter
         (rest-emitter argument grammar mopts)
-        (throw (ex :generic {:lang (:lang mopts) :symbol (:symbol argument)} :ex/message "Rest argument emitter not configured"))))
+        (throw (ex :hara/generic (assoc {:lang (:lang mopts) :symbol (:symbol argument)} :ex/message "Rest argument emitter not configured")))))
     (let [modifiers (or (:modifiers argument) [])
           type-values (or (:type argument) [])
           invoke-options (helper/get-options grammar [:default :invoke])

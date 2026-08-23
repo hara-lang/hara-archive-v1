@@ -739,16 +739,39 @@ pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, Stri
                         return Err("internal throw location marker is malformed".into());
                     };
                     let value = eval(value, env)?;
+                    if !matches!(value, Value::ExceptionInfo(_)) {
+                        return Err("throw expects an Exception value created by ex".into());
+                    }
                     Err(thrown_error_at(
                         value,
                         exception_site_at(*line as usize, *column as usize),
                     ))
+                }
+                Form::Symbol(n) if n == "__ex-at" => {
+                    let [_, Form::Number(line), Form::Number(column), code, attributes] =
+                        fs.as_slice()
+                    else {
+                        return Err("internal exception location marker is malformed".into());
+                    };
+                    let form = Form::List(vec![
+                        Form::Symbol("ex".into()),
+                        code.clone(),
+                        attributes.clone(),
+                    ]);
+                    with_exception_site(
+                        exception_site_at(*line as usize, *column as usize)
+                            .expect("exception location marker always has a site"),
+                        || eval(&form, env),
+                    )
                 }
                 Form::Symbol(n) if n == "throw" => {
                     if fs.len() != 2 {
                         return Err("throw expects one value".into());
                     }
                     let value = eval(&fs[1], env)?;
+                    if !matches!(value, Value::ExceptionInfo(_)) {
+                        return Err("throw expects an Exception value created by ex".into());
+                    }
                     Err(thrown_error(value))
                 }
                 Form::Symbol(n) if n == "try" => {
@@ -778,6 +801,18 @@ pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, Stri
                             _ if !clauses_started => body.push(form),
                             _ => return Err("try clauses must follow the body".into()),
                         }
+                    }
+                    let mut saw_unconditional = false;
+                    for (index, parts) in catch_forms.iter().enumerate() {
+                        let unconditional = parts.len() == 3
+                            && matches!(
+                                &parts[1],
+                                Form::Symbol(name) if name != "Exception" && name != "Throwable"
+                            );
+                        if saw_unconditional || (unconditional && index + 1 != catch_forms.len()) {
+                            return Err("unconditional catch must be the last catch clause".into());
+                        }
+                        saw_unconditional |= unconditional;
                     }
                     let mut result = Ok(Value::Nil);
                     for form in body {

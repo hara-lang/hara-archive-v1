@@ -128,9 +128,9 @@
     (compatible-field value :id "id")
 
     :else
-    (throw (ex :argument {:tag :db/invalid-link
+    (throw (ex :hara/argument (assoc {:tag :db/invalid-link
                      :input value
-                     :source source} :ex/message (str "Invalid link - " (pr-str source))))))
+                     :source source} :ex/message (str "Invalid link - " (pr-str source)))))))
 
 (defn ^{:schema [:fn [:map] :map]}
   flatten-get-links

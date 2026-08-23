@@ -28,16 +28,16 @@
     (if (or (not (string? name))
             (= name ""))
       (throw
-       (ex :argument {:tool value} :ex/message "Agent tool name must be a non-empty string")))
+       (ex :hara/argument (assoc {:tool value} :ex/message "Agent tool name must be a non-empty string"))))
     (if (not (string? description))
       (throw
-       (ex :argument {:tool/name name} :ex/message "Agent tool description must be a string")))
+       (ex :hara/argument (assoc {:tool/name name} :ex/message "Agent tool description must be a string"))))
     (if (not (map? parameters))
       (throw
-       (ex :serialization {:tool/name name} :ex/message "Agent tool parameters must be a JSON Schema map")))
+       (ex :hara/serialization (assoc {:tool/name name} :ex/message "Agent tool parameters must be a JSON Schema map"))))
     (if (not (fn? invoke))
       (throw
-       (ex :argument {:tool/name name} :ex/message "Agent tool implementation must be callable")))
+       (ex :hara/argument (assoc {:tool/name name} :ex/message "Agent tool implementation must be callable"))))
     (merge
      {:tool/strict true
       :tool/effect :pure}
@@ -57,7 +57,7 @@
            name (:tool/name value)]
        (if (get output name)
          (throw
-          (ex :argument {:tool/name name} :ex/message "Agent tool names must be unique")))
+          (ex :hara/argument (assoc {:tool/name name} :ex/message "Agent tool names must be unique"))))
        (assoc output name value)))
    {}
    tools))

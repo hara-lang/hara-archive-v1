@@ -47,7 +47,7 @@
           (= value "--config")
           (if (< (count remaining) 2)
             (throw
-             (ex :syntax {} :ex/message "usage: hara deploy --config requires PATH"))
+             (ex :hara/syntax (assoc {} :ex/message "usage: hara deploy --config requires PATH")))
             (recur (vec (rest (rest remaining)))
                    positionals
                    (assoc options :config (nth remaining 1))))
@@ -55,7 +55,7 @@
           (= value "--tap")
           (if (< (count remaining) 2)
             (throw
-             (ex :syntax {} :ex/message "usage: hara deploy --tap requires TAP"))
+             (ex :hara/syntax (assoc {} :ex/message "usage: hara deploy --tap requires TAP")))
             (recur (vec (rest (rest remaining)))
                    positionals
                    (assoc options :tap (nth remaining 1))))
@@ -68,7 +68,7 @@
           (and (string? value)
                (str/starts-with? value "--"))
           (throw
-           (ex :syntax {:option value} :ex/message (str "usage: unknown deploy option " value)))
+           (ex :hara/syntax (assoc {:option value} :ex/message (str "usage: unknown deploy option " value))))
 
           :else
           (recur (vec (rest remaining))
@@ -88,13 +88,13 @@
         options (:options parsed)]
     (if (not (has? +operations+ operation))
       (throw
-       (ex :syntax {:operation operation
-         :supported (vec (sort +operations+))} :ex/message "usage: hara deploy <check|package|install|publish> [SELECTOR ...]")))
+       (ex :hara/syntax (assoc {:operation operation
+         :supported (vec (sort +operations+))} :ex/message "usage: hara deploy <check|package|install|publish> [SELECTOR ...]"))))
     (if (and (not= :publish operation)
              (or (option-value options :tap)
                  (option-value options :dry-run)))
       (throw
-       (ex :syntax {:operation operation} :ex/message "--tap and --dry-run are only available for deploy publish")))
+       (ex :hara/syntax (assoc {:operation operation} :ex/message "--tap and --dry-run are only available for deploy publish"))))
     (assoc
      (assoc
       (assoc request
@@ -171,7 +171,7 @@
   [request document]
   (if (not (map? document))
     (throw
-     (ex :argument {:document document} :ex/message "Resolved deploy configuration must be a map")))
+     (ex :hara/argument (assoc {:document document} :ex/message "Resolved deploy configuration must be a map"))))
   (let [packages (:packages document)
         root (or (:project/root document)
                  (:root document)
@@ -179,7 +179,7 @@
         options (:request/options request)]
     (if (not (map? packages))
       (throw
-       (ex :dependency {:packages packages} :ex/message "Resolved deploy configuration :packages must be a map")))
+       (ex :hara/dependency (assoc {:packages packages} :ex/message "Resolved deploy configuration :packages must be a map"))))
     (merge
      (dissoc document :project)
      {:packages (normalise-packages packages root)
@@ -233,7 +233,7 @@
   [loader]
   (if (not (fn? loader))
     (throw
-     (ex :argument {:loader loader} :ex/message "Deploy catalog loader must be a function")))
+     (ex :hara/argument (assoc {:loader loader} :ex/message "Deploy catalog loader must be a function"))))
   (template/handler
    {:id 'code.project.deploy.cli/handler
     :version 1

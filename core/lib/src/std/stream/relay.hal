@@ -14,19 +14,19 @@
      (create duplex nil codec-or-options)))
   ([duplex codec options]
    (if (not (satisfies? std.protocol.istreamduplex.IStreamDuplex duplex))
-     (throw (ex :io {:error/type :relay/invalid-transport
-                      :value duplex} :ex/message "Relay requires an IStreamDuplex transport")))
+     (throw (ex :hara/io (assoc {:error/type :relay/invalid-transport
+                      :value duplex} :ex/message "Relay requires an IStreamDuplex transport"))))
    (if (and codec (not (satisfies? frame/IFrameCodec codec)))
-     (throw (ex :io {:value codec} :ex/message "Relay codec must satisfy IFrameCodec")))
+     (throw (ex :hara/io (assoc {:value codec} :ex/message "Relay codec must satisfy IFrameCodec"))))
    (let [mode (or (:mode options) :serial)]
      (if (not (or (= mode :serial) (= mode :correlated)))
-       (throw (ex :io {:mode mode} :ex/message "Relay mode must be :serial or :correlated")))
+       (throw (ex :hara/io (assoc {:mode mode} :ex/message "Relay mode must be :serial or :correlated"))))
      (if (and (= mode :correlated)
               (or (not (fn? (:prepare-request options)))
                   (not (fn? (:response-id options)))))
-       (throw (ex :io {:mode mode} :ex/message "Correlated Relay requires :prepare-request and :response-id")))
+       (throw (ex :hara/io (assoc {:mode mode} :ex/message "Correlated Relay requires :prepare-request and :response-id"))))
      (if (and (= mode :correlated) (nil? codec))
-       (throw (ex :io {:error/type :relay/codec-required} :ex/message "Correlated Relay requires a codec")))
+       (throw (ex :hara/io (assoc {:error/type :relay/codec-required} :ex/message "Correlated Relay requires a codec"))))
      (Relay duplex
             codec
             (assoc (assoc options :mode mode)
@@ -88,7 +88,7 @@
   (loop []
     (let [current (state relay)]
       (if (:serial-active current)
-        (throw (ex :io {:error/type :relay/serial-busy} :ex/message "Relay already has an active serial exchange")))
+        (throw (ex :hara/io (assoc {:error/type :relay/serial-busy} :ex/message "Relay already has an active serial exchange"))))
       (if (cas! (:state relay) current (assoc current :serial-active entry))
         entry
         (recur)))))
@@ -126,7 +126,7 @@
   (:next-id (swap! (:state relay) update :next-id inc)))
 
 (defn timeout-error [milliseconds]
-  (ex :timeout {:error/type :relay/timeout :timeout-ms milliseconds} :ex/message "Relay exchange timed out"))
+  (ex :hara/timeout (assoc {:error/type :relay/timeout :timeout-ms milliseconds} :ex/message "Relay exchange timed out")))
 
 (defn arm-timeout [relay mode correlation-id milliseconds]
   (if milliseconds
@@ -149,12 +149,12 @@
         (if entry
           ((:resolve entry) value)
           (if (not (channel/offer (:events relay) value))
-            (throw (ex :limit {:error/type :relay/event-overflow} :ex/message "Relay event channel is full"))))))
+            (throw (ex :hara/limit (assoc {:error/type :relay/event-overflow} :ex/message "Relay event channel is full")))))))
       (let [entry (remove-serial relay)]
         (if entry
           ((:resolve entry) value)
           (if (not (channel/offer (:events relay) value))
-            (throw (ex :limit {:error/type :relay/event-overflow} :ex/message "Relay event channel is full")))))))
+            (throw (ex :hara/limit (assoc {:error/type :relay/event-overflow} :ex/message "Relay event channel is full"))))))))
 
 (defn dispatch-frames [relay values]
   (loop [index 0]
@@ -165,8 +165,8 @@
 
 (defn append-raw [relay chunk]
   (if (not (Bytes/instance? chunk))
-    (throw (ex :io {:error/type :relay/invalid-chunk
-                     :value chunk} :ex/message "Buffered Relay expects byte chunks")))
+    (throw (ex :hara/io (assoc {:error/type :relay/invalid-chunk
+                     :value chunk} :ex/message "Buffered Relay expects byte chunks"))))
   (swap! (:state relay)
          (fn [current]
            (assoc current :raw
@@ -183,7 +183,7 @@
        (if (:codec relay)
          (let [final (frame/finish-frame (:codec relay) codec-state)]
            (dispatch-frames relay (:frames final))
-           (fail relay (ex :syntax {:error/type :relay/eof} :ex/message "Relay receive stream reached EOF")))
+           (fail relay (ex :hara/syntax (assoc {:error/type :relay/eof} :ex/message "Relay receive stream reached EOF"))))
          (mark-eof relay))
        (if (:codec relay)
          (let [decoded (frame/feed-frame (:codec relay) codec-state chunk)]
@@ -287,7 +287,7 @@
     (cond
       (= :started (:status current)) relay
       (not= :created (:status current))
-      (throw (ex :io {:state (:status current)} :ex/message "Relay cannot be started from its current state"))
+      (throw (ex :hara/io (assoc {:state (:status current)} :ex/message "Relay cannot be started from its current state")))
       (cas! (:state relay) current (assoc current :status :started))
       (do
         (reset! (:reader relay) (reader-loop relay))
@@ -317,7 +317,7 @@
   (if (not (started? relay))
     (promise/new
      (fn [_ reject]
-       (reject (ex :io {:error/type :relay/not-started} :ex/message "Relay is not started"))))
+       (reject (ex :hara/io (assoc {:error/type :relay/not-started} :ex/message "Relay is not started")))))
     (let [holder (atom nil)
           output (promise/new
                   (fn [resolve reject]
@@ -330,14 +330,14 @@
         (try
           (if (not (channel/offer (:jobs relay) job))
             ((:reject job)
-             (ex :limit {:error/type :relay/job-overflow} :ex/message "Relay job channel is full or closed")))
+             (ex :hara/limit (assoc {:error/type :relay/job-overflow} :ex/message "Relay job channel is full or closed"))))
           (catch Throwable error
             ((:reject job) error)))
         (drive relay output)))))
 
 (defn send [relay value]
   (if (nil? (:codec relay))
-    (throw (ex :io {:error/type :relay/codec-required} :ex/message "Framed send requires a codec")))
+    (throw (ex :hara/io (assoc {:error/type :relay/codec-required} :ex/message "Framed send requires a codec"))))
   (enqueue relay :send value {}))
 
 (defn send-raw [relay value]
@@ -356,7 +356,7 @@
   ([relay value] (exchange relay value {}))
   ([relay value options]
    (if (nil? (:codec relay))
-     (throw (ex :io {:error/type :relay/codec-required} :ex/message "Relay exchange requires a codec")))
+     (throw (ex :hara/io (assoc {:error/type :relay/codec-required} :ex/message "Relay exchange requires a codec"))))
    (enqueue relay :exchange value options)))
 
 (defn receive [relay]
@@ -365,7 +365,7 @@
 (defn events [relay]
   (let [current (state relay)]
     (if (:events-taken current)
-      (throw (ex :io {:error/type :relay/events-taken} :ex/message "Relay events stream is single-consumer")))
+      (throw (ex :hara/io (assoc {:error/type :relay/events-taken} :ex/message "Relay events stream is single-consumer"))))
     (if (cas! (:state relay) current (assoc current :events-taken true))
       (:events relay)
       (events relay))))
@@ -378,7 +378,7 @@
     (let [current (state relay)]
       (if (or (= :closed (:status current)) (= :failed (:status current)))
         relay
-        (let [error (ex :io {:error/type :relay/closed} :ex/message "Relay closed")
+        (let [error (ex :hara/io (assoc {:error/type :relay/closed} :ex/message "Relay closed"))
               next-state (assoc (assoc (assoc current :status :closed)
                                        :pending {})
                                 :serial-active nil)]
@@ -448,8 +448,8 @@
 
 (defn ensure-buffered [relay operation]
   (if (:codec relay)
-    (throw (ex :io {:error/type :relay/raw-read-in-framed-mode
-                     :operation operation} :ex/message "Raw read operation is unavailable in framed mode"))))
+    (throw (ex :hara/io (assoc {:error/type :relay/raw-read-in-framed-mode
+                     :operation operation} :ex/message "Raw read operation is unavailable in framed mode")))))
 
 (defn count-buffer [relay]
   (ensure-buffered relay :count)
@@ -492,10 +492,10 @@
         :else nil)
 
       (= remaining 0)
-      (throw (ex :timeout {:error/type :relay/timeout
+      (throw (ex :hara/timeout (assoc {:error/type :relay/timeout
                        :operation operation
                        :timeout-ms 0
-                       :available count-raw} :ex/message "Relay read timed out"))
+                       :available count-raw} :ex/message "Relay read timed out")))
 
       :else
       (promise/then
@@ -514,8 +514,8 @@
                      1000)]
      (if (and (= operation :read-limit)
               (or (not (integer? argument)) (< argument 1)))
-       (throw (ex :limit {:error/type :relay/invalid-limit
-                        :limit argument} :ex/message "read-limit requires a positive byte count")))
+       (throw (ex :hara/limit (assoc {:error/type :relay/invalid-limit
+                        :limit argument} :ex/message "read-limit requires a positive byte count"))))
      (promise/from
       (read-buffer-loop relay operation argument timeout)))))
 
@@ -573,4 +573,4 @@
       :else
       (promise/new
        (fn [_ reject]
-         (reject (ex :io {:operation operation} :ex/message "Unsupported Relay compatibility operation")))))))
+         (reject (ex :hara/io (assoc {:operation operation} :ex/message "Unsupported Relay compatibility operation"))))))))

@@ -15,13 +15,13 @@
   [options]
   (if (not (map? options))
     (throw
-     (ex :argument {:options options} :ex/message "Unit task command options must be a map")))
+     (ex :hara/argument (assoc {:options options} :ex/message "Unit task command options must be a map"))))
   (if (nil? (:id options))
     (throw
-     (ex :dependency {} :ex/message "Unit task command requires an id")))
+     (ex :hara/dependency (assoc {} :ex/message "Unit task command requires an id"))))
   (if (nil? (:run options))
     (throw
-     (ex :dependency {:id (:id options)} :ex/message "Unit task command requires a run function")))
+     (ex :hara/dependency (assoc {:id (:id options)} :ex/message "Unit task command requires a run function"))))
   options)
 
 (defn normalise-options

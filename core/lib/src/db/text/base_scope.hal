@@ -147,7 +147,7 @@
         plains (filter-plain string-keys)
         columns (compatible-get schema table-name)]
     (if (nil? columns)
-      (throw (ex :database {:table table-name} :ex/message "Table not in schema"))
+      (throw (ex :hara/database (assoc {:table table-name} :ex/message "Table not in schema")))
       nil)
     (sort-by (fn [entry] (compatible-get entry :order))
              (filter (fn [entry]

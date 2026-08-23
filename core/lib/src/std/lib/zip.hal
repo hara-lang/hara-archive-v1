@@ -50,7 +50,7 @@
                   :at-inside-most-left?
                   :at-outside-most?]
                  (remove context))]
-    (if (seq missing) (throw (ex :not-found {:keys missing} :ex/message "Missing keys.")) context)))
+    (if (seq missing) (throw (ex :hara/not-found (assoc {:keys missing} :ex/message "Missing keys."))) context)))
 
 (defn check-optional
   "checks that the meta contains valid functions"
@@ -69,7 +69,7 @@
                   :wrap-data
                   :unwrap-data]
                  (remove context))]
-    (if (seq missing) (throw (ex :not-found {:keys missing} :ex/message "Missing keys.")) context)))
+    (if (seq missing) (throw (ex :hara/not-found (assoc {:keys missing} :ex/message "Missing keys."))) context)))
 
 (defn zipper?
   "checks to see if an object is a zipper"
@@ -258,7 +258,7 @@
                                                list-fn  (:list-elements context)]
                                            (if (check-fn elem)
                                              (list-fn elem)
-                                             (throw (ex :generic {:element elem} :ex/message "Not a org."))))))
+                                             (throw (ex :hara/generic (assoc {:element elem} :ex/message "Not a org.")))))))
 
 (defn update-child-elements
   "updates elements of a container"
@@ -273,7 +273,7 @@
                       update-fn (:update-elements context)
                       old   (first elements)
                       _     (if-not (check-fn old)
-                              (throw (ex :generic {:element old} :ex/message "Not a container.")))
+                              (throw (ex :hara/generic (assoc {:element old} :ex/message "Not a container."))))
                       new   (update-fn old
                                        child-elements)]
                   (cons new (rest elements)))))))
@@ -749,7 +749,7 @@
                                           (vector? container) (vec new-elements)
                                           (map? container) (into {} new-elements)
                                           (set? container) (into #{} new-elements)
-                                          :else (throw (ex :generic {:type (type container)} :ex/message "Unsupported container type for update"))))
+                                          :else (throw (ex :hara/generic (assoc {:type (type container)} :ex/message "Unsupported container type for update")))))
                    :add-element       (fn [container element]
                                         ;; Adds an element, preserving container type.
                                         ;; Note: conj behavior varies by collection type (front for lists, end for vectors).
@@ -758,7 +758,7 @@
                                           (vector? container) (conj container element)
                                           (map? container) (conj container element)
                                           (set? container) (conj container element)
-                                          :else (throw (ex :generic {:type (type container)} :ex/message "Unsupported container type for add"))))}
+                                          :else (throw (ex :hara/generic (assoc {:type (type container)} :ex/message "Unsupported container type for add")))))}
                   +base+)
            opts)))
 

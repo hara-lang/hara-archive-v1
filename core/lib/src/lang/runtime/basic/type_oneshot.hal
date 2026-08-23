@@ -76,13 +76,13 @@
        (sh/run argv (process-options runtime)))
       (catch Throwable error
         (throw
-         (ex :host {:phase :eval
+         (ex :hara/host (assoc {:phase :eval
            :lang (get runtime :lang)
            :runtime (get runtime :runtime)
            :program (get runtime :program)
            :command argv
            :generated-fragment source
-           :cause-data (ex-data error)} :ex/message "Target runtime process could not complete" :ex/cause error))))))
+           :cause-data (ex-data error)} :ex/message "Target runtime process could not complete" :ex/cause error)))))))
 
 (defn raw-eval-oneshot
   "Evaluates emitted target source using the selected local program."
@@ -93,4 +93,4 @@
         result
         (str/trim-right (get result :stdout)))
       (throw
-       (ex :host (assoc result :generated-fragment source) :ex/message "Target runtime execution failed")))))
+       (ex :hara/host (assoc (assoc result :generated-fragment source) :ex/message "Target runtime execution failed"))))))

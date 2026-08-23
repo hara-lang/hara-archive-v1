@@ -163,9 +163,9 @@
   [key type-def]
   (if (valid-key? key)
     (swap! *type-registry* assoc key type-def)
-    (throw (ex :database {:key key
+    (throw (ex :hara/database (assoc {:key key
                      :type (type key)
-                     :help "Use (symbol \"namespace\" \"name\") to construct valid keys"} :ex/message "Invalid registry key. Must be a namespaced symbol like 'ns/name"))))
+                     :help "Use (symbol \"namespace\" \"name\") to construct valid keys"} :ex/message "Invalid registry key. Must be a namespaced symbol like 'ns/name")))))
 
 (defn get-type [key] (get @*type-registry* key))
 (defn clear-registry [] (reset! *type-registry* {}))
@@ -327,7 +327,7 @@
 (defn- require-shape [shape]
   (if (jsonb-shape? shape)
     shape
-    (throw (ex :database {:value shape} :ex/message "Expected a JsonbShape"))))
+    (throw (ex :hara/database (assoc {:value shape} :ex/message "Expected a JsonbShape")))))
 
 (defn add-key [shape key type-info]
   (update (require-shape shape) :fields assoc key type-info))
@@ -350,9 +350,9 @@
   (cond (nil? shape1) shape2
         (nil? shape2) shape1
         (not (jsonb-shape? shape1))
-        (throw (ex :database {:value shape1} :ex/message "Expected a JsonbShape"))
+        (throw (ex :hara/database (assoc {:value shape1} :ex/message "Expected a JsonbShape")))
         (not (jsonb-shape? shape2))
-        (throw (ex :database {:value shape2} :ex/message "Expected a JsonbShape"))
+        (throw (ex :hara/database (assoc {:value shape2} :ex/message "Expected a JsonbShape")))
         :else
         (let [merged-fields (merge-with merge-field-type (:fields shape1) (:fields shape2))
               source1 (:source-table shape1)

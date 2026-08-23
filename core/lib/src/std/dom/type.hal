@@ -16,7 +16,7 @@
 (defn metaclass-add
   [id entry]
   (if-not (:metatype entry)
-    (throw (ex :dependency {:id id :entry entry} :ex/message "requires metatype")))
+    (throw (ex :hara/dependency (assoc {:id id :entry entry} :ex/message "requires metatype"))))
   (let [entry (assoc entry :id id)]
     (swap! +metaclass+ assoc id entry)
     entry))
@@ -26,18 +26,18 @@
   ([tag]
    (if (keyword? tag)
      (get @+metaprops-tag+ tag)
-     (throw (ex :not-found {:tag tag} :ex/message "Cannot find metaprops information")))))
+     (throw (ex :hara/not-found (assoc {:tag tag} :ex/message "Cannot find metaprops information"))))))
 
 (defn metaprops-add
   [id entry]
   (if-not (metaclass id)
-    (throw (ex :generic {:type id
+    (throw (ex :hara/generic (assoc {:type id
                      :input entry
-                     :available (vec (sort (keys (metaclass))))} :ex/message "No meta type available")))
+                     :available (vec (sort (keys (metaclass))))} :ex/message "No meta type available"))))
   (let [{:keys [metatype]} (metaclass id)
         {:keys [tag] :as entry} (assoc entry :metaclass id :metatype metatype)]
     (if-not tag
-      (throw (ex :dependency {:input entry} :ex/message ":tag required")))
+      (throw (ex :hara/dependency (assoc {:input entry} :ex/message ":tag required"))))
     (swap! +metaprops-tag+ assoc tag entry)
     entry))
 

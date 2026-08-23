@@ -14,7 +14,7 @@
 
 (defn provider-id [backend]
   (or (:provider backend)
-      (throw (ex :database {:backend backend} :ex/message "SQLite backend requires a provider identity"))))
+      (throw (ex :hara/database (assoc {:backend backend} :ex/message "SQLite backend requires a provider identity")))))
 
 (defn capabilities []
   #{:runs

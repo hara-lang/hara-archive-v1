@@ -17,7 +17,7 @@
   (let [result (sh/run argv options)]
     (if (or (= 0 (:exit result)) (not *verbose*))
       result
-      (throw (ex :host result :ex/message "GitHub command failed")))))
+      (throw (ex :hara/host (assoc result :ex/message "GitHub command failed"))))))
 
 (defn gh-commit [config message]
   (let [options (gh-sh-opts config)]
@@ -83,7 +83,7 @@
 
 (defn gh-clone [config]
   (if (common/make-dir-exists? config)
-    (throw (ex :io {:dir (common/make-dir config)} :ex/message "Directory exists."))
+    (throw (ex :hara/io (assoc {:dir (common/make-dir config)} :ex/message "Directory exists.")))
     (gh-setup-local-clone config)))
 
 (defn gh-setup [config]
@@ -100,7 +100,7 @@
           {:cwd (common/make-dir config)}))
 
 (defn gh-refresh [config]
-  (throw (ex :generic {:config config} :ex/message "TODO")))
+  (throw (ex :hara/generic (assoc {:config config} :ex/message "TODO"))))
 
 (defn- source-head-message []
   (str "SRC:"

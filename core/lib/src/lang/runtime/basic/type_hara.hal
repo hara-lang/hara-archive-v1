@@ -126,9 +126,9 @@
   ([runtime request options]
    (if (not= :started (get (hara-basic-state runtime) :status))
      (throw
-      (ex :host {:id (get runtime :id)
+      (ex :hara/host (assoc {:id (get runtime :id)
                 :lang (get runtime :lang)
-                :state (hara-basic-state runtime)} :ex/message "Hara basic runtime is not started"))
+                :state (hara-basic-state runtime)} :ex/message "Hara basic runtime is not started")))
      (promise/run
       (fn []
         (let [compiled (compile-request runtime request options)

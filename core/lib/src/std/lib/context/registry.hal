@@ -70,7 +70,7 @@
 
 (defn registry-get [context]
   (or (get (deref *registry*) context)
-      (throw (ex :generic {:context context :options (registry-list)} :ex/message "No context available"))))
+      (throw (ex :hara/generic (assoc {:context context :options (registry-list)} :ex/message "No context available")))))
 
 (defn registry-rt-list
   ([] (reduce
@@ -98,8 +98,8 @@
          runtime (get-in entry [:rt key])]
      (if runtime
        (registry-merge-runtime (dissoc entry :rt) runtime)
-       (throw (ex :host {:context context :rt key
-                        :options (keys (:rt entry))} :ex/message "No runtime installed"))))))
+       (throw (ex :hara/host (assoc {:context context :rt key
+                        :options (keys (:rt entry))} :ex/message "No runtime installed")))))))
 
 (defn registry-scratch [context]
   (:scratch (registry-get context)))

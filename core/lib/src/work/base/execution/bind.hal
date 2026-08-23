@@ -14,10 +14,8 @@
   [value code message path]
   (if (not (work-value? value))
     (throw
-     (ex :state
-         {:work/error code
-          :node/path path}
-         :ex/message message)))
+     (ex :hara/state (assoc {:work/error code
+          :node/path path} :ex/message message))))
   value)
 
 (defn assert-continuation
@@ -31,12 +29,10 @@
         spec (base/work-spec-map continuation)]
     (if (not= :pure (:op spec))
       (throw
-       (ex :argument
-           {:work/error :work/bind-continuation-not-pure
+       (ex :hara/argument (assoc {:work/error :work/bind-continuation-not-pure
             :node/path path
             :continuation/op (:op spec)
-            :continuation/id (:id spec)}
-           :ex/message "Work bind continuation must be pure Work")))
+            :continuation/id (:id spec)} :ex/message "Work bind continuation must be pure Work"))))
     [continuation spec]))
 
 (defn local-maximum
@@ -47,11 +43,9 @@
     (if (or (not (integer? configured))
             (<= configured 0))
       (throw
-       (ex :argument
-           {:work/error :work/bind-invalid-depth
+       (ex :hara/argument (assoc {:work/error :work/bind-invalid-depth
             :node/path (:node/path frame)
-            :maximum-depth configured}
-           :ex/message "Work bind maximum depth must be a positive integer")))
+            :maximum-depth configured} :ex/message "Work bind maximum depth must be a positive integer"))))
     (if (and inherited (< inherited configured))
       inherited
       configured)))
@@ -62,12 +56,10 @@
         next-depth (inc depth)]
     (if (> next-depth maximum)
       (throw
-       (ex :limit
-           {:work/error :work/bind-depth-exceeded
+       (ex :hara/limit (assoc {:work/error :work/bind-depth-exceeded
             :node/path (:node/path frame)
             :bind/depth next-depth
-            :bind/maximum-depth maximum}
-           :ex/message "Work bind dynamic depth exceeded")))
+            :bind/maximum-depth maximum} :ex/message "Work bind dynamic depth exceeded"))))
     (assoc
      (frame/child-frame frame :bind :produced produced-spec)
      :work/bind-depth next-depth
@@ -85,11 +77,9 @@
     (if (and (base/durable? runtime)
              (nil? (:id spec)))
       (throw
-       (ex :dependency
-           {:work/error :work/bind-unstable-produced
+       (ex :hara/dependency (assoc {:work/error :work/bind-unstable-produced
             :node/path (:node/path frame)
-            :produced/op (:op spec)}
-           :ex/message "Durable runtime-produced Work requires a stable :id")))
+            :produced/op (:op spec)} :ex/message "Durable runtime-produced Work requires a stable :id"))))
     [value spec (produced-frame frame spec maximum)]))
 
 (defn run-produced

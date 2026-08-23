@@ -110,10 +110,10 @@
                (if (or (not (= (:schema target) (:schema candidate)))
                        (not (= (:table target) (:table candidate))))
                  (throw
-                  (ex :database {:table table
+                  (ex :hara/database (assoc {:table table
                     :group group
                     :target target
-                    :candidate candidate} :ex/message "Grouped PostgreSQL foreign keys must share one target table"))
+                    :candidate candidate} :ex/message "Grouped PostgreSQL foreign keys must share one target table")))
                  nil)))
            nil
            values)
@@ -167,12 +167,12 @@
                  (let [_ (if (and (set? value)
                                       (not (= 1 (count value))))
                            (throw
-                            (ex :database {:value value} :ex/message "Portable PostgreSQL raw partition columns require one identifier")))
+                            (ex :hara/database (assoc {:value value} :ex/message "Portable PostgreSQL raw partition columns require one identifier"))))
                        column (if (set? value) (first value) value)
                        attributes (get column-map column)]
                    (if (and (nil? attributes) (not (set? value)))
-                     (throw (ex :not-found {:column column
-                                      :available (keys column-map)} :ex/message "PostgreSQL partition column is missing"))
+                     (throw (ex :hara/not-found (assoc {:column column
+                                      :available (keys column-map)} :ex/message "PostgreSQL partition column is missing")))
                      (if attributes
                        (column-token column attributes)
                        (quote-identifier (snake-name column))))))

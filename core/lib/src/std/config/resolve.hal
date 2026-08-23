@@ -20,10 +20,10 @@
   [directive function]
   (if (not (keyword? directive))
     (throw
-     (ex :argument {:directive directive} :ex/message "Configuration directive id must be a keyword")))
+     (ex :hara/argument (assoc {:directive directive} :ex/message "Configuration directive id must be a keyword"))))
   (if (not (fn? function))
     (throw
-     (ex :argument {:directive directive} :ex/message "Configuration directive handler must be a function")))
+     (ex :hara/argument (assoc {:directive directive} :ex/message "Configuration directive handler must be a function"))))
   (swap! *directives* assoc directive function)
   function)
 
@@ -32,10 +32,10 @@
   [type function]
   (if (not (keyword? type))
     (throw
-     (ex :argument {:type type} :ex/message "Configuration type id must be a keyword")))
+     (ex :hara/argument (assoc {:type type} :ex/message "Configuration type id must be a keyword"))))
   (if (not (fn? function))
     (throw
-     (ex :serialization {:type type} :ex/message "Configuration type decoder must be a function")))
+     (ex :hara/serialization (assoc {:type type} :ex/message "Configuration type decoder must be a function"))))
   (swap! *types* assoc type function)
   function)
 
@@ -57,8 +57,8 @@
         (throw (common/unsupported-feature type :type))
         :else
         (throw
-         (ex :serialization {:error/type :std.config/unknown-type
-                   :type type} :ex/message "Unknown configuration content type"))))))
+         (ex :hara/serialization (assoc {:error/type :std.config/unknown-type
+                   :type type} :ex/message "Unknown configuration content type")))))))
 
 (defn resolve-content
   [content options]
@@ -91,12 +91,12 @@
                 (if (:error/type data)
                   (throw error)
                   (throw
-                   (ex :io {:error/type :std.config/directive-failed
+                   (ex :hara/io (assoc {:error/type :std.config/directive-failed
                      :directive directive
                      :form form
                      :path (:path current-state)
                      :cause (str error)
-                     :cause/data data} :ex/message (str "Configuration directive failed: " directive)))))))
+                     :cause/data data} :ex/message (str "Configuration directive failed: " directive))))))))
           form)))))
 
 (defn resolve-map
@@ -198,8 +198,8 @@
       (list? value) (apply str value)
       :else
       (throw
-       (ex :io {:error/type :std.config/invalid-path
-                 :path value} :ex/message "Configuration path must resolve to text")))))
+       (ex :hara/io (assoc {:error/type :std.config/invalid-path
+                 :path value} :ex/message "Configuration path must resolve to text"))))))
 
 (defn directive-format
   [form context current-state]
@@ -266,10 +266,10 @@
                               current-state)
                {})]
     (throw
-     (ex :io (merge
+     (ex :hara/io (assoc (merge
                {:error/type :std.config/explicit-error
                 :path (:path current-state)}
-               (if (map? data) data {:data data})) :ex/message (str message)))))
+               (if (map? data) data {:data data})) :ex/message (str message))))))
 
 (defn merge-modifier
   [values]
@@ -384,10 +384,10 @@
   [path stack]
   (if (common/contains-value? stack path)
     (throw
-     (ex :io {:error/type :std.config/include-cycle
+     (ex :hara/io (assoc {:error/type :std.config/include-cycle
        :path path
        :include/stack (conj stack path)} :ex/message (str "Configuration include cycle: "
-           (str/join " -> " (conj stack path)))))))
+           (str/join " -> " (conj stack path))))))))
 
 (defn inferred-type
   [path default-type]

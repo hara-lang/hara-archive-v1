@@ -25,25 +25,21 @@
       (not (or (= "/" (project/normalized-path (:project/root current-project)))
                (project/path-under-root? (:project/root current-project) absolute)))
       (throw
-       (ex :argument {:path path}
-           :ex/message "test file must be inside the selected project"))
+       (ex :hara/argument (assoc {:path path} :ex/message "test file must be inside the selected project")))
 
       (= :file (:type metadata))
       (if (str/ends-with? absolute ".hal")
         absolute
         (throw
-         (ex :argument {:path absolute}
-             :ex/message "test file must use the .hal extension")))
+         (ex :hara/argument (assoc {:path absolute} :ex/message "test file must use the .hal extension"))))
 
       (= :directory (:type metadata))
       (throw
-       (ex :argument {:path absolute}
-           :ex/message "--file accepts files, not directories"))
+       (ex :hara/argument (assoc {:path absolute} :ex/message "--file accepts files, not directories")))
 
       :else
       (throw
-       (ex :not-found {:path absolute}
-           :ex/message (str "test file does not exist: " absolute))))))
+       (ex :hara/not-found (assoc {:path absolute} :ex/message (str "test file does not exist: " absolute)))))))
 
 (defn files
   [current-project paths]
@@ -53,9 +49,7 @@
                                        ".hal")]
       (if (empty? discovered)
         (throw
-         (ex :not-found {}
-             :ex/message
-             "project has no .hal files under :project/test-paths"))
+         (ex :hara/not-found (assoc {} :ex/message "project has no .hal files under :project/test-paths")))
         discovered))
     (vec (map (fn [path] (explicit-file current-project path)) paths))))
 

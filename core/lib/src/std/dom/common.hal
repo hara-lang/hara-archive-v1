@@ -20,7 +20,7 @@
     :shadow  (set! (field dom :shadow)  value)
     :cache   (set! (field dom :cache)   value)
     :extra   (set! (field dom :extra)   value)
-    (throw (ex :generic {:field key} :ex/message "Unknown DOM field")))
+    (throw (ex :hara/generic (assoc {:field key} :ex/message "Unknown DOM field"))))
   dom)
 
 (defn dom-fields-set
@@ -89,7 +89,7 @@
   ([tag props] (dom-new tag props nil nil nil nil nil nil))
   ([tag props item parent handler shadow cache extra]
    (if-not (type/metaprops tag)
-     (throw (ex :generic {:tag tag} :ex/message "No tag available")))
+     (throw (ex :hara/generic (assoc {:tag tag} :ex/message "No tag available"))))
    (Dom tag props item parent handler shadow cache extra)))
 
 (defn dom-children [dom]
@@ -101,7 +101,7 @@
                            single [(get props key)]
                            :else (vec (get props key)))]
         {:key key :children children})
-      (throw (ex :not-found {:tag tag} :ex/message "Cannot find tag")))))
+      (throw (ex :hara/not-found (assoc {:tag tag} :ex/message "Cannot find tag"))))))
 
 (defn children->props [children tag]
   (if-let [children (seq children)]
@@ -206,6 +206,6 @@
 (defn dom-assert [props required]
   (reduce (fn [_ key]
             (if-not (get props key)
-              (throw (ex :dependency {:props props :key key} :ex/message "Key required"))))
+              (throw (ex :hara/dependency (assoc {:props props :key key} :ex/message "Key required")))))
           nil
           required))

@@ -334,6 +334,4 @@
   (if (= :passed (:status result))
     (pr-str result)
     (throw
-     (ex :state
-         {:result result}
-         :ex/message "std.typed catalog facts failed"))))
+     (ex :hara/state (assoc {:result result} :ex/message "std.typed catalog facts failed")))))

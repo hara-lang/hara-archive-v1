@@ -41,7 +41,7 @@
     (let [coordinate (grammar/source-coordinate source)]
       (if (get (:sources registry) coordinate)
         (throw
-         (ex :generic {:coordinate coordinate} :ex/message "Grammar source coordinate already installed"))
+         (ex :hara/generic (assoc {:coordinate coordinate} :ex/message "Grammar source coordinate already installed")))
         (lang.common.registry/GrammarRegistry
          (assoc (:sources registry) coordinate source)))))
 
@@ -51,14 +51,14 @@
         (lang.common.registry/GrammarRegistry
          (assoc (:sources registry) coordinate source))
         (throw
-         (ex :not-found {:coordinate coordinate} :ex/message "Cannot replace missing grammar source")))))
+         (ex :hara/not-found (assoc {:coordinate coordinate} :ex/message "Cannot replace missing grammar source"))))))
 
   (remove-source [registry coordinate]
     (if (get (:sources registry) coordinate)
       (lang.common.registry/GrammarRegistry
        (dissoc (:sources registry) coordinate))
       (throw
-       (ex :not-found {:coordinate coordinate} :ex/message "Cannot remove missing grammar source")))))
+       (ex :hara/not-found (assoc {:coordinate coordinate} :ex/message "Cannot remove missing grammar source"))))))
 
 (extend-type GrammarRegistry protocol/IGrammarResolver
   (resolve-grammar [registry request]
@@ -67,14 +67,14 @@
       (if (or (nil? grammar-id)
               (nil? version))
         (throw
-         (ex :io {:request request} :ex/message "Grammar resolution requires an explicit id and version"))
+         (ex :hara/io (assoc {:request request} :ex/message "Grammar resolution requires an explicit id and version")))
         (let [source
               (protocol/find-source registry
                              [:grammar grammar-id version])]
           (if source
             (grammar/materialize registry source request)
             (throw
-             (ex :not-found {:request request} :ex/message "Grammar definition not found"))))))))
+             (ex :hara/not-found (assoc {:request request} :ex/message "Grammar definition not found")))))))))
 
 (defn install
   [registry source]

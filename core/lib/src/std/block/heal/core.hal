@@ -310,7 +310,7 @@
       (and (even? (count errors)) (every? :pair-id errors))
       (edit/create-mismatch-edits errors)
       :else
-      (do (env/prn) (env/prf info) (throw (ex :generic {:info info} :ex/message "Not Supported"))))))
+      (do (env/prn) (env/prf info) (throw (ex :hara/generic (assoc {:info info} :ex/message "Not Supported")))))))
 
 (defn heal-content-single-pass
   "heals the content in a single pass"
@@ -359,7 +359,7 @@
                                t
                                (mapv (fn [{:as info :keys [at]}]
                                        (env/prn info)
-                                       (throw (ex :generic {:info info} :ex/message "Not Supported")))
+                                       (throw (ex :hara/generic (assoc {:info info} :ex/message "Not Supported"))))
                                  errored)
                                (throw t)))]
     new-content))

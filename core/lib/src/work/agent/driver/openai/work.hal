@@ -6,7 +6,7 @@
 
 (defn failed-limit
   [message data]
-  (throw (ex :limit data :ex/message message)))
+  (throw (ex :hara/limit (assoc data :ex/message message))))
 
 (defn turn-id
   [agent-id turn suffix]

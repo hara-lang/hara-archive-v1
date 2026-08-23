@@ -298,9 +298,7 @@
         amount (count arguments)
         contract (resolve-contract value definition code-or-resolver)
         code (:ex/code contract)
-        output-code (if (= "hara" (namespace code))
-                      (keyword (name code))
-                      code)
+        output-code code
         class (or (:ex/class contract)
                   (if (map? code-or-resolver)
                     (get +lib-core-ex-info-classes+ definition)
@@ -316,17 +314,17 @@
               (fn [argument]
                 (rewrite-block argument definition code-or-resolver))
               arguments))]
-        (str "(ex " output-code " "
+        (str "(ex " output-code " (assoc "
              (second rewritten)
              " :ex/message "
              (first rewritten)
-             (if (and class (not= "hara" (namespace code)))
+             (if class
                (str " :ex/class " class)
                "")
              (if (= amount 3)
                (str " :ex/cause " (nth rewritten 2))
                "")
-             ")")))))
+             "))")))))
 
 (defn rewrite-block
   [value definition code-or-resolver]

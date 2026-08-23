@@ -60,7 +60,7 @@
               (let [attempt (swap! finish-count inc)]
                 (if (= attempt 1)
                   (throw
-                   (ex :host {:attempt attempt} :ex/message "interrupted before checkpoint"))
+                   (ex :hara/host (assoc {:attempt attempt} :ex/message "interrupted before checkpoint")))
                   (+ value 10)))))])
         runtime-before (work/durable-runtime {:store provider})]
     (result/then
@@ -166,9 +166,7 @@
               (let [attempt (swap! second-count inc)]
                 (if (= attempt 1)
                   (throw
-                   (ex :host
-                       {:attempt attempt}
-                       :ex/message "interrupted produced Work"))
+                   (ex :hara/host (assoc {:attempt attempt} :ex/message "interrupted produced Work")))
                   (+ value 100)))))])
         workflow
         (work/bind

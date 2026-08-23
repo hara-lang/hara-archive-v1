@@ -14,8 +14,7 @@
    (fn [counts result]
      (if (not (Result/instance? result))
        (throw
-        (ex :state {}
-            :ex/message "native test result is not a Result"))
+        (ex :hara/state (assoc {} :ex/message "native test result is not a Result")))
        (if (test-result/passed? result)
          (update counts :passed inc)
          (update counts :failed inc))))
@@ -28,12 +27,10 @@
         counts (:counts summary)]
     (if (not (keyword? status))
       (throw
-       (ex :state {}
-           :ex/message "code.test/run result is missing :status")))
+       (ex :hara/state (assoc {} :ex/message "code.test/run result is missing :status"))))
     (if (not (map? counts))
       (throw
-       (ex :state {}
-           :ex/message "code.test/run result is missing :counts")))
+       (ex :hara/state (assoc {} :ex/message "code.test/run result is missing :counts"))))
     (let [passed (or (:passed counts) 0)
           failed (+ (or (:failed counts) 0)
                     (or (:error counts) 0)
@@ -53,9 +50,7 @@
 
       :else
       (throw
-       (ex :state {}
-           :ex/message
-           "test file must return a code.test/run summary or native test result vector")))))
+       (ex :hara/state (assoc {} :ex/message "test file must return a code.test/run summary or native test result vector"))))))
 
 (defn run-file
   [record index]

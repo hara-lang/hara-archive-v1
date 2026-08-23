@@ -106,6 +106,12 @@ pub fn exception_located_form(node: &crate::kernel::SpannedForm) -> Form {
     let Some(Form::Symbol(operator)) = values.first() else {
         return Form::List(values);
     };
+    if operator == "ex" && values.len() == 3 {
+        values[0] = Form::Symbol("__ex-at".into());
+        values.insert(1, Form::Number(node.span.start.line as i64));
+        values.insert(2, Form::Number(node.span.start.column as i64));
+        return Form::List(values);
+    }
     if operator != "throw" || values.len() != 2 {
         return Form::List(values);
     }

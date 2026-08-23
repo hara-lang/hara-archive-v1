@@ -13,15 +13,15 @@
   (let [action (get +route-actions+ (:request/route request))
         arguments (:request/arguments request)]
     (if (nil? action)
-      (throw (ex :io {} :ex/message (str "unsupported host route: " (:request/route request))))
+      (throw (ex :hara/io (assoc {} :ex/message (str "unsupported host route: " (:request/route request)))))
       nil)
     (if (and (= action :remote) (not= 1 (count arguments)))
-      (throw (ex :dependency {:arguments arguments} :ex/message "remote requires HOST:PORT"))
+      (throw (ex :hara/dependency (assoc {:arguments arguments} :ex/message "remote requires HOST:PORT")))
       nil)
     (if (and (not= action :remote)
              (not= action :compile-halc)
              (not (empty? arguments)))
-      (throw (ex :generic {:arguments arguments} :ex/message (str (name action) " accepts no arguments")))
+      (throw (ex :hara/generic (assoc {:arguments arguments} :ex/message (str (name action) " accepts no arguments"))))
       nil)
     (model/success {:host/action action
                     :host/arguments (vec arguments)})))

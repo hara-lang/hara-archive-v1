@@ -39,14 +39,14 @@
   (let [entry (get (deref (:state space)) context)]
     (if entry
       (assoc entry :variant (or (:variant entry) :default))
-      (throw (ex :not-found {:input context :options (keys (deref (:state space)))} :ex/message "Context not found")))))
+      (throw (ex :hara/not-found (assoc {:input context :options (keys (deref (:state space)))} :ex/message "Context not found"))))))
 
 (defn space-rt-create [space context]
   (let [entry (space-context-get space context)
         create (:create entry)]
     (if create
       (create (:config entry))
-      (throw (ex :host {:context context :runtime entry} :ex/message "Runtime has no create function")))))
+      (throw (ex :hara/host (assoc {:context context :runtime entry} :ex/message "Runtime has no create function"))))))
 
 (defn space-rt-start [space context]
   (or (:instance (get (deref (:state space)) context))

@@ -89,7 +89,8 @@
 
 (defn- invalid
   [message data]
-  (throw (ex-info message data)))
+  (throw (ex :code.vm.instrument/invalid
+             (assoc data :ex/message message))))
 
 (defn- map-value
   [label value]

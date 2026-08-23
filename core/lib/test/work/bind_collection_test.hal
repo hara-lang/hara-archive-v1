@@ -34,10 +34,8 @@
                    (if (and (= item-id :b)
                             (= attempt 1))
                      (throw
-                      (ex :host
-                          {:item/id item-id
-                           :attempt attempt}
-                          :ex/message "item interrupted"))
+                      (ex :hara/host (assoc {:item/id item-id
+                           :attempt attempt} :ex/message "item interrupted")))
                      (* value 10)))))))))
         before (work/durable-runtime {:backend backend})
         reference

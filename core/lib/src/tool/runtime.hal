@@ -30,8 +30,8 @@
   [language]
   (or (get +runtimes+ language)
       (throw
-       (ex :host {:runtime/language language
-                 :runtime/supported [:js :python :lua]} :ex/message "Unknown Hara target language"))))
+       (ex :hara/host (assoc {:runtime/language language
+                 :runtime/supported [:js :python :lua]} :ex/message "Unknown Hara target language")))))
 
 (defn executable
   "Resolves a runtime executable from options, environment, or its default."
@@ -97,7 +97,7 @@
       (if (= 0 (:exit result))
         result
         (throw
-         (ex :host result :ex/message "Target runtime execution failed")))))))
+         (ex :hara/host (assoc result :ex/message "Target runtime execution failed"))))))))
 
 (defn eval
   "Compatibility spelling for run."

@@ -105,7 +105,7 @@
   [type]
   (if (= :default type)
     (throw
-     (ex :io {:task/type type} :ex/message "The default task profile cannot be removed"))
+     (ex :hara/io (assoc {:task/type type} :ex/message "The default task profile cannot be removed")))
     (swap! *task-defaults* dissoc type)))
 
 (defn feature-status
@@ -136,7 +136,7 @@
   ([options]
    (if (not (map? options))
      (throw
-      (ex :io {:options options} :ex/message "Task request options must be a map"))
+      (ex :hara/io (assoc {:options options} :ex/message "Task request options must be a map")))
      (assoc options :task/request request-id))))
 
 (defn invocation
@@ -186,7 +186,7 @@
              :lookup (nth task-arguments 2)
              :environment (nth task-arguments 3)}
           (throw
-           (ex :generic {:arguments task-arguments} :ex/message "Task invocation accepts at most input, params, lookup, and environment")))]
+           (ex :hara/generic (assoc {:arguments task-arguments} :ex/message "Task invocation accepts at most input, params, lookup, and environment"))))]
     (request
      (if (empty? additional)
        options
@@ -263,19 +263,19 @@
     1 (fn [input params lookup environment arguments]
         (apply function input arguments))
     (throw
-     (ex :argument {:argcount count} :ex/message "Task main argcount must be between 1 and 4"))))
+     (ex :hara/argument (assoc {:argcount count} :ex/message "Task main argcount must be between 1 and 4")))))
 
 (defn assert-definition
   [definition]
   (if (not (map? definition))
     (throw
-     (ex :argument {:definition definition} :ex/message "Task template definition must be a map")))
+     (ex :hara/argument (assoc {:definition definition} :ex/message "Task template definition must be a map"))))
   (if (nil? (or (:task/id definition) (:id definition)))
-    (throw (ex :dependency {} :ex/message "Task template requires an id")))
+    (throw (ex :hara/dependency (assoc {} :ex/message "Task template requires an id"))))
   (if (nil? (or (get-in definition [:item :run])
                 (get-in definition [:main :fn])
                 (:run definition)))
-    (throw (ex :dependency {} :ex/message "Task template requires an item run function")))
+    (throw (ex :hara/dependency (assoc {} :ex/message "Task template requires an item run function"))))
   definition)
 
 (defn normalise-definition
@@ -305,10 +305,10 @@
               :input-context))]
     (if (not= schema schema-id)
       (throw
-       (ex :serialization {:schema schema} :ex/message "Task template schema is not supported")))
+       (ex :hara/serialization (assoc {:schema schema} :ex/message "Task template schema is not supported"))))
     (if (or (< argcount 1) (> argcount 4))
       (throw
-       (ex :argument {:argcount argcount} :ex/message "Task main argcount must be between 1 and 4")))
+       (ex :hara/argument (assoc {:argcount argcount} :ex/message "Task main argcount must be between 1 and 4"))))
     {:schema schema-id
      :task/id id
      :task/type type
@@ -437,8 +437,8 @@
         started-at (if clock (clock) nil)]
     (if (and required? (empty? arguments))
       (throw
-       (ex :dependency {:task/id (:task/id definition)
-                 :task/type (:task/type definition)} :ex/message "Task invocation requires additional arguments")))
+       (ex :hara/dependency (assoc {:task/id (:task/id definition)
+                 :task/type (:task/type definition)} :ex/message "Task invocation requires additional arguments"))))
     (work/emit context :task/run-started
                 {:task/id (:task/id definition)
                  :task/type (:task/type definition)
@@ -474,8 +474,8 @@
         (list-function (:task/input prepared) context)
 
         (throw
-         (ex :generic {:task/id (:task/id definition)
-                   :list-mode list-mode} :ex/message "Task item list mode is not supported")))
+         (ex :hara/generic (assoc {:task/id (:task/id definition)
+                   :list-mode list-mode} :ex/message "Task item list mode is not supported"))))
       [(:task/input prepared)])))
 
 (defn list-items
@@ -591,7 +591,7 @@
         order)))
     :else
     (throw
-     (ex :argument {:order order} :ex/message "Task result order must be a function, keyword, or key vector"))))
+     (ex :hara/argument (assoc {:order order} :ex/message "Task result order must be a function, keyword, or key vector")))))
 
 (defn order-results
   [definition params records]
@@ -822,7 +822,7 @@
     (= :map package) (into {} (record-pairs records output))
     :else
     (throw
-     (ex :dependency {:package package} :ex/message "Task return package is not supported"))))
+     (ex :hara/dependency (assoc {:package package} :ex/message "Task return package is not supported")))))
 
 (defn package-section
   [definition bundle id package]

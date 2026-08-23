@@ -24,15 +24,15 @@
   (let [value (get response "error")]
     (cond
       (string? value)
-      (ex :io {:code :substrate/application-error} :ex/message value)
+      (ex :hara/io (assoc {:code :substrate/application-error} :ex/message value))
 
       (map? value)
-      (ex :io {:code :substrate/application-error
+      (ex :hara/io (assoc {:code :substrate/application-error
                 :error value} :ex/message (or (get value "message")
-                   "substrate application error"))
+                   "substrate application error")))
 
       (nil? value)
-      (ex :io {:code :substrate/application-error} :ex/message "substrate application error")
+      (ex :hara/io (assoc {:code :substrate/application-error} :ex/message "substrate application error"))
 
       :else value)))
 

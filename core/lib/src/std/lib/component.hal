@@ -191,7 +191,7 @@
   [component key value]
   (let [setter (get-in (props component) [key :set])]
     (if setter (setter value)
-        (throw (ex :database {:key key} :ex/message "Component property is not writable")))))
+        (throw (ex :hara/database (assoc {:key key} :ex/message "Component property is not writable"))))))
 
 (defmacro with-component
   "Starts the component in binding, evaluates body, and always stops it.

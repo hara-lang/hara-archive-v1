@@ -65,7 +65,9 @@
     (fn [modifier]
       (or (get +lookup+ modifier)
           (get +lookup+ (get *custom* modifier))
-          (throw (ex-info "Modifier not available." {:input modifier}))))
+          (throw (ex :std.lib.format/invalid-modifier
+                     {:input modifier
+                      :ex/message "Modifier not available."}))))
     modifiers)))
 
 (defn style

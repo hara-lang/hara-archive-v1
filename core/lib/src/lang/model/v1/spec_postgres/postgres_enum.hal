@@ -20,8 +20,8 @@
         symbol (second normalized)
         body (vec (drop 2 normalized))
         _ (if (not (= 1 (count body)))
-            (throw (ex :database {:form form
-                             :body body} :ex/message "PostgreSQL enum requires one value expression")))
+            (throw (ex :hara/database (assoc {:form form
+                             :body body} :ex/message "PostgreSQL enum requires one value expression"))))
         metadata (enum-metadata symbol definition-metadata)
         next-symbol (IObjType/with-meta symbol metadata)]
     [metadata
@@ -60,12 +60,12 @@
         (let [resolved (evaluator (second values))]
           (if (sequential? resolved)
             (vec resolved)
-            (throw (ex :database {:value resolved
-                             :form values} :ex/message "PostgreSQL enum evaluator returned a non-sequence"))))
-        (throw (ex :database {:form values} :ex/message "PostgreSQL enum !:eval requires :lang/eval-literal"))))
+            (throw (ex :hara/database (assoc {:value resolved
+                             :form values} :ex/message "PostgreSQL enum evaluator returned a non-sequence")))))
+        (throw (ex :hara/database (assoc {:form values} :ex/message "PostgreSQL enum !:eval requires :lang/eval-literal")))))
     (if (sequential? values)
       (vec values)
-      (throw (ex :database {:values values} :ex/message "PostgreSQL enum values must be sequential")))))
+      (throw (ex :hara/database (assoc {:values values} :ex/message "PostgreSQL enum values must be sequential"))))))
 
 (defn quote-enum-value
   [value]

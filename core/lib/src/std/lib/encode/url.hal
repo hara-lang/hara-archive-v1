@@ -18,7 +18,7 @@
 (defn encode
   [value]
   (if (not (string? value))
-    (throw (ex :dependency {:value value} :ex/message "URL component encode expects a string")))
+    (throw (ex :hara/dependency (assoc {:value value} :ex/message "URL component encode expects a string"))))
   (let [source (str/encode-utf8 value)
         length (bytes/count source)]
     (loop [index 0 output ""]
@@ -36,7 +36,7 @@
   [character index]
   (let [value (str/index-of +hex+ (str/upper-case character))]
     (if (neg? value)
-      (throw (ex :serialization {:character character :index index} :ex/message "Invalid URL percent escape"))
+      (throw (ex :hara/serialization (assoc {:character character :index index} :ex/message "Invalid URL percent escape")))
       value)))
 
 (defn- append-character
@@ -51,7 +51,7 @@
 (defn decode
   [source]
   (if (not (string? source))
-    (throw (ex :dependency {:value source} :ex/message "URL component decode expects a string")))
+    (throw (ex :hara/dependency (assoc {:value source} :ex/message "URL component decode expects a string"))))
   (let [length (str/length source)]
     (loop [index 0 output []]
       (if (= index length)
@@ -59,7 +59,7 @@
         (let [character (str/char-at source index)]
           (if (= character "%")
             (if (> (+ index 3) length)
-              (throw (ex :serialization {:value source :index index} :ex/message "Incomplete URL percent escape"))
+              (throw (ex :hara/serialization (assoc {:value source :index index} :ex/message "Incomplete URL percent escape")))
               (let [high (hex-value (str/char-at source (inc index))
                                     (inc index))
                     low (hex-value (str/char-at source (+ index 2))
