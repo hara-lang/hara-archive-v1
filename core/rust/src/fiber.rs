@@ -1411,10 +1411,22 @@ fn call(f: Rc<Function>, args: Vec<Value>, k: Cont) -> Step {
             f.params.len()
         )));
     }
-    let caller_scoped_macroexpand = f.name.as_deref() == Some("macroexpand")
-        && f.namespace.as_deref() == Some("std.foundation");
+    let caller_scoped_foundation = f.namespace.as_deref() == Some("std.foundation")
+        && matches!(
+            f.name.as_deref(),
+            Some(
+                "macroexpand"
+                    | "env-current"
+                    | "env-snapshot"
+                    | "env-vars"
+                    | "env-namespaces"
+                    | "env-namespace"
+                    | "env-module"
+                    | "env-resolve"
+            )
+        );
     let namespace_scope = namespace_registry().ok().and_then(|registry| {
-        (!caller_scoped_macroexpand)
+        (!caller_scoped_foundation)
             .then_some(())
             .and_then(|_| f.namespace.as_ref())
             .map(|namespace| {
