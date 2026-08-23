@@ -243,6 +243,6 @@
      => [runtime/DEFAULT-TRANSPORT
          {"signal" "ready"
           "transport" runtime/DEFAULT-TRANSPORT
-          "worker" runtime/DEFAULT-WORKER})])
+          "worker" runtime/DEFAULT-WORKER}])])
 
 (pr-str (run '[db.node.runtime-test]))
