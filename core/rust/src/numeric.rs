@@ -422,6 +422,7 @@ mod tests {
     use crate::core::Value;
     use crate::lang::hash::JavaHash;
     use crate::lang::protocol::HashType;
+    use num_bigint::BigInt;
     use std::cmp::Ordering;
     use std::collections::HashSet;
 
@@ -429,7 +430,9 @@ mod tests {
     fn canonicalizes_integer_text() {
         assert_eq!(
             parse_integer_digits("9223372036854775808", 10, false),
-            Some(CanonicalInteger::Big("9223372036854775808".into()))
+            Some(CanonicalInteger::Big(
+                BigInt::parse_bytes(b"9223372036854775808", 10).unwrap()
+            ))
         );
     }
 

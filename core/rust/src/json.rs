@@ -330,12 +330,12 @@ mod tests {
             (i64::MIN.to_string(), Value::Number(i64::MIN)),
             (i64::MAX.to_string(), Value::Number(i64::MAX)),
             (
-                (BigInt::from(i64::MIN) - 1).to_string(),
-                Value::BigInteger(BigInt::from(i64::MIN) - 1),
+                (BigInt::from(i64::MIN) - BigInt::from(1_i64)).to_string(),
+                Value::BigInteger(BigInt::from(i64::MIN) - BigInt::from(1_i64)),
             ),
             (
-                (BigInt::from(i64::MAX) + 1).to_string(),
-                Value::BigInteger(BigInt::from(i64::MAX) + 1),
+                (BigInt::from(i64::MAX) + BigInt::from(1_i64)).to_string(),
+                Value::BigInteger(BigInt::from(i64::MAX) + BigInt::from(1_i64)),
             ),
         ] {
             assert_eq!(read(&source).unwrap(), expected);
