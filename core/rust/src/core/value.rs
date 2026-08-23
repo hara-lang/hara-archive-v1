@@ -2012,6 +2012,33 @@ impl IteratorState {
             generator: Some(generator),
         }
     }
+    pub(crate) fn is_finite(&self) -> bool {
+        if self.closed || self.generator.is_none() {
+            return true;
+        }
+        match self.generator.as_ref().unwrap() {
+            IteratorGenerator::Seq(_) => false,
+            IteratorGenerator::Constant(_)
+            | IteratorGenerator::Repeated(_)
+            | IteratorGenerator::Iterate(_, _)
+            | IteratorGenerator::Cycle(_, _, _, _) => false,
+            IteratorGenerator::Take(_, _) => true,
+            IteratorGenerator::Drop(source, _)
+            | IteratorGenerator::TakeWhile(_, source)
+            | IteratorGenerator::DropWhile(_, source, _)
+            | IteratorGenerator::Map(_, source, _)
+            | IteratorGenerator::Filter(_, source)
+            | IteratorGenerator::Keep(_, source)
+            | IteratorGenerator::Prepend(_, source)
+            | IteratorGenerator::Interpose(source, _, _, _)
+            | IteratorGenerator::Partition(source, _, _) => value_iterator_is_finite(source),
+            IteratorGenerator::Mapcat(_, _, _) => false,
+            IteratorGenerator::Concat(sources, _) | IteratorGenerator::Interleave(sources, _) => {
+                sources.iter().all(value_iterator_is_finite)
+            }
+            IteratorGenerator::Zip(sources) => sources.iter().any(value_iterator_is_finite),
+        }
+    }
     fn has_next(&mut self) -> Result<bool, String> {
         if self.lookahead.is_some() {
             return Ok(true);
@@ -2374,6 +2401,14 @@ impl IteratorState {
                 }
             }
         }
+    }
+}
+
+fn value_iterator_is_finite(value: &Value) -> bool {
+    match value {
+        Value::Iterator(iterator) => iterator.borrow().is_finite(),
+        Value::Seq(_) => false,
+        _ => true,
     }
 }
 

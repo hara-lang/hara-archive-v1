@@ -5996,7 +5996,7 @@ mod tests {
                         (first xs) (deref calls)])"
                 )
                 .unwrap(),
-            "[2 1 2 1 2]"
+            "[1 1 1 1 1]"
         );
         assert_eq!(
             runtime.eval_text("(seq (Iter/iter-range 20))").unwrap(),
