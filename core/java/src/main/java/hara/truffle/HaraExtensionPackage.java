@@ -86,6 +86,16 @@ final class HaraExtensionPackage {
     return readBytes(manifest.module(), MAX_MODULE_BYTES, "module");
   }
 
+  byte[] wrappedLibraryBytes() {
+    if (!"hta.v1".equals(manifest.abi())) return null;
+    String library =
+        manifest.assets().stream()
+            .filter(path -> path.endsWith(".wasm") && !path.equals(manifest.module()))
+            .findFirst()
+            .orElse(null);
+    return library == null ? null : readBytes(library, MAX_MODULE_BYTES, "library");
+  }
+
   HaraWasmMemoryBinding memoryBinding() {
     if (!"memory.v1".equals(manifest.abi())) {
       throw new HaraException(

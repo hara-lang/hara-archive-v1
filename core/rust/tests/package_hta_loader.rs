@@ -1,9 +1,7 @@
 #![cfg(not(target_arch = "wasm32"))]
 
 use hara_wasm::package_hta_loader::load_hta_require_package;
-use hara_wasm::package_manifest::{
-    PackageManifest, PackageRuntimeRequirements,
-};
+use hara_wasm::package_manifest::{PackageManifest, PackageRuntimeRequirements};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 use std::fs;

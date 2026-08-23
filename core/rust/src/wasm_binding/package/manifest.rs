@@ -3,7 +3,8 @@ use std::collections::BTreeMap;
 use crate::kernel::Form;
 
 use super::{
-    digest, document, keyword_form, string_form, BindingTarget, WasmInterface, GENERATED_VERSION,
+    digest, document, keyword_form, string_form, BindingTarget, WasmInterface, ADAPTER_FILE,
+    GENERATED_VERSION,
 };
 
 pub(super) fn package_document(
@@ -29,25 +30,31 @@ pub(super) fn package_document(
         .iter()
         .map(|export| keyword_form(&export.name))
         .collect();
-    let entry_point = interface
-        .exports
-        .first()
-        .map(|export| export.wasm_export.clone())
-        .ok_or_else(|| "wasm-binding/package-invalid: package requires an export".to_owned())?;
-    let module_bytes = files.get(&interface.module).ok_or_else(|| {
+    let (artifact_path, artifact_type, entry_point): (&str, &str, String) =
+        if target == BindingTarget::HtaV1 {
+        (ADAPTER_FILE, "hta", "hta_start".into())
+    } else {
+        let entry_point = interface
+            .exports
+            .first()
+            .map(|export| export.wasm_export.clone())
+            .ok_or_else(|| "wasm-binding/package-invalid: package requires an export".to_owned())?;
+        (&interface.module, "wasm", entry_point)
+    };
+    let module_bytes = files.get(artifact_path).ok_or_else(|| {
         format!(
-            "wasm-binding/package-invalid: missing module {}",
-            interface.module
+            "wasm-binding/package-invalid: missing artifact {}",
+            artifact_path
         )
     })?;
     let artifact = Form::Map(vec![
         (
             keyword_form("variant/artifact"),
             Form::Map(vec![
-                (keyword_form("artifact/type"), keyword_form("wasm")),
+                (keyword_form("artifact/type"), keyword_form(artifact_type)),
                 (
                     keyword_form("artifact/path"),
-                    string_form(&interface.module),
+                    string_form(artifact_path),
                 ),
                 (
                     keyword_form("artifact/sha256"),

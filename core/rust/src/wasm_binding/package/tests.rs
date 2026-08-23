@@ -18,6 +18,18 @@ const INTERFACE: &str = r#"
                       {:name right :hara/type :i64 :wasm/type :i64}]
           :returns {:hara/type :i64 :wasm/type :i64}}}})"#;
 
+const HTA_INTERFACE: &str = r#"
+  (wasm/interface
+   {:schema "hara.wasm-interface/0-alpha"
+    :namespace math.async
+    :module "modules/math.wasm"
+    :exports
+    {sum {:wasm/export "add"
+          :async true
+          :arguments [{:name left :hara/type :i64 :wasm/type :i64}
+                     {:name right :hara/type :i64 :wasm/type :i64}]
+          :returns {:hara/type :i64 :wasm/type :i64}}}})"#;
+
 const MEMORY_INTERFACE: &str = r#"
   (wasm/interface
    {:schema "hara.wasm-interface/0-alpha"
@@ -132,6 +144,73 @@ fn direct_package_loads_through_the_native_import_route() {
         .eval_text("(ns rejected-project (:import math.scalar))")
         .unwrap_err();
     assert!(error.starts_with("package/size-mismatch:"), "{error}");
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn async_binding_generates_an_hta_adapter_for_require() {
+    let root = fixture_root("hta-bind");
+    fs::create_dir_all(&root).unwrap();
+    let module = root.join("math.wasm");
+    let interface = root.join("interface.input.hal");
+    fs::write(&module, ADD).unwrap();
+    fs::write(&interface, HTA_INTERFACE).unwrap();
+    let first = root.join("first");
+    let second = root.join("second");
+    let bound = bind_package(&interface, &module, &first).unwrap();
+    bind_package(&interface, &module, &second).unwrap();
+
+    assert_eq!(bound.target, BindingTarget::HtaV1);
+    assert!(bound.files.contains(&"adapter.wasm".to_owned()));
+    assert!(bound.files.contains(&"adapter.edn".to_owned()));
+    for relative in &bound.files {
+        assert_eq!(
+            fs::read(first.join(relative)).unwrap(),
+            fs::read(second.join(relative)).unwrap()
+        );
+    }
+    let project = fs::read_to_string(first.join("project.edn")).unwrap();
+    assert!(project.contains(":abi :hta.v1"));
+    assert!(project.contains(":module \"adapter.wasm\""));
+    assert!(project.contains(":async true"));
+    let product = fs::read_to_string(first.join("hara.build-product.edn")).unwrap();
+    assert!(product.contains(":product/type :hta-adapter-wasm"));
+    let manifest =
+        crate::package_manifest::PackageManifest::read(&first.join("package.edn")).unwrap();
+    let variant = manifest.wasm_imports.get("math.async").unwrap();
+    assert_eq!(
+        variant.artifact.artifact_type,
+        crate::package_manifest::PackageArtifactType::Hta
+    );
+    assert_eq!(variant.artifact.path.to_str(), Some("adapter.wasm"));
+    assert_eq!(variant.artifact.entry_point, "hta_start");
+    let package = crate::native_extension::ExtensionPackage::load(&first).unwrap();
+    let package_manifest =
+        crate::package_manifest::PackageManifest::read(&first.join("package.edn")).unwrap();
+    let requirements = crate::package_manifest::PackageRuntimeRequirements {
+        supported_targets: ["wasm32-wasi-preview1".to_owned()].into_iter().collect(),
+        supported_abis: ["hta.v1".to_owned()].into_iter().collect(),
+        ..Default::default()
+    };
+    let mut loaded = crate::package_hta_loader::load_hta_package(
+        &package_manifest,
+        &first,
+        &requirements,
+        &package.source,
+    )
+    .unwrap();
+    let bindings = loaded.extension.require().unwrap();
+    assert_eq!(bindings[0].name, "sum");
+    let crate::core::Value::Promise(promise) = bindings[0]
+        .invoke(&[crate::core::Value::Number(19), crate::core::Value::Number(23)])
+        .unwrap()
+    else {
+        panic!("HTA binding did not return a promise");
+    };
+    assert_eq!(
+        promise.wait_state(),
+        crate::core::PromiseState::Fulfilled(crate::core::Value::Number(42))
+    );
     fs::remove_dir_all(root).unwrap();
 }
 

@@ -99,11 +99,38 @@ impl WasmtimeExtensionProvider {
             Rc<dyn Fn(String, String, Vec<Value>) -> Result<Value, String>>,
         >,
     ) -> Result<Self, String> {
-        let (engine, module) = compile_hta_module(bytes)?;
+        Self::compile_hta_parts(bytes, None, host_handler)
+    }
+
+    pub fn compile_hta_with_library(
+        bytes: &[u8],
+        library_bytes: &[u8],
+        host_handler: Option<
+            Rc<dyn Fn(String, String, Vec<Value>) -> Result<Value, String>>,
+        >,
+    ) -> Result<Self, String> {
+        Self::compile_hta_parts(bytes, Some(library_bytes), host_handler)
+    }
+
+    fn compile_hta_parts(
+        bytes: &[u8],
+        library_bytes: Option<&[u8]>,
+        host_handler: Option<
+            Rc<dyn Fn(String, String, Vec<Value>) -> Result<Value, String>>,
+        >,
+    ) -> Result<Self, String> {
+        let (engine, module) = compile_hta_module(bytes, library_bytes.is_some())?;
+        let library = library_bytes
+            .map(|bytes| {
+                Module::new(&engine, bytes)
+                    .map_err(|error| format!("extension/module-invalid: {error}"))
+            })
+            .transpose()?;
         Ok(Self {
             mode: ProviderMode::Hta(Rc::new(HtaProviderState {
                 engine,
                 module,
+                library,
                 session: RefCell::new(None),
                 host_handler,
                 timeout: hta_timeout(),
@@ -286,6 +313,7 @@ struct HtaSession {
 struct HtaProviderState {
     engine: Engine,
     module: Module,
+    library: Option<Module>,
     session: RefCell<Option<HtaSession>>,
     host_handler: Option<Rc<dyn Fn(String, String, Vec<Value>) -> Result<Value, String>>>,
     timeout: Option<Duration>,
@@ -361,12 +389,33 @@ impl HtaProviderState {
 
         let limits = StoreLimitsBuilder::new()
             .memory_size(64 * 1024 * 1024)
-            .instances(1)
+            .instances(if self.library.is_some() { 2 } else { 1 })
             .memories(1)
             .tables(1)
             .build();
         let mut store = Store::new(&self.engine, limits);
         store.limiter(|limits| limits);
+        if let Some(library) = &self.library {
+            let library_instance = Instance::new(&mut store, library, &[]).map_err(|error| {
+                format!("extension/module-invalid: wrapped library cannot instantiate: {error}")
+            })?;
+            for import in self.module.imports() {
+                if import.module() != "hara/library" {
+                    continue;
+                }
+                let function = library_instance
+                    .get_func(&mut store, import.name())
+                    .ok_or_else(|| {
+                        format!(
+                            "extension/module-invalid: wrapped library has no export {}",
+                            import.name()
+                        )
+                    })?;
+                linker
+                    .define(&mut store, import.module(), import.name(), function)
+                    .map_err(|error| format!("extension/module-invalid: {error}"))?;
+            }
+        }
         let instance = linker
             .instantiate(&mut store, &self.module)
             .map_err(|error| format!("extension/module-invalid: {error}"))?;
@@ -863,7 +912,7 @@ impl HtaProviderState {
     }
 }
 
-fn compile_hta_module(bytes: &[u8]) -> Result<(Engine, Module), String> {
+fn compile_hta_module(bytes: &[u8], allow_library: bool) -> Result<(Engine, Module), String> {
     let mut config = Config::new();
     config.consume_fuel(true);
     let engine =
@@ -871,12 +920,13 @@ fn compile_hta_module(bytes: &[u8]) -> Result<(Engine, Module), String> {
     let module =
         Module::new(&engine, bytes).map_err(|error| format!("extension/module-invalid: {error}"))?;
     for import in module.imports() {
-        if import.module() != "env"
-            || !matches!(
+        let supported_env = import.module() == "env"
+            && matches!(
                 import.name(),
                 "hara_random_fill" | "hara_time_ms" | "hara_time_ns"
-            )
-        {
+            );
+        let supported_library = allow_library && import.module() == "hara/library";
+        if !supported_env && !supported_library {
             return Err(format!(
                 "extension/module-invalid: unsupported import {}::{}",
                 import.module(),
@@ -919,6 +969,9 @@ fn call_i32(
     arguments: &[Val],
     name: &str,
 ) -> Result<i32, String> {
+    store
+        .set_fuel(10_000_000)
+        .map_err(|error| format!("extension/execution-limit: {error}"))?;
     let mut results = [Val::I32(0)];
     function
         .call(store, arguments, &mut results)
@@ -935,6 +988,9 @@ fn call_i64(
     arguments: &[Val],
     name: &str,
 ) -> Result<i64, String> {
+    store
+        .set_fuel(10_000_000)
+        .map_err(|error| format!("extension/execution-limit: {error}"))?;
     let mut results = [Val::I64(0)];
     function
         .call(store, arguments, &mut results)
@@ -951,6 +1007,9 @@ fn call_void(
     arguments: &[Val],
     name: &str,
 ) -> Result<(), String> {
+    store
+        .set_fuel(10_000_000)
+        .map_err(|error| format!("extension/execution-limit: {error}"))?;
     function
         .call(store, arguments, &mut [])
         .map_err(|error| format!("extension/{name}-failed: {error}"))

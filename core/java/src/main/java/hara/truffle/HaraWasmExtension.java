@@ -65,6 +65,7 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
     Context opened = null;
     try {
       byte[] bytes = extensionPackage.moduleBytes();
+      byte[] libraryBytes = extensionPackage.wrappedLibraryBytes();
       HaraWasmMemoryBinding memoryBinding =
           "memory.v1".equals(manifest.abi()) ? extensionPackage.memoryBinding() : null;
       Source source =
@@ -74,8 +75,21 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
                   manifest.namespace() + "/" + manifest.module())
               .build();
       opened = Context.newBuilder("wasm").allowAllAccess(false).build();
+      Value instance;
+      if (libraryBytes != null) {
+        Source librarySource =
+            Source.newBuilder(
+                    "wasm",
+                    ByteSequence.create(libraryBytes),
+                    "hara/library")
+                .build();
+        Value libraryModule = opened.eval(librarySource);
+        if (libraryModule.canInstantiate()) {
+          libraryModule.newInstance();
+        }
+      }
       Value module = opened.eval(source);
-      Value instance = module.canInstantiate() ? module.newInstance() : module;
+      instance = module.canInstantiate() ? module.newInstance() : module;
       Value members = instance.hasMember("exports") ? instance.getMember("exports") : instance;
       Value memoryValue = members.hasMember("memory") ? members.getMember("memory") : null;
       Value allocatorValue = members.hasMember("alloc") ? members.getMember("alloc") : null;

@@ -161,8 +161,10 @@ fn rejects_ambiguous_and_future_semantics() {
         ":returns {:hara/type :i64 :wasm/type :i64} :async true",
     );
     assert!(WasmInterface::parse(&asynchronous, "async")
-        .unwrap_err()
-        .starts_with("wasm-interface/feature-unsupported"));
+        .unwrap()
+        .exports
+        .first()
+        .is_some_and(|export| export.asynchronous));
 
     let handles = SCALAR_INTERFACE.replace(
         ":exports",
