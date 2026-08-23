@@ -13,6 +13,8 @@
 
 (def +formats+ #{:edn :editor-json})
 
+(def +direct-operations+ #{:contract-check :issue-contract})
+
 (def +test-only+
   #{:refactor-test :isolate :factcheck-remove :factcheck-generate :unchecked})
 
@@ -36,6 +38,16 @@
       (not (has? +formats+ format))
       (throw (ex :syntax {:format format} :ex/message (str "unsupported manage format " format)))
 
+      (and (has? +direct-operations+ operation)
+           (not= 1 (count (:namespaces parsed))))
+      (throw (ex :dependency {:operation operation}
+                  :ex/message (str (name operation) " requires one contract path")))
+
+      (and (:complete? options)
+           (not (has? +direct-operations+ operation)))
+      (throw (ex :syntax {:operation operation :option "--complete"}
+                  :ex/message "--complete is only supported by contract-check"))
+
       (and (= operation :import) (:form options))
       (throw (ex :syntax {:operation operation :option "--form"} :ex/message "import --form is obsolete; import reads matching fact titles"))
 
@@ -47,7 +59,8 @@
 
 (defn parse-arguments [arguments]
   (let [operation (keyword (or (first arguments) "analyse"))]
-    (if (nil? (get manage/parity-inventory operation))
+    (if (and (nil? (get manage/parity-inventory operation))
+             (not (has? +direct-operations+ operation)))
       (throw (ex :syntax {:operation operation} :ex/message (str "unsupported manage operation " operation)))
       (loop [remaining (tail arguments)
              write false
@@ -73,6 +86,13 @@
                    :namespaces namespaces
                    :patterns patterns
                    :options options}
+
+                  (= argument "--complete")
+                  {:remaining more
+                   :write write
+                   :namespaces namespaces
+                   :patterns patterns
+                   :options (assoc options :complete? true)}
 
                   (= argument "--pattern")
                   {:remaining (tail more)
@@ -275,15 +295,27 @@
                   (:root (:request/options request))
                   (:request/cwd request)
                   (OS/cwd))
-        current-project (project/discover start)
-        plan (manage/plan (:operation parsed)
-                          {:units (units-for current-project parsed)
-                           :options (:options parsed)})
-        output (render-plan plan parsed)]
-    (if (:write parsed)
-      (apply-edits (:project/root current-project) (:edits plan))
-      nil)
-    (model/success plan [(model/message (str output "\n"))])))
+        current-project (project/discover start)]
+    (if (has? +direct-operations+ (:operation parsed))
+      (let [contract
+            (manage/check-contract
+             {:source (current-source (first (:namespaces parsed)))
+              :complete? (= true (get-in parsed [:options :complete?]))})
+            output (pr-str contract)]
+        (if (:valid? contract)
+          (model/success contract [(model/message (str output "\n"))])
+          (model/result
+           :tool.cli.outcome/failed
+           contract
+           [(model/message :stderr (str output "\n"))])))
+      (let [plan (manage/plan (:operation parsed)
+                              {:units (units-for current-project parsed)
+                               :options (:options parsed)})
+            output (render-plan plan parsed)]
+        (if (:write parsed)
+          (apply-edits (:project/root current-project) (:edits plan))
+          nil)
+        (model/success plan [(model/message (str output "\n"))])))))
 
 
 (def +command-work+
