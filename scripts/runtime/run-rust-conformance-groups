@@ -1,0 +1,188 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+MANIFEST="${HARA_RUST_TEST_MANIFEST:-$REPO_ROOT/core/rust/runtime/Cargo.toml}"
+FEATURES="${HARA_RUST_TEST_FEATURES:-whole-wasm,bytecode-observation,bytecode-instrumentation}"
+CARGO_BIN="${CARGO:-cargo}"
+DRY_RUN=false
+NO_DEFAULT_FEATURES=false
+
+GROUP_NAMES=(
+    core
+    kernel
+    lang
+    runtime
+    observation
+    resp
+    vm
+    whole-wasm
+)
+
+declare -A GROUP_FILTERS=(
+    [core]="core::"
+    [kernel]="kernel::"
+    [lang]="lang::"
+    [runtime]="tests::"
+    [observation]="interpreter_observation::"
+    [resp]="resp::"
+    [vm]="vm::"
+    [whole-wasm]="whole_wasm::"
+)
+
+usage() {
+    cat <<'USAGE'
+Usage: scripts/runtime/run-rust-conformance-groups [options] <group>...
+
+Run the Rust runtime library tests owned by one or more issue #1047 groups.
+The default feature set matches the full-suite baseline from issue #1047.
+
+Groups:
+  core          core evaluator, values, and direct-callable tests
+  kernel        reader, namespace, HALC, and schema tests
+  lang          language data and hashing tests
+  runtime       top-level Runtime and Foundation tests
+  observation   interpreter observation tests
+  resp          RESP protocol tests
+  vm            bytecode compiler, execution, and differential tests
+  whole-wasm    whole-function Wasm compiler and execution tests
+
+Options:
+  --all                         Run every group, continuing after failures
+  --dry-run                     Print commands without running Cargo
+  --features FEATURES           Override the comma-separated Cargo features
+  --no-default-features         Disable the runtime crate's default features
+  --list                        List groups and their Cargo filters
+  -h, --help                    Show this help
+
+Examples:
+  scripts/runtime/run-rust-conformance-groups --list
+  scripts/runtime/run-rust-conformance-groups runtime
+  scripts/runtime/run-rust-conformance-groups vm whole-wasm
+  scripts/runtime/run-rust-conformance-groups --all
+USAGE
+}
+
+list_groups() {
+    printf 'Rust conformance groups (manifest: %s):\n' "$MANIFEST"
+    for group in "${GROUP_NAMES[@]}"; do
+        printf '  %-13s %s\n' "$group" "${GROUP_FILTERS[$group]}"
+    done
+}
+
+print_command() {
+    local -a command=("$CARGO_BIN" test --locked --manifest-path "$MANIFEST" --lib)
+    if [[ "$NO_DEFAULT_FEATURES" == true ]]; then
+        command+=(--no-default-features)
+    fi
+    if [[ -n "$FEATURES" ]]; then
+        command+=(--features "$FEATURES")
+    fi
+    command+=("$1" -- --nocapture)
+    printf '+'
+    printf ' %q' "${command[@]}"
+    printf '\n'
+}
+
+run_filter() {
+    local filter="$1"
+    print_command "$filter"
+    if [[ "$DRY_RUN" == true ]]; then
+        return 0
+    fi
+
+    local -a command=("$CARGO_BIN" test --locked --manifest-path "$MANIFEST" --lib)
+    if [[ "$NO_DEFAULT_FEATURES" == true ]]; then
+        command+=(--no-default-features)
+    fi
+    if [[ -n "$FEATURES" ]]; then
+        command+=(--features "$FEATURES")
+    fi
+    command+=("$filter" -- --nocapture)
+    "${command[@]}"
+}
+
+run_group() {
+    local group="$1"
+    printf '\n== %s ==\n' "$group"
+    run_filter "${GROUP_FILTERS[$group]}"
+}
+
+groups=()
+while (($# > 0)); do
+    case "$1" in
+        --all)
+            groups=("${GROUP_NAMES[@]}")
+            ;;
+        --dry-run)
+            DRY_RUN=true
+            ;;
+        --features)
+            if (($# < 2)); then
+                echo "--features requires a value" >&2
+                exit 2
+            fi
+            FEATURES="$2"
+            shift
+            ;;
+        --features=*)
+            FEATURES="${1#*=}"
+            ;;
+        --no-default-features)
+            NO_DEFAULT_FEATURES=true
+            ;;
+        --list)
+            list_groups
+            exit 0
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        --)
+            shift
+            while (($# > 0)); do
+                groups+=("$1")
+                shift
+            done
+            break
+            ;;
+        -*)
+            echo "Unknown option: $1" >&2
+            usage >&2
+            exit 2
+            ;;
+        all)
+            groups=("${GROUP_NAMES[@]}")
+            ;;
+        *)
+            groups+=("$1")
+            ;;
+    esac
+    shift
+done
+
+if ((${#groups[@]} == 0)); then
+    usage >&2
+    exit 2
+fi
+
+for group in "${groups[@]}"; do
+    if [[ -z "${GROUP_FILTERS[$group]+present}" ]]; then
+        echo "Unknown test group: $group" >&2
+        list_groups >&2
+        exit 2
+    fi
+done
+
+failed_groups=()
+for group in "${groups[@]}"; do
+    if ! run_group "$group"; then
+        failed_groups+=("$group")
+    fi
+done
+
+if ((${#failed_groups[@]} > 0)); then
+    printf '\nFailed groups: %s\n' "${failed_groups[*]}" >&2
+    exit 1
+fi
