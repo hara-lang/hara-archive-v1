@@ -645,11 +645,8 @@ mod tests {
 
     #[test]
     fn native_result_string_errors_keep_unquoted_messages() {
-        let result = ResultValue::error(
-            Value::String("boom".into()),
-            Value::Map(PMap::new()),
-        )
-        .expect("error Result");
+        let result = ResultValue::error(Value::String("boom".into()), Value::Map(PMap::new()))
+            .expect("error Result");
         let Value::ExceptionInfo(error) = result.error_value() else {
             panic!("expected native Error");
         };

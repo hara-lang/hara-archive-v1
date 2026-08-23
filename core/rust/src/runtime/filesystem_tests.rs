@@ -6,8 +6,8 @@ use crate::file::{
 };
 use crate::filesystem::{
     FilesystemCallContext, FilesystemCapabilities, FilesystemCapability, FilesystemDescriptor,
-    FilesystemEntry, FilesystemEntryPage, FilesystemFuture, FilesystemHandle,
-    FilesystemMutation, FilesystemMutationContext, FilesystemPageRequest, IFilesystem,
+    FilesystemEntry, FilesystemEntryPage, FilesystemFuture, FilesystemHandle, FilesystemMutation,
+    FilesystemMutationContext, FilesystemPageRequest, IFilesystem,
 };
 use crate::task::PromiseState;
 use std::cell::Cell;
@@ -152,10 +152,7 @@ impl IFilesystem for FixtureFilesystem {
         Self::pending(Err(FileError::PermissionDenied))
     }
 
-    fn close<'a>(
-        &'a self,
-        _context: FilesystemCallContext,
-    ) -> FilesystemFuture<'a, ()> {
+    fn close<'a>(&'a self, _context: FilesystemCallContext) -> FilesystemFuture<'a, ()> {
         self.closes.set(self.closes.get() + 1);
         Self::pending(Ok(()))
     }

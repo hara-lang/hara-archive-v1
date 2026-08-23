@@ -7,8 +7,8 @@
 use serde_json::{json, Value as JsonValue};
 
 use crate::core::Value;
-use crate::vm::{compile_source, FunctionId};
-use crate::whole_wasm::{compile_artifact, NativeModule};
+use crate::vm::{compile_source, encode_program, FunctionId};
+use crate::whole_wasm::{compile_artifact_from_hbc, NativeModule};
 
 use super::{
     required_text, LiveBackend, LiveReplacementPolicy, LiveSession, LiveSessionCapabilities,
@@ -33,7 +33,8 @@ impl WholeWasmLiveSession {
         source: LiveSource,
     ) -> Result<Self, LiveSessionError> {
         let program = compile_source(source.source()).map_err(backend_error)?;
-        let artifact = compile_artifact(&program).map_err(backend_error)?;
+        let hbc = encode_program(&program).map_err(backend_error)?;
+        let artifact = compile_artifact_from_hbc(&hbc).map_err(backend_error)?;
         Self::from_artifact(session_id, source, artifact)
     }
 

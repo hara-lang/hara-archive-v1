@@ -1,6 +1,6 @@
 use std::{env, fs, path::PathBuf, process};
 
-use hara_wasm::whole_wasm::{compile_artifact, NativeModule};
+use hara_wasm::whole_wasm::{compile_artifact_from_hbc, NativeModule};
 
 fn main() {
     if let Err(error) = run() {
@@ -45,7 +45,8 @@ fn compile(source_path: &PathBuf, output_path: &PathBuf) -> Result<(), String> {
     let source = fs::read_to_string(source_path)
         .map_err(|error| format!("cannot read {}: {error}", source_path.display()))?;
     let program = hara_wasm::vm::compile_source(&source).map_err(|error| error.to_string())?;
-    let artifact = compile_artifact(&program)?;
+    let hbc = hara_wasm::vm::encode_program(&program)?;
+    let artifact = compile_artifact_from_hbc(&hbc)?;
     if let Some(parent) = output_path
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())

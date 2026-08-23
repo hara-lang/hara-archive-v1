@@ -76,6 +76,7 @@ impl Runtime {
             resource_overrides: HashSet::new(),
             #[cfg(feature = "bytecode-vm")]
             bytecode_resources: HashMap::new(),
+            product_cache: RefCell::new(compiled_product::InMemoryProductCache::default()),
             loaded_resources: HashSet::new(),
             halc_schema_definitions: HashMap::new(),
             halc_function_schemas: HashMap::new(),
@@ -302,6 +303,7 @@ impl Runtime {
     }
 
     fn eval_value_mode(&mut self, source: &str, traced: bool) -> Result<core::Value, String> {
+        self.product_cache.borrow_mut().clear();
         self.refresh_qualified_bindings();
         let forms = kernel::read_forms(source).map_err(|error| error.to_string())?;
         let mut result = core::Value::Nil;
@@ -679,6 +681,7 @@ impl Runtime {
     }
 
     pub fn use_namespace(&mut self, name: &str) -> bool {
+        self.product_cache.borrow_mut().clear();
         if name.is_empty() {
             return false;
         }
@@ -973,6 +976,7 @@ impl Runtime {
 
     /// Registers a host-supplied Hara resource. Resources are source text, not executable host code.
     pub fn register_resource(&mut self, name: &str, source: &str) {
+        self.product_cache.borrow_mut().clear();
         let changed = self
             .resources
             .get(name)
@@ -994,6 +998,7 @@ impl Runtime {
     /// Detaches a host-supplied namespace while leaving already captured
     /// values alive. Package providers use this to deactivate one generation.
     pub fn unregister_resource(&mut self, name: &str) -> Result<(), JsValue> {
+        self.product_cache.borrow_mut().clear();
         if self.namespace_registry.current().name().as_str() == name {
             return Err(JsValue::from_str("package/unload-current-namespace"));
         }
@@ -1253,7 +1258,8 @@ impl Runtime {
     #[cfg(feature = "bytecode-vm")]
     #[wasm_bindgen(js_name = compileBytecodeArtifact)]
     pub fn compile_bytecode_artifact_js(&self, source: &str) -> Result<Vec<u8>, JsValue> {
-        self.compile_bytecode_artifact(source)
+        self.compile_bytecode_product(source)
+            .map(|product| product.bytes)
             .map_err(|error| JsValue::from_str(&error))
     }
 
@@ -1263,18 +1269,9 @@ impl Runtime {
     #[cfg(feature = "bytecode-vm")]
     #[wasm_bindgen(js_name = compileBytecodeManifest)]
     pub fn compile_bytecode_manifest_js(&self, source: &str) -> Result<String, JsValue> {
-        let bytes = self
-            .compile_bytecode_artifact(source)
+        let product = self
+            .compile_bytecode_product(source)
             .map_err(|error| JsValue::from_str(&error))?;
-        let product = crate::compiled_product::CompiledProduct::new(
-            crate::compiled_product::CompiledProductKind::HbcModule,
-            crate::compiled_product::sha256_hex(source.as_bytes()),
-            vec![crate::compiled_product::sha256_hex(source.as_bytes())],
-            format!("hara-runtime/{}", env!("CARGO_PKG_VERSION")),
-            "hbc0",
-            b"{}",
-            bytes,
-        );
         serde_json::to_string(&product.manifest.to_json())
             .map_err(|error| JsValue::from_str(&error.to_string()))
     }
@@ -1284,25 +1281,17 @@ impl Runtime {
     #[cfg(feature = "whole-wasm")]
     #[wasm_bindgen(js_name = compileWholeWasmArtifact)]
     pub fn compile_whole_wasm_artifact_js(&self, source: &str) -> Result<Vec<u8>, JsValue> {
-        let program = self
-            .compile_bytecode(source)
-            .map_err(|error| JsValue::from_str(&error))?;
-        whole_wasm::compile_artifact(program.as_ref()).map_err(|error| JsValue::from_str(&error))
+        self.compile_whole_wasm_product(source)
+            .map(|product| product.bytes)
+            .map_err(|error| JsValue::from_str(&error))
     }
 
     #[cfg(feature = "whole-wasm")]
     #[wasm_bindgen(js_name = compileWholeWasmManifest)]
     pub fn compile_whole_wasm_manifest_js(&self, source: &str) -> Result<String, JsValue> {
-        let bytes = self.compile_whole_wasm_artifact_js(source)?;
-        let product = crate::compiled_product::CompiledProduct::new(
-            crate::compiled_product::CompiledProductKind::WholeWasm,
-            crate::compiled_product::sha256_hex(source.as_bytes()),
-            vec![crate::compiled_product::sha256_hex(source.as_bytes())],
-            format!("hara-runtime/{}", env!("CARGO_PKG_VERSION")),
-            "hnw0/2",
-            b"{}",
-            bytes,
-        );
+        let product = self
+            .compile_whole_wasm_product(source)
+            .map_err(|error| JsValue::from_str(&error))?;
         serde_json::to_string(&product.manifest.to_json())
             .map_err(|error| JsValue::from_str(&error.to_string()))
     }

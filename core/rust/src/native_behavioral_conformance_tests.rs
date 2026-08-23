@@ -17,7 +17,11 @@ fn corpus_methods() -> BTreeSet<String> {
         .iter()
         .map(core::Value::display)
         .collect::<BTreeSet<_>>();
-    assert_eq!(values.len(), methods.len(), "duplicate native corpus method");
+    assert_eq!(
+        values.len(),
+        methods.len(),
+        "duplicate native corpus method"
+    );
     assert!(!methods.is_empty(), "native corpus must not be empty");
     methods
 }
@@ -60,7 +64,10 @@ fn calibration_value(name: &str, field: &str) -> core::Value {
 fn calibration_source(name: &str) -> String {
     match calibration_value(name, "source") {
         core::Value::String(source) => source,
-        value => panic!("native calibration snippet must be a string: {}", value.display()),
+        value => panic!(
+            "native calibration snippet must be a string: {}",
+            value.display()
+        ),
     }
 }
 

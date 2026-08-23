@@ -69,9 +69,7 @@ fn require_access_accepts_only_literal_true() {
         &parse_forms("(:require [std.foundation.string :access true])").unwrap(),
     )
     .unwrap();
-    assert!(config
-        .internal_access()
-        .contains("std.foundation.string"));
+    assert!(config.internal_access().contains("std.foundation.string"));
     for value in ["false", "1", ":true", "nil"] {
         let error = GeneratedNamespaceConfig::configure(
             &parse_forms(&format!(
@@ -99,19 +97,25 @@ fn separates_wasm_imports_from_host_flavor_imports() {
         config.native_flavor_imports(),
         &[
             ("String".into(), "java.lang.String".into()),
-            ("RuntimeException".into(), "java.lang.RuntimeException".into()),
+            (
+                "RuntimeException".into(),
+                "java.lang.RuntimeException".into()
+            ),
         ]
     );
     assert_eq!(
         config.native_imports(),
-        &[("vendor.numeric.Vector".into(), "vendor.numeric.Vector".into())]
+        &[(
+            "vendor.numeric.Vector".into(),
+            "vendor.numeric.Vector".into()
+        )]
     );
 }
 
 #[test]
 fn wasm_is_not_a_host_flavor() {
-    let error = GeneratedNamespaceConfig::configure(&parse_forms("(:flavor :wasm)").unwrap())
-        .unwrap_err();
+    let error =
+        GeneratedNamespaceConfig::configure(&parse_forms("(:flavor :wasm)").unwrap()).unwrap_err();
     assert_eq!(
         error,
         "native/unsupported-flavor: :wasm (Wasm modules use :import)"
@@ -199,10 +203,7 @@ fn records_lazy_alias_without_an_eager_dependency() {
 #[test]
 fn coroutine_aliases_rewrite_to_fiber_control_forms() {
     let mut config = GeneratedNamespaceConfig::defaults();
-    config.set_global_aliases([(
-        "co".to_owned(),
-        "std.foundation.coroutine".to_owned(),
-    )]);
+    config.set_global_aliases([("co".to_owned(), "std.foundation.coroutine".to_owned())]);
     assert_eq!(
         config
             .rewrite(parse_forms("co/yield").unwrap().remove(0))
@@ -226,10 +227,9 @@ fn foundation_aliases_are_source_declared_not_runtime_defaults() {
         .all(|(_, namespace)| !namespace.starts_with("std.foundation.")));
     assert_eq!(config.global_alias(), None);
 
-    let declared = GeneratedNamespaceConfig::configure(
-        &parse_forms("(:config {:global-alias str})").unwrap(),
-    )
-    .unwrap();
+    let declared =
+        GeneratedNamespaceConfig::configure(&parse_forms("(:config {:global-alias str})").unwrap())
+            .unwrap();
     assert_eq!(declared.global_alias(), Some("str"));
 
     let rebound = GeneratedNamespaceConfig::configure_with(

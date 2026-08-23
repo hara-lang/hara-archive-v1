@@ -30,10 +30,18 @@ fn programs_round_trip_and_execute() {
         SchemaType::WithProperties {
             schema: Box::new(SchemaType::Map(vec![SchemaField {
                 name: crate::kernel::parse(":nickname").unwrap(),
-                properties: Some(crate::kernel::parse("{:required true :description \"Display nickname\" :default \"Anonymous\"}").unwrap()),
+                properties: Some(
+                    crate::kernel::parse(
+                        "{:required true :description \"Display nickname\" :default \"Anonymous\"}",
+                    )
+                    .unwrap(),
+                ),
                 value_type: SchemaType::Primitive("str".into()),
             }])),
-            properties: crate::kernel::parse("{:title \"User profile\" :version 2 :owner :accounts :closed true}").unwrap(),
+            properties: crate::kernel::parse(
+                "{:title \"User profile\" :version 2 :owner :accounts :closed true}",
+            )
+            .unwrap(),
         },
     );
     program.function_types.insert(

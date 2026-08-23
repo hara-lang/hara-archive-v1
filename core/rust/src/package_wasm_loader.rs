@@ -11,8 +11,7 @@ use std::path::Path;
 
 use crate::extension::{ExtensionManifest, WasmAbi, WasmExtension};
 use crate::package_manifest::{
-    PackageArtifactType, PackageManifest, PackageRuntimeRequirements,
-    PackageSelection,
+    PackageArtifactType, PackageManifest, PackageRuntimeRequirements, PackageSelection,
 };
 use crate::wasmtime_provider::WasmtimeExtensionProvider;
 
@@ -33,7 +32,9 @@ pub fn load_wasm_package(
         .keys()
         .next()
         .cloned()
-        .ok_or_else(|| "package/missing-wasm-import: package declares no Wasm imports".to_owned())?;
+        .ok_or_else(|| {
+            "package/missing-wasm-import: package declares no Wasm imports".to_owned()
+        })?;
     load_wasm_import_package(
         manifest,
         package_root,

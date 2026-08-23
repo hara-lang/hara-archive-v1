@@ -138,7 +138,9 @@ fn exclusive_control_lease_conflict() {
         })
         .expect("target");
     let first = hub.register(control_reg("debugger-a", "s")).expect("first");
-    let second = hub.register(control_reg("debugger-b", "s")).expect("second");
+    let second = hub
+        .register(control_reg("debugger-b", "s"))
+        .expect("second");
     hub.attach(&first, &target).expect("first attach");
     hub.attach(&second, &target).expect("second attach");
     hub.acquire_control(&first, &target).expect("first lease");
@@ -223,7 +225,8 @@ fn zero_attachment_produces_no_events() {
     let target = hub
         .register_target(interpreter_target("t", "s"))
         .expect("target");
-    hub.register(passive("trace", "s")).expect("instrument without attachment");
+    hub.register(passive("trace", "s"))
+        .expect("instrument without attachment");
     assert_eq!(
         hub.enabled_for_target(&target, EventKind::ExecutionTerminal),
         Ok(false)

@@ -95,8 +95,7 @@ fn rejects_tampered_wasm_package_artifact_before_loading() {
 #[test]
 fn rejects_package_extension_identity_mismatch() {
     let (manifest, root) = write_artifact("identity", ADD);
-    let extension_manifest =
-        EXTENSION_MANIFEST.replace("example/provider", "other/provider");
+    let extension_manifest = EXTENSION_MANIFEST.replace("example/provider", "other/provider");
     let error = match load_wasm_package(&manifest, &root, &requirements(), &extension_manifest) {
         Ok(_) => panic!("mismatched extension identity was loaded"),
         Err(error) => error,

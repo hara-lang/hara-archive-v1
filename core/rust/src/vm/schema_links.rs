@@ -92,9 +92,7 @@ fn canonical_links(schema_links: &[SchemaCoordinate]) -> Result<Vec<SchemaCoordi
         let identity = (coordinate.id.clone(), coordinate.version);
         if let Some(existing) = identities.insert(identity, coordinate.hash.clone()) {
             if existing == coordinate.hash {
-                return Err(
-                    "linked bytecode artifact contains duplicate schema coordinate".into(),
-                );
+                return Err("linked bytecode artifact contains duplicate schema coordinate".into());
             }
             return Err("linked bytecode artifact contains conflicting schema identity".into());
         }
@@ -344,13 +342,11 @@ mod tests {
 
     #[test]
     fn malformed_coordinates_are_rejected_before_encoding() {
-        assert!(SchemaCoordinate::new(
-            "unqualified",
-            1,
-            format!("sha256:{}", "1".repeat(64)),
-        )
-        .unwrap_err()
-        .contains("qualified keyword name"));
+        assert!(
+            SchemaCoordinate::new("unqualified", 1, format!("sha256:{}", "1".repeat(64)),)
+                .unwrap_err()
+                .contains("qualified keyword name")
+        );
         assert!(SchemaCoordinate::new("model/id", 1, "sha256:BAD")
             .unwrap_err()
             .contains("canonical lowercase hex"));

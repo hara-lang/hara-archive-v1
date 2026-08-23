@@ -74,17 +74,16 @@ fn parse_schema_catalog(
 ) -> Result<PackageCatalogDescriptor, PackageManifestError> {
     let entries = expect_map(value, ":schema/catalog")?;
     let format = required_string(entries, "format", ":schema/catalog")?;
-    let path = parse_relative_path(&required_string(
-        entries,
-        "path",
-        ":schema/catalog",
-    )?)?;
+    let path = parse_relative_path(&required_string(entries, "path", ":schema/catalog")?)?;
     let sha256 = required_string(entries, "sha256", ":schema/catalog")?;
     validate_sha256(&sha256)?;
     let file = files.get(&path).ok_or_else(|| {
         PackageManifestError::new(
             "package/catalog-missing",
-            format!(":schema/catalog :path is not declared in :files: {}", path.display()),
+            format!(
+                ":schema/catalog :path is not declared in :files: {}",
+                path.display()
+            ),
         )
     })?;
     if file.sha256 != sha256 {
@@ -92,11 +91,17 @@ fn parse_schema_catalog(
             "package/catalog-digest-mismatch",
             format!(
                 "{} declares {}, but :files declares {}",
-                path.display(), sha256, file.sha256
+                path.display(),
+                sha256,
+                file.sha256
             ),
         ));
     }
-    Ok(PackageCatalogDescriptor { format, path, sha256 })
+    Ok(PackageCatalogDescriptor {
+        format,
+        path,
+        sha256,
+    })
 }
 
 fn parse_provenance(value: &Form) -> Result<PackageProvenance, PackageManifestError> {

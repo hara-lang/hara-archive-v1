@@ -36,7 +36,10 @@ pub enum SchemaType {
     },
     Function(Vec<FunctionSchema>),
     Enum(Vec<Form>),
-    Extension { head: String, arguments: Vec<Form> },
+    Extension {
+        head: String,
+        arguments: Vec<Form>,
+    },
     Unknown(Form),
 }
 
@@ -64,28 +67,24 @@ pub fn schema_shorthand(schema: &SchemaType) -> Form {
         SchemaType::Vector(item) => {
             Form::Vector(vec![Form::Keyword("vector".into()), nested(item)])
         }
-        SchemaType::Set(item) => {
-            Form::Vector(vec![Form::Keyword("set".into()), nested(item)])
-        }
+        SchemaType::Set(item) => Form::Vector(vec![Form::Keyword("set".into()), nested(item)]),
         SchemaType::Tuple(items) => Form::Vector(
             std::iter::once(Form::Keyword("tuple".into()))
                 .chain(items.iter().map(nested))
                 .collect(),
         ),
-        SchemaType::Map(fields) => {
-            Form::Vector(
-                std::iter::once(Form::Keyword("map".into()))
-                    .chain(fields.iter().map(|field| {
-                        let mut pair = vec![field.name.clone()];
-                        if let Some(properties) = &field.properties {
-                            pair.push(properties.clone());
-                        }
-                        pair.push(nested(&field.value_type));
-                        Form::Vector(pair)
-                    }))
-                    .collect(),
-            )
-        }
+        SchemaType::Map(fields) => Form::Vector(
+            std::iter::once(Form::Keyword("map".into()))
+                .chain(fields.iter().map(|field| {
+                    let mut pair = vec![field.name.clone()];
+                    if let Some(properties) = &field.properties {
+                        pair.push(properties.clone());
+                    }
+                    pair.push(nested(&field.value_type));
+                    Form::Vector(pair)
+                }))
+                .collect(),
+        ),
         SchemaType::Function(arities) => {
             let function = |arity: &FunctionSchema| {
                 let mut inputs = arity.fixed.iter().map(nested).collect::<Vec<_>>();
@@ -634,9 +633,7 @@ fn infer_list(items: &[Form], environment: &mut HashMap<String, SchemaType>) -> 
                     .map(|value| infer_expression(value, environment)),
             );
             match operands {
-                SchemaType::Primitive(name)
-                    if matches!(name.as_str(), "int" | "float") =>
-                {
+                SchemaType::Primitive(name) if matches!(name.as_str(), "int" | "float") => {
                     SchemaType::Primitive(name)
                 }
                 _ => SchemaType::Primitive("number".into()),
@@ -736,7 +733,9 @@ fn normalize_composite(items: &[Form]) -> Result<SchemaType, String> {
         }
         "vector" => {
             require_count(head, arguments, 1)?;
-            Ok(SchemaType::Vector(Box::new(normalize_schema(&arguments[0])?)))
+            Ok(SchemaType::Vector(Box::new(normalize_schema(
+                &arguments[0],
+            )?)))
         }
         "set" => {
             require_count(head, arguments, 1)?;

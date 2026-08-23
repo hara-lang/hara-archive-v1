@@ -8,8 +8,8 @@ pub mod cli_app;
 #[cfg(target_arch = "wasm32")]
 mod browser_wasm_provider;
 mod clock;
-pub mod core;
 pub mod compiled_product;
+pub mod core;
 mod direct_wasm;
 pub mod extension;
 pub mod file;
@@ -21,6 +21,7 @@ mod filesystem_bridge;
 mod filesystem_mount;
 #[path = "runtime/filesystem_adapter.rs"]
 pub mod filesystem_runtime;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod hta;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod invoke_hta;

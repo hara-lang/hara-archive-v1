@@ -107,7 +107,9 @@ impl Compiler {
                     Form::Keyword(code) if code.contains('/') => format!(":{code}"),
                     Form::Vector(codes)
                         if !codes.is_empty()
-                            && codes.iter().all(|code| matches!(code, Form::Keyword(name) if name.contains('/'))) =>
+                            && codes.iter().all(
+                                |code| matches!(code, Form::Keyword(name) if name.contains('/')),
+                            ) =>
                     {
                         let selectors = codes
                             .iter()

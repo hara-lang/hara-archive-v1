@@ -1,9 +1,9 @@
-use hara_runtime::{core, hta, json, kernel, lang};
 pub use hara_runtime::file;
 #[cfg(feature = "evaluation-journal")]
 use hara_runtime::journal;
 #[cfg(feature = "bytecode-vm")]
 use hara_runtime::vm;
+use hara_runtime::{core, hta, json, kernel, lang};
 
 use core::{EvalFiber, EvalFiberState, Promise, PromiseRejection, PromiseState, Value};
 use std::cell::RefCell;
@@ -213,11 +213,7 @@ impl Session {
                 .map(|(name, source)| ((*name).into(), (*source).into()))
                 .collect(),
         ));
-        Self::shared(
-            "ROOT",
-            resources,
-            Rc::new(RefCell::new(VecDeque::new())),
-        )
+        Self::shared("ROOT", resources, Rc::new(RefCell::new(VecDeque::new())))
     }
 
     fn shared(
@@ -356,10 +352,7 @@ impl Session {
                 .cloned()
                 .map(core::NamespaceResource::Source)
         });
-        namespaces.set_load_state(
-            "std.foundation",
-            kernel::NamespaceLoadState::Unloaded,
-        );
+        namespaces.set_load_state("std.foundation", kernel::NamespaceLoadState::Unloaded);
         let protocols = core::ProtocolRegistry::core();
         let macros = Rc::new(RefCell::new(HashMap::new()));
         core::with_macros(macros.clone(), || {
@@ -756,28 +749,22 @@ impl Session {
             }) as Rc<dyn core::FileProvider>
         });
         let drive_handler = handler.clone();
-        core::with_capability_providers(
-            drive_file_provider,
-            None,
-            false,
-            None,
-            || {
-                core::with_promise_provider(Rc::new(core::LocalPromiseProvider), || {
-                    core::with_macros(drive_macros, || {
-                        core::with_namespace_registry(&drive_namespaces, || {
-                            core::with_namespace_source(drive_provider, || {
-                                core::with_protocols(&drive_protocols, || {
-                                    core::with_host_calls(drive_handler, || {
-                                        self.collect_calls(task, pending, next);
-                                        self.drive(task, fiber);
-                                    })
+        core::with_capability_providers(drive_file_provider, None, false, None, || {
+            core::with_promise_provider(Rc::new(core::LocalPromiseProvider), || {
+                core::with_macros(drive_macros, || {
+                    core::with_namespace_registry(&drive_namespaces, || {
+                        core::with_namespace_source(drive_provider, || {
+                            core::with_protocols(&drive_protocols, || {
+                                core::with_host_calls(drive_handler, || {
+                                    self.collect_calls(task, pending, next);
+                                    self.drive(task, fiber);
                                 })
                             })
                         })
                     })
                 })
-            },
-        );
+            })
+        });
         Ok(())
     }
     fn start_halc_fiber(&mut self, task: u64, bytes: &[u8]) -> Result<(), String> {
@@ -3132,7 +3119,11 @@ mod tests {
             .expect("error event");
         match super::hta::decode(&frame).unwrap() {
             hara_runtime::core::Value::Vector(values) => {
-                assert_eq!(values[0], hara_runtime::core::Value::Number(1), "expected failure");
+                assert_eq!(
+                    values[0],
+                    hara_runtime::core::Value::Number(1),
+                    "expected failure"
+                );
             }
             other => panic!("unexpected event: {other:?}"),
         }
@@ -3161,7 +3152,8 @@ mod tests {
             PromiseState::Rejected(PromiseRejection::Value(rejection.clone())),
         );
         let frame = events.borrow_mut().pop_front().expect("rejection event");
-        let Value::Vector(values) = hara_runtime::hta::decode(&frame).expect("valid HTA event") else {
+        let Value::Vector(values) = hara_runtime::hta::decode(&frame).expect("valid HTA event")
+        else {
             panic!("expected rejection vector")
         };
         assert_eq!(values[0], Value::Number(1));

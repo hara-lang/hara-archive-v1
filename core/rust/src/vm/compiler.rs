@@ -235,18 +235,13 @@ fn sync_registry_global_aliases(
             .global_aliases()
             .into_iter()
             .filter(|(_, namespace)| {
-                {
-                    let library = namespace
-                        .as_str()
-                        .strip_prefix("std.foundation.")
-                        .unwrap_or_default();
-                    !excluded_intrinsics.contains(library)
-                        && !excluded_foundation.contains(library)
-                }
+                let library = namespace
+                    .as_str()
+                    .strip_prefix("std.foundation.")
+                    .unwrap_or_default();
+                !excluded_intrinsics.contains(library) && !excluded_foundation.contains(library)
             })
-            .map(|(alias, namespace)| {
-                (alias.as_str().to_owned(), namespace.as_str().to_owned())
-            }),
+            .map(|(alias, namespace)| (alias.as_str().to_owned(), namespace.as_str().to_owned())),
     );
 }
 

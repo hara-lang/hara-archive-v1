@@ -14,8 +14,8 @@ use std::rc::Rc;
 
 use crate::core::{binding_symbol, definition_metadata, schema_var_reference};
 use crate::kernel::{Form, Span};
-use crate::lang::data::Symbol;
 use crate::lang::data::Metadata;
+use crate::lang::data::Symbol;
 use crate::lang::protocol::INamespaced;
 use crate::vm::error::{CompileError, CompileErrorKind};
 use crate::vm::opcode::Instruction;
@@ -147,20 +147,14 @@ impl Compiler {
         Ok(())
     }
 
-    pub(super) fn require_owned_global(
-        &self,
-        name: &str,
-        span: &Span,
-    ) -> Result<(), CompileError> {
+    pub(super) fn require_owned_global(&self, name: &str, span: &Span) -> Result<(), CompileError> {
         if let Ok(registry) = crate::core::namespace_registry() {
             let namespace = registry
                 .find(&self.namespace)
                 .unwrap_or_else(|| registry.current());
             if let Some(var) = namespace.resolve(&Symbol::parse(name)) {
-                let owned_by_compilation_namespace = var
-                    .symbol()
-                    .get_namespace()
-                    .is_none_or(|owner| {
+                let owned_by_compilation_namespace =
+                    var.symbol().get_namespace().is_none_or(|owner| {
                         owner == self.namespace.as_str() || owner == "std.foundation"
                     });
                 if !owned_by_compilation_namespace {

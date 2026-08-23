@@ -203,7 +203,7 @@ final class CodeVmConformanceDocument {
     return value;
   }
 
-  private static final class Json {
+  static final class Json {
     private Json() {}
 
     static String write(Object value, boolean pretty) {

@@ -240,12 +240,12 @@ mod tests {
 
     #[test]
     fn analyze_malformed_source_reports_parse_error() {
-        let resp = handle_request(
-            &json!({"op": "analyze", "source": "((("}),
-            &mut policy(),
-        );
+        let resp = handle_request(&json!({"op": "analyze", "source": "((("}), &mut policy());
         let diags = resp["diagnostics"].as_array().expect("diagnostics array");
-        assert!(!diags.is_empty(), "malformed source must produce diagnostics");
+        assert!(
+            !diags.is_empty(),
+            "malformed source must produce diagnostics"
+        );
         assert_eq!(diags[0]["kind"], "parse-error");
     }
 
@@ -285,8 +285,7 @@ mod tests {
         let mut p = policy();
         for i in 0..5 {
             let source = format!("(+ {i} 1)");
-            let resp =
-                handle_request(&json!({"op": "analyze", "source": source}), &mut p);
+            let resp = handle_request(&json!({"op": "analyze", "source": source}), &mut p);
             assert_eq!(
                 resp["diagnostics"],
                 json!([]),

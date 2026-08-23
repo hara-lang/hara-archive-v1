@@ -546,7 +546,9 @@ fn core_language_namespace_corpus_cases_match() {
             if let Some(crate::kernel::Form::String(expected)) = entry(expect, "message") {
                 let error = actual.expect_err(&format!(":{id} must fail"));
                 assert!(
-                    error.to_ascii_lowercase().contains(&expected.to_ascii_lowercase()),
+                    error
+                        .to_ascii_lowercase()
+                        .contains(&expected.to_ascii_lowercase()),
                     ":{id}: {error}"
                 );
             } else if let Some(expected) = entry(expect, "value") {

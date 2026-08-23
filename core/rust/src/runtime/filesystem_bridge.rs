@@ -115,10 +115,7 @@ pub(super) fn filesystem_entry_value(entry: FilesystemEntry) -> Value {
             ),
             (
                 Value::Keyword("modified-at".into()),
-                entry
-                    .modified_at
-                    .map(Value::Number)
-                    .unwrap_or(Value::Nil),
+                entry.modified_at.map(Value::Number).unwrap_or(Value::Nil),
             ),
             (
                 Value::Keyword("extensions".into()),
@@ -253,12 +250,7 @@ pub(super) fn bridge_future(
     promise
 }
 
-fn stable_filesystem_error(
-    code: &str,
-    operation: &str,
-    path: &str,
-    target: Option<&str>,
-) -> Value {
+fn stable_filesystem_error(code: &str, operation: &str, path: &str, target: Option<&str>) -> Value {
     use crate::core::ExceptionInfo;
     Value::ExceptionInfo(Rc::new(ExceptionInfo {
         message: format!("{operation} failed: file/{code}"),

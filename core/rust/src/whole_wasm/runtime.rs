@@ -4,7 +4,7 @@ use std::rc::Rc;
 use wasmtime::{Engine, FuncType, Instance, Linker, Module, Store, Val, ValType};
 
 use crate::core::Value;
-use crate::vm::FunctionId;
+use crate::vm::{FunctionId, Machine, VmOutcome};
 
 use super::artifact::{decode_artifact, NativeArtifact};
 use super::codegen::{
@@ -67,6 +67,15 @@ impl NativeModule {
         arguments: &[Value],
     ) -> Result<Value, String> {
         self.store.data_mut().handles.begin_call();
+        if !self
+            .artifact
+            .capabilities
+            .get(usize::from(function))
+            .copied()
+            .unwrap_or(false)
+        {
+            return self.execute_bytecode_function(function, arguments.to_vec());
+        }
         let mut encoded = Vec::with_capacity(arguments.len());
         for argument in arguments {
             encoded.push(
@@ -77,8 +86,13 @@ impl NativeModule {
                     .to_abi(),
             );
         }
-        let result = self.call_prepared_i64(function, &encoded)?;
-        self.store.data().handles.get(Handle::from_abi(result))
+        match self.call_prepared_i64(function, &encoded) {
+            Ok(result) => self.store.data().handles.get(Handle::from_abi(result)),
+            Err(error) if should_fallback_to_bytecode(&error) => {
+                self.execute_bytecode_function(function, arguments.to_vec())
+            }
+            Err(error) => Err(error),
+        }
     }
 
     /// Calls the zero-arity entry through the dynamic Hara value-handle ABI.
@@ -89,7 +103,30 @@ impl NativeModule {
 
     pub fn call_i64(&mut self, function: FunctionId, arguments: &[i64]) -> Result<i64, String> {
         self.store.data_mut().handles.begin_call();
-        self.call_prepared_i64(function, arguments)
+        if !self
+            .artifact
+            .capabilities
+            .get(usize::from(function))
+            .copied()
+            .unwrap_or(false)
+        {
+            let values = arguments.iter().copied().map(Value::Number).collect();
+            return match self.execute_bytecode_function(function, values)? {
+                Value::Number(value) => Ok(value),
+                _ => Err("whole-Wasm result is not an i64".into()),
+            };
+        }
+        match self.call_prepared_i64(function, arguments) {
+            Ok(result) => Ok(result),
+            Err(error) if should_fallback_to_bytecode(&error) => {
+                let values = arguments.iter().copied().map(Value::Number).collect();
+                match self.execute_bytecode_function(function, values)? {
+                    Value::Number(value) => Ok(value),
+                    _ => Err("whole-Wasm result is not an i64".into()),
+                }
+            }
+            Err(error) => Err(error),
+        }
     }
 
     fn call_prepared_i64(
@@ -155,6 +192,30 @@ impl NativeModule {
         let entry = self.artifact.program.entry;
         self.call_i64(entry, &[])
     }
+
+    fn execute_bytecode_function(
+        &self,
+        function: FunctionId,
+        arguments: Vec<Value>,
+    ) -> Result<Value, String> {
+        let registry = crate::bytecode_namespace_registry();
+        let mut machine = Machine::call(
+            Rc::new(self.artifact.program.clone()),
+            function,
+            arguments,
+            Vec::new(),
+        );
+        crate::core::with_namespace_registry(&registry, || match machine.run() {
+            VmOutcome::Returned(value) => Ok(value),
+            VmOutcome::Failed(error) => Err(error.to_string()),
+            VmOutcome::Suspended(_) => Err("VM fiber suspended on an unresolved promise".into()),
+            VmOutcome::Yielded(_) => Err("coroutine/yield used outside of a coroutine".into()),
+        })
+    }
+}
+
+fn should_fallback_to_bytecode(error: &str) -> bool {
+    error == "integer overflow" || error.contains("whole-Wasm value is not an integer")
 }
 
 fn define_array_imports(linker: &mut Linker<HostState>) -> Result<(), String> {

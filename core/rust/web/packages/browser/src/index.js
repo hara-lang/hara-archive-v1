@@ -15,7 +15,11 @@ function asResourceEntries(resources) {
 
 function createApi(runtime) {
   const loadWholeWasm = (artifact) =>
-    instantiateWholeWasm(artifact, wasmBindings.WholeWasmHost);
+    instantiateWholeWasm(
+      artifact,
+      wasmBindings.WholeWasmHost,
+      (hbc) => runtime.evalBytecodeArtifact(hbc)
+    );
 
   return Object.freeze({
     eval(source) {
@@ -51,6 +55,12 @@ function createApi(runtime) {
     },
     evalBytecode(artifact) {
       return runtime.evalBytecodeArtifact(artifact);
+    },
+    instrumentationConformance(corpus) {
+      if (typeof wasmBindings.instrumentation_conformance !== "function") {
+        throw new Error("instrumentation conformance requires the full Wasm runtime");
+      }
+      return parseJson(wasmBindings.instrumentation_conformance(JSON.stringify(corpus)));
     },
     loadWholeWasm(artifact) {
       return loadWholeWasm(artifact);

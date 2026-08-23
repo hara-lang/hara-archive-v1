@@ -1,8 +1,8 @@
 use std::collections::BTreeSet;
 
 use hara_wasm::instrumentation::{
-    Capability, EventDelivery, EventKind, InstrumentFilter, InstrumentMode,
-    InstrumentRegistration, NativeInstrumentationError, ProjectionRequest,
+    Capability, EventDelivery, EventKind, InstrumentFilter, InstrumentMode, InstrumentRegistration,
+    NativeInstrumentationError, ProjectionRequest,
 };
 use hara_wasm::{SessionId, SessionKernel};
 

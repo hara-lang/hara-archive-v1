@@ -484,9 +484,7 @@ fn parse_native_flavor(values: &[Form]) -> Result<(String, Vec<(String, String)>
         Some(Form::Keyword(flavor)) if flavor == "wasm" => {
             return Err("native/unsupported-flavor: :wasm (Wasm modules use :import)".into())
         }
-        Some(Form::Keyword(flavor)) => {
-            return Err(format!("native/invalid-flavor: :{flavor}"))
-        }
+        Some(Form::Keyword(flavor)) => return Err(format!("native/invalid-flavor: :{flavor}")),
         _ => return Err(":flavor expects an unqualified host keyword".into()),
     };
     let mut imports = Vec::new();

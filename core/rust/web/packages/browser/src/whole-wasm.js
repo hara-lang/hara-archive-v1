@@ -11,7 +11,7 @@ function readU32(bytes, offset) {
 }
 
 /** Extracts the WebAssembly payload from an HNW0 artifact produced by Rust. */
-export function decodeHnw1(input) {
+export function decodeHnw0(input) {
   const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
   if (bytes.length < 40 || String.fromCharCode(...bytes.subarray(0, 4)) !== "HNW0") {
     throw new Error("native artifact has invalid magic");
@@ -29,7 +29,9 @@ export function decodeHnw1(input) {
   const functionCount = view.getUint16(offset, false);
   offset += 2 + functionCount * 4;
   const hbcLength = readU32(bytes, offset);
-  offset += 4 + hbcLength;
+  offset += 4;
+  const hbc = bytes.slice(offset, offset + hbcLength);
+  offset += hbcLength;
   const wasmLength = readU32(bytes, offset);
   offset += 4;
   if (offset + wasmLength !== payloadEnd) {
@@ -39,7 +41,7 @@ export function decodeHnw1(input) {
   if (String.fromCharCode(...wasm.subarray(0, 4)) !== "\0asm") {
     throw new Error("native artifact contains invalid Wasm");
   }
-  return { abiVersion, functionCount, wasm };
+  return { abiVersion, functionCount, hbc, wasm };
 }
 
 function hostImports(host) {
@@ -65,12 +67,12 @@ function hostImports(host) {
 }
 
 /** Instantiates and calls a whole-function Hara WebAssembly artifact. */
-export async function instantiateWholeWasm(artifact, Host) {
+export async function instantiateWholeWasm(artifact, Host, fallback) {
   if (typeof Host !== "function") {
     throw new Error("whole-Wasm compilation requires @hara-lang/browser/full");
   }
   const host = new Host(artifact);
-  const { wasm } = decodeHnw1(artifact);
+  const { hbc, wasm } = decodeHnw0(artifact);
   const { instance, module } = await WebAssembly.instantiate(wasm, {
     hara: hostImports(host)
   });
@@ -83,6 +85,12 @@ export async function instantiateWholeWasm(artifact, Host) {
     instance,
     call(...arguments_) {
       host.beginCall();
+      if (!host.supportsNative(0n)) {
+        if (typeof fallback !== "function") {
+          throw new Error("whole-Wasm entry requires its validated HBC fallback");
+        }
+        return fallback(hbc);
+      }
       instance.exports.hara_error.value = 0;
       instance.exports.hara_heap.value = 0;
       try {

@@ -1,6 +1,5 @@
 use super::filesystem_bridge::{
-    block_on_local, bridge_future, collect_entries, filesystem_entry_value, walk_paths,
-    ValueFuture,
+    block_on_local, bridge_future, collect_entries, filesystem_entry_value, walk_paths, ValueFuture,
 };
 use crate::core::Value;
 use crate::file::{
@@ -351,12 +350,7 @@ impl FileProvider for FilesystemRuntimeAdapter {
         Ok(self.effect("file/delete", path, None, future, context))
     }
 
-    fn copy(
-        &self,
-        source: &str,
-        target: &str,
-        options: CopyOptions,
-    ) -> Result<Promise, FileError> {
+    fn copy(&self, source: &str, target: &str, options: CopyOptions) -> Result<Promise, FileError> {
         let source = logical_normalise(source)?;
         let target = logical_normalise(target)?;
         let context = FilesystemCallContext::default();
@@ -463,10 +457,8 @@ impl FileProvider for FilesystemRuntimeAdapter {
             for _ in 0..TEMP_ATTEMPTS {
                 future_context.check()?;
                 let sequence = PROVIDER_TEMP_SEQUENCE.fetch_add(1, Ordering::Relaxed);
-                let path = logical_resolve(
-                    &future_parent,
-                    &format!("{}-{sequence}", options.prefix),
-                )?;
+                let path =
+                    logical_resolve(&future_parent, &format!("{}-{sequence}", options.prefix))?;
                 match handle
                     .as_filesystem()
                     .mkdir(
@@ -489,12 +481,6 @@ impl FileProvider for FilesystemRuntimeAdapter {
                 "temporary directory attempts were exhausted".into(),
             ))
         });
-        Ok(self.effect(
-            "file/temp-directory",
-            parent,
-            None,
-            future,
-            context,
-        ))
+        Ok(self.effect("file/temp-directory", parent, None, future, context))
     }
 }

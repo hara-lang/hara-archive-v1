@@ -5,15 +5,11 @@
 //! implementation before `FileProvider` is removed.
 
 use super::{
-    FilesystemCallContext, FilesystemDescriptor, FilesystemEntry,
-    FilesystemEntryPage, FilesystemFuture, FilesystemMutation,
-    FilesystemMutationContext, FilesystemPageRequest, IFilesystem,
-    SynchronousFileProvider,
+    FilesystemCallContext, FilesystemDescriptor, FilesystemEntry, FilesystemEntryPage,
+    FilesystemFuture, FilesystemMutation, FilesystemMutationContext, FilesystemPageRequest,
+    IFilesystem, SynchronousFileProvider,
 };
-use crate::file::{
-    CopyOptions, DeleteOptions, FileError, MkdirOptions,
-    MoveOptions, WriteOptions,
-};
+use crate::file::{CopyOptions, DeleteOptions, FileError, MkdirOptions, MoveOptions, WriteOptions};
 use std::cell::Cell;
 use std::rc::Rc;
 
@@ -204,10 +200,7 @@ impl<P: SynchronousFileProvider> IFilesystem for LegacyFilesystem<P> {
         })
     }
 
-    fn close<'a>(
-        &'a self,
-        context: FilesystemCallContext,
-    ) -> FilesystemFuture<'a, ()> {
+    fn close<'a>(&'a self, context: FilesystemCallContext) -> FilesystemFuture<'a, ()> {
         Box::pin(async move {
             context.check()?;
             self.closed.set(true);

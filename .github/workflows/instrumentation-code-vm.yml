@@ -20,8 +20,19 @@ on:
       - 'core/rust/src/live_session.rs'
       - 'core/rust/src/live_session/instrumented_interpreter.rs'
       - 'core/rust/src/live_session/instrumented_hbc.rs'
+      - 'core/rust/src/instrumentation.rs'
+      - 'core/rust/src/instrumentation/conformance.rs'
+      - 'core/rust/src/runtime/model.rs'
       - 'core/rust/tests/sandbox_private_live_session.rs'
       - 'core/rust/standard-library.namespaces'
+      - 'core/spec/instrumentation-conformance.json'
+      - 'core/rust/src/bin/hara-instrumentation-conformance.rs'
+      - 'core/rust/src/bin/hara-instrumentation-compare.rs'
+      - 'core/java/src/main/java/hara/truffle/InstrumentationConformance.java'
+      - 'core/java/src/main/java/hara/truffle/CodeVmConformanceDocument.java'
+      - 'core/rust/web/packages/browser/src/index.js'
+      - 'core/rust/web/instrumentation-browser.spec.js'
+      - 'core/rust/web/playwright.config.js'
       - '.github/workflows/instrumentation-code-vm.yml'
   push:
     branches: [main, testing]
@@ -34,8 +45,19 @@ on:
       - 'core/rust/src/live_session.rs'
       - 'core/rust/src/live_session/instrumented_interpreter.rs'
       - 'core/rust/src/live_session/instrumented_hbc.rs'
+      - 'core/rust/src/instrumentation.rs'
+      - 'core/rust/src/instrumentation/conformance.rs'
+      - 'core/rust/src/runtime/model.rs'
       - 'core/rust/tests/sandbox_private_live_session.rs'
       - 'core/rust/standard-library.namespaces'
+      - 'core/spec/instrumentation-conformance.json'
+      - 'core/rust/src/bin/hara-instrumentation-conformance.rs'
+      - 'core/rust/src/bin/hara-instrumentation-compare.rs'
+      - 'core/java/src/main/java/hara/truffle/InstrumentationConformance.java'
+      - 'core/java/src/main/java/hara/truffle/CodeVmConformanceDocument.java'
+      - 'core/rust/web/packages/browser/src/index.js'
+      - 'core/rust/web/instrumentation-browser.spec.js'
+      - 'core/rust/web/playwright.config.js'
       - '.github/workflows/instrumentation-code-vm.yml'
   repository_dispatch:
     types: [hara-instrumentation-code-vm]
@@ -130,9 +152,159 @@ jobs:
           test "$(wc -l < core/rust/src/live_session/instrumented_interpreter.rs)" -lt 700
           test "$(wc -l < core/rust/src/live_session/instrumented_hbc.rs)" -lt 700
 
+  cross_runtime:
+    name: Cross-runtime instrumentation corpus and comparator
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.client_payload.ref || github.ref }}
+
+      - name: Checkout hara-specs-registry
+        uses: actions/checkout@v4
+        with:
+          repository: hara-lang/hara-specs-registry
+          path: hara-specs-registry
+          fetch-depth: 1
+
+      - name: Expose specs registry at the runtime fixture path
+        run: ln -sfn "$GITHUB_WORKSPACE/hara-specs-registry" "$GITHUB_WORKSPACE/../hara-specs-registry"
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          cache-dependency-path: core/java/pom.xml
+
+      - name: Build the Java producer
+        run: mvn -B -f core/java/pom.xml -Ptruffle -DskipTests compile
+
+      - name: Resolve the Java producer runtime classpath
+        run: |
+          mvn -B -q -f core/java/pom.xml -Ptruffle \
+            dependency:build-classpath \
+            -Dmdep.outputFile=target/instrumentation-classpath.txt \
+            -Dmdep.includeScope=runtime
+
+      - name: Produce deterministic Rust and Java reports
+        run: |
+          mkdir -p core/target
+          cargo run --locked --manifest-path core/rust/Cargo.toml \
+            --bin hara-instrumentation-conformance -- \
+            --corpus core/spec/instrumentation-conformance.json \
+            --output core/target/instrumentation-rust-a.json
+          cargo run --locked --manifest-path core/rust/Cargo.toml \
+            --bin hara-instrumentation-conformance -- \
+            --corpus core/spec/instrumentation-conformance.json \
+            --output core/target/instrumentation-rust-b.json
+          cmp core/target/instrumentation-rust-a.json core/target/instrumentation-rust-b.json
+          java -cp "core/java/target/classes:$(cat core/java/target/instrumentation-classpath.txt)" \
+            -Dhara.instrumentationReport=core/target/instrumentation-java-a.json \
+            hara.truffle.InstrumentationConformance \
+            --corpus core/spec/instrumentation-conformance.json
+          java -cp "core/java/target/classes:$(cat core/java/target/instrumentation-classpath.txt)" \
+            -Dhara.instrumentationReport=core/target/instrumentation-java-b.json \
+            hara.truffle.InstrumentationConformance \
+            --corpus core/spec/instrumentation-conformance.json
+          cmp core/target/instrumentation-java-a.json core/target/instrumentation-java-b.json
+
+      - name: Compare Rust and Java reports
+        run: |
+          cargo run --locked --manifest-path core/rust/Cargo.toml \
+            --bin hara-instrumentation-compare -- \
+            core/target/instrumentation-rust-a.json \
+            core/target/instrumentation-java-a.json
+
+      - name: Upload cross-runtime conformance evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: instrumentation-cross-runtime-conformance
+          path: |
+            core/spec/instrumentation-conformance.json
+            core/target/instrumentation-rust-a.json
+            core/target/instrumentation-java-a.json
+
+      - name: Check cross-runtime patch whitespace
+        run: git diff --check
+
+  browser:
+    name: Compare the browser/Wasm instrumentation producer
+    needs: cross_runtime
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Check out hara-specs-registry
+        uses: actions/checkout@v4
+        with:
+          repository: hara-lang/hara-specs-registry
+          path: hara-specs-registry
+          fetch-depth: 1
+
+      - name: Expose specs registry at the runtime fixture path
+        run: ln -sfn "$GITHUB_WORKSPACE/hara-specs-registry" "$GITHUB_WORKSPACE/../hara-specs-registry"
+
+      - name: Download native and Java reports
+        uses: actions/download-artifact@v4
+        with:
+          name: instrumentation-cross-runtime-conformance
+          path: .
+
+      - name: Set up Rust Wasm toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install the matching wasm-bindgen CLI
+        shell: bash
+        run: |
+          version="$(
+            cargo metadata --locked \
+              --manifest-path core/rust/Cargo.toml \
+              --format-version 1 \
+            | python3 -c '
+          import json, sys
+          metadata = json.load(sys.stdin)
+          versions = sorted({package["version"] for package in metadata["packages"] if package["name"] == "wasm-bindgen"})
+          if len(versions) != 1:
+              raise SystemExit(f"expected one wasm-bindgen version, got {versions}")
+          print(versions[0])
+          '
+          )"
+          cargo install wasm-bindgen-cli --version "$version" --locked
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: core/rust/web/package-lock.json
+
+      - name: Install browser dependencies
+        working-directory: core/rust/web
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Build the full browser runtime
+        run: ./scripts/runtime/build-hara-browser full
+
+      - name: Compare browser/Wasm instrumentation evidence
+        working-directory: core/rust/web
+        run: npx playwright test instrumentation-browser.spec.js --reporter=line
+
   report-connector-event:
     if: ${{ always() && github.event_name == 'repository_dispatch' }}
-    needs: focused
+    needs: [focused, cross_runtime, browser]
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -141,7 +313,7 @@ jobs:
       - name: Report connector event completion
         uses: actions/github-script@v7
         env:
-          RESULT: ${{ needs.focused.result }}
+          RESULT: ${{ needs.focused.result == 'success' && needs.cross_runtime.result == 'success' && needs.browser.result == 'success' && 'success' || (needs.focused.result == 'cancelled' || needs.cross_runtime.result == 'cancelled' || needs.browser.result == 'cancelled') && 'cancelled' || 'failure' }}
           ISSUE_NUMBER: ${{ github.event.client_payload.issue_number }}
           REQUEST_ID: ${{ github.event.client_payload.request_id }}
           EVENT: ${{ github.event.client_payload.event }}

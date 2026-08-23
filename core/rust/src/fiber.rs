@@ -1411,8 +1411,13 @@ fn call(f: Rc<Function>, args: Vec<Value>, k: Cont) -> Step {
             f.params.len()
         )));
     }
+    let caller_scoped_macroexpand = f.name.as_deref() == Some("macroexpand")
+        && f.namespace.as_deref() == Some("std.foundation");
     let namespace_scope = namespace_registry().ok().and_then(|registry| {
-        f.namespace.as_ref().map(|namespace| {
+        (!caller_scoped_macroexpand)
+            .then_some(())
+            .and_then(|_| f.namespace.as_ref())
+            .map(|namespace| {
             let previous = registry.current().name().as_str().to_owned();
             registry.set_current(namespace);
             (registry, previous)

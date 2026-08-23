@@ -9,8 +9,8 @@ mod legacy;
 
 use self::legacy::LegacyFilesystem;
 use crate::file::{
-    CopyOptions, DeleteOptions, FileEntry, FileError, FileProvider, FileType,
-    MkdirOptions, MoveOptions, WriteOptions,
+    CopyOptions, DeleteOptions, FileEntry, FileError, FileProvider, FileType, MkdirOptions,
+    MoveOptions, WriteOptions,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::future::Future;
@@ -20,8 +20,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
-pub type FilesystemFuture<'a, T> =
-    Pin<Box<dyn Future<Output = Result<T, FileError>> + 'a>>;
+pub type FilesystemFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, FileError>> + 'a>>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum FilesystemCapability {
@@ -73,10 +72,7 @@ impl FilesystemCapabilities {
     }
 
     pub fn read_only() -> Self {
-        Self::new([
-            FilesystemCapability::Read,
-            FilesystemCapability::Entries,
-        ])
+        Self::new([FilesystemCapability::Read, FilesystemCapability::Entries])
     }
 
     pub fn legacy_read_write() -> Self {
@@ -143,11 +139,7 @@ impl FilesystemDescriptor {
         self
     }
 
-    pub fn with_extension(
-        mut self,
-        key: impl Into<String>,
-        value: impl Into<String>,
-    ) -> Self {
+    pub fn with_extension(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
         self.extensions.insert(key.into(), value.into());
         self
     }
@@ -225,7 +217,10 @@ impl FilesystemCallContext {
         if self.cancelled() {
             return Err(FileError::Io("filesystem operation cancelled".into()));
         }
-        if self.deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+        if self
+            .deadline
+            .is_some_and(|deadline| Instant::now() >= deadline)
+        {
             return Err(FileError::Io("filesystem operation timed out".into()));
         }
         Ok(())
@@ -384,10 +379,7 @@ pub trait IFilesystem {
         mutation: FilesystemMutationContext,
     ) -> FilesystemFuture<'a, FilesystemMutation>;
 
-    fn close<'a>(
-        &'a self,
-        context: FilesystemCallContext,
-    ) -> FilesystemFuture<'a, ()>;
+    fn close<'a>(&'a self, context: FilesystemCallContext) -> FilesystemFuture<'a, ()>;
 }
 
 #[path = "providers.rs"]

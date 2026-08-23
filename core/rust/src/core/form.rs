@@ -567,6 +567,10 @@ fn capture_environment(forms: &[Form], env: &HashMap<String, Value>) -> HashMap<
     }
     names
         .into_iter()
+        // `macroexpand-1` is an evaluator intrinsic whose result depends on
+        // the active macro registry. Capturing a Foundation fallback for it
+        // freezes the registry visible to closures such as `macroexpand`.
+        .filter(|name| name != "macroexpand-1")
         .filter_map(|name| env.get(&name).cloned().map(|value| (name, value)))
         .collect()
 }
@@ -983,8 +987,13 @@ pub(crate) fn call_function(function: &Function, arguments: Vec<Value>) -> Resul
             )
         });
     }
+    let caller_scoped_macroexpand = function.name.as_deref() == Some("macroexpand")
+        && function.namespace.as_deref() == Some("std.foundation");
     let namespace_scope = namespace_registry().ok().and_then(|registry| {
-        function.namespace.as_ref().map(|namespace| {
+        (!caller_scoped_macroexpand)
+            .then_some(())
+            .and_then(|_| function.namespace.as_ref())
+            .map(|namespace| {
             let previous = registry.current().name().as_str().to_owned();
             registry.set_current(namespace);
             (registry, previous)

@@ -206,7 +206,10 @@ impl PackageManifest {
     ) -> Result<VerifiedPackageSelection, PackageManifestError> {
         let manifest = Self::read_archive(path)?;
         let selection = manifest.select_wasm_import(module, requirements)?;
-        Ok(VerifiedPackageSelection { manifest, selection })
+        Ok(VerifiedPackageSelection {
+            manifest,
+            selection,
+        })
     }
 
     pub fn select_hta_require_archive(
@@ -216,7 +219,10 @@ impl PackageManifest {
     ) -> Result<VerifiedPackageSelection, PackageManifestError> {
         let manifest = Self::read_archive(path)?;
         let selection = manifest.select_hta_require(module, requirements)?;
-        Ok(VerifiedPackageSelection { manifest, selection })
+        Ok(VerifiedPackageSelection {
+            manifest,
+            selection,
+        })
     }
 
     pub fn parse(source: &str) -> Result<Self, PackageManifestError> {
@@ -241,7 +247,10 @@ impl PackageManifest {
         let source = std::str::from_utf8(bytes).map_err(|error| {
             PackageManifestError::new(
                 "package/catalog-invalid",
-                format!("catalog {} is not UTF-8 JSON: {error}", descriptor.path.display()),
+                format!(
+                    "catalog {} is not UTF-8 JSON: {error}",
+                    descriptor.path.display()
+                ),
             )
         })?;
         catalog::admit(&descriptor.format, source)
@@ -400,7 +409,10 @@ impl PackageManifest {
         let variant = self.wasm_imports.get(module).ok_or_else(|| {
             PackageManifestError::new(
                 "package/missing-wasm-import",
-                format!("{} {} has no Wasm import {module}", self.identity, self.version),
+                format!(
+                    "{} {} has no Wasm import {module}",
+                    self.identity, self.version
+                ),
             )
         })?;
         if variant.artifact.artifact_type != PackageArtifactType::Wasm {

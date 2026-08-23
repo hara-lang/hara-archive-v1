@@ -5,9 +5,7 @@
 /// materialized Foundation namespace recorded as `Unloaded` even though all of
 /// its Vars are present. Normalizing only materialized namespaces preserves
 /// lazy package discovery while making the exported registry self-contained.
-fn normalize_embedding_namespace_load_states(
-    namespaces: &kernel::NamespaceRegistry<core::Value>,
-) {
+fn normalize_embedding_namespace_load_states(namespaces: &kernel::NamespaceRegistry<core::Value>) {
     for namespace in namespaces.all() {
         namespaces.set_load_state(
             namespace.name().as_str(),
@@ -34,10 +32,7 @@ mod embedding_namespace_tests {
     fn normalization_marks_only_materialized_namespaces_loaded() {
         let namespaces = kernel::NamespaceRegistry::<core::Value>::new("user");
         namespaces.find_or_create("std.foundation");
-        namespaces.set_load_state(
-            "std.foundation",
-            kernel::NamespaceLoadState::Unloaded,
-        );
+        namespaces.set_load_state("std.foundation", kernel::NamespaceLoadState::Unloaded);
         namespaces.set_load_state("example.lazy", kernel::NamespaceLoadState::Unloaded);
 
         normalize_embedding_namespace_load_states(&namespaces);
@@ -98,6 +93,20 @@ fn ignore_socket_event(_event: core::SocketEvent) {}
 pub fn init_wasm() {
     #[cfg(target_arch = "wasm32")]
     console_error_panic_hook::set_once();
+}
+
+/// Runs the shared instrumentation corpus inside the browser/Wasm runtime.
+///
+/// The returned report is produced by the runtime-owned instrumentation hub,
+/// not by JavaScript projection logic. Hosts can therefore compare repeated
+/// browser runs with the native Rust and Java reports byte-for-byte.
+#[wasm_bindgen]
+pub fn instrumentation_conformance(corpus: &str) -> Result<String, JsValue> {
+    let corpus: serde_json::Value =
+        serde_json::from_str(corpus).map_err(|error| JsValue::from_str(&error.to_string()))?;
+    let report = crate::instrumentation::conformance::report(&corpus, "wasm")
+        .map_err(|error| JsValue::from_str(&error))?;
+    serde_json::to_string_pretty(&report).map_err(|error| JsValue::from_str(&error.to_string()))
 }
 
 #[wasm_bindgen]
@@ -161,6 +170,7 @@ pub struct Runtime {
     resource_overrides: HashSet<String>,
     #[cfg(feature = "bytecode-vm")]
     bytecode_resources: HashMap<String, (String, Vec<u8>)>,
+    product_cache: RefCell<compiled_product::InMemoryProductCache>,
     loaded_resources: HashSet<String>,
     halc_schema_definitions: HashMap<String, Form>,
     halc_function_schemas: HashMap<String, Form>,

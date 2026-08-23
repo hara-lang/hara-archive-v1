@@ -35,10 +35,9 @@ fn verify_archive_catalog(
     let Some(descriptor) = &manifest.schema_catalog else {
         return Ok(());
     };
-    let name = descriptor
-        .path
-        .to_str()
-        .ok_or_else(|| PackageManifestError::new("package/catalog-missing", "catalog path is not UTF-8"))?;
+    let name = descriptor.path.to_str().ok_or_else(|| {
+        PackageManifestError::new("package/catalog-missing", "catalog path is not UTF-8")
+    })?;
     let mut entry = archive.by_name(name).map_err(|error| {
         PackageManifestError::new(
             "package/catalog-missing",

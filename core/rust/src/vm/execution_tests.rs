@@ -298,10 +298,7 @@ fn arithmetic_errors() {
     assert_eval_error("(% 1 0)", "division by zero [line 1, column 1]");
     assert_eval_error("(mod 1 0)", "division by zero [line 1, column 1]");
     assert_eq!(eval("(+ 9223372036854775807 1)"), "9223372036854775808");
-    assert_eq!(
-        eval("(- -9223372036854775808 1)"),
-        "-9223372036854775809"
-    );
+    assert_eq!(eval("(- -9223372036854775808 1)"), "-9223372036854775809");
     assert_eq!(eval("(* 9223372036854775807 2)"), "18446744073709551614");
     assert_eval_error("(+ 1 \"a\")", "+ expects numbers [line 1, column 1]");
     assert_eq!(eval("(+ 1 1.5)"), "(double 2.5)");
@@ -862,8 +859,14 @@ fn finally_semantics() {
     // An error in finally replaces the in-flight outcome (first error
     // short-circuits, matching the fiber).
     assert_eval_error("(try 1 (finally (throw (ex :test/finally {}))))", "thrown:");
-    assert_eval_error("(try (throw (ex :test/body {})) (catch Exception e (throw (ex :test/catch {}))))", "thrown:");
-    assert_eval_error("(try (throw (ex :test/body {})) (finally (throw (ex :test/finally {}))))", "thrown:");
+    assert_eval_error(
+        "(try (throw (ex :test/body {})) (catch Exception e (throw (ex :test/catch {}))))",
+        "thrown:",
+    );
+    assert_eval_error(
+        "(try (throw (ex :test/body {})) (finally (throw (ex :test/finally {}))))",
+        "thrown:",
+    );
 }
 
 #[test]
@@ -930,13 +933,11 @@ fn try_compile_errors() {
 
 #[test]
 fn uncaught_throw_carries_position() {
-    let program = compile_source("(try 1 (finally 0)) (throw (ex :test/failed {}))").expect("compiles");
+    let program =
+        compile_source("(try 1 (finally 0)) (throw (ex :test/failed {}))").expect("compiles");
     let error = execute_program(std::rc::Rc::new(program)).expect_err("uncaught throw");
     let text = error.to_string();
-    assert!(
-        text.contains("[line 1, column 21]"),
-        "{text}"
-    );
+    assert!(text.contains("[line 1, column 21]"), "{text}");
     assert!(text.contains("(instruction"), "{text}");
 }
 

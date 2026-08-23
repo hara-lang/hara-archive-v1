@@ -122,7 +122,11 @@ pub(crate) fn error_category(message: &str) -> &'static str {
         ),
         (&["recur"], "recur"),
         (
-            &["Invalid number", "Legacy numeric suffixes", "EOF while reading"],
+            &[
+                "Invalid number",
+                "Legacy numeric suffixes",
+                "EOF while reading",
+            ],
             "reader",
         ),
     ];

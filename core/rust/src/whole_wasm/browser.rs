@@ -11,6 +11,7 @@ use super::handles::{Handle, HandleScope};
 #[wasm_bindgen]
 pub struct WholeWasmHost {
     constants: Vec<Value>,
+    capabilities: Vec<bool>,
     handles: HandleScope,
 }
 
@@ -21,6 +22,7 @@ impl WholeWasmHost {
         let artifact = decode_artifact(bytes).map_err(js_error)?;
         Ok(Self {
             constants: artifact.program.constants,
+            capabilities: artifact.capabilities,
             handles: HandleScope::default(),
         })
     }
@@ -28,6 +30,15 @@ impl WholeWasmHost {
     #[wasm_bindgen(js_name = beginCall)]
     pub fn begin_call(&mut self) {
         self.handles.begin_call();
+    }
+
+    #[wasm_bindgen(js_name = supportsNative)]
+    pub fn supports_native(&self, function: i64) -> bool {
+        usize::try_from(function)
+            .ok()
+            .and_then(|index| self.capabilities.get(index))
+            .copied()
+            .unwrap_or(false)
     }
 
     #[wasm_bindgen(js_name = constantHandle)]

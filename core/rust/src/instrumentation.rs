@@ -7,6 +7,7 @@
 
 #[cfg(all(feature = "bytecode-vm", feature = "bytecode-instrumentation"))]
 mod hbc;
+pub mod conformance;
 mod hub;
 mod interpreter;
 mod model;

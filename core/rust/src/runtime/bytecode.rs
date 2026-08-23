@@ -81,6 +81,74 @@ pub fn eval_bytecode_native(source: &str) -> Result<String, String> {
 }
 
 impl Runtime {
+    #[cfg(feature = "bytecode-vm")]
+    pub(crate) fn compile_bytecode_product(
+        &self,
+        source: &str,
+    ) -> Result<crate::compiled_product::CompiledProduct, String> {
+        let source_digest = crate::compiled_product::sha256_hex(source.as_bytes());
+        let compiler_id = format!("hara-runtime/{}", env!("CARGO_PKG_VERSION"));
+        let options = format!("target=HBC0;namespace={}", self.current_namespace());
+        let key = crate::compiled_product::ProductCacheKey::new(
+            crate::compiled_product::CompiledProductKind::HbcModule,
+            source_digest.clone(),
+            compiler_id.clone(),
+            "hbc0",
+            options.as_bytes(),
+        );
+        if let Some(product) = self.product_cache.borrow().get(&key).cloned() {
+            return Ok(product);
+        }
+        let program = self.compile_bytecode(source)?;
+        let bytes = vm::encode_program(program.as_ref())?;
+        let product = crate::compiled_product::CompiledProduct::new(
+            crate::compiled_product::CompiledProductKind::HbcModule,
+            source_digest,
+            vec![crate::compiled_product::sha256_hex(&bytes)],
+            compiler_id,
+            "hbc0",
+            options.as_bytes(),
+            bytes,
+        );
+        self.product_cache.borrow_mut().insert(product.clone())?;
+        Ok(product)
+    }
+
+    #[cfg(feature = "whole-wasm")]
+    pub(crate) fn compile_whole_wasm_product(
+        &self,
+        source: &str,
+    ) -> Result<crate::compiled_product::CompiledProduct, String> {
+        let source_digest = crate::compiled_product::sha256_hex(source.as_bytes());
+        let compiler_id = format!("hara-runtime/{}", env!("CARGO_PKG_VERSION"));
+        let options = format!("target=HNW0;namespace={}", self.current_namespace());
+        let abi_version = format!("hnw0/{}", crate::whole_wasm::HNW_ABI_VERSION);
+        let key = crate::compiled_product::ProductCacheKey::new(
+            crate::compiled_product::CompiledProductKind::WholeWasm,
+            source_digest.clone(),
+            compiler_id.clone(),
+            abi_version.clone(),
+            options.as_bytes(),
+        );
+        if let Some(product) = self.product_cache.borrow().get(&key).cloned() {
+            return Ok(product);
+        }
+        let hbc_product = self.compile_bytecode_product(source)?;
+        let hbc = hbc_product.bytes;
+        let bytes = crate::whole_wasm::compile_artifact_from_hbc(&hbc)?;
+        let product = crate::compiled_product::CompiledProduct::new(
+            crate::compiled_product::CompiledProductKind::WholeWasm,
+            hbc_product.manifest.source_digest,
+            vec![hbc_product.manifest.artifact_digest],
+            compiler_id,
+            abi_version,
+            options.as_bytes(),
+            bytes,
+        );
+        self.product_cache.borrow_mut().insert(product.clone())?;
+        Ok(product)
+    }
+
     /// Installs the typed native driver behind `std.native.Kernel/*`.
     #[cfg(not(target_arch = "wasm32"))]
     pub fn install_native_kernel_provider(&mut self, provider: Rc<core::KernelProvider>) {

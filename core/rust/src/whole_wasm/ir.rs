@@ -227,7 +227,7 @@ pub(crate) fn lower_slot_program(program: &Program) -> Result<MirProgram, String
     Ok(mir)
 }
 
-fn lower_function(
+pub(crate) fn lower_function(
     program: &Program,
     id: FunctionId,
     function: &crate::vm::FunctionPrototype,

@@ -8,11 +8,21 @@ on:
       - 'core/rust/Cargo.toml'
       - 'core/rust/Cargo.lock'
       - 'core/rust/assets/whole-wasm-native-browser-parity.hal'
+      - 'core/rust/assets/whole-wasm-workloads.json'
+      - 'core/rust/src/bin/hara-whole-wasm-benchmark.rs'
       - 'core/rust/src/bin/hara-whole-wasm-artifact.rs'
+      - 'core/rust/src/compiled_product.rs'
       - 'core/rust/src/core.rs'
       - 'core/rust/src/lib.rs'
       - 'core/rust/src/numeric.rs'
+      - 'core/rust/src/runtime/model.rs'
+      - 'core/rust/src/runtime/bytecode.rs'
+      - 'core/rust/src/runtime/runtime.rs'
+      - 'core/rust/src/instrumentation.rs'
+      - 'core/rust/src/instrumentation/conformance.rs'
+      - 'core/spec/instrumentation-conformance.json'
       - 'core/rust/src/vm/**'
+      - 'core/rust/tests/whole_wasm_native.rs'
       - 'core/rust/src/whole_wasm.rs'
       - 'core/rust/src/whole_wasm/**'
       - 'core/rust/web/package.json'
@@ -31,11 +41,21 @@ on:
       - 'core/rust/Cargo.toml'
       - 'core/rust/Cargo.lock'
       - 'core/rust/assets/whole-wasm-native-browser-parity.hal'
+      - 'core/rust/assets/whole-wasm-workloads.json'
+      - 'core/rust/src/bin/hara-whole-wasm-benchmark.rs'
       - 'core/rust/src/bin/hara-whole-wasm-artifact.rs'
+      - 'core/rust/src/compiled_product.rs'
       - 'core/rust/src/core.rs'
       - 'core/rust/src/lib.rs'
       - 'core/rust/src/numeric.rs'
+      - 'core/rust/src/runtime/model.rs'
+      - 'core/rust/src/runtime/bytecode.rs'
+      - 'core/rust/src/runtime/runtime.rs'
+      - 'core/rust/src/instrumentation.rs'
+      - 'core/rust/src/instrumentation/conformance.rs'
+      - 'core/spec/instrumentation-conformance.json'
       - 'core/rust/src/vm/**'
+      - 'core/rust/tests/whole_wasm_native.rs'
       - 'core/rust/src/whole_wasm.rs'
       - 'core/rust/src/whole_wasm/**'
       - 'core/rust/web/package.json'
@@ -86,7 +106,16 @@ jobs:
           cargo test --locked
           --manifest-path core/rust/Cargo.toml
           --features whole-wasm
-          whole_wasm:: --lib
+          --test whole_wasm_native
+
+      - name: Record native five-workload parity and timing evidence
+        run: |
+          mkdir -p core/target
+          cargo run --quiet --locked \
+            --manifest-path core/rust/Cargo.toml \
+            --features whole-wasm \
+            --bin hara-whole-wasm-benchmark -- \
+            core/target/whole-wasm-native-performance.json
 
       - name: Compile the parity fixture twice
         run: |
@@ -129,6 +158,7 @@ jobs:
           path: |
             core/target/whole-wasm-native-browser-parity.hnw
             core/target/whole-wasm-native-browser-parity.sha256
+            core/target/whole-wasm-native-performance.json
           if-no-files-found: error
 
   browser-artifact:
@@ -203,3 +233,10 @@ jobs:
       - name: Execute whole-Wasm browser parity tests
         working-directory: core/rust/web
         run: npx playwright test whole-wasm-browser.spec.js --reporter=line
+
+      - name: Upload browser five-workload timing evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: whole-wasm-browser-performance
+          path: core/target/whole-wasm-browser-performance.json
+          if-no-files-found: error

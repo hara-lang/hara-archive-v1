@@ -30,10 +30,7 @@ impl CatalogEntry {
         validate_coordinate(&coordinate)?;
         Ok(Self {
             coordinate,
-            dependencies: canonical_coordinates(
-                &dependencies,
-                "catalog entry dependencies",
-            )?,
+            dependencies: canonical_coordinates(&dependencies, "catalog entry dependencies")?,
         })
     }
 }
@@ -81,10 +78,7 @@ impl AdmittedCatalog {
         self.entries.get(coordinate)
     }
 
-    pub fn component_for(
-        &self,
-        coordinate: &SchemaCoordinate,
-    ) -> Option<&CatalogComponent> {
+    pub fn component_for(&self, coordinate: &SchemaCoordinate) -> Option<&CatalogComponent> {
         self.owners
             .get(coordinate)
             .and_then(|id| self.components.get(id))
@@ -143,14 +137,9 @@ pub fn admit_catalog(
     let mut entry_index = BTreeMap::new();
     let mut identities = BTreeMap::<(String, u32), String>::new();
     for raw_entry in entries {
-        let entry = CatalogEntry::new(
-            raw_entry.coordinate.clone(),
-            raw_entry.dependencies.clone(),
-        )?;
-        let identity = (
-            entry.coordinate.id.clone(),
-            entry.coordinate.version,
-        );
+        let entry =
+            CatalogEntry::new(raw_entry.coordinate.clone(), raw_entry.dependencies.clone())?;
+        let identity = (entry.coordinate.id.clone(), entry.coordinate.version);
         if let Some(existing) = identities.insert(identity, entry.coordinate.hash.clone()) {
             if existing == entry.coordinate.hash {
                 return Err("schema catalog contains duplicate exact entry".into());
@@ -207,7 +196,10 @@ pub fn admit_catalog(
                     display_coordinate(member)
                 ));
             }
-            if owners.insert(member.clone(), component.id.clone()).is_some() {
+            if owners
+                .insert(member.clone(), component.id.clone())
+                .is_some()
+            {
                 return Err(format!(
                     "schema catalog entry belongs to multiple components: {}",
                     display_coordinate(member)
@@ -234,11 +226,7 @@ pub fn admit_catalog(
     }
 
     for component in component_index.values() {
-        let expected = expected_component_dependencies(
-            component,
-            &entry_index,
-            &owners,
-        );
+        let expected = expected_component_dependencies(component, &entry_index, &owners);
         if component.dependencies != expected {
             return Err(format!(
                 "schema catalog component dependencies mismatch for {}",
@@ -249,12 +237,7 @@ pub fn admit_catalog(
 
     let component_graph: BTreeMap<String, BTreeSet<String>> = component_index
         .iter()
-        .map(|(id, component)| {
-            (
-                id.clone(),
-                component.dependencies.iter().cloned().collect(),
-            )
-        })
+        .map(|(id, component)| (id.clone(), component.dependencies.iter().cloned().collect()))
         .collect();
     let component_order = dependency_first_order(component_graph)?;
 
@@ -515,10 +498,7 @@ mod tests {
         .unwrap()
     }
 
-    fn component(
-        members: Vec<SchemaCoordinate>,
-        dependencies: Vec<String>,
-    ) -> CatalogComponent {
+    fn component(members: Vec<SchemaCoordinate>, dependencies: Vec<String>) -> CatalogComponent {
         CatalogComponent::new(component_id(&members).unwrap(), members, dependencies).unwrap()
     }
 
@@ -536,10 +516,8 @@ mod tests {
         let identifier = coordinate("model/id", 1, '1');
         let profile = coordinate("model/profile", 2, '2');
         let identifier_component = component(vec![identifier.clone()], vec![]);
-        let profile_component = component(
-            vec![profile.clone()],
-            vec![identifier_component.id.clone()],
-        );
+        let profile_component =
+            component(vec![profile.clone()], vec![identifier_component.id.clone()]);
         let catalog = admit_catalog(
             &[
                 CatalogEntry::new(identifier.clone(), vec![]).unwrap(),

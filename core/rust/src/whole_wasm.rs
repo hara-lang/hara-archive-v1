@@ -30,6 +30,19 @@ mod runtime;
 pub mod ssa;
 
 pub use artifact::{compile_artifact, decode_artifact, NativeArtifact, HNW_ABI_VERSION};
+
+/// Compiles a validated HBC0 artifact into the canonical HNW0 product.
+///
+/// The bytecode artifact is decoded before lowering so the Whole-Wasm target
+/// cannot silently diverge from the HBC product that was selected by the
+/// production graph. HNW0 retains the same bytes as its semantic fallback.
+pub fn compile_artifact_from_hbc(bytes: &[u8]) -> Result<Vec<u8>, String> {
+    let program = crate::vm::decode_program(bytes)?;
+    if crate::vm::encode_program(&program)? != bytes {
+        return Err("HBC0 artifact is not canonical".into());
+    }
+    compile_artifact(&program)
+}
 #[cfg(target_arch = "wasm32")]
 pub use browser::WholeWasmHost;
 pub use codegen::compile_program;
@@ -82,12 +95,16 @@ mod tests {
             Err("division by zero".into())
         );
         assert_eq!(
-            module("(+ 9223372036854775807 1)").call_entry_i64(),
-            Err("integer overflow".into())
+            module("(+ 9223372036854775807 1)").call_entry_value(),
+            Ok(crate::core::Value::BigInteger(num_bigint::BigInt::from(
+                9223372036854775808_i128
+            ),))
         );
         assert_eq!(
-            module("(* -9223372036854775808 -1)").call_entry_i64(),
-            Err("integer overflow".into())
+            module("(* -9223372036854775808 -1)").call_entry_value(),
+            Ok(crate::core::Value::BigInteger(num_bigint::BigInt::from(
+                9223372036854775808_i128
+            ),))
         );
     }
 

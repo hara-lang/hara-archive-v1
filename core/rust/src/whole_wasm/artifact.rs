@@ -1,8 +1,10 @@
 use sha2::{Digest, Sha256};
+use wasm_encoder::Module;
 
-use crate::vm::{decode_program, encode_program, FunctionId, Program};
+use crate::vm::{decode_program, encode_program, FunctionId, Instruction, Program};
 
 use super::codegen::compile_program;
+use super::ir::lower_function;
 
 const MAGIC: &[u8; 4] = b"HNW0";
 pub const HNW_ABI_VERSION: u16 = 2;
@@ -13,11 +15,35 @@ pub struct NativeArtifact {
     pub program: Program,
     pub wasm: Vec<u8>,
     pub functions: Vec<(FunctionId, u16)>,
+    pub capabilities: Vec<bool>,
 }
 
 pub fn compile_artifact(program: &Program) -> Result<Vec<u8>, String> {
     let hbc = encode_program(program)?;
-    let wasm = compile_program(program)?;
+    let mut capabilities = native_function_capabilities(program);
+    let wasm = match compile_program(program) {
+        Ok(wasm) => wasm,
+        Err(_) => {
+            let mut native_program = program.clone();
+            for (id, native) in capabilities.iter().enumerate() {
+                if !native {
+                    replace_with_fallback_stub(&mut native_program.functions[id]);
+                }
+            }
+            match compile_program(&native_program) {
+                Ok(wasm) => wasm,
+                Err(_) => {
+                    // An empty module is still a valid HNW0 container, but it
+                    // must not advertise native entry points that the module
+                    // does not contain. Every function therefore remains on
+                    // the retained HBC path when the sanitized module cannot
+                    // be emitted.
+                    capabilities.fill(false);
+                    Module::new().finish()
+                }
+            }
+        }
+    };
     let mut payload = Vec::new();
     put_u16(&mut payload, HNW_ABI_VERSION);
     put_u16(
@@ -92,12 +118,57 @@ pub fn decode_artifact(bytes: &[u8]) -> Result<NativeArtifact, String> {
     {
         return Err("native artifact function metadata mismatch".into());
     }
+    let capabilities = native_function_capabilities(&program);
     Ok(NativeArtifact {
         abi_version,
         program,
         wasm,
         functions,
+        capabilities,
     })
+}
+
+/// Returns the native eligibility of each validated HBC function. The result
+/// is intentionally per function: callers can keep using native functions
+/// while unsupported functions execute through the retained HBC program.
+pub(crate) fn native_function_capabilities(program: &Program) -> Vec<bool> {
+    let mut capabilities = program
+        .functions
+        .iter()
+        .enumerate()
+        .map(|(id, function)| lower_function(program, id as FunctionId, function).is_ok())
+        .collect::<Vec<_>>();
+    loop {
+        let previous = capabilities.clone();
+        for (id, function) in program.functions.iter().enumerate() {
+            if !previous[id] {
+                continue;
+            }
+            let depends_on_unsupported =
+                function.code.iter().any(|instruction| match instruction {
+                    Instruction::CallStatic { prototype, .. }
+                    | Instruction::Closure { prototype, .. } => previous
+                        .get(usize::from(*prototype))
+                        .is_some_and(|native| !native),
+                    _ => false,
+                });
+            if depends_on_unsupported {
+                capabilities[id] = false;
+            }
+        }
+        if capabilities == previous {
+            return capabilities;
+        }
+    }
+}
+
+fn replace_with_fallback_stub(function: &mut crate::vm::FunctionPrototype) {
+    function.async_function = false;
+    function.variadic = false;
+    function.capture_count = 0;
+    function.max_stack = 1;
+    function.handlers.clear();
+    function.code = vec![Instruction::Nil, Instruction::Return];
 }
 
 fn put_u16(out: &mut Vec<u8>, value: u16) {

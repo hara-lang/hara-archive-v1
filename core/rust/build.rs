@@ -65,10 +65,7 @@ fn main() {
     } else {
         manifest.clone()
     };
-    println!(
-        "cargo:rustc-env=HARA_SOURCE_ROOT={}",
-        source_root.display()
-    );
+    println!("cargo:rustc-env=HARA_SOURCE_ROOT={}", source_root.display());
     // The runtime artifact contains the explicit Foundation bootstrap and the
     // small portable library catalog required by the native runtime. Repository
     // builds resolve it from canonical core/lib source; published Cargo archives
