@@ -502,7 +502,21 @@ public interface RT {
                 .keySet()
                 .forEach(symbol -> names.add(namespaceName.display() + "/" + symbol.display()));
           });
-      return new java.util.ArrayList<>(names);
+      java.util.ArrayList<String> result = new java.util.ArrayList<>(names);
+      result.sort(
+          (left, right) -> {
+            boolean leftPublic = isPublicCompletionSymbol(left);
+            boolean rightPublic = isPublicCompletionSymbol(right);
+            if (leftPublic != rightPublic) return leftPublic ? -1 : 1;
+            return left.compareTo(right);
+          });
+      return result;
+    }
+
+    private boolean isPublicCompletionSymbol(String name) {
+      Var variable = getObj(Symbol.create(name));
+      if (variable == null) return false;
+      return Boolean.TRUE.equals(Keyword.create("public").invoke(variable.meta(), false));
     }
 
     @Override

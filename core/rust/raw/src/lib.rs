@@ -7,7 +7,7 @@ use hara_runtime::vm;
 
 use core::{EvalFiber, EvalFiberState, Promise, PromiseRejection, PromiseState, Value};
 use std::cell::RefCell;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::rc::Rc;
 
 #[cfg(target_arch = "wasm32")]
@@ -470,17 +470,19 @@ impl Session {
 
     fn complete(&self, prefix: &str) -> Value {
         let mut names = self.namespaces.visible_symbol_names();
-        names.extend(self.env.keys().cloned());
-        names.extend(
+        let mut extras = self.env.keys().cloned().collect::<Vec<_>>();
+        extras.extend(
             core::completion_symbols()
                 .iter()
                 .map(|name| (*name).to_owned()),
         );
-        names.sort();
-        names.dedup();
+        extras.sort();
+        names.extend(extras);
+        let mut seen = HashSet::new();
         Value::Vector(
             names
                 .into_iter()
+                .filter(|name| seen.insert(name.clone()))
                 .filter(|name| name.starts_with(prefix))
                 .map(Value::String)
                 .collect::<Vec<_>>()
@@ -2750,6 +2752,31 @@ mod tests {
             completion_value(&mut runtime, 1),
             hara_runtime::core::Value::Number(42)
         );
+    }
+
+    #[test]
+    fn raw_completion_preserves_public_priority_and_deterministic_helpers() {
+        let mut runtime = Session::new();
+        let source = "(def zebra-helper 1) ".to_owned()
+            + "(def ^{:public true} recommended-api 2) "
+            + "(def alpha-helper 3) "
+            + "(def ^{:public true} advertised-api 4)";
+        runtime.start_fiber(1, &source).unwrap();
+        completion_value(&mut runtime, 1);
+        let Value::Vector(symbols) = runtime.complete("") else {
+            panic!("expected completion vector")
+        };
+        let symbols = symbols
+            .iter()
+            .map(|value| match value {
+                Value::String(value) => value.clone(),
+                other => other.display(),
+            })
+            .collect::<Vec<_>>();
+        let position = |name: &str| symbols.iter().position(|value| value == name).unwrap();
+        assert!(position("advertised-api") < position("recommended-api"));
+        assert!(position("recommended-api") < position("alpha-helper"));
+        assert!(position("alpha-helper") < position("zebra-helper"));
     }
 
     #[test]

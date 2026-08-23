@@ -506,7 +506,6 @@ fn run(
                             .into_iter()
                             .filter(|symbol| symbol.starts_with(&prefix))
                             .collect::<Vec<_>>();
-                        symbols.sort();
                         symbols.dedup();
                         symbols
                     })

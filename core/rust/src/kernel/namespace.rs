@@ -613,27 +613,44 @@ impl<V: Clone> NamespaceRegistry<V> {
         let mut names = current
             .mappings
             .borrow()
-            .keys()
-            .map(|name| name.as_str().to_owned())
+            .iter()
+            .map(|(name, var)| {
+                (
+                    name.as_str().to_owned(),
+                    var.hara_metadata()
+                        .is_some_and(|metadata| metadata.flag("public")),
+                )
+            })
             .collect::<Vec<_>>();
         for (alias, namespace) in current.aliases.borrow().iter() {
             names.extend(
                 namespace
                     .mappings
                     .borrow()
-                    .keys()
-                    .map(|name| format!("{}/{}", alias.as_str(), name.as_str())),
+                    .iter()
+                    .map(|(name, var)| {
+                        (
+                            format!("{}/{}", alias.as_str(), name.as_str()),
+                            var.hara_metadata()
+                                .is_some_and(|metadata| metadata.flag("public")),
+                        )
+                    }),
             );
         }
-        names.sort();
-        names.dedup();
-        names
+        names.sort_by(|left, right| {
+            right
+                .1
+                .cmp(&left.1)
+                .then(left.0.cmp(&right.0))
+        });
+        names.dedup_by(|left, right| left.0 == right.0);
+        names.into_iter().map(|(name, _)| name).collect()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Namespace, NamespaceLoadState};
+    use super::{Namespace, NamespaceLoadState, VarMetadata};
     use crate::lang::data::Symbol;
     use crate::lang::protocol::IDeref;
     #[test]
@@ -717,5 +734,47 @@ mod tests {
             Some(NamespaceLoadState::Failed)
         );
         assert_eq!(second.load_state("example.lazy"), None);
+    }
+
+    #[test]
+    fn visible_symbols_rank_public_vars_before_helpers() {
+        let registry = super::NamespaceRegistry::new("user");
+        registry.current().intern("zebra-helper", 1);
+        registry.current().intern("alpha-helper", 2);
+        registry.current().intern_with_metadata(
+            "recommended-api",
+            3,
+            VarMetadata {
+                hara: Some(crate::lang::data::Metadata::new(vec![(
+                    crate::lang::data::MetadataValue::Keyword(
+                        crate::lang::data::Keyword::from("public"),
+                    ),
+                    crate::lang::data::MetadataValue::Boolean(true),
+                )])),
+                ..VarMetadata::default()
+            },
+        );
+        registry.current().intern_with_metadata(
+            "advertised-api",
+            4,
+            VarMetadata {
+                hara: Some(crate::lang::data::Metadata::new(vec![(
+                    crate::lang::data::MetadataValue::Keyword(
+                        crate::lang::data::Keyword::from("public"),
+                    ),
+                    crate::lang::data::MetadataValue::Boolean(true),
+                )])),
+                ..VarMetadata::default()
+            },
+        );
+        assert_eq!(
+            registry.visible_symbol_names(),
+            vec![
+                "advertised-api",
+                "recommended-api",
+                "alpha-helper",
+                "zebra-helper"
+            ]
+        );
     }
 }

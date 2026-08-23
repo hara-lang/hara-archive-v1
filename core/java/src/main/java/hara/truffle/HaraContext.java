@@ -26,6 +26,7 @@ import hara.lang.data.types.ILinearType;
 import hara.lang.data.types.ObjFn;
 import hara.lang.protocol.IFn;
 import hara.lang.protocol.IMetadata;
+import hara.lang.protocol.ILookup;
 import hara.lang.protocol.IDeref;
 import hara.lang.protocol.IDerefTimeout;
 import hara.lang.protocol.IDisplay;
@@ -1686,7 +1687,24 @@ public final class HaraContext {
       if (target == null) continue;
       for (String name : target.sortedSymbolNames()) names.add(alias.getKey() + "/" + name);
     }
-    return new ArrayList<>(names);
+    ArrayList<String> result = new ArrayList<>(names);
+    result.sort(
+        (left, right) -> {
+          boolean leftPublic = isPublicCompletionSymbol(left);
+          boolean rightPublic = isPublicCompletionSymbol(right);
+          if (leftPublic != rightPublic) return leftPublic ? -1 : 1;
+          return left.compareTo(right);
+        });
+    return result;
+  }
+
+  @TruffleBoundary
+  @SuppressWarnings("unchecked")
+  private boolean isPublicCompletionSymbol(String name) {
+    HaraVar variable = resolve(Symbol.create(name));
+    if (variable == null || !(variable.meta() instanceof ILookup<?, ?> metadata)) return false;
+    Object value = ((ILookup<Object, Object>) metadata).lookup(Keyword.create("public"));
+    return Boolean.TRUE.equals(value);
   }
 
   boolean isSpecialSymbol(Symbol symbol) {
