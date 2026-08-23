@@ -160,7 +160,9 @@ impl Compiler {
                 let owned_by_compilation_namespace = var
                     .symbol()
                     .get_namespace()
-                    .is_none_or(|owner| owner == self.namespace.as_str());
+                    .is_none_or(|owner| {
+                        owner == self.namespace.as_str() || owner == "std.foundation"
+                    });
                 if !owned_by_compilation_namespace {
                     return Err(CompileError::new(
                         CompileErrorKind::UnsupportedForm,

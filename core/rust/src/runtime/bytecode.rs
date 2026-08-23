@@ -11,6 +11,11 @@
 pub fn bytecode_namespace_registry() -> kernel::NamespaceRegistry<core::Value> {
     let namespaces = kernel::NamespaceRegistry::new("user");
     let foundation = namespaces.find_or_create("std.foundation");
+    for (name, value) in core::direct_callable_values()
+        .expect("the direct callable catalog must be internally consistent")
+    {
+        foundation.intern(name, value);
+    }
     for (name, value) in core::exception_function_values() {
         foundation.intern(name, value);
     }

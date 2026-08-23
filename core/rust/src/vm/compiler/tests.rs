@@ -169,7 +169,7 @@ fn destructuring_lowers_across_bindings_parameters_and_recur() {
     assert_eq!(
         runtime
             .eval_bytecode_native(
-                "(let [require-fields (fn [source fields]
+                "(= (let [require-fields (fn [source fields]
                           (reduce (fn [out field]
                                     (if (nil? (get source field)) out out))
                                   source
@@ -179,17 +179,20 @@ fn destructuring_lowers_across_bindings_parameters_and_recur() {
                                                  [:profile/id
                                                   :profile/version
                                                   :profile/operators]))]
-                   (profile {:profile/id :xtalk
+                   (profile {:profile/id :dsl
                              :profile/version 1
-                             :profile/operators {:a 1}}))"
+                             :profile/operators {:a 1}}))
+                   {:profile/id :dsl
+                    :profile/version 1
+                    :profile/operators {:a 1}})"
             )
             .unwrap(),
-        "{:profile/id :xtalk :profile/version 1 :profile/operators {:a 1}}"
+        "true"
     );
     assert_eq!(
         runtime
             .eval_bytecode_native(
-                "(defn __gate-require-fields [source fields]
+                "(do (defn __gate-require-fields [source fields]
                    (reduce (fn [out field]
                              (if (nil? (get source field)) out out))
                            source
@@ -199,12 +202,15 @@ fn destructuring_lowers_across_bindings_parameters_and_recur() {
                                           [:profile/id
                                            :profile/version
                                            :profile/operators]))
-                 (__gate-profile {:profile/id :xtalk
+                 (= (__gate-profile {:profile/id :dsl
                                   :profile/version 1
-                                  :profile/operators {:a 1}})"
+                                  :profile/operators {:a 1}})
+                   {:profile/id :dsl
+                    :profile/version 1
+                    :profile/operators {:a 1}}))"
             )
             .unwrap(),
-        "{:profile/id :xtalk :profile/version 1 :profile/operators {:a 1}}"
+        "true"
     );
 
     runtime.register_resource(
@@ -275,12 +281,18 @@ fn destructuring_lowers_across_bindings_parameters_and_recur() {
     assert_eq!(
         runtime
             .eval_bytecode_native(
-                "(grammar/profile {:profile/id :xtalk
+                "(= (grammar/profile {:profile/id :dsl
                                    :profile/version 1
-                                   :profile/operators {:a 1}})"
+                                   :profile/operators {:a 1}})
+                   {:profile/id :dsl
+                    :profile/version 1
+                    :profile/operators {:a 1}
+                    :source/kind :profile
+                    :source/id :dsl
+                    :source/version 1})"
             )
             .unwrap(),
-        "{:profile/id :xtalk :profile/version 1 :profile/operators {:a 1} :source/kind :profile :source/id :xtalk :source/version 1}"
+        "true"
     );
 }
 
@@ -318,7 +330,7 @@ fn static_array_calls_compile_to_native_bytecode() {
             .eval_bytecode_native(
                 "(defn mutate-and-clone [array value]
                    (Arr/push-last array value)
-                   (vec (Arr/clone array)))
+                   (Base/vec (Arr/clone array)))
                  (mutate-and-clone (array 1 2) 3)"
             )
             .unwrap(),

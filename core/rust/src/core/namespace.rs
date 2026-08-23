@@ -303,6 +303,20 @@ fn eval_require_spec(
                 if alias == "-" {
                     return Err("Namespace alias is reserved: -".into());
                 }
+                // An explicit namespace alias is allowed to shadow an
+                // inherited Foundation referral with the same local name.
+                // Remove that referral before a later `def` claims the name;
+                // otherwise the compiler quite correctly sees the inherited
+                // Var as foreign and rejects the definition.
+                let local = crate::lang::data::Symbol::parse(&alias);
+                if registry
+                    .current()
+                    .resolve(&local)
+                    .is_some_and(|var| var.symbol().get_namespace() == Some("std.foundation"))
+                {
+                    registry.current().unmap(&local);
+                    env.remove(&alias);
+                }
                 if deferred {
                     registry.current().lazy_alias(alias, &target);
                 } else {
