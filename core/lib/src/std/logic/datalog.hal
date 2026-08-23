@@ -170,7 +170,8 @@
          derivations (:datalog/derivations database)
          iteration 0]
     (if (> iteration 1000)
-      (throw "Datalog derivation exceeded 1000 fixpoint iterations")
+      (throw (ex :std.logic/derivation-limit
+                 {:ex/message "Datalog derivation exceeded 1000 fixpoint iterations"}))
       (let [candidates
             (reduce
              (fn [output rule]

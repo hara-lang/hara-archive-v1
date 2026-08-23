@@ -48,13 +48,17 @@
        (sh/run argv (process-options runtime source)))
       (catch Throwable error
         (throw
-         (ex :hara/host (assoc {:phase :verify
-           :lang (get runtime :lang)
-           :runtime (get runtime :runtime)
-           :program (get runtime :program)
-           :command argv
-           :generated-fragment source
-           :cause-data (ex-data error)} :ex/message "Target source verifier could not complete" :ex/cause error)))))))
+         (ex :hara/host
+            (merge
+             {:phase :verify
+              :lang (get runtime :lang)
+              :runtime (get runtime :runtime)
+              :program (get runtime :program)
+              :command argv
+              :generated-fragment source
+              :cause-data (ex-data error)
+              :ex/message "Target source verifier could not complete"}
+             (if (map? (ex-data error)) {:ex/cause error} {})))))))
 
 (defn verify-source
   "Checks emitted target source without executing it."

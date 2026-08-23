@@ -112,6 +112,7 @@ public final class HaraContext {
   private final Map<String, Object> intrinsicCollectionBuiltins = new ConcurrentHashMap<>();
   private volatile Object intrinsicFirstFunction;
   private volatile Object intrinsicRestFunction;
+  private volatile Object exceptionConstructor;
   private final Set<String> loadingModules = ConcurrentHashMap.newKeySet();
   private final Set<String> preparedNamespaceReloads = ConcurrentHashMap.newKeySet();
   private final Set<String> blankNamespaces = ConcurrentHashMap.newKeySet();
@@ -2478,8 +2479,7 @@ public final class HaraContext {
               }
               throw new HaraException("keyword expects a name or namespace and name");
             }));
-    target.define(
-        "ex",
+    HaraBuiltinFunction exBuiltin =
         new VariadicBuiltin(
             "ex",
             values -> {
@@ -2497,33 +2497,37 @@ public final class HaraContext {
               if (!(rawAttributes instanceof IMapType attributes)) {
                 throw new HaraException("ex expects an attributes map");
               }
-              Object message = attributes.lookup(Keyword.create("ex", "message"));
-              if (message != null && !(message instanceof String)) {
+              Map.Entry<?, ?> messageEntry = attributes.find(Keyword.create("ex", "message"));
+              Object message = messageEntry == null ? null : messageEntry.getValue();
+              if (messageEntry != null && !(message instanceof String)) {
                 throw new HaraException(":ex/message must be a string");
               }
-              if (attributes.lookup(Keyword.create("ex", "code")) != null) {
+              if (attributes.find(Keyword.create("ex", "code")) != null) {
                 throw new HaraException(
                     "ex attributes must not contain :ex/code; pass the code as the first argument");
               }
-              Object classValue = attributes.lookup(Keyword.create("ex", "class"));
-              if (classValue != null
+              Map.Entry<?, ?> classEntry = attributes.find(Keyword.create("ex", "class"));
+              Object classValue = classEntry == null ? null : classEntry.getValue();
+              if (classEntry != null
                   && (!(classValue instanceof Keyword exceptionClass)
                       || exceptionClass.getNamespace() == null)) {
                 throw new HaraException(":ex/class must be a namespaced keyword");
               }
               Keyword registeredClass = defaultExceptionClass(code);
-              if (classValue != null
+              if (classEntry != null
                   && registeredClass != null
                   && !registeredClass.equals(classValue)) {
                 throw new HaraException(
                     ":ex/class conflicts with the registered class for :ex/code");
               }
-              Object causeValue = attributes.lookup(Keyword.create("ex", "cause"));
-              if (causeValue != null && !(causeValue instanceof hara.lang.base.Ex.Info)) {
+              Map.Entry<?, ?> causeEntry = attributes.find(Keyword.create("ex", "cause"));
+              Object causeValue = causeEntry == null ? null : causeEntry.getValue();
+              if (causeEntry != null && !(causeValue instanceof hara.lang.base.Ex.Info)) {
                 throw new HaraException(":ex/cause must be an Exception");
               }
-              Object contextValue = attributes.lookup(Keyword.create("ex", "context"));
-              if (contextValue != null && !(contextValue instanceof IMapType)) {
+              Map.Entry<?, ?> contextEntry = attributes.find(Keyword.create("ex", "context"));
+              Object contextValue = contextEntry == null ? null : contextEntry.getValue();
+              if (contextEntry != null && !(contextValue instanceof IMapType)) {
                 throw new HaraException(":ex/context must be a map");
               }
               Throwable cause =
@@ -2532,7 +2536,7 @@ public final class HaraContext {
                       : null;
               IMetadata data =
                   (IMetadata) attributes.assoc(Keyword.create("ex", "code"), code);
-              if (classValue == null && registeredClass != null) {
+              if (classEntry == null && registeredClass != null) {
                 data =
                     (IMetadata)
                         ((IMapType) data).assoc(Keyword.create("ex", "class"), registeredClass);
@@ -2540,6 +2544,8 @@ public final class HaraContext {
               return new hara.lang.base.Ex.Info(
                   message instanceof String ? (String) message : code.display(), data, cause);
             }));
+    exceptionConstructor = exBuiltin;
+    target.define("ex", exBuiltin);
     target.define(
         "ex-info",
         new VariadicBuiltin(
@@ -7845,6 +7851,21 @@ public final class HaraContext {
       }
     }
     throw new HaraException("value is not callable: " + function);
+  }
+
+  void recordExceptionCreation(
+      Object constructor, Object value, com.oracle.truffle.api.source.SourceSection source) {
+    if (constructor != exceptionConstructor
+        || !(value instanceof hara.lang.base.Ex.Info info)
+        || source == null) {
+      return;
+    }
+    info.recordCreation(
+        new hara.lang.base.Ex.Info.Site(
+            currentNamespaceName(),
+            source.getSource().getName(),
+            source.getStartLine(),
+            source.getStartColumn()));
   }
 
   Object hbcAsync(java.util.function.Supplier<Object> operation) {

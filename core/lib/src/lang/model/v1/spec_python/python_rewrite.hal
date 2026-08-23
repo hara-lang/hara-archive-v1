@@ -242,11 +242,18 @@
   (let [hoisted (try
                   ((:rewrite-stage +python-rewriter+) form opts)
                   (catch Throwable error
-                    (throw (ex :hara/io (assoc {:form form} :ex/message "Python hoist rewrite failed" :ex/cause error)))))
+                    (throw (ex :hara/io (merge {:form form
+                                                :ex/message "Python hoist rewrite failed"}
+                                               (if (map? (ex-data error))
+                                                 {:ex/cause error}
+                                                 {}))))))
         normalized (try
                      (python-normalize-form hoisted)
                      (catch Throwable error
-                       (throw (ex :hara/io (assoc {:form hoisted} :ex/message "Python normalize rewrite failed" :ex/cause error)))))]
+                       (throw (ex :hara/io (merge {:form hoisted
+                                                   :ex/message "Python normalize rewrite failed"}
+                                                  (if (map? (ex-data error))
+                                                    {:ex/cause error}
+                                                    {}))))))]
     (inline/rewrite-inline-do normalized)))
-
 

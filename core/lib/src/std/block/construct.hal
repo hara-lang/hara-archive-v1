@@ -77,7 +77,7 @@
 (defn token-dimensions
   [tag text]
   (if (nil? tag)
-    (throw "Not a valid token")
+    (throw (ex :std.block/invalid-token {:ex/message "Not a valid token"}))
     [(text-width text) (text-height text)]))
 
 (defn string-token
@@ -140,7 +140,7 @@
 (defn container-checks
   [tag children props]
   (if (nil? tag)
-    (throw "Not a valid container tag"))
+    (throw (ex :std.block/invalid-container {:ex/message "Not a valid container tag"})))
   (let [required (:cons props)
         values (if required
                  (keep (fn [child]
@@ -148,7 +148,7 @@
                        children)
                  [])]
     (if (and required (not= required (count values)))
-      (throw "Invalid children"))
+      (throw (ex :std.block/invalid-children {:ex/message "Invalid children"})))
     true))
 
 (defn container-tag
@@ -209,7 +209,8 @@
     (if (= index (count values))
       output
       (if (= (inc index) (count values))
-        (throw "Map block requires an even number of values")
+        (throw (ex :std.block/invalid-map
+                   {:ex/message "Map block requires an even number of values"}))
         (recur (+ index 2)
                (assoc output
                       (nth values index)
@@ -325,7 +326,8 @@
                   (recur more (conj output (construct-collection element)))
                   (if (check/token? element)
                     (recur more (conj output (token element)))
-                    (throw "Invalid block input")))))))))))
+                    (throw (ex :std.block/invalid-input
+                               {:ex/message "Invalid block input"})))))))))))
 
 (defn construct-map-values
   [value]

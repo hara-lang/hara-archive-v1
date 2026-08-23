@@ -184,7 +184,7 @@
   (loop [current index escaping escaped]
     (let [character (source-char source current)]
       (if (nil? character)
-        (throw "EOF while reading string")
+        (throw (ex :std.block/reader-error {:ex/message "EOF while reading string"}))
         (if escaping
           (recur (inc current) false)
           (if (= character "\\")
@@ -206,12 +206,14 @@
   (loop [current index output children]
     (let [character (source-char source current)]
       (if (nil? character)
-        (throw (str "EOF while reading collection, expected " expected))
+        (throw (ex :std.block/reader-error
+                   {:ex/message (str "EOF while reading collection, expected " expected)}))
         (if (= character expected)
           [output current]
           (if (closing-delimiter? character)
-            (throw (str "Mismatched delimiter: expected "
-                        expected " but found " character))
+            (throw (ex :std.block/reader-error
+                       {:ex/message (str "Mismatched delimiter: expected "
+                                         expected " but found " character)}))
             (let [[child next-index] (parser source current)]
               (recur next-index (conj output child)))))))))
 
@@ -224,13 +226,15 @@
   [source index tag prefix-length parser]
   (let [child-index (+ index prefix-length)]
     (if (nil? (source-char source child-index))
-      (throw (str "EOF while reading " tag))
+      (throw (ex :std.block/reader-error
+                 {:ex/message (str "EOF while reading " tag)}))
       (let [[child next-index] (parser source child-index)]
         (if (or (= tag :meta) (= tag :hash-meta))
           (loop [current next-index
                  children [child]]
             (if (nil? (source-char source current))
-              (throw (str "EOF while reading " tag))
+              (throw (ex :std.block/reader-error
+                         {:ex/message (str "EOF while reading " tag)}))
               (let [[next-child end-index] (parser source current)
                     output (conj children next-child)]
                 (if (= :void (:type next-child))
@@ -268,16 +272,19 @@
       (if (= "@" (source-char source (+ index 2)))
         (if (= "(" (source-char source (+ index 3)))
           (parse-container source (+ index 4) :select-splice ")" parser)
-          (throw "Reader conditional splice requires a list"))
+          (throw (ex :std.block/reader-error
+                     {:ex/message "Reader conditional splice requires a list"}))
         (if (= "(" (source-char source (+ index 2)))
           (parse-container source (+ index 3) :select ")" parser)
-          (throw "Reader conditional requires a list")))
+          (throw (ex :std.block/reader-error
+                     {:ex/message "Reader conditional requires a list"})))
       (= next "i")
       (let [end (scan-token-end source (+ index 1))
             [string-block final-index] (parser source (inc end))
             text (str/slice source index final-index)]
         [(construct/token-from-string text (Edn/read text)) final-index])
-      :else (throw (str "Unsupported hash dispatch: " next)))))
+      :else (throw (ex :std.block/reader-error
+                       {:ex/message (str "Unsupported hash dispatch: " next)})))))
 
 (declare parse-at)
 
@@ -285,7 +292,7 @@
   [source index]
   (let [character (source-char source index)]
     (if (nil? character)
-      (throw "Cannot parse past end of source")
+      (throw (ex :std.block/reader-error {:ex/message "Cannot parse past end of source"}))
       (if (= character " ")
         [(construct/space) (inc index)]
         (if (= character "\t")
@@ -335,7 +342,9 @@
                                       (if (= character "#")
                                         (parse-hash-at source index parse-at)
                                         (if (closing-delimiter? character)
-                                          (throw (str "Unmatched delimiter: " character))
+                                          (throw (ex :std.block/reader-error
+                                                     {:ex/message (str "Unmatched delimiter: "
+                                                                       character)}))
                                           (let [end (scan-token-end source index)
                                                 text (str/slice source index end)]
                                             [(token-block text) end]))))))))))))))))))))))
@@ -348,19 +357,22 @@
                 (= character "(") {:tag :list :expected ")" :start index :children []}
                 (= character "[") {:tag :vector :expected "]" :start index :children []}
                 (= character "{") {:tag :map :expected "}" :start index :children []}
-                :else (throw (str "Not a collection opener: " character)))]
+                :else (throw (ex :std.block/reader-error
+                                 {:ex/message (str "Not a collection opener: " character)})))]
     (loop [current (inc index)
            frames [frame]]
       (let [character (source-char source current)]
         (if (nil? character)
-          (throw (str "EOF while reading collection, expected "
-                      (:expected (last frames))))
+          (throw (ex :std.block/reader-error
+                     {:ex/message (str "EOF while reading collection, expected "
+                                       (:expected (last frames)))}))
           (if (closing-delimiter? character)
             (let [frame (last frames)
                   frame-count (count frames)]
               (if (not= character (:expected frame))
-                (throw (str "Mismatched delimiter: expected "
-                            (:expected frame) " but found " character))
+                (throw (ex :std.block/reader-error
+                           {:ex/message (str "Mismatched delimiter: expected "
+                                             (:expected frame) " but found " character)}))
                 (let [end-index (inc current)
                       block (with-range
                               (construct/container (:tag frame)
@@ -608,7 +620,7 @@
   (let [source (reader-source rdr)
         index (reader-index rdr)]
     (if (not= "\"" (source-char source index))
-      (throw "Expected string"))
+      (throw (ex :std.block/reader-error {:ex/message "Expected string"})))
     (let [end (scan-string-end source (inc index) false)]
       (set-reader-index rdr end)
       (str/slice source (inc index) (dec end)))))
@@ -636,7 +648,7 @@
         source (reader-source rdr)
         actual (str/slice source index (+ index (str/length expected)))]
     (if (not= actual expected)
-      (throw (str "Expected " expected)))
+      (throw (ex :std.block/reader-error {:ex/message (str "Expected " expected)})))
     (set-reader-index rdr (+ index (str/length expected)))))
 
 (defn read-collection

@@ -93,7 +93,8 @@
     (str/replace (name key) "-" "_")
     (if (string? key)
       key
-      (throw "substrate wire maps require string or keyword keys"))))
+      (throw (ex :std.substrate/invalid-wire-map
+                 {:ex/message "substrate wire maps require string or keyword keys"})))))
 
 (declare wire-value)
 

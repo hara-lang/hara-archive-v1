@@ -65,6 +65,10 @@ public interface Ex {
       return data;
     }
 
+    public synchronized void recordCreation(Site site) {
+      if (createdAt == null) createdAt = site;
+    }
+
     public synchronized void recordThrow(Site site) {
       if (site == null) return;
       if (createdAt == null) createdAt = site;

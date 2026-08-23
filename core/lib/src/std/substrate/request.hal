@@ -70,4 +70,6 @@
    (fn [resolved]
      (if (= (get resolved "status") frame/STATUS_OK)
        (get resolved "data")
-       (throw resolved)))))
+       (throw (ex :std.substrate/request-failed
+                  {:ex/message "Substrate request failed"
+                   :response resolved})))))

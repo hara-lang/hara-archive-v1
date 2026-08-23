@@ -2226,7 +2226,9 @@ public final class HaraNodes {
         // Builtins never implement ILookup/ISequentialLookupType/ISetType, so the IFn
         // protocol invoker always degrades to IFn.applyAsArray; calling it directly is
         // exactly equivalent and skips the boundary plus the dispatch round trip.
-        return invokeBuiltin((HaraBuiltinFunction) target, evaluateArguments(frame));
+        Object result = invokeBuiltin((HaraBuiltinFunction) target, evaluateArguments(frame));
+        HaraLanguage.currentContext(this).recordExceptionCreation(target, result, getSourceSection());
+        return result;
       }
       if (target instanceof IFn) {
         return invokeViaProtocol(target, evaluateArguments(frame));

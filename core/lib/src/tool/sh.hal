@@ -74,11 +74,15 @@
 (defn- process-failure
   [operation argv error]
   (throw
-   (ex :hara/host (assoc {:tool.sh/error :process-unavailable
+   (ex :hara/host
+       (merge
+        {:tool.sh/error :process-unavailable
         :tool.sh/operation operation
         :command argv
         :cause/message (ex-message error)
-        :cause/data (ex-data error)} :ex/message "tool.sh process access is unavailable or failed" :ex/cause error))))
+        :cause/data (ex-data error)
+        :ex/message "tool.sh process access is unavailable or failed"}
+        (if (map? (ex-data error)) {:ex/cause error} {})))))
 
 (defn spawn
   "Starts one argv vector and returns the native process without closing stdin."

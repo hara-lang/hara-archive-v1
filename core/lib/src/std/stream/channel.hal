@@ -125,7 +125,12 @@
           capacity (:capacity (:buffer channel))
           mode (:mode (:buffer channel))]
       (cond
-        (:error current) (throw (:error current))
+        (:error current)
+        (if (map? (ex-data (:error current)))
+          (throw (:error current))
+          (throw (ex :std.stream/error
+                     {:ex/message (str (:error current))
+                      :error (:error current)})))
         (:closed current) false
 
         (> (count takes) 0)
@@ -202,7 +207,12 @@
           puts (:puts current)
           capacity (:capacity (:buffer channel))]
       (cond
-        (:error current) (throw (:error current))
+        (:error current)
+        (if (map? (ex-data (:error current)))
+          (throw (:error current))
+          (throw (ex :std.stream/error
+                     {:ex/message (str (:error current))
+                      :error (:error current)})))
 
         (> (count items) 0)
         (let [value (first items)

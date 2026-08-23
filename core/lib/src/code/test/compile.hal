@@ -47,7 +47,8 @@
                                   options
                                   'run-options)]
           (if (not (= arrow '=>))
-            (throw "fact expects => between actual and expected")
+            (throw (ex :code.test/invalid-fact
+                       {:ex/message "fact expects => between actual and expected"}))
             (recur
              (vec (rest (rest (rest remaining))))
              (conj output

@@ -13,7 +13,8 @@
 (defn- require-node []
   (if *node-id*
     *node-id*
-    (throw "node operation requires an active workspace node")))
+    (throw (ex :studio.node/invalid-state
+               {:ex/message "node operation requires an active workspace node"}))))
 
 (defn current-id []
   (require-node))
@@ -39,7 +40,8 @@
         ;; node captured by start before any draw/node host call is attempted.
         (set! *node-id* (nth entry 1))
         ((nth entry 2)))
-      (throw (str "unknown node task " id)))))
+      (throw (ex :studio.node/not-found
+                 {:ex/message (str "unknown node task " id)})))))
 
 (defn in [signal]
   (Host/call "node" "in" [(require-node) signal]))
@@ -92,7 +94,8 @@
   (let [handler (find-handler (deref *handlers*) handler-id 0)]
     (if handler
       (handler args)
-      (throw (str "unknown node handler " handler-id)))))
+      (throw (ex :studio.node/not-found
+                 {:ex/message (str "unknown node handler " handler-id)})))))
 
 (defn handle
   ([action f] (handle action f {}))

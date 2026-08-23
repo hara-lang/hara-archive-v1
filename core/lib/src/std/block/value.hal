@@ -44,7 +44,8 @@
       (if (= index (count values))
         output
         (if (= (inc index) (count values))
-          (throw "Map block requires an even number of values")
+          (throw (ex :std.block/invalid-map
+                     {:ex/message "Map block requires an even number of values"}))
           (recur (+ index 2)
                  (assoc output
                         (nth values index)

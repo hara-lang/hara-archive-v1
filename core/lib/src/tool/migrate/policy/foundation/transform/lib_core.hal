@@ -314,17 +314,22 @@
               (fn [argument]
                 (rewrite-block argument definition code-or-resolver))
               arguments))]
-        (str "(ex " output-code " (assoc "
-             (second rewritten)
-             " :ex/message "
-             (first rewritten)
-             (if class
-               (str " :ex/class " class)
-               "")
-             (if (= amount 3)
-               (str " :ex/cause " (nth rewritten 2))
-               "")
-             "))")))))
+        (if (= amount 3)
+          (str "(let [data " (second rewritten)
+               " message " (first rewritten)
+               " cause " (nth rewritten 2)
+               "] (ex " output-code " (merge (dissoc data :ex/code :ex/cause :ex/class) "
+               "{:ex/message message"
+               (if class (str " :ex/class " class) "")
+               "} (if (map? (ex-data cause)) {:ex/cause cause} {}))))")
+          (str "(ex " output-code " (merge (dissoc "
+               (second rewritten)
+               " :ex/code :ex/cause :ex/class) {:ex/message "
+               (first rewritten)
+               (if class
+                 (str " :ex/class " class)
+                 "")
+               "}))"))))))
 
 (defn rewrite-block
   [value definition code-or-resolver]

@@ -471,7 +471,12 @@
         eof (:eof current)
         newline (if (= operation :read-line) (line-index raw) nil)]
     (cond
-      (:error current) (throw (:error current))
+      (:error current)
+      (if (map? (ex-data (:error current)))
+        (throw (:error current))
+        (throw (ex :std.stream/error
+                   {:ex/message (str (:error current))
+                    :error (:error current)})))
       (and (= operation :read-some) (> count-raw 0))
       (pop-raw relay count-raw)
 

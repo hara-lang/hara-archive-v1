@@ -97,7 +97,8 @@
 (defn- unknown-document [visitor value]
   (let [fallback (:print-fallback (:options visitor))]
     (if (= fallback :error)
-      (throw (str "No defined pretty representation for " (pr-str value)))
+      (throw (ex :std.foundation/unknown-pretty
+                 {:ex/message (str "No defined pretty representation for " (pr-str value))}))
       (if (fn? fallback)
         (fallback visitor value)
         (annotate :pretty/unknown (pr-str value))))))

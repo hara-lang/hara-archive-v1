@@ -27,7 +27,12 @@
   [outcome]
   (if (Result/success? outcome)
     (Result/data outcome)
-    (throw (Result/error-value outcome))))
+    (let [error (Result/error-value outcome)]
+      (if (map? (ex-data error))
+        (throw error)
+        (throw (ex :hara/io
+                   {:ex/message (str error)
+                    :error error}))))))
 
 (defn lint-target
   [path]
