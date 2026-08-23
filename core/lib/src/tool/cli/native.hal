@@ -1,8 +1,14 @@
 (ns tool.cli.native
-  (:config {:blank true}))
+  (:config {:role :internal})
+  (:require [code.project :as project]))
 
 (defn package-check [path]
-  (Kernel/package-check path))
+  (let [manifest? (str/ends-with? path "project.edn")
+        manifest (if manifest? path (File/join path "project.edn"))
+        document (project/validate
+                  (Edn/read (str/decode-utf8 (deref (File/read manifest)))))]
+    {:identity (str (:project/id document))
+     :version (str (:project/version document))}))
 
 (defn package-build [path output]
   (Kernel/package-build path output))

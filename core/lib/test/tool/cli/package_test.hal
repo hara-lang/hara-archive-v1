@@ -24,4 +24,15 @@
                 ["verify-request" "--request" "request"
                  "--identity" "identity"] false))
               {:positionals ["verify-request"]
-               :options {:request "request" :identity ["identity"]}})]
+               :options {:request "request" :identity ["identity"]}})
+  (test-check "package checks execute through the default host value"
+              (:result/outcome
+               (package/handler
+                {:request/route :tool.cli.route/package-check
+                 :request/arguments
+                 [(if (deref (file/exists? "core/project.edn"))
+                    "core"
+                    ".")]
+                 :request/options {}
+                 :request/cwd (os/cwd)}))
+              :tool.cli.outcome/success)]
