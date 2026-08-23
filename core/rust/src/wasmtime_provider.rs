@@ -95,9 +95,7 @@ impl WasmtimeExtensionProvider {
 
     pub fn compile_hta_with_host_handler(
         bytes: &[u8],
-        host_handler: Option<
-            Rc<dyn Fn(String, String, Vec<Value>) -> Result<Value, String>>,
-        >,
+        host_handler: Option<Rc<dyn Fn(String, String, Vec<Value>) -> Result<Value, String>>>,
     ) -> Result<Self, String> {
         Self::compile_hta_parts(bytes, None, host_handler)
     }
@@ -105,9 +103,7 @@ impl WasmtimeExtensionProvider {
     pub fn compile_hta_with_library(
         bytes: &[u8],
         library_bytes: &[u8],
-        host_handler: Option<
-            Rc<dyn Fn(String, String, Vec<Value>) -> Result<Value, String>>,
-        >,
+        host_handler: Option<Rc<dyn Fn(String, String, Vec<Value>) -> Result<Value, String>>>,
     ) -> Result<Self, String> {
         Self::compile_hta_parts(bytes, Some(library_bytes), host_handler)
     }
@@ -115,9 +111,7 @@ impl WasmtimeExtensionProvider {
     fn compile_hta_parts(
         bytes: &[u8],
         library_bytes: Option<&[u8]>,
-        host_handler: Option<
-            Rc<dyn Fn(String, String, Vec<Value>) -> Result<Value, String>>,
-        >,
+        host_handler: Option<Rc<dyn Fn(String, String, Vec<Value>) -> Result<Value, String>>>,
     ) -> Result<Self, String> {
         let (engine, module) = compile_hta_module(bytes, library_bytes.is_some())?;
         let library = library_bytes
@@ -322,7 +316,9 @@ struct HtaProviderState {
 impl HtaProviderState {
     fn start(&self, manifest: &ExtensionManifest) -> Result<(), String> {
         if manifest.provider != "wasm" || manifest.abi != WasmAbi::HtaV1 {
-            return Err("extension/manifest-mismatch: HTA Wasm provider requires :wasm/:hta.v1".into());
+            return Err(
+                "extension/manifest-mismatch: HTA Wasm provider requires :wasm/:hta.v1".into(),
+            );
         }
         if !manifest.capabilities.is_empty() {
             return Err(format!(
@@ -337,7 +333,10 @@ impl HtaProviderState {
             ));
         }
         if self.session.borrow().is_some() {
-            return Err(format!("extension/start: session already exists for {}", manifest.namespace));
+            return Err(format!(
+                "extension/start: session already exists for {}",
+                manifest.namespace
+            ));
         }
 
         let mut linker = Linker::new(&self.engine);
@@ -496,7 +495,10 @@ impl HtaProviderState {
         )?;
         let version = call_i32(&mut store, &abi_version, &[], "hta_abi_version")?;
         if !(1..=4).contains(&version) {
-            return Err(format!("extension/abi-version-unsupported: {}", manifest.namespace));
+            return Err(format!(
+                "extension/abi-version-unsupported: {}",
+                manifest.namespace
+            ));
         }
         *self.session.borrow_mut() = Some(HtaSession {
             store,
@@ -527,9 +529,14 @@ impl HtaProviderState {
             let session = session_ref
                 .as_mut()
                 .ok_or_else(|| "hta/session-closed".to_owned())?;
+            let operation = manifest
+                .operations
+                .get(export)
+                .cloned()
+                .unwrap_or_else(|| export.to_owned());
             let request = hta::encode(&Value::Vector(
                 vec![
-                    Value::String(export.to_owned()),
+                    Value::String(operation),
                     Value::Vector(arguments.to_vec().into()),
                 ]
                 .into(),
@@ -609,7 +616,12 @@ impl HtaProviderState {
         let session = session_ref
             .as_mut()
             .ok_or_else(|| "hta/session-closed".to_owned())?;
-        let packed = call_i64(&mut session.store, &session.next_event, &[], "hta_next_event")?;
+        let packed = call_i64(
+            &mut session.store,
+            &session.next_event,
+            &[],
+            "hta_next_event",
+        )?;
         if packed == 0 {
             return Ok(None);
         }
@@ -638,7 +650,11 @@ impl HtaProviderState {
             .map_err(|error| format!("hta/event-malformed: {error}"))
     }
 
-    fn handle_event(self: &Rc<Self>, manifest: &ExtensionManifest, event: Value) -> Result<(), String> {
+    fn handle_event(
+        self: &Rc<Self>,
+        manifest: &ExtensionManifest,
+        event: Value,
+    ) -> Result<(), String> {
         let values = match event {
             Value::Vector(values) => values.iter().cloned().collect::<Vec<_>>(),
             Value::List(values) => values.iter().cloned().collect::<Vec<_>>(),
@@ -690,11 +706,19 @@ impl HtaProviderState {
             _ => return Err("hta/host-call-malformed: arguments".into()),
         };
         if !manifest.permits_host_call(&service, &method) {
-            self.queue_delivery(call, false, host_error("hta/host-call-denied", &service, &method));
+            self.queue_delivery(
+                call,
+                false,
+                host_error("hta/host-call-denied", &service, &method),
+            );
             return Ok(());
         }
         let Some(handler) = self.host_handler.clone() else {
-            self.queue_delivery(call, false, host_error("host/unavailable", &service, &method));
+            self.queue_delivery(
+                call,
+                false,
+                host_error("host/unavailable", &service, &method),
+            );
             return Ok(());
         };
         match handler(service.clone(), method.clone(), arguments) {
@@ -904,7 +928,13 @@ impl HtaProviderState {
             .session
             .borrow_mut()
             .take()
-            .map(|session| session.pending.into_values().map(|pending| pending.promise).collect::<Vec<_>>())
+            .map(|session| {
+                session
+                    .pending
+                    .into_values()
+                    .map(|pending| pending.promise)
+                    .collect::<Vec<_>>()
+            })
             .unwrap_or_default();
         for promise in pending {
             promise.reject("hta/session-closed");
@@ -917,8 +947,8 @@ fn compile_hta_module(bytes: &[u8], allow_library: bool) -> Result<(Engine, Modu
     config.consume_fuel(true);
     let engine =
         Engine::new(&config).map_err(|error| format!("extension/engine-unavailable: {error}"))?;
-    let module =
-        Module::new(&engine, bytes).map_err(|error| format!("extension/module-invalid: {error}"))?;
+    let module = Module::new(&engine, bytes)
+        .map_err(|error| format!("extension/module-invalid: {error}"))?;
     for import in module.imports() {
         let supported_env = import.module() == "env"
             && matches!(
@@ -958,7 +988,9 @@ fn expect_signature(
     let actual_parameters = ty.params().collect::<Vec<_>>();
     let actual_results = ty.results().collect::<Vec<_>>();
     if actual_parameters != parameters || actual_results != results {
-        return Err(format!("extension/abi-type-unsupported: {name} has an invalid signature"));
+        return Err(format!(
+            "extension/abi-type-unsupported: {name} has an invalid signature"
+        ));
     }
     Ok(())
 }
@@ -1105,10 +1137,7 @@ fn string_value(values: &[Value], index: usize, field: &str) -> Result<String, S
 fn host_error(code: &str, service: &str, method: &str) -> Value {
     Value::Map(
         [
-            (
-                Value::Keyword("code".into()),
-                Value::Keyword(code.into()),
-            ),
+            (Value::Keyword("code".into()), Value::Keyword(code.into())),
             (
                 Value::Keyword("message".into()),
                 Value::String(format!("{service}/{method}")),

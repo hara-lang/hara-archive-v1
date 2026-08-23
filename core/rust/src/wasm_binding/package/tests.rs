@@ -202,7 +202,10 @@ fn async_binding_generates_an_hta_adapter_for_require() {
     let bindings = loaded.extension.require().unwrap();
     assert_eq!(bindings[0].name, "sum");
     let crate::core::Value::Promise(promise) = bindings[0]
-        .invoke(&[crate::core::Value::Number(19), crate::core::Value::Number(23)])
+        .invoke(&[
+            crate::core::Value::Number(19),
+            crate::core::Value::Number(23),
+        ])
         .unwrap()
     else {
         panic!("HTA binding did not return a promise");

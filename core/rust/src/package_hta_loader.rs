@@ -11,7 +11,7 @@ use std::fs;
 use std::path::Path;
 use std::rc::Rc;
 
-use crate::extension::{ExtensionManifest, WasmAbi, WasmExtension, Value};
+use crate::extension::{ExtensionManifest, Value, WasmAbi, WasmExtension};
 use crate::package_manifest::{
     PackageArtifactType, PackageManifest, PackageRuntimeRequirements, PackageSelection,
 };
@@ -31,7 +31,9 @@ pub fn load_hta_package(
 ) -> Result<LoadedPackageHta, String> {
     let module = match manifest.wasm_imports.len() {
         0 => {
-            return Err("package/missing-require-artifact: package declares no HTA artifacts".into())
+            return Err(
+                "package/missing-require-artifact: package declares no HTA artifacts".into(),
+            )
         }
         1 => manifest
             .wasm_imports
@@ -62,9 +64,7 @@ pub fn load_hta_require_package(
     module: &str,
     requirements: &PackageRuntimeRequirements,
     extension_manifest_source: &str,
-    host_handler: Option<
-        Rc<dyn Fn(String, String, Vec<Value>) -> Result<Value, String>>,
-    >,
+    host_handler: Option<Rc<dyn Fn(String, String, Vec<Value>) -> Result<Value, String>>>,
 ) -> Result<LoadedPackageHta, String> {
     manifest
         .verify_files_at(package_root)
@@ -107,7 +107,9 @@ pub fn load_hta_require_package(
         return Err("package/provider-mismatch: HTA artifact requires :provider :wasm".into());
     }
     if extension_manifest.abi != WasmAbi::HtaV1 {
-        return Err("package/abi-mismatch: extension manifest differs from selected variant".into());
+        return Err(
+            "package/abi-mismatch: extension manifest differs from selected variant".into(),
+        );
     }
     let required_capabilities = extension_manifest
         .capabilities
@@ -115,7 +117,9 @@ pub fn load_hta_require_package(
         .cloned()
         .collect::<BTreeSet<_>>();
     if required_capabilities != variant.required_capabilities {
-        return Err("package/manifest-mismatch: required capabilities differ from extension".into());
+        return Err(
+            "package/manifest-mismatch: required capabilities differ from extension".into(),
+        );
     }
     let declared_host_calls = extension_manifest
         .host_calls
@@ -152,11 +156,7 @@ pub fn load_hta_require_package(
                 library_path
             )
         })?;
-        WasmtimeExtensionProvider::compile_hta_with_library(
-            &bytes,
-            &library_bytes,
-            host_handler,
-        )?
+        WasmtimeExtensionProvider::compile_hta_with_library(&bytes, &library_bytes, host_handler)?
     } else {
         WasmtimeExtensionProvider::compile_hta_with_host_handler(&bytes, host_handler)?
     };

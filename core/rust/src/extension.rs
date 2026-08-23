@@ -21,8 +21,8 @@ const MANIFEST_FIELDS: &[&str] = &[
     "targets",
     "assets",
 ];
-const EXPORT_FIELDS: &[&str] = &["args", "returns", "async", "wasm/export"];
-const HANDLE_FIELDS: &[&str] = &["tag"];
+const EXPORT_FIELDS: &[&str] = &["args", "returns", "async", "wasm/export", "operation"];
+const HANDLE_FIELDS: &[&str] = &["tag", "release"];
 const TARGET_FIELDS: &[&str] = &["module", "runtime"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -64,9 +64,11 @@ pub struct ExtensionManifest {
     pub targets: HashMap<String, ExtensionTarget>,
     pub assets: Vec<String>,
     pub exports: Vec<(String, ExtensionExport)>,
+    pub operations: HashMap<String, String>,
     pub capabilities: Vec<String>,
     pub host_calls: HashMap<String, Vec<String>>,
     pub handle_tags: HashMap<String, String>,
+    pub handle_releases: HashMap<String, String>,
 }
 
 impl ExtensionManifest {
@@ -142,7 +144,7 @@ impl ExtensionManifest {
         if provider == "hta" && abi != WasmAbi::HtaV1 {
             return Err(malformed(origin, "HTA providers require :abi :hta.v1"));
         }
-        let exports = parse_exports(required(entries, "exports", origin)?, origin)?;
+        let (exports, operations) = parse_exports(required(entries, "exports", origin)?, origin)?;
         let capabilities = keyword_vector(
             required(entries, "capabilities", origin)?,
             origin,
@@ -150,8 +152,10 @@ impl ExtensionManifest {
         )?;
         let host_calls = optional(entries, "host-calls")
             .map_or_else(|| Ok(HashMap::new()), |form| parse_host_calls(form, origin))?;
-        let handle_tags = optional(entries, "handles")
-            .map_or_else(|| Ok(HashMap::new()), |form| parse_handles(form, origin))?;
+        let (handle_tags, handle_releases) = optional(entries, "handles").map_or_else(
+            || Ok((HashMap::new(), HashMap::new())),
+            |form| parse_handles(form, origin),
+        )?;
         Ok(Self {
             namespace,
             root,
@@ -163,9 +167,11 @@ impl ExtensionManifest {
             assets,
             abi,
             exports,
+            operations,
             capabilities,
             host_calls,
             handle_tags,
+            handle_releases,
         })
     }
 
@@ -387,12 +393,16 @@ fn safe_relative(
     Ok(())
 }
 
-fn parse_exports(form: &Form, origin: &str) -> Result<Vec<(String, ExtensionExport)>, String> {
+fn parse_exports(
+    form: &Form,
+    origin: &str,
+) -> Result<(Vec<(String, ExtensionExport)>, HashMap<String, String>), String> {
     let entries = map(form, origin, "exports")?;
     if entries.is_empty() {
         return Err(malformed(origin, "exports cannot be empty"));
     }
-    entries
+    let mut operations = HashMap::new();
+    let exports = entries
         .iter()
         .map(|(name, specification)| {
             let name = string(name, origin, "export name")?.to_owned();
@@ -403,17 +413,16 @@ fn parse_exports(form: &Form, origin: &str) -> Result<Vec<(String, ExtensionExpo
                 origin,
                 &format!("export {name}"),
             )?;
-            let arguments = keyword_vector(
+            let arguments = wire_vector(
                 required(specification, "args", origin)?,
                 origin,
                 "export args",
             )?;
-            let returns = keyword(
+            let returns = wire_type(
                 required(specification, "returns", origin)?,
                 origin,
                 "export returns",
-            )?
-            .to_owned();
+            )?;
             let asynchronous = match optional(specification, "async") {
                 None => false,
                 Some(Form::Bool(value)) => *value,
@@ -422,6 +431,12 @@ fn parse_exports(form: &Form, origin: &str) -> Result<Vec<(String, ExtensionExpo
             let raw_export = optional(specification, "wasm/export")
                 .map(|form| string(form, origin, "export wasm/export").map(str::to_owned))
                 .transpose()?;
+            if let Some(operation) = optional(specification, "operation") {
+                let operation = string(operation, origin, "export operation")?.to_owned();
+                if operations.insert(name.clone(), operation).is_some() {
+                    return Err(malformed(origin, format!("duplicate export {name}")));
+                }
+            }
             Ok((
                 name,
                 ExtensionExport {
@@ -432,7 +447,8 @@ fn parse_exports(form: &Form, origin: &str) -> Result<Vec<(String, ExtensionExpo
                 },
             ))
         })
-        .collect()
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok((exports, operations))
 }
 
 fn parse_host_calls(form: &Form, origin: &str) -> Result<HashMap<String, Vec<String>>, String> {
@@ -449,25 +465,34 @@ fn parse_host_calls(form: &Form, origin: &str) -> Result<HashMap<String, Vec<Str
         .collect()
 }
 
-fn parse_handles(form: &Form, origin: &str) -> Result<HashMap<String, String>, String> {
-    map(form, origin, "handles")?
-        .iter()
-        .map(|(type_name, specification)| {
-            let type_name = string(type_name, origin, "handle type")?.to_owned();
-            let specification = map(specification, origin, "handle specification")?;
-            reject_unknown(
-                specification,
-                HANDLE_FIELDS,
-                origin,
-                &format!("handle {type_name}"),
-            )?;
-            let tag = match required(specification, "tag", origin)? {
-                Form::Symbol(tag) if valid_tag(tag) => tag.clone(),
-                _ => return Err(malformed(origin, "handle tag must be a lower-case symbol")),
-            };
-            Ok((type_name, tag))
-        })
-        .collect()
+fn parse_handles(
+    form: &Form,
+    origin: &str,
+) -> Result<(HashMap<String, String>, HashMap<String, String>), String> {
+    let mut tags = HashMap::new();
+    let mut releases = HashMap::new();
+    for (type_name, specification) in map(form, origin, "handles")? {
+        let type_name = string(type_name, origin, "handle type")?.to_owned();
+        let specification = map(specification, origin, "handle specification")?;
+        reject_unknown(
+            specification,
+            HANDLE_FIELDS,
+            origin,
+            &format!("handle {type_name}"),
+        )?;
+        let tag = match required(specification, "tag", origin)? {
+            Form::Symbol(tag) if valid_tag(tag) => tag.clone(),
+            _ => return Err(malformed(origin, "handle tag must be a lower-case symbol")),
+        };
+        tags.insert(type_name.clone(), tag);
+        if let Some(release) = optional(specification, "release") {
+            releases.insert(
+                type_name,
+                string(release, origin, "handle release")?.to_owned(),
+            );
+        }
+    }
+    Ok((tags, releases))
 }
 
 fn valid_identity(value: &str) -> bool {
@@ -527,6 +552,21 @@ fn keyword_vector(form: &Form, origin: &str, field: &str) -> Result<Vec<String>,
         .iter()
         .map(|form| keyword(form, origin, field).map(str::to_owned))
         .collect()
+}
+
+fn wire_vector(form: &Form, origin: &str, field: &str) -> Result<Vec<String>, String> {
+    vector(form, origin, field)?
+        .iter()
+        .map(|form| wire_type(form, origin, field))
+        .collect()
+}
+
+fn wire_type(form: &Form, origin: &str, field: &str) -> Result<String, String> {
+    match form {
+        Form::Keyword(value) => Ok(value.clone()),
+        Form::Vector(_) => Ok(form.to_string()),
+        _ => Err(malformed(origin, format!("{field} must be a type form"))),
+    }
 }
 
 fn key(form: &Form) -> Option<&str> {

@@ -297,9 +297,11 @@ impl Runtime {
             targets: HashMap::new(),
             assets: Vec::new(),
             exports,
+            operations: HashMap::new(),
             capabilities: Vec::new(),
             host_calls: HashMap::new(),
             handle_tags: HashMap::new(),
+            handle_releases: HashMap::new(),
         };
         let import = extension::WasmExtension::new(manifest, provider)?;
         self.native_wasm_imports.insert(logical.into(), import);
