@@ -102,6 +102,10 @@ fn runtime_whole_wasm_product_has_stable_alpha_metadata() {
     assert_eq!(manifest["format"], "HNW0");
     assert_eq!(manifest["abi-version"], "hnw0/2");
     assert_eq!(manifest["artifact-bytes"], first.len());
+    assert_eq!(manifest["entrypoint"], "hara_entry");
+    assert_eq!(manifest["error-global"], "hara_error");
+    assert_eq!(manifest["heap-global"], "hara_heap");
+    assert_eq!(manifest["import-module"], "hara");
 }
 
 #[test]
