@@ -5,13 +5,13 @@
 
 (def +digits+ "0123456789abcdef")
 
-(defn- input-bytes
+(defn input-bytes
   [value]
   (if (Bytes/instance? value)
     value
     (throw (ex :serialization {:value value} :ex/message "Hex encode expects Bytes"))))
 
-(defn encode
+(defn ^{:public true} encode
   [value]
   (let [value (input-bytes value)
         length (bytes/count value)]
@@ -24,14 +24,14 @@
                       (str/char-at +digits+ (Bits/shift-right byte 4))
                       (str/char-at +digits+ (Bits/and byte 15)))))))))
 
-(defn- digit
+(defn digit
   [value index]
   (let [number (str/index-of +digits+ (str/lower-case value))]
     (if (neg? number)
       (throw (ex :serialization {:value value :index index} :ex/message "Invalid hexadecimal digit"))
       number)))
 
-(defn decode
+(defn ^{:public true} decode
   [value]
   (if (not (string? value))
     (throw (ex :serialization {:value value} :ex/message "Hex decode expects a string")))
