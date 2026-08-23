@@ -40,7 +40,7 @@ jobs:
   copilot-setup-steps:
     name: Prepare Hara toolchains and dependencies
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 59
     steps:
       - name: Check out Hara
         uses: actions/checkout@v4
