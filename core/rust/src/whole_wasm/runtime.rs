@@ -16,6 +16,7 @@ use super::handles::{Handle, HandleScope};
 struct HostState {
     handles: HandleScope,
     constants: Vec<Value>,
+    error_code: i32,
 }
 
 /// A validated HNW0 module instantiated by Wasmtime. Calls enter a generated
@@ -37,6 +38,7 @@ impl NativeModule {
             HostState {
                 handles: HandleScope::default(),
                 constants: artifact.program.constants.clone(),
+                error_code: 0,
             },
         );
         let mut linker = Linker::new(&engine);
@@ -95,6 +97,7 @@ impl NativeModule {
         function: FunctionId,
         arguments: &[i64],
     ) -> Result<i64, String> {
+        self.store.data_mut().error_code = 0;
         let (_, arity) = self
             .artifact
             .functions
@@ -129,7 +132,11 @@ impl NativeModule {
                 .i64()
                 .ok_or_else(|| "whole-Wasm function returned a non-i64 result".into()),
             Err(trap) => {
-                let code = error.get(&mut self.store).i32().unwrap_or_default();
+                let code = error
+                    .get(&mut self.store)
+                    .i32()
+                    .unwrap_or_default()
+                    .max(self.store.data().error_code);
                 match code {
                     ERROR_INTEGER_OVERFLOW => Err("integer overflow".into()),
                     ERROR_DIVISION_BY_ZERO => Err("division by zero".into()),
@@ -282,14 +289,23 @@ fn define_persistent_imports(linker: &mut Linker<HostState>) -> Result<(), Strin
         .func_wrap(
             "hara",
             "unbox_i64",
-            |caller: wasmtime::Caller<'_, HostState>, handle: i64| match caller
-                .data()
-                .handles
-                .get(Handle::from_abi(handle))
-            {
-                Ok(Value::Number(value)) => Ok(value),
-                Ok(_) => Err(host_error("whole-Wasm value is not an integer".into())),
-                Err(error) => Err(host_error(error)),
+            |mut caller: wasmtime::Caller<'_, HostState>, handle: i64| {
+                let value = caller.data().handles.get(Handle::from_abi(handle));
+                match value {
+                    Ok(Value::Number(value)) => Ok(value),
+                    Ok(Value::BigInteger(value)) => {
+                        let value = Value::BigInteger(value);
+                        match crate::numeric::to_i64_exact(&value) {
+                            Ok(value) => Ok(value),
+                            Err(_) => {
+                                caller.data_mut().error_code = ERROR_INTEGER_OVERFLOW;
+                                Err(host_error("integer overflow".into()))
+                            }
+                        }
+                    }
+                    Ok(_) => Err(host_error("whole-Wasm value is not an integer".into())),
+                    Err(error) => Err(host_error(error)),
+                }
             },
         )
         .map_err(|error| error.to_string())?;
