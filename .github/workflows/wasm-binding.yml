@@ -29,6 +29,11 @@ on:
       - 'core/rust/src/wasm_binding/**'
       - 'core/spec/wasm-memory-v1.md'
       - 'scripts/runtime/check-wasm-binding'
+      - 'scripts/runtime/build-hara-browser'
+      - 'scripts/runtime/cargo-wasm-build'
+      - 'core/rust/web/package.json'
+      - 'core/rust/web/package-lock.json'
+      - 'core/rust/web/packages/browser/**'
       - '.github/workflows/wasm-binding.yml'
   push:
     branches: [main, testing]
@@ -58,6 +63,11 @@ on:
       - 'core/rust/src/wasm_binding/**'
       - 'core/spec/wasm-memory-v1.md'
       - 'scripts/runtime/check-wasm-binding'
+      - 'scripts/runtime/build-hara-browser'
+      - 'scripts/runtime/cargo-wasm-build'
+      - 'core/rust/web/package.json'
+      - 'core/rust/web/package-lock.json'
+      - 'core/rust/web/packages/browser/**'
       - '.github/workflows/wasm-binding.yml'
   workflow_dispatch:
 
@@ -129,6 +139,34 @@ jobs:
 
       - name: Check native and browser targets
         run: ./scripts/runtime/check-wasm-binding targets
+
+      - name: Install the matching wasm-bindgen CLI
+        shell: bash
+        run: |
+          version="$(
+            cargo metadata --locked \
+              --manifest-path core/rust/Cargo.toml \
+              --format-version 1 \
+            | python3 -c '
+          import json, sys
+          metadata = json.load(sys.stdin)
+          versions = sorted({package["version"] for package in metadata["packages"] if package["name"] == "wasm-bindgen"})
+          if len(versions) != 1:
+              raise SystemExit(f"expected one wasm-bindgen version, got {versions}")
+          print(versions[0])
+          '
+          )"
+          cargo install wasm-bindgen-cli --version "$version" --locked
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: core/rust/web/package-lock.json
+
+      - name: Execute memory.v1 through the browser SDK
+        run: ./scripts/runtime/check-wasm-binding browser-tests
 
       - name: Confirm validation did not modify source
         run: ./scripts/runtime/check-wasm-binding drift

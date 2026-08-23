@@ -34,6 +34,14 @@ function createApi(runtime) {
     installDirectWasmImport(logical, bytes) {
       runtime.installDirectWasmImport(String(logical), bytes);
     },
+    installMemoryWasmBinding(manifest, interfaceSource, bindingsSource, bytes) {
+      runtime.installMemoryWasmBinding(
+        String(manifest),
+        String(interfaceSource),
+        String(bindingsSource),
+        bytes
+      );
+    },
     unregisterResource(namespace) {
       runtime.unregister_resource(String(namespace));
     },

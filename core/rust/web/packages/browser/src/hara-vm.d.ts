@@ -8,6 +8,12 @@ export interface HaraRuntime {
   require(namespace: string): string;
   registerResource(namespace: string, source: string): void;
   installDirectWasmImport(logical: string, bytes: Uint8Array): void;
+  installMemoryWasmBinding(
+    manifest: string,
+    interfaceSource: string,
+    bindingsSource: string,
+    bytes: Uint8Array
+  ): void;
   evalInNamespace(namespace: string, source: string): string;
   currentNamespace(): string;
   compileBytecode(source: string): Uint8Array;
