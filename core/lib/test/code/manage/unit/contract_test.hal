@@ -85,6 +85,8 @@
   [(contract/canonical-github-link?
     "https://github.com/greenways-ai/workspace/issues/26")
    (contract/canonical-github-link?
+   "https://github.com/orgs/greenways-ai/projects/2")
+  (contract/canonical-github-link?
     "http://github.com/greenways-ai/workspace/issues/26")
    (contract/canonical-github-link?
     "https://github.com/greenways-ai/workspace/issues/26?tab=comments")
@@ -92,7 +94,7 @@
     "https://github.com/example/workspace/issues/26")
    (contract/canonical-github-link?
     "https://github.com/greenways-ai/workspace/issues/26/")]
-  => [true false false false false])
+  => [true true false false false false])
 
 ^{:refer code.manage.unit.contract/trim-link-punctuation}
 (fact "removes sentence punctuation from extracted links"
@@ -132,7 +134,9 @@
 (fact "reports a missing required section"
   (let [result
         (contract/check-contract
-         {:source (str/replace valid-source "## Scope\nScope.\n" "")})]
+         {:source (str/replace valid-source
+                               "## Scope\nImplement the checker.\n"
+                               "")})]
     [(get-in result [:findings 0 :code])
      (get-in result [:findings 0 :path])
      (:status result)])

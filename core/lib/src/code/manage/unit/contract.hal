@@ -121,8 +121,13 @@
            (= "https:" (nth parts 0))
            (= "" (nth parts 1))
            (= "github.com" (nth parts 2))
-           (has? +canonical-owners+ (nth parts 3))
-           (not (string/blank? (nth parts 4)))
+           (or (has? +canonical-owners+ (nth parts 3))
+               (and (= "orgs" (nth parts 3))
+                    (has? +canonical-owners+ (nth parts 4))))
+           (not (string/blank?
+                 (if (= "orgs" (nth parts 3))
+                   (nth parts 5)
+                   (nth parts 4))))
            (not (string/ends-with? value "/"))
            (not (string/includes? value "?"))
            (not (string/includes? value "#"))))))
@@ -300,7 +305,7 @@
           links
           (if (has? contract :links)
             (if (vector? (:links contract)) (:links contract) [])
-            (extract-links (:source document)))
+            (extract-links (:text document)))
           link-findings
           (if (empty? links)
             [{:code :link/missing
