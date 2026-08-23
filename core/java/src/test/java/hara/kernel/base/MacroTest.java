@@ -4,6 +4,7 @@ import hara.lang.data.Keyword;
 import hara.lang.data.List;
 import hara.lang.data.Map;
 import hara.lang.data.Symbol;
+import java.lang.reflect.InvocationTargetException;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -34,7 +35,7 @@ public class MacroTest {
     rt = new RT.Instance<>(null, "test");
     rt.eval(
         rt.readString(
-            "(ns test (:import hara.kernel.base.MacroTest$TestClass [java.lang Exception RuntimeException]))"));
+            "(ns test (:flavor :jvm hara.kernel.base.MacroTest$TestClass [java.lang Exception RuntimeException]))"));
     rt.setObj(Symbol.create("test-instance"), new Var("test-instance", new TestClass()));
   }
 
@@ -55,6 +56,21 @@ public class MacroTest {
   @Test
   public void testJvmIsTheDefaultNativeFlavor() {
     assertEquals("hello", ((TestClass) rt.eval(rt.readString("(new TestClass)"))).testField);
+  }
+
+  @Test
+  public void wasmIsNotAHostFlavorAndImportIsReservedForWasm() {
+    InvocationTargetException wasm =
+        assertThrows(
+            InvocationTargetException.class,
+            () -> rt.eval(rt.readString("(ns wasm-flavor (:flavor :wasm))")));
+    assertTrue(wasm.getCause().getMessage().contains("not a host flavor"));
+
+    InvocationTargetException hostImport =
+        assertThrows(
+            InvocationTargetException.class,
+            () -> rt.eval(rt.readString("(ns host-import (:import [java.lang String]))")));
+    assertTrue(hostImport.getCause().getMessage().contains("reserved for Wasm"));
   }
 
   @Test
