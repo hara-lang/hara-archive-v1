@@ -207,6 +207,28 @@ test("installation activates only the browser HTA target and publishes a Hara br
   });
   assert.deepEqual({ ...await result }, { engine: "sqlite", version: "3.50" });
 
+  const failure = handler("db.sqlite.wasm.hta", "version", []);
+  await Promise.resolve();
+  const failedCall = worker.sent.at(-1);
+  worker.emit({
+    type: "result",
+    id: failedCall.id,
+    ok: false,
+    frame: encodeHta(new Map([
+      [new HtaKeyword("code"), new HtaKeyword("db/sqlite-error")],
+      [new HtaKeyword("message"), "locked"]
+    ]))
+  });
+  await assert.rejects(failure, error => error.code === "db/sqlite-error"
+    && error.message === "db/sqlite-error: locked");
+
+  const pending = handler("db.sqlite.wasm.hta", "version", []);
+  const pendingRejection = assert.rejects(pending, /cancelled/);
+  await Promise.resolve();
+  pending.cancel();
+  assert.equal(worker.sent.at(-1).type, "cancel");
+  await pendingRejection;
+
   await disposeBrowserPackageProviders(runtime);
   assert.equal(worker.terminated, true);
   assert.deepEqual(revoked, ["blob:sqlite-2", "blob:sqlite-1"]);
@@ -234,6 +256,38 @@ test("unsupported HTA capabilities fail before a browser worker is created", asy
     /extension-capability-unsupported/
   );
   assert.equal(created, false);
+});
+
+test("failed bridge registration closes workers and revokes package object URLs", async () => {
+  const { archive, lock, registry } = await htaFixture();
+  const workers = [];
+  const revoked = [];
+  const runtime = {
+    registerResource(namespace) {
+      if (namespace === "db.sqlite.wasm.hta") throw new Error("resource registration failed");
+    },
+    unregisterResource() {},
+    raw: {
+      registerPackageLock() {},
+      install_host_handler() {}
+    }
+  };
+  await assert.rejects(
+    installLockedPackages(runtime, lock, {
+      origin: "https://packages.example",
+      fetch: async (url) => new Response(url.includes("/v1/registry") ? registry : archive),
+      workerFactory() {
+        const worker = new FakeWorker();
+        workers.push(worker);
+        return worker;
+      },
+      createObjectURL: (_blob) => `blob:failed-${workers.length}`,
+      revokeObjectURL: (url) => revoked.push(url)
+    }),
+    /resource registration failed/
+  );
+  assert.equal(workers[0].terminated, true);
+  assert.deepEqual(revoked, ["blob:failed-0", "blob:failed-0"]);
 });
 
 class FakeWorker {

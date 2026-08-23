@@ -156,11 +156,11 @@ function field(map, name) {
   for (const [key, value] of map) {
     if (key instanceof HtaKeyword && key.name === name) return value;
   }
-
-  function namespaceName(value) {
-    return value instanceof HtaKeyword || value instanceof HtaSymbol ? value.name : value;
-  }
   return undefined;
+}
+
+function namespaceName(value) {
+  return value instanceof HtaKeyword || value instanceof HtaSymbol ? value.name : value;
 }
 
 function joinBytes(parts) {

@@ -105,17 +105,18 @@ function toHtaValue(value) {
 }
 
 function registerHostService(runtime, service, handler) {
-  let state = hostDispatchers.get(runtime);
+  const key = runtimeKey(runtime);
+  let state = hostDispatchers.get(key);
   if (!state) {
     const routes = new Map();
-    const dispatcher = async (requestedService, operation, arguments_) => {
+    const dispatcher = (requestedService, operation, arguments_) => {
       const route = routes.get(requestedService);
       if (!route) throw new Error(`host/unsupported-service: ${requestedService}`);
       return route(operation, arguments_);
     };
     installHostHandler(runtime, dispatcher);
     state = { routes, dispatcher };
-    hostDispatchers.set(runtime, state);
+    hostDispatchers.set(key, state);
   }
   if (state.routes.has(service)) throw new Error(`host/service-already-installed: ${service}`);
   state.routes.set(service, handler);
@@ -130,6 +131,10 @@ function installHostHandler(runtime, handler) {
     ?? runtime.raw?.installHostHandler;
   if (typeof install !== "function") throw new Error("package/host-handler-unavailable");
   install.call(runtime.installHostHandler ? runtime : runtime.raw, handler);
+}
+
+function runtimeKey(runtime) {
+  return runtime?.raw ?? runtime;
 }
 
 function hex(bytes) {
@@ -460,9 +465,22 @@ async function activateBrowserHtaExtensions(runtime, extensions, options = {}) {
         hostCalls
       });
       record.context = context;
-      const route = async (operation, arguments_) => toPlainHta(
-        await context.call(operation, toHtaValue(arguments_ ?? []))
-      );
+      const route = (operation, arguments_) => {
+        const request = context.call(operation, toHtaValue(arguments_ ?? []));
+        return context.promiseProvider.create((resolve, reject, onCancel) => {
+          onCancel(() => request.cancel?.());
+          request.then(
+            value => {
+              try {
+                resolve(toPlainHta(value));
+              } catch (error) {
+                reject(error);
+              }
+            },
+            error => reject(stableExtensionError(error))
+          );
+        });
+      };
       removeRoutes.push(registerHostService(runtime, extension.namespace, route));
     }
   } catch (error) {
@@ -486,8 +504,9 @@ async function activateBrowserHtaExtensions(runtime, extensions, options = {}) {
     }
     for (const url of objectUrls.slice().reverse()) revokeObjectURL?.(url);
   };
-  const previous = packageCleanups.get(runtime);
-  packageCleanups.set(runtime, async () => {
+  const key = runtimeKey(runtime);
+  const previous = packageCleanups.get(key);
+  packageCleanups.set(key, async () => {
     await cleanup();
     if (previous) await previous();
   });
@@ -510,6 +529,14 @@ function extensionHostCalls(manifest, configured = {}) {
     }
   }
   return hostCalls;
+}
+
+function stableExtensionError(error) {
+  if (!error?.code || String(error.message).startsWith(`${error.code}:`)) return error;
+  const wrapped = new Error(`${error.code}: ${error.message}`);
+  wrapped.code = error.code;
+  wrapped.data = error.data;
+  return wrapped;
 }
 
 function mimeType(path) {
@@ -555,8 +582,9 @@ function assetReferences(assetPath, fromPath) {
 }
 
 export async function disposeBrowserPackageProviders(runtime) {
-  const cleanup = packageCleanups.get(runtime);
-  packageCleanups.delete(runtime);
+  const key = runtimeKey(runtime);
+  const cleanup = packageCleanups.get(key);
+  packageCleanups.delete(key);
   await cleanup?.();
 }
 

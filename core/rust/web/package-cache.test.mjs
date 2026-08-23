@@ -65,7 +65,8 @@ test("HARP inspection verifies every file and activates namespaces atomically", 
   const manifest = encoder.encode(
     `{:harp/format \"0.0.0-alpha\"\n :package {:identity "example/app" :version "1.0.0"}\n`
     + ` :files {\n${declarations}} :resources {"example.main" "src/example/main.hal" "example.fast" "halc/example.fast.halc"}`
-    + ` :extensions []\n :integrity {:tree-sha256 ${JSON.stringify(await sha256(treeBytes))}}}\n`
+    + ` :extensions {demo.extension {:targets {:browser {:module "src/example/main.hal"}}}}\n`
+    + ` :integrity {:tree-sha256 ${JSON.stringify(await sha256(treeBytes))}}}\n`
   );
   const archiveBytes = storedZip(new Map([["package.edn", manifest], ...files]));
   const archive = await inspectHarp(archiveBytes);
@@ -75,6 +76,7 @@ test("HARP inspection verifies every file and activates namespaces atomically", 
   assert.deepEqual(archive.resources.get("example.fast"), {
     format: "halc", bytes: Uint8Array.from([72, 65, 76, 67, 1])
   });
+  assert.equal(archive.extensions[0].namespace, "demo.extension");
 
   const calls = [];
   await activateLockedPackages({
@@ -89,7 +91,7 @@ test("HARP inspection verifies every file and activates namespaces atomically", 
 
   const tampered = archiveBytes.slice();
   tampered[tampered.lastIndexOf("4".charCodeAt(0))] ^= 1;
-  await assert.rejects(inspectHarp(tampered), /package\/file-integrity|package\/manifest/);
+  await assert.rejects(inspectHarp(tampered), /package\/file-integrity|package\/manifest|package\/zip-malformed/);
 });
 
 function storedZip(entries) {
