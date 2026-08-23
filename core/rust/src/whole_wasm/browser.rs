@@ -49,6 +49,8 @@ impl WholeWasmHost {
     pub fn unbox_i64(&self, handle: i64) -> Result<i64, JsValue> {
         match self.get(handle)? {
             Value::Number(value) => Ok(value),
+            Value::BigInteger(value) => crate::numeric::to_i64_exact(&Value::BigInteger(value))
+                .map_err(|_| js_error("integer overflow".into())),
             _ => Err(js_error("whole-Wasm value is not an integer".into())),
         }
     }

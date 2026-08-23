@@ -32,6 +32,31 @@
    :option/type :path
    :option/scope :route})
 
+(def +project-option+
+  {:option/id :tool.cli.option/project
+   :option/names ["--project" "--root"]
+   :option/type :path
+   :option/scope :global})
+
+(def +tap-option+
+  {:option/id :tool.cli.option/tap
+   :option/names ["--tap"]
+   :option/type :string
+   :option/scope :route})
+
+(def +dry-run-option+
+  {:option/id :tool.cli.option/dry-run
+   :option/names ["--dry-run"]
+   :option/type :boolean
+   :option/scope :route})
+
+(def +format-option+
+  {:option/id :tool.cli.option/format
+   :option/names ["--format"]
+   :option/type :enum
+   :option/values [:text :edn]
+   :option/scope :route})
+
 (def +handler+
   {:handler/id :tool.cli.handler/deploy
    :handler/input :tool.cli.schema/request
@@ -59,27 +84,39 @@
    effective embedded manifest. The operation is idempotent for hosts that
    already provide the declarations."
   [manifest]
-  (assoc
-   (assoc
-    (assoc
-     (assoc manifest
-            :cli/apps
-            (append-declaration
-             (:cli/apps manifest)
-             :app/id
-             +app+))
-     :cli/routes
-     (append-declaration
-      (:cli/routes manifest)
-      :route/id
-      +route+))
-    :cli/options
-    (append-declaration
-     (:cli/options manifest)
-     :option/id
-     +config-option+))
-   :cli/handlers
-   (append-declaration
-    (:cli/handlers manifest)
-    :handler/id
-    +handler+)))
+  (let [options (append-declaration
+                 (append-declaration
+                  (append-declaration
+                   (append-declaration
+                    (append-declaration
+                     (:cli/options manifest)
+                     :option/id
+                     +project-option+)
+                    :option/id
+                    +config-option+)
+                   :option/id
+                   +tap-option+)
+                  :option/id
+                  +dry-run-option+)
+                 :option/id
+                 +format-option+)
+        manifest (assoc manifest
+                        :cli/apps
+                        (append-declaration
+                         (:cli/apps manifest)
+                         :app/id
+                         +app+))
+        manifest (assoc manifest
+                        :cli/routes
+                        (append-declaration
+                         (:cli/routes manifest)
+                         :route/id
+                         +route+))
+        manifest (assoc manifest :cli/options options)
+        manifest (assoc manifest
+                        :cli/handlers
+                        (append-declaration
+                         (:cli/handlers manifest)
+                         :handler/id
+                         +handler+))]
+    manifest))

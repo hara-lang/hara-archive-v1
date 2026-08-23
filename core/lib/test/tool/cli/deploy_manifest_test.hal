@@ -1,0 +1,39 @@
+(ns tool.cli.deploy-manifest-test
+  (:require [tool.cli.deploy-manifest :as deploy]))
+
+(def +base+
+  {:cli/apps []
+   :cli/routes []
+   :cli/options []
+   :cli/handlers []})
+
+[
+^{:refer tool.cli.deploy-manifest/declared?}
+(test-check "declaration lookup distinguishes matching and missing ids"
+            [(deploy/declared? [{:option/id :one}] :option/id :one)
+             (deploy/declared? [{:option/id :one}] :option/id :two)]
+            [true false])
+
+^{:refer tool.cli.deploy-manifest/append-declaration}
+(test-check "declaration append preserves idempotence"
+            [(deploy/append-declaration []
+                                         :option/id
+                                         {:option/id :one})
+             (deploy/append-declaration [{:option/id :one}]
+                                         :option/id
+                                         {:option/id :one})]
+            [[{:option/id :one}]
+             [{:option/id :one}]])
+
+^{:refer tool.cli.deploy-manifest/extend}
+(test-check "deploy extension declares every route dependency"
+            (let [extended (deploy/extend +base+)]
+              [(map (fn [option] (:option/id option))
+                    (:cli/options extended))
+               (= extended (deploy/extend extended))])
+            [[:tool.cli.option/project
+              :tool.cli.option/config
+              :tool.cli.option/tap
+              :tool.cli.option/dry-run
+              :tool.cli.option/format]
+             true])]
