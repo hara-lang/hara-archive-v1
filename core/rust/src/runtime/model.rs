@@ -89,9 +89,9 @@ const EAGER_HAL_RESOURCES: &[&str] = &[
 
 fn ignore_socket_event(_event: core::SocketEvent) {}
 
+#[cfg(not(feature = "raw-wasm"))]
 #[wasm_bindgen(start)]
 pub fn init_wasm() {
-    #[cfg(target_arch = "wasm32")]
     console_error_panic_hook::set_once();
 }
 
@@ -100,6 +100,7 @@ pub fn init_wasm() {
 /// The returned report is produced by the runtime-owned instrumentation hub,
 /// not by JavaScript projection logic. Hosts can therefore compare repeated
 /// browser runs with the native Rust and Java reports byte-for-byte.
+#[cfg(not(feature = "raw-wasm"))]
 #[wasm_bindgen]
 pub fn instrumentation_conformance(corpus: &str) -> Result<String, JsValue> {
     let corpus: serde_json::Value =
@@ -109,18 +110,18 @@ pub fn instrumentation_conformance(corpus: &str) -> Result<String, JsValue> {
     serde_json::to_string_pretty(&report).map_err(|error| JsValue::from_str(&error.to_string()))
 }
 
-#[wasm_bindgen]
+#[cfg_attr(not(feature = "raw-wasm"), wasm_bindgen)]
 pub struct PromiseHandle {
     promise: core::Promise,
 }
 
-#[wasm_bindgen]
+#[cfg_attr(not(feature = "raw-wasm"), wasm_bindgen)]
 impl PromiseHandle {
     fn from_promise(promise: core::Promise) -> PromiseHandle {
         PromiseHandle { promise }
     }
 
-    #[wasm_bindgen(constructor)]
+    #[cfg_attr(not(feature = "raw-wasm"), wasm_bindgen(constructor))]
     pub fn new() -> PromiseHandle {
         PromiseHandle {
             promise: core::Promise::new(),
@@ -156,7 +157,7 @@ impl PromiseHandle {
     }
 }
 
-#[wasm_bindgen]
+#[cfg_attr(not(feature = "raw-wasm"), wasm_bindgen)]
 pub struct Runtime {
     evaluator: Evaluator,
     test_runner: String,
