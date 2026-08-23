@@ -4,6 +4,7 @@
             [code.manage.ns-format :as manage-format]
             [code.manage.ns-rename :as manage-rename]
             [code.manage.unit :as unit]
+            [code.manage.unit.contract :as contract]
             [code.manage.unit.factcheck :as factcheck]
             [code.manage.unit.import :as unit-import]
             [code.manage.unit.isolate :as unit-isolate]
@@ -156,6 +157,8 @@
    'code.manage.unit.factcheck/factcheck-generate
    factcheck/factcheck-generate
    2))
+
+(def check-contract contract/check-contract)
 
 (def snapto
   (composed-task

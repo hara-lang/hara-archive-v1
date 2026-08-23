@@ -40,8 +40,10 @@ RUN apt-get update \
     unzip \
     zip \
   && rm -rf /var/lib/apt/lists/* \
-  && groupadd --gid "${USER_GID}" "${USERNAME}" \
-  && useradd --uid "${USER_UID}" --gid "${USER_GID}" -m -s /bin/bash "${USERNAME}" \
+  && groupadd --force --gid "${USER_GID}" "${USERNAME}" \
+  && if ! id -u "${USERNAME}" >/dev/null 2>&1; then \
+    useradd --uid "${USER_UID}" --non-unique --gid "${USER_GID}" -m -s /bin/bash "${USERNAME}"; \
+  fi \
   && echo "${USERNAME} ALL=(root) NOPASSWD:ALL" > "/etc/sudoers.d/${USERNAME}" \
   && chmod 0440 "/etc/sudoers.d/${USERNAME}"
 

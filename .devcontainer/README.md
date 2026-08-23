@@ -21,7 +21,8 @@ Use these Codex environment values:
 The script installs `hara` and `hara-test` in `$HOME/.local/bin`, persists that
 path in `.bashrc`, prepares both locked Rust graphs and Maven dependencies,
 installs HTA/browser and website packages, and verifies exact clean auxiliary
-checkouts. A dirty or mismatched cached checkout fails without being reset.
+checkouts (including the website's visual-language package). A dirty or
+mismatched cached checkout fails without being reset.
 
 ## Smoke test
 
@@ -34,10 +35,10 @@ hara --project core/lib check
 ## Representative offline checks
 
 ```sh
-cargo +stable test --locked --manifest-path core/rust/Cargo.toml --workspace
-cargo +stable test --locked --manifest-path core/rust/raw/Cargo.toml --workspace
+cargo +stable test --locked --manifest-path core/rust/Cargo.toml
+cargo +stable test --locked --manifest-path core/rust/raw/Cargo.toml
 mvn -o -B -f core/java/pom.xml -Ptruffle test
-npm test --prefix core/rust/web
+npm --prefix core/rust/web run test:hta
 npm run build --prefix website/hara-www
 ```
 

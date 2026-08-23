@@ -7,7 +7,9 @@ repo_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 SPECS_REPOSITORY="https://github.com/hara-lang/hara-specs-registry.git"
 SPECS_REVISION="a40b7da53ed8e4ef241e36a9fd2802b3bc34ea8a"
 WWW_REPOSITORY="https://github.com/hara-lang/hara-www.git"
-WWW_REVISION="cc6462faa9674bd425feaf1d0acb168d3feccb08"
+WWW_REVISION="88179d06aeb0a233b21b63a5ddfd0625aa2352fa"
+VISUAL_LANGUAGE_REPOSITORY="https://github.com/hara-lang/visual-language.git"
+VISUAL_LANGUAGE_REVISION="b512a12e8d7191c9092d195ca0ddc894b0ba54d2"
 
 fail() {
   echo "error: $*" >&2
@@ -104,6 +106,9 @@ git submodule update --init --recursive
 
 ensure_checkout "$SPECS_REPOSITORY" "$SPECS_REVISION" "$repo_root/hara-specs-registry"
 ensure_checkout "$WWW_REPOSITORY" "$WWW_REVISION" "$repo_root/website/hara-www"
+git -C "$repo_root/website/hara-www" submodule update --init --recursive
+ensure_checkout "$VISUAL_LANGUAGE_REPOSITORY" "$VISUAL_LANGUAGE_REVISION" \
+  "$repo_root/website/hara-www/packages/visual-language"
 
 cargo +stable fetch --locked --manifest-path "$repo_root/core/rust/Cargo.toml"
 cargo +stable fetch --locked --manifest-path "$repo_root/core/rust/raw/Cargo.toml"
@@ -136,13 +141,15 @@ print_version "Hara" hara
 print_version "hara-test" hara-test
 printf 'Specs registry: %s\n' "$(git -C "$repo_root/hara-specs-registry" rev-parse HEAD)"
 printf 'Hara website:  %s\n' "$(git -C "$repo_root/website/hara-www" rev-parse HEAD)"
+printf 'Visual language: %s\n' \
+  "$(git -C "$repo_root/website/hara-www/packages/visual-language" rev-parse HEAD)"
 cat <<'CHECKS'
 
 Available checks (dependencies are prepared for offline execution):
   hara --project core/lib check
-  cargo +stable test --locked --manifest-path core/rust/Cargo.toml --workspace
-  cargo +stable test --locked --manifest-path core/rust/raw/Cargo.toml --workspace
+  cargo +stable test --locked --manifest-path core/rust/Cargo.toml
+  cargo +stable test --locked --manifest-path core/rust/raw/Cargo.toml
   mvn -o -B -f core/java/pom.xml -Ptruffle test
-  npm test --prefix core/rust/web
+  npm --prefix core/rust/web run test:hta
   npm run build --prefix website/hara-www
 CHECKS

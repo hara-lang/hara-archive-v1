@@ -1,0 +1,200 @@
+(ns code.manage.unit.contract-test
+  (:use code.test)
+  (:require [code.manage.unit.contract :as contract]))
+
+(def valid-source
+  (str
+   "## Outcome\n"
+   "A fresh agent can execute the issue.\n"
+   "## Context\n"
+   "The repository is authoritative.\n"
+   "## Scope\n"
+   "Implement the checker.\n"
+   "## Non-goals\n"
+   "No connector mutation.\n"
+   "## Acceptance criteria\n"
+   "Diagnostics are deterministic.\n"
+   "## Validation\n"
+   "Run the focused test.\n"
+   "## Relationships\n"
+   "Advances https://github.com/greenways-ai/workspace/issues/26.\n"
+   "## Readiness\n"
+   "Ready.\n"
+   "## Delivery\n"
+   "One focused change.\n"))
+
+(def issue-form-source
+  (str
+   "body:\n"
+   "  - id: outcome\n"
+   "    label: Outcome\n"
+   "    description: A fresh agent can execute the issue.\n"
+   "  - id: context\n"
+   "    label: Context and authority\n"
+   "    description: The repository is authoritative.\n"
+   "  - id: scope\n"
+   "    label: Scope\n"
+   "    description: Implement the checker.\n"
+   "  - id: non-goals\n"
+   "    label: Non-goals\n"
+   "    description: No connector mutation.\n"
+   "  - id: acceptance\n"
+   "    label: Acceptance criteria\n"
+   "    description: Diagnostics are deterministic.\n"
+   "  - id: validation\n"
+   "    label: Validation\n"
+   "    description: Run the focused test.\n"
+   "  - id: relationships\n"
+   "    label: Relationships\n"
+   "    description: Advances the parent issue.\n"
+   "  - id: readiness\n"
+   "    label: Readiness\n"
+   "    description: Ready.\n"
+   "  - id: delivery\n"
+   "    label: Delivery boundary\n"
+   "    description: One focused change.\n"))
+
+^{:refer code.manage.unit.contract/normalize-title}
+(fact "normalizes section titles"
+  (contract/normalize-title "  Acceptance Criteria  ")
+  => "acceptance criteria")
+
+^{:refer code.manage.unit.contract/section-key}
+(fact "maps required section labels"
+  [(contract/section-key "Context")
+   (contract/section-key "Context and authority")
+   (contract/section-key "Delivery boundary")
+   (contract/section-key "Unknown")]
+  => [:context :context :delivery nil])
+
+^{:refer code.manage.unit.contract/parse-document}
+(fact "parses headings and retains section bodies"
+  (let [document (contract/parse-document valid-source)]
+    [(map (fn [section] (:key section)) (:sections document))
+     (:body (nth (:sections document) 0))
+     (:body (nth (:sections document) 8))
+     (:malformed document)])
+  => [[:outcome :context :scope :non-goals :acceptance :validation
+       :relationships :readiness :delivery]
+      "A fresh agent can execute the issue."
+      "One focused change."
+      []])
+
+^{:refer code.manage.unit.contract/canonical-github-link?}
+(fact "accepts only canonical HTTPS GitHub links"
+  [(contract/canonical-github-link?
+    "https://github.com/greenways-ai/workspace/issues/26")
+   (contract/canonical-github-link?
+   "https://github.com/orgs/greenways-ai/projects/2")
+  (contract/canonical-github-link?
+    "http://github.com/greenways-ai/workspace/issues/26")
+   (contract/canonical-github-link?
+    "https://github.com/greenways-ai/workspace/issues/26?tab=comments")
+   (contract/canonical-github-link?
+    "https://github.com/example/workspace/issues/26")
+   (contract/canonical-github-link?
+    "https://github.com/greenways-ai/workspace/issues/26/")]
+  => [true true false false false false])
+
+^{:refer code.manage.unit.contract/trim-link-punctuation}
+(fact "removes sentence punctuation from extracted links"
+  (contract/trim-link-punctuation "https://github.com/hara-lang/hara.")
+  => "https://github.com/hara-lang/hara")
+
+^{:refer code.manage.unit.contract/extract-links}
+(fact "extracts URL tokens without contacting GitHub"
+  (contract/extract-links
+   (str "See https://github.com/greenways-ai/workspace/issues/26, and "
+        "https://github.com/hara-lang/hara?tab=readme."))
+  => ["https://github.com/greenways-ai/workspace/issues/26"
+      "https://github.com/hara-lang/hara?tab=readme"])
+
+^{:refer code.manage.unit.contract/check-contract}
+(fact "validates a complete Markdown contract"
+  (select-keys
+   (contract/check-contract
+    {:kind :issue-form
+     :source valid-source})
+   [:status :valid? :findings :summary])
+  => {:status :pass
+      :valid? true
+      :findings []
+      :summary {:total 0 :errors 0}})
+
+(fact "validates issue-form labels without network access"
+  (select-keys
+   (contract/check-contract
+    {:kind :issue-form
+     :source issue-form-source
+     :relationship "Advances https://github.com/greenways-ai/workspace/issues/26"
+     :links ["https://github.com/greenways-ai/workspace/issues/26"]})
+   [:status :valid? :findings])
+  => {:status :pass :valid? true :findings []})
+
+(fact "reports a missing required section"
+  (let [result
+        (contract/check-contract
+         {:source (str/replace valid-source
+                               "## Scope\nImplement the checker.\n"
+                               "")})]
+    [(get-in result [:findings 0 :code])
+     (get-in result [:findings 0 :path])
+     (:status result)])
+  => [:section/missing "sections/scope" :fail])
+
+(fact "reports duplicate and empty required sections"
+  (let [duplicate
+        (contract/check-contract
+         {:source (str/replace valid-source
+                               "## Context\nThe repository is authoritative.\n"
+                               "## Context\nFirst.\n## Context\nSecond.\n")})
+        empty
+        (contract/check-contract
+         {:source (str/replace valid-source
+                               "A fresh agent can execute the issue.\n"
+                               "")})]
+    [[(get-in duplicate [:findings 0 :code])
+      (get-in duplicate [:findings 0 :path])]
+     [(get-in empty [:findings 0 :code])
+      (get-in empty [:findings 0 :path])]])
+  => [[:section/duplicate "sections/context"]
+      [:section/empty "sections/outcome"]])
+
+(fact "reports malformed section headings"
+  (let [result
+        (contract/check-contract
+         {:source (str/replace valid-source "## Outcome\n" "##Outcome\n")})]
+    [(get-in result [:findings 0 :code])
+     (get-in result [:findings 0 :path])])
+  => [:section/malformed "sections/outcome"])
+
+(fact "reports malformed noncanonical links"
+  (let [result
+        (contract/check-contract
+         {:source valid-source
+          :links ["http://github.com/greenways-ai/workspace/issues/26"]})]
+    [(get-in result [:findings 0 :code])
+     (get-in result [:findings 0 :path])])
+  => [:link/noncanonical "links/0"])
+
+(fact "requires Advances for incomplete work and rejects Closes-only"
+  (let [missing
+        (contract/check-contract
+         {:source valid-source
+          :relationship "Relates https://github.com/greenways-ai/workspace/issues/26"})
+        closes
+        (contract/check-contract
+         {:source valid-source
+          :relationship "Closes https://github.com/greenways-ai/workspace/issues/26"})]
+    [(get-in missing [:findings 0 :code])
+     (get-in closes [:findings 0 :code])])
+  => [:relationship/advances-missing :relationship/closes-only])
+
+(fact "allows Closes when the contract is explicitly complete"
+  (select-keys
+   (contract/check-contract
+    {:source valid-source
+     :complete? true
+     :relationship "Closes https://github.com/greenways-ai/workspace/issues/26"})
+   [:status :valid? :findings])
+  => {:status :pass :valid? true :findings []})
