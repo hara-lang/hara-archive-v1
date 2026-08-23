@@ -3,8 +3,77 @@
   (:require [std.foundation.promise :as promise]
             [std.substrate :as substrate]
             [std.substrate.json :as substrate-json]
+            [std.substrate.result :as result]
             [std.substrate.transport-memory :as memory]))
 
+^{:refer std.substrate.result/result-context}
+(fact "builds a substrate context with optional transport and reply details"
+  [(result/result-context nil "sum" nil nil nil)
+   (result/result-context
+    "room/a"
+    "sum"
+    "transport-1"
+    "transport"
+    {"reply_to" "reply-1"})]
+  => [{"substrate" {"space" "__NODE__"
+                     "action" "sum"}}
+      {"substrate" {"space" "room/a"
+                     "action" "sum"
+                     "transport_id" "transport-1"
+                     "failure" "transport"
+                     "reply_to" "reply-1"}}])
+
+^{:refer std.substrate.result/response-error-value}
+(fact "normalizes response error payloads into application exceptions"
+  (let [string-error
+        (result/response-error-value
+         (substrate/response-error-frame "reply-1" "room/a" "denied" {}))
+        map-error
+        (result/response-error-value
+         (substrate/response-error-frame
+          "reply-1"
+          "room/a"
+          {"message" "invalid" "field" "name"}
+          {}))
+        nil-error
+        (result/response-error-value
+         (substrate/response-error-frame "reply-1" "room/a" nil {}))
+        value
+        (result/response-error-value
+         (substrate/response-error-frame "reply-1" "room/a" 42 {}))]
+    [(ex-message string-error)
+     (ex-message map-error)
+     (ex-message nil-error)
+     value])
+  => ["denied" "invalid" "substrate application error" 42])
+
+^{:refer std.substrate.result/request-error-result}
+(fact "classifies direct errors and response frames"
+  (let [application
+        (result/request-error-result
+         (ex-info "denied" {:code :app/denied})
+         "room/a"
+         "deny"
+         nil)
+        response
+        (result/request-error-result
+         (substrate/response-error-frame
+          "reply-1"
+          "room/a"
+          {"message" "denied"}
+          {})
+         "room/a"
+         "deny"
+         nil)]
+    [(Result/error? application)
+     (ex-message (Result/error-value application))
+     (get-in (Result/context application) ["substrate" "failure"])
+     (Result/error? response)
+     (ex-message (Result/error-value response))
+     (get-in (Result/context response) ["substrate" "reply_to"])])
+  => [true "denied" "application" true "denied" "reply-1"])
+
+^{:refer std.substrate.result/request-result}
 (fact "keeps request portable while offering an opt-in native Result"
   (let [node
         (substrate/node-create
@@ -17,7 +86,7 @@
          (substrate/request node "room/a" "sum" [19 23] {:local true}))
         result
         (promise/value
-         (substrate/request-result
+         (result/request-result
           node "room/a" "sum" [19 23] {:local true}))]
     [raw
      (Result/success? result)
