@@ -372,6 +372,7 @@ fn build_product_document(
             keyword_form("product/files"),
             Form::Vector(
                 [
+                    PACKAGE_FILE,
                     "project.edn",
                     interface.module.as_str(),
                     INTERFACE_FILE,
