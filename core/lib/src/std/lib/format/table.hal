@@ -71,7 +71,7 @@
        (:align column)))
     columns)))
 
-(defn table-lines
+(defn ^{:public true} table-lines
   "Renders a table section into structured, width-aligned lines."
   [section]
   (let [rows (:section/entries section)

@@ -1,27 +1,18 @@
 (ns std.lib.format
+  (:config {:role :facade})
   (:require [std.lib.format.common :as common]
             [std.lib.format.table :as table]
             [std.lib.format.report :as report-format]
             [std.lib.format.terminal :as terminal]))
 
-(def line common/line)
-(def value-text common/value-text)
-(def truncate common/truncate)
-(def pad common/pad)
-
-(def table-lines table/table-lines)
-
-(def report-lines report-format/report-lines)
-
-(defn report
-  "Renders a report document as plain text by default or ANSI when enabled."
-  ([document]
-   (report document {}))
-  ([document options]
-   (terminal/render
-    (report-format/report-lines document options)
-    options)))
-
-(def render-lines terminal/render-lines)
-(def render terminal/render)
-(def emit-lines terminal/emit-lines)
+(intern-in
+ [line common/line]
+ [value-text common/value-text]
+ [truncate common/truncate]
+ [pad common/pad]
+ [table-lines table/table-lines]
+ [report-lines report-format/report-lines]
+ [report report-format/render-report]
+ [render-lines terminal/render-lines]
+ [render terminal/render]
+ [emit-lines terminal/emit-lines])
