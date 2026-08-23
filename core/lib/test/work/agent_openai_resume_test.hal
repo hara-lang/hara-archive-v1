@@ -115,7 +115,7 @@
      (work/result after resumed)
      (deref transport-count)
      (deref publish-count)
-     replay-count]
+     replay-count])
   => [:failed
       :completed
       "publish complete"
