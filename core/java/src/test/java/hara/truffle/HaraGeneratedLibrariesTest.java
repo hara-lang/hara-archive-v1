@@ -6,6 +6,7 @@ import static org.junit.Assert.assertTrue;
 
 import org.graalvm.polyglot.Context;
 import org.graalvm.polyglot.PolyglotException;
+import org.graalvm.polyglot.Value;
 import org.graalvm.polyglot.io.IOAccess;
 import org.junit.Test;
 import java.util.HashSet;
@@ -771,6 +772,31 @@ public class HaraGeneratedLibrariesTest {
   }
 
   @Test
+  public void completionRanksPublicVarsBeforeDeterministicallyOrderedHelpers() {
+    try (Context context = context()) {
+      context.eval(
+          HaraLanguage.ID,
+          "(ns completion.order) "
+              + "(def zebra-helper 1) "
+              + "(def ^{:public true} recommended-api 2) "
+              + "(def alpha-helper 3) "
+              + "(def ^{:public true} advertised-api 4)");
+      Value symbols = context.eval(HaraLanguage.ID, "(current-symbols)");
+      int advertised = indexOf(symbols, "advertised-api");
+      int recommended = indexOf(symbols, "recommended-api");
+      int alpha = indexOf(symbols, "alpha-helper");
+      int zebra = indexOf(symbols, "zebra-helper");
+      assertTrue(advertised >= 0);
+      assertTrue(recommended >= 0);
+      assertTrue(alpha >= 0);
+      assertTrue(zebra >= 0);
+      assertTrue(advertised < recommended);
+      assertTrue(recommended < alpha);
+      assertTrue(alpha < zebra);
+    }
+  }
+
+  @Test
   public void dotCallsAreRestrictedToMarkedArraysAndObjects() {
     try (Context context = context()) {
       assertEquals(
@@ -825,5 +851,12 @@ public class HaraGeneratedLibrariesTest {
     PolyglotException error =
         assertThrows(PolyglotException.class, () -> context.eval(HaraLanguage.ID, source));
     assertTrue(error.getMessage().contains(message));
+  }
+
+  private static int indexOf(Value values, String expected) {
+    for (long index = 0; index < values.getArraySize(); index++) {
+      if (expected.equals(values.getArrayElement(index).asString())) return (int) index;
+    }
+    return -1;
   }
 }

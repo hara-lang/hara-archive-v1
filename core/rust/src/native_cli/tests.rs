@@ -110,6 +110,21 @@ fn documentation_preserves_runtime_metadata() {
 }
 
 #[test]
+fn native_completion_preserves_public_priority_and_deterministic_helpers() {
+    let broker = RuntimeBroker::start().unwrap();
+    let source = "(def zebra-helper 1) ".to_owned()
+        + "(def ^{:public true} recommended-api 2) "
+        + "(def alpha-helper 3) "
+        + "(def ^{:public true} advertised-api 4)";
+    broker.eval("ROOT", &source).unwrap();
+    let symbols = broker.complete("ROOT", "").unwrap();
+    let position = |name: &str| symbols.iter().position(|value| value == name).unwrap();
+    assert!(position("advertised-api") < position("recommended-api"));
+    assert!(position("recommended-api") < position("alpha-helper"));
+    assert!(position("alpha-helper") < position("zebra-helper"));
+}
+
+#[test]
 fn development_resources_are_owned_by_the_kernel_and_seed_future_sessions() {
     let broker = RuntimeBroker::start().unwrap();
     broker

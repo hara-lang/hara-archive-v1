@@ -9,6 +9,7 @@ use rustyline::hint::{Hinter, HistoryHinter};
 use rustyline::history::DefaultHistory;
 use rustyline::validate::{ValidationContext, ValidationResult, Validator};
 use rustyline::{Config, Context, Editor, Helper};
+use std::collections::HashSet;
 use std::env;
 use std::io::{self, BufRead};
 use std::net::TcpStream;
@@ -544,8 +545,8 @@ fn completion_values(broker: &RuntimeBroker) -> Vec<String> {
     if let Ok(mut symbols) = broker.complete("ROOT", "") {
         values.append(&mut symbols);
     }
-    values.sort();
-    values.dedup();
+    let mut seen = HashSet::new();
+    values.retain(|value| seen.insert(value.clone()));
     values
 }
 
@@ -613,14 +614,17 @@ impl Completer for ReplHelper {
         };
         let mut values = choices
             .into_iter()
-            .filter_map(|value| fuzzy_score(prefix, &value).map(|score| (score, value)))
+            .enumerate()
+            .filter_map(|(order, value)| {
+                fuzzy_score(prefix, &value).map(|score| (score, order, value))
+            })
             .collect::<Vec<_>>();
         values.sort_by(|left, right| left.0.cmp(&right.0).then(left.1.cmp(&right.1)));
         Ok((
             start,
             values
                 .into_iter()
-                .map(|(_, value)| Pair {
+                .map(|(_, _, value)| Pair {
                     display: value.clone(),
                     replacement: value,
                 })

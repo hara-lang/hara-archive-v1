@@ -35,6 +35,29 @@ public class JvmFlavorLibrariesTest {
   }
 
   @Test
+  public void completionRanksPublicVarsBeforeDeterministicallyOrderedHelpers() {
+    RT.Instance<Object> runtime = runtime(EnumSet.of(NativeCapability.REFLECTION));
+    runtime.eval(
+        runtime.readString(
+            "(def zebra-helper 1) "
+                + "(def ^{:public true} recommended-api 2) "
+                + "(def alpha-helper 3) "
+                + "(def ^{:public true} advertised-api 4)"));
+    java.util.List<String> symbols = runtime.currentSymbolNames();
+    int advertised = symbols.indexOf("advertised-api");
+    int recommended = symbols.indexOf("recommended-api");
+    int alpha = symbols.indexOf("alpha-helper");
+    int zebra = symbols.indexOf("zebra-helper");
+    assertTrue(advertised >= 0);
+    assertTrue(recommended >= 0);
+    assertTrue(alpha >= 0);
+    assertTrue(zebra >= 0);
+    assertTrue(advertised < recommended);
+    assertTrue(recommended < alpha);
+    assertTrue(alpha < zebra);
+  }
+
+  @Test
   public void classpathRequiresAnIndependentGrant() {
     RT.Instance<Object> runtime = runtime(EnumSet.of(NativeCapability.REFLECTION));
 
