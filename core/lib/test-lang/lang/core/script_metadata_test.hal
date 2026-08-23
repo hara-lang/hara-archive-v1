@@ -62,31 +62,33 @@
         (:schema configured)])
      => [true true true {:ledger {:version 2}}])
 
-   (fact "module loading is idempotent and uses an injected loader"
-     (let [calls (atom [])
-           _ (reset! script/+modules+ {})
-           _ (reset! script/+loaded-modules+ {})
-           _ (reset! script/+module-loaders+ {})
-           _ (script/register-module-loader
-              'demo.module
-              (fn []
-                (do
-                  (swap! calls conj 'demo.module)
-                  (swap! script/+modules+ assoc 'demo.module
-                         {:id 'demo.module}))))
-           loaded
-           [(script/load-module (vector 'demo.module))
-            (script/load-module 'demo.module)]]
-       [loaded
-        (deref calls)
-        (script/module-loaded? 'demo.module)])
-     => [['demo.module 'demo.module]
-         ['demo.module]
-         true])
+   (fact "module loading delegates to ordinary namespace require"
+     (let [modules-before (deref script/+modules+)
+           loaded-before (deref script/+loaded-modules+)
+           scripts-before (deref script/+scripts+)
+           contexts-before (deref script/+module-contexts+)
+           observed
+           (try
+             (reset! script/+modules+ {})
+             (reset! script/+loaded-modules+ {})
+             (reset! script/+scripts+ {})
+             (reset! script/+module-contexts+ {})
+             (let [loaded (script/load-module 'xt.lang.spec-base)]
+               [loaded
+                (get-in (deref script/+modules+)
+                        ['xt.lang.spec-base :id])
+                (boolean (get (deref script/+loaded-modules+)
+                              'xt.lang.spec-base))])
+             (finally
+               (reset! script/+modules+ modules-before)
+               (reset! script/+loaded-modules+ loaded-before)
+               (reset! script/+scripts+ scripts-before)
+               (reset! script/+module-contexts+ contexts-before)))]
+       observed)
+     => ['xt.lang.spec-base 'xt.lang.spec-base true])
 
    (fact "registered modules with no entries are already loaded"
-     (let [calls (atom [])
-           module {:id 'demo.empty
+     (let [module {:id 'demo.empty
                    :lang :postgres
                    :require []
                    :link {'- 'demo.empty}
@@ -94,41 +96,58 @@
                    :fragment {}}
            _ (reset! script/+modules+ {'demo.empty module})
            _ (reset! script/+loaded-modules+ {})
-           _ (reset! script/+module-loaders+ {})
            loaded (script/load-module 'demo.empty)]
        [loaded
-        (script/module-loaded? 'demo.empty)
-        (deref calls)])
-     => ['demo.empty true []])
+        (script/module-loaded? 'demo.empty)])
+     => ['demo.empty true])
 
-   (fact "setup retains the requested target language and loads dependencies once"
+   ^{:refer lang.core.script/script-require-target-id}
+   (fact "specialized module ids retain the source alias"
+     [(script/script-require-target-id 'demo.current 'demo.source nil)
+      (script/script-require-target-id 'demo.current 'demo.source 'src)
+      (script/script-require-target-id 'demo.current 'demo.source
+                                       (vector 'prefix 'src))]
+     => ['demo.current.demo.source
+         'demo.current.src
+         'demo.current.src])
+
+   (fact "setup coordinates namespace dependencies and primary modules"
      (let [module (current-module)
-           calls (atom [])
-           config {:require (vector 'demo.dependency)
-                   :static {:mode :compile}
-                   :schema {:ledger {:version 1}}}
-           _ (reset! script/+modules+ {})
-           _ (reset! script/+loaded-modules+ {})
-           _ (reset! script/+module-loaders+ {})
-           _ (script/register-module-loader
-              'demo.dependency
-              (fn []
-                (do
-                  (swap! calls conj 'demo.dependency)
-                  (swap! script/+modules+ assoc 'demo.dependency
-                         {:id 'demo.dependency}))))
-           _ (do
-               (script/setup :postgres config false)
-               (script/setup :postgres config false))
-           configured (get (deref script/+modules+) module)]
-       [(:lang configured)
-        (:static configured)
-        (:schema configured)
-        (deref calls)])
-     => [:postgres
+           modules-before (deref script/+modules+)
+           loaded-before (deref script/+loaded-modules+)
+           scripts-before (deref script/+scripts+)
+           contexts-before (deref script/+module-contexts+)
+           observed
+           (try
+             (reset! script/+modules+ {})
+             (reset! script/+loaded-modules+ {})
+             (reset! script/+scripts+ {})
+             (reset! script/+module-contexts+ {})
+             (let [config {:require (vector ['xt.lang.spec-base
+                                             :as 'script_metadata_xt
+                                             :primary true])
+                           :static {:mode :compile}
+                           :schema {:ledger {:version 1}}}
+                   _ (script/setup :xtalk module config false)
+                   configured (get (deref script/+modules+) module)]
+               [(:lang configured)
+                (:static configured)
+                (:schema configured)
+                (get-in configured [:link 'script_metadata_xt])
+                (get-in (ns-alias-state 'script_metadata_xt) [:target])
+                (:module/primary configured)])
+             (finally
+               (reset! script/+modules+ modules-before)
+               (reset! script/+loaded-modules+ loaded-before)
+               (reset! script/+scripts+ scripts-before)
+               (reset! script/+module-contexts+ contexts-before)))]
+       observed)
+     => [:xtalk
          {:mode :compile}
          {:ledger {:version 1}}
-         ['demo.dependency]])
+         'xt.lang.spec-base
+         'xt.lang.spec-base
+         #{'xt.lang.spec-base}])
 
    (fact "script contributors register entries in their logical module"
      (let [source (current-module)

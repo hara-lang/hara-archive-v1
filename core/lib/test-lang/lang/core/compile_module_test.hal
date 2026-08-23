@@ -71,20 +71,7 @@
              []
              {'z (fixture-entry 'z "CREATE Z;" [] 0 10)}
              {:dependency {:version 1}})}
-           calls (atom [])
-           _ (reset! script/+modules+ {})
-           _ (reset! script/+loaded-modules+ {})
-           _ (reset! script/+module-loaders+ {})
-           _ (reduce-kv
-              (fn [_ module-id module]
-                (script/register-module-loader
-                 module-id
-                 (fn []
-                   (do
-                     (swap! calls conj module-id)
-                     (swap! script/+modules+ assoc module-id module)))))
-              nil
-              modules)
+           _ (install-modules modules)
            options {:lang :postgres
                     :main 'demo.base
                     :layout :module
@@ -99,16 +86,14 @@
         (vec (map :id (:modules first-result)))
         (get-in first-result [:provenance :entry-order])
         (:output first-result)
-        (diagnostic-codes first-result)
-        (deref calls)])
+        (diagnostic-codes first-result)])
      => [true
          ['demo.dep 'demo.base]
          ['demo.dep/z 'demo.base/b 'demo.base/a]
          (str "-- demo.dep/z\nCREATE Z;\n\n"
               "-- demo.base/b\nCREATE B;\n\n"
               "-- demo.base/a\nCREATE A;")
-         []
-         ['demo.base 'demo.dep]])
+         []])
 
    (fact "missing code dependencies produce a stable diagnostic"
      (let [modules

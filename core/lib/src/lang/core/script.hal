@@ -1,5 +1,6 @@
 (ns lang.core.script
   (:require
+            [lang.common.book :as book]
             [lang.common.compiler :as compiler]
             [lang.core.eval :as evaluation]
             [lang.core.registry :as registry]
@@ -10,29 +11,10 @@
 (def +scripts+ (atom {}))
 (def +loaded-modules+ (atom {}))
 (def +module-contexts+ (atom {}))
-(def +module-loaders+ (atom {}))
-
-(defn register-module-loader
-  "Registers the only loader permitted to provide one exact script module."
-  [module loader]
-  (if (not (fn? loader))
-    (throw (ex :dependency {:module module} :ex/message "Module loader must be a function"))
-    (do
-      (swap! +module-loaders+ assoc module loader)
-      module)))
-
-(defn remove-module-loader
-  [module]
-  (let [loader (get (deref +module-loaders+) module)]
-    (swap! +module-loaders+ dissoc module)
-    loader))
-
-(defn module-loader-info
-  [module]
-  (get (deref +module-loaders+) module))
 
 (def +module-metadata-keys+
-  [:static :application :schema :source])
+  [:static :application :schema :source :require-impl :implements
+   :specialize :includes :export :file :display :module/primary])
 
 (defn- namespace-symbol
   []
@@ -57,6 +39,54 @@
     spec
     (first spec)))
 
+(defn- require-option-value
+  [key value]
+  (cond (= key :as)
+        (list 'quote (if (vector? value) (last value) value))
+
+        (or (= key :refer)
+            (= key :refer-macros)
+            (= key :exclude))
+        (list 'quote value)
+
+        :else
+        value))
+
+(defn- require-options
+  [spec reload?]
+  (if (not (vector? spec))
+    (if reload? {:reload true} {})
+    (loop [remaining (vec (rest spec))
+           options (if reload? {:reload true} {})]
+      (if (empty? remaining)
+        options
+        (let [key (first remaining)
+              value (second remaining)
+              remaining (vec (drop 2 remaining))]
+          (if (or (= key :primary)
+                  (and (= key :with)
+                       (not (or (vector? value)
+                                (list? value)
+                                (set? value)))))
+            (recur remaining options)
+            (let [option-key (if (= key :with) :refer key)]
+              (recur remaining
+                     (assoc options
+                            option-key
+                            (require-option-value option-key value))))))))))
+
+(defn require-primary?
+  [spec]
+  (if (not (vector? spec))
+    false
+    (loop [index 1]
+      (if (>= index (count spec))
+        false
+        (if (and (= :primary (nth spec index))
+                 (= true (nth spec (inc index))))
+          true
+          (recur (+ index 2)))))))
+
 (defn- require-link
   [spec]
   (let [module (require-module spec)
@@ -67,12 +97,16 @@
       (if (empty? remaining)
         [module module]
         (if (= :as (first remaining))
-          [(second remaining) module]
+          [(let [alias (second remaining)]
+             (if (vector? alias) (last alias) alias))
+           module]
           (recur (vec (rest remaining))))))))
 
 (defn- module-config
   [lang module config]
   (let [requires (vec (or (:require config) []))
+        require-impl (vec (or (:require-impl config) []))
+        implements (book/module-normalize-implements (:implements config))
         explicit-links (or (:link config) {})
         links (reduce (fn [out spec]
                         (let [[alias target] (require-link spec)]
@@ -82,6 +116,8 @@
     (merge {:id module
             :lang lang
             :require requires
+            :require-impl require-impl
+            :implements implements
             :link links
             :code {}
             :fragment {}}
@@ -247,24 +283,31 @@
 
 (defn load-module
   [spec]
-  (let [module (require-module spec)]
-    (if (not (module-loaded? module))
-      (let [loader (module-loader-info module)]
-        (if (nil? loader)
-          (throw (ex :dependency {:module module} :ex/message "Script module has no registered loader"))
-          (do
-            (loader)
-            (if (nil? (get (deref +modules+) module))
-              (throw (ex :dependency {:module module} :ex/message "Registered loader did not provide its exact module"))
-              (swap! +loaded-modules+ assoc module true))))))
-    module))
-
-(defn- script-load-forms
-  [config]
-  (map (fn [spec]
-         (list 'lang.core.script/load-module
-               (list 'quote spec)))
-       (or (:require config) [])))
+  (let [source (require-module spec)
+        known-module (or (get (deref +module-contexts+) source)
+                         source)
+        loaded? (module-loaded? known-module)
+        source-configured? (boolean (get (deref +module-contexts+) source))]
+    ;; Script dependencies are Hara namespaces first.  The ordinary namespace
+    ;; loader owns source/resource resolution, cycle detection, reload, and
+    ;; transactional rollback.  A configured source is required without
+    ;; reload so that its aliases/referred vars are still applied; an
+    ;; in-memory fixture module has no source context and is already complete.
+    (if (or (not loaded?) source-configured?)
+      (eval (list 'require
+                  (list 'quote source)
+                  (require-options spec (not loaded?))))
+      nil)
+    (let [module (or (get (deref +module-contexts+) source)
+                     source)
+          value (get (deref +modules+) module)]
+      (if (nil? value)
+        (throw (ex :dependency {:module module
+                         :source source}
+                   :ex/message "Required namespace did not provide a script module"))
+        (do
+          (swap! +loaded-modules+ assoc module true)
+          module)))))
 
 (defn- intern-form
   [target-symbol]
@@ -313,17 +356,40 @@
     (swap! +scripts+ assoc coordinate value)
     value))
 
+(defn script-require-target-id
+  "Constructs the logical module id used for a same-language specialization."
+  [module-id source-id as]
+  (symbol
+   (str module-id
+        "."
+        (name (or (if (vector? as) (last as) as)
+                  source-id)))))
+
+(defn script-ns-import
+  "Requires script dependencies and returns the explicitly primary sources."
+  [lang config]
+  (let [require-impl (vec (or (:require-impl config) []))
+        implements (book/module-normalize-implements (:implements config))
+        requires (vec (or (:require config) []))
+        entries (concat require-impl implements requires)]
+    (reduce (fn [primary spec]
+              (let [source (require-module spec)]
+                (load-module spec)
+                (if (require-primary? spec)
+                  (conj primary source)
+                  primary)))
+            #{}
+            entries)))
+
 (defn setup
   ([lang config test?]
    (setup lang (namespace-symbol) config test?))
   ([lang module config test?]
-   (reduce (fn [_ spec]
-             (load-module spec))
-           nil
-           (or (:require config) []))
-   (configure-module lang module config)
-   (if test?
-     (register-script lang module config))
+   (let [primary (script-ns-import lang config)
+         config (assoc config :module/primary primary)]
+     (configure-module lang module config)
+     (if test?
+       (register-script lang module config)))
    nil))
 
 (defn script-test-form
@@ -478,18 +544,6 @@
                      expression)
         sources (conj (nth compiled 1) expression)]
     (str/join "\n" sources)))
-
-(defn require-primary?
-  [spec]
-  (if (not (vector? spec))
-    false
-    (loop [index 1]
-      (if (>= index (count spec))
-        false
-        (if (and (= :primary (nth spec index))
-                 (= true (nth spec (inc index))))
-          true
-          (recur (+ index 2)))))))
 
 (defn restart
   []

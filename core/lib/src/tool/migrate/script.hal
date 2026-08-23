@@ -136,6 +136,10 @@
   'lang.core.script/+module-metadata-keys+
   'lang.core/runtime-spec
   'lang.core.script/load-module
+  'lang.core.script/script-ns-import
+  'lang.core.script/script-require-target-id
+  'lang.common.book/module-specialize-bindings
+  'lang.common.book/module-specialize
   'lang.core/script-import-symbols
   'lang.core.script/configure-module
   'lang.core/script-expansion
@@ -235,11 +239,11 @@
     :path "src/tahto/core/script.clj"}
    :validation 'lang.core.script-contract-test/run}
   {:source/refer 'tahto.core.script/script-ns-import
-   :target/refer 'lang.core.script/load-module
+   :target/refer 'lang.core.script/script-ns-import
    :disposition :adapted
    :stage/from :script
-   :stage/to :module-loader
-   :reason :script-registration-is-owned-by-explicit-language-and-runtime-registries
+   :stage/to :namespace-coordination
+   :reason :ordinary-hara-require-owns-source-resolution
    :provenance
    {:repository "zcaudate-xyz/foundation-base"
     :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
@@ -257,33 +261,33 @@
     :path "src/tahto/core/script.clj"}
    :validation 'lang.core.script-contract-test/run}
   {:source/refer 'tahto.core.script/script-require-target-id
-   :target/refer 'lang.core.script/load-module
+   :target/refer 'lang.core.script/script-require-target-id
    :disposition :adapted
    :stage/from :script
-   :stage/to :module-loader
-   :reason :script-registration-is-owned-by-explicit-language-and-runtime-registries
+   :stage/to :module-specialization
+   :reason :module-specialization-derives-target-identities
    :provenance
    {:repository "zcaudate-xyz/foundation-base"
     :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
     :path "src/tahto/core/script.clj"}
    :validation 'lang.core.script-contract-test/run}
   {:source/refer 'tahto.core.script/script-specialize-merge-contracts
-   :target/refer 'lang.core.script/configure-module
+   :target/refer 'lang.common.book/module-specialize-bindings
    :disposition :adapted
    :stage/from :script
-   :stage/to :module-config
-   :reason :script-registration-is-owned-by-explicit-language-and-runtime-registries
+   :stage/to :module-specialization
+   :reason :book-specialization-owns-contract-bindings
    :provenance
    {:repository "zcaudate-xyz/foundation-base"
     :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
     :path "src/tahto/core/script.clj"}
    :validation 'lang.core.script-contract-test/run}
   {:source/refer 'tahto.core.script/script-specialize-require
-   :target/refer 'lang.core.script/load-module
+   :target/refer 'lang.common.book/module-specialize
    :disposition :adapted
    :stage/from :script
-   :stage/to :module-loader
-   :reason :script-registration-is-owned-by-explicit-language-and-runtime-registries
+   :stage/to :module-specialization
+   :reason :book-specialization-replaces-runtime-library-snapshot-resolution
    :provenance
    {:repository "zcaudate-xyz/foundation-base"
     :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
@@ -294,7 +298,7 @@
    :disposition :adapted
    :stage/from :script
    :stage/to :module-config
-   :reason :script-registration-is-owned-by-explicit-language-and-runtime-registries
+   :reason :specialization-is-retained-in-source-owned-module-configuration
    :provenance
    {:repository "zcaudate-xyz/foundation-base"
     :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
