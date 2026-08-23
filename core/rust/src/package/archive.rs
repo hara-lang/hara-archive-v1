@@ -143,6 +143,7 @@ pub(super) fn build_archive(project: &Project, output: &Path) -> Result<(), Stri
         writer.write_all(&bytes).map_err(io_error)?;
     }
     writer.finish().map_err(zip_error)?;
+    PackageManifest::read_archive(output).map_err(|error| error.to_string())?;
     Ok(())
 }
 
@@ -212,15 +213,26 @@ pub(super) fn package_manifest(
             )
         })
         .unwrap_or_default();
+    let schema_catalog = contents
+        .iter()
+        .find(|(path, _)| path == Path::new("catalog/std-typed-catalog.json"))
+        .map(|(_, bytes)| {
+            format!(
+                "\n :schema/catalog {{:format \"std.typed.catalog/1\" :path \"catalog/std-typed-catalog.json\" :sha256 \"sha256:{}\"}}",
+                hex(&Sha256::digest(bytes))
+            )
+        })
+        .unwrap_or_default();
     let identity = crate::project::normalize_coordinate(&project.id)?;
     Ok(format!(
-        "{{:harp/format \"0.0.0-alpha\"\n :package {{:identity {} :version {}}}\n :files {{\n{}}} :resources {{\n{}}} :extensions {}{}\n :integrity {{:tree-sha256 \"sha256:{}\"}}}}\n",
+        "{{:harp/format \"0.0.0-alpha\"\n :package {{:identity {} :version {}}}\n :files {{\n{}}} :resources {{\n{}}} :extensions {}{}{}\n :integrity {{:tree-sha256 \"sha256:{}\"}}}}\n",
         edn_string(&identity),
         edn_string(&project.version.to_string()),
         files,
         resources,
         extensions,
         bytecode,
+        schema_catalog,
         hex(&hasher.finalize())
     ))
 }

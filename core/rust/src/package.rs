@@ -367,6 +367,7 @@ fn publish_inner(
     let commit = tap::git(&project.root, ["rev-list", "-n", "1", &tag])?;
     let repository = tap::git(&project.root, ["config", "--get", "remote.origin.url"])?;
     let recipe = validate_recipe(project)?;
+    build_archive(project, &scratch_root.join("publish.harp"))?;
     let recipe_sha256 = file_sha256(&recipe)?;
     let coordinate = project::normalize_coordinate(&project.id)?;
     let intent = tap::canonical_recipe_intent(

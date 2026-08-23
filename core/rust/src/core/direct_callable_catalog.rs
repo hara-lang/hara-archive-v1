@@ -362,6 +362,12 @@ pub(crate) const DIRECT_CALLABLE_CATALOG: &[DirectCallableSpec] = &[
         Operation(direct_predicate_operation)
     ),
     direct!(
+        "file/parent",
+        DirectCallableArity::Exact(1),
+        RuntimePrimitive,
+        Operation(direct_file_operation)
+    ),
+    direct!(
         "filter",
         DirectCallableArity::Between {
             minimum: 1,
@@ -555,6 +561,12 @@ pub(crate) const DIRECT_CALLABLE_CATALOG: &[DirectCallableSpec] = &[
         Operation(direct_predicate_operation)
     ),
     direct!(
+        "map-entry?",
+        DirectCallableArity::Exact(1),
+        BootstrapLibrary,
+        Operation(direct_predicate_operation)
+    ),
+    direct!(
         "map",
         DirectCallableArity::AtLeast(1),
         BootstrapLibrary,
@@ -586,6 +598,12 @@ pub(crate) const DIRECT_CALLABLE_CATALOG: &[DirectCallableSpec] = &[
         DirectCallableArity::Exact(2),
         RuntimePrimitive,
         Basic
+    ),
+    direct!(
+        "module-revision",
+        DirectCallableArity::Exact(1),
+        RuntimePrimitive,
+        Operation(direct_namespace_callable_operation)
     ),
     direct!(
         "name",
@@ -635,6 +653,12 @@ pub(crate) const DIRECT_CALLABLE_CATALOG: &[DirectCallableSpec] = &[
             minimum: 1,
             maximum: 2
         },
+        BootstrapLibrary,
+        Operation(direct_namespace_callable_operation)
+    ),
+    direct!(
+        "ns:imports",
+        DirectCallableArity::Exact(1),
         BootstrapLibrary,
         Operation(direct_namespace_callable_operation)
     ),
@@ -868,6 +892,12 @@ pub(crate) const DIRECT_CALLABLE_CATALOG: &[DirectCallableSpec] = &[
         Operation(direct_predicate_operation)
     ),
     direct!("str", DirectCallableArity::Any, RuntimePrimitive, String),
+    direct!(
+        "str/trim",
+        DirectCallableArity::Exact(1),
+        BootstrapLibrary,
+        Operation(direct_string_operation)
+    ),
     direct!(
         "string?",
         DirectCallableArity::Exact(1),

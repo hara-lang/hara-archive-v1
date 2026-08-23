@@ -115,7 +115,7 @@
        (sort-by
         (fn [entry]
           (pr-str (canonical-value (key entry))))
-        value)))]
+        (seq value))))]
 
     (vector? value)
     [:vector (vec (map canonical-value value))]
@@ -409,11 +409,11 @@
   (vec
    (sort-by
     (fn [coordinate-value] (pr-str coordinate-value))
-    (get (:dependencies catalog-value) schema-coordinate #{}))))
+    (seq (get (:dependencies catalog-value) schema-coordinate #{})))))
 
 (defn- sort-portable
   [values]
-  (vec (sort-by (fn [value] (pr-str value)) values)))
+  (vec (sort-by (fn [value] (pr-str value)) (seq values))))
 
 (defn- require-catalog-value
   [catalog-value operation]

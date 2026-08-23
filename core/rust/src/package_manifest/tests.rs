@@ -126,3 +126,36 @@ fn canonicalization_is_idempotent_and_file_verification_is_exact() {
     let canonical = manifest.canonical_edn().to_owned();
     assert_eq!(PackageManifest::parse(&canonical).unwrap().canonical_edn(), canonical);
 }
+
+#[test]
+fn schema_catalog_descriptor_is_bound_to_declared_bytes_and_canonical_admission() {
+    let manifest = PackageManifest::parse(
+        r#"{:harp/format "0.0.0-alpha"
+             :package {:identity "hara:example/catalog" :version "1.0.0"}
+             :files {"catalog/std-typed-catalog.json"
+                     {:sha256 "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+                      :size 2}}
+             :schema/catalog {:format "std.typed.catalog/1"
+                              :path "catalog/std-typed-catalog.json"
+                              :sha256 "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"}}"#,
+    )
+    .unwrap();
+    let error = manifest.admit_catalog_bytes(b"{}").unwrap_err();
+    assert_eq!(error.code, "package/catalog-invalid");
+    assert!(error.detail.contains("canonical std.typed catalog admission"));
+}
+
+#[test]
+fn schema_catalog_descriptor_rejects_unsupported_format_before_runtime() {
+    let source = r#"{:harp/format "0.0.0-alpha"
+                    :package {:identity "hara:example/catalog" :version "1.0.0"}
+                    :files {"catalog.json"
+                            {:sha256 "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+                             :size 2}}
+                    :schema/catalog {:format "std.typed.catalog/2"
+                                     :path "catalog.json"
+                                     :sha256 "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"}}"#;
+    let manifest = PackageManifest::parse(source).unwrap();
+    let error = manifest.admit_catalog_bytes(b"{}").unwrap_err();
+    assert_eq!(error.code, "package/catalog-unsupported");
+}

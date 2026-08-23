@@ -107,6 +107,69 @@ fn representative_direct_callables_preserve_value_behavior() {
     );
 }
 
+#[test]
+fn namespace_string_file_and_map_entry_operations_are_direct_callables() {
+    let registry = crate::kernel::NamespaceRegistry::new("user");
+    let imported = registry.find_or_create("direct.imports");
+    imported.import("Vector", "vendor.numeric.Vector");
+    let revision = registry.module_revision("direct.imports");
+
+    with_namespace_registry(&registry, || {
+        assert_eq!(
+            call_value(
+                direct_callable_value("module-revision").unwrap(),
+                vec![Value::Symbol(Symbol::parse("direct.imports"))],
+            )
+            .unwrap(),
+            Value::Number(revision as i64)
+        );
+
+        assert_eq!(
+            call_value(
+                direct_callable_value("str/trim").unwrap(),
+                vec![Value::String("  hara  ".into())],
+            )
+            .unwrap(),
+            Value::String("hara".into())
+        );
+
+        assert_eq!(
+            call_value(
+                direct_callable_value("file/parent").unwrap(),
+                vec![Value::String("/a/b".into())],
+            )
+            .unwrap(),
+            Value::String("/a".into())
+        );
+
+        assert_eq!(
+            call_value(
+                direct_callable_value("map-entry?").unwrap(),
+                vec![Value::Tuple(Box::new(
+                    PTuple::from_values(
+                        vec![Value::Keyword("a".into()), Value::Number(1)],
+                    )
+                    .unwrap(),
+                ))],
+            )
+            .unwrap(),
+            Value::Bool(true)
+        );
+
+        assert_eq!(
+            call_value(
+                direct_callable_value("ns:imports").unwrap(),
+                vec![Value::Namespace(Rc::new(imported))],
+            )
+            .unwrap(),
+            Value::Map(PMap::from_iter([(
+                Value::Symbol(Symbol::parse("Vector")),
+                Value::String("vendor.numeric.Vector".into()),
+            )]))
+        );
+    });
+}
+
 #[cfg(not(feature = "raw-wasm"))]
 #[test]
 fn specs_owned_direct_callable_bootstrap_fixture_runs_before_foundation_source_loading() {
