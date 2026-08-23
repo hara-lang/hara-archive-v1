@@ -1068,17 +1068,6 @@ fn file_values(operation: &str, values: Vec<Value>) -> Result<Value, String> {
         .unwrap_or_else(|| operation.to_owned());
     let operation = operation.as_str();
     match operation {
-        "file/parent" => {
-            if values.len() != 1 {
-                return Err("file/parent expects a path".into());
-            }
-            let Value::String(path) = &values[0] else {
-                return Err("file/parent expects a path".into());
-            };
-            crate::file::logical_parent(&path)
-                .map(|parent| parent.map(Value::String).unwrap_or(Value::Nil))
-                .map_err(|error| file_error(operation, error))
-        }
         "file/join" | "file/resolve" => {
             if values.len() != 2 {
                 return Err(format!("{operation} expects a base and path"));

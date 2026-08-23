@@ -411,6 +411,9 @@ impl Runtime {
                     let macros_before = self.macros.borrow().clone();
                     let configs_before = self.generated_configs.clone();
                     let loaded_before = self.loaded_resources.clone();
+                    if let Some(alias) = config.global_alias() {
+                        self.namespace_registry.register_global_alias(alias, &name)?;
+                    }
                     self.generated_configs.insert(name.clone(), config);
                     self.use_namespace(&name);
                     let config = self
@@ -520,11 +523,28 @@ impl Runtime {
                     self.generated_configs.insert(current, config);
                 }
             }
-            let config = self
+            let mut config = self
                 .generated_configs
                 .get(&self.current_namespace())
                 .cloned()
                 .unwrap_or_else(kernel::GeneratedNamespaceConfig::defaults);
+            let excluded = config.excluded_foundation().clone();
+            config.set_global_aliases(
+                self.namespace_registry
+                    .global_aliases()
+                    .into_iter()
+                    .filter(|(_, namespace)| {
+                        !excluded.contains(
+                            namespace
+                                .as_str()
+                                .strip_prefix("std.foundation.")
+                                .unwrap_or_default(),
+                        )
+                    })
+                    .map(|(alias, namespace)| {
+                        (alias.as_str().to_owned(), namespace.as_str().to_owned())
+                    }),
+            );
             reject_legacy_iterator_calls(&form)?;
             let resolved = config.rewrite(form);
             result = self.eval_form(resolved, traced)?;
@@ -715,9 +735,6 @@ impl Runtime {
 
     fn sync_generated_aliases(&self, config: &kernel::GeneratedNamespaceConfig) {
         let target = self.namespace_registry.current();
-        for (_, default_alias) in kernel::generated::foundation_library_aliases() {
-            target.unalias(default_alias);
-        }
         for (alias, namespace) in config.aliases() {
             if let Some(source) = self.namespace_registry.find(&namespace) {
                 target.alias(alias, source);

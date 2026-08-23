@@ -3,6 +3,7 @@
             [tool.cli.project-command :as project-command]
             [tool.metaspec.schema :as schema]
             [code.project :as project]
+            [std.fs.path :as path]
             [work.base :as work]))
 
 (def +route-operations+
@@ -95,7 +96,7 @@
         (if (not= (count paths) (count (set paths)))
           (throw (ex :conflict {} :ex/message "asset.edn contains duplicate :entry/path values"))
           nil)
-        {:asset/root (file/parent descriptor)
+        {:asset/root (path/parent descriptor)
          :asset/descriptor descriptor
          :asset/coordinate coordinate
          :asset/version version
@@ -157,7 +158,7 @@
                    (option-value arguments "--output")
                    (file/join (:asset/root collection) "target/asset-manifest.edn"))
         manifest (build-manifest collection)]
-    (if-let [parent (file/parent output)]
+    (if-let [parent (path/parent output)]
       (deref (file/mkdir parent))
       nil)
     (deref (file/write output (str/encode-utf8 (str (pr-str manifest) "\n"))))

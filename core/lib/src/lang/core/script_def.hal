@@ -1,6 +1,4 @@
-(ns lang.core.script-def
-  (:require [std.foundation :as f]
-            [std.foundation.string :as str]))
+(ns lang.core.script-def)
 
 (defn sym-default-inverse-str
   [symbol-value]
@@ -10,7 +8,7 @@
   "Generates one portable def.* or def$.* form from template metadata."
   [s]
   (let [{:keys [tag type base prefix shrink]
-         :or {base []}} (f/template-meta)
+         :or {base []}} (std.foundation/template-meta)
         base (if (vector? base) base [base])
         dsym (case type
                :fragment (symbol (str "def$." tag))
@@ -29,7 +27,7 @@
   [[s args options]]
   (let [{:keys [property optional vargs empty]} (or options {})
         {:keys [tag inst prefix subtree]
-         :or {inst "obj"}} (f/template-meta)
+         :or {inst "obj"}} (std.foundation/template-meta)
         inst (symbol (str inst))
         pair (if (vector? s) s [s s])
         sym0 (first pair)

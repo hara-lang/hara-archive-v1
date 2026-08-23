@@ -4,6 +4,7 @@
             [tool.cli.project-command :as project-command]
             [code.project :as project]
             [tool.sh :as sh]
+            [std.fs.path :as path]
             [work.base :as work]))
 
 (def +route-operations+
@@ -367,7 +368,7 @@
                        (str "Built " (:project/id package) " at " result "\n"))]))))
 
 (defn copy-file [source target]
-  (if-let [parent (file/parent target)] (deref (file/mkdir parent)) nil)
+  (if-let [parent (path/parent target)] (deref (file/mkdir parent)) nil)
   (deref (file/write target (deref (file/read source)))))
 
 (defn install-command [request source]

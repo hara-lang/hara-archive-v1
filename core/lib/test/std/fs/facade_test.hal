@@ -1,8 +1,7 @@
 ;; The public filesystem surface lives under std.fs.
 (ns std.fs.facade-test
   (:use code.test)
-  (:require [std.foundation.string :as str]
-            [std.fs :as fs]
+  (:require [std.fs :as fs]
             [std.fs.path :as path]
             [std.fs.walk :as walk]))
 

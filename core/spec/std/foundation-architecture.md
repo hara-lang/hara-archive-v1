@@ -29,6 +29,12 @@ The five child namespaces provide separately aliased portable/native-backed libr
 | `std.foundation.coroutine` | `co` | coroutine facade |
 | `std.foundation.pretty` | `pretty` | document and pretty rendering |
 
+These are source-owned global aliases. Each Foundation namespace declares its
+alias with `(:config {:global-alias alias})`; the Rust runtime records and
+applies those declarations but does not seed `str`, `bytes`, `promise`, `co`,
+or `pretty` as native defaults. Explicit `:require` aliases remain available
+for local naming.
+
 ## Native static objects
 
 The schema-v2 API manifest records native static objects separately from loadable namespaces. The current cross-profile runtime configuration includes objects such as `Edn`, `Json`, `RegExp`, `Crypto`, `File`, `Socket`, `Host`, and `Kernel`, backed by `std.native.*` runtime identities. They are available without requiring file-backed `std.native.*` namespaces.

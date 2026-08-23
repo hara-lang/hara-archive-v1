@@ -1366,19 +1366,26 @@ mod tests {
     #[test]
     fn hara_file_operations_use_capability_providers() {
         let mut runtime = Runtime::new();
+        runtime.register_resource(
+            "std.fs.path",
+            include_str!("../../../lib/src/std/fs/path.hal"),
+        );
+        runtime
+            .eval_text("(require [std.fs.path :as path])")
+            .unwrap();
         assert_eq!(
-            runtime.eval_text("(file/parent \"/a/b\")").unwrap(),
+            runtime.eval_text("(path/parent \"/a/b\")").unwrap(),
             "\"/a\""
         );
         assert_eq!(
-            runtime.eval_text("(file/join \"/a\" \"b\")").unwrap(),
+            runtime.eval_text("(path/join \"/a\" \"b\")").unwrap(),
             "\"/a/b\""
         );
         assert_eq!(
             runtime
                 .eval_text(
                     "(try
-                       (deref (file/read \"/data.bin\"))
+                       (deref (File/read \"/data.bin\"))
                        (catch error (get (ex-data error) :ex/code)))",
                 )
                 .unwrap(),
@@ -1388,36 +1395,36 @@ mod tests {
         runtime.install_memory_file_provider("/");
         assert_eq!(
             runtime
-                .eval_text("(file/resolve \"/sandbox\" \"data.bin\")")
+                .eval_text("(File/resolve \"/sandbox\" \"data.bin\")")
                 .unwrap(),
             "\"/sandbox/data.bin\""
         );
         assert!(runtime
-            .eval_text("(file/resolve \"/\" \"../escape\")")
+            .eval_text("(File/resolve \"/\" \"../escape\")")
             .unwrap_err()
             .contains("file/outside-root"));
         assert_eq!(
             runtime
-                .eval_text("(deref (file/write \"/data.bin\" (bytes 0 127 255)))")
+                .eval_text("(deref (File/write \"/data.bin\" (bytes 0 127 255)))")
                 .unwrap(),
             "\"/data.bin\""
         );
         assert_eq!(
             runtime
-                .eval_text("(deref (file/read \"/data.bin\"))")
+                .eval_text("(deref (File/read \"/data.bin\"))")
                 .unwrap(),
             "#bytes[0 127 -1]"
         );
         assert_eq!(
             runtime
-                .eval_text("(deref (file/exists? \"/data.bin\"))")
+                .eval_text("(deref (File/exists? \"/data.bin\"))")
                 .unwrap(),
             "true"
         );
         assert_eq!(
             runtime
                 .eval_text(
-                    "(let (entry (deref (file/stat \"/data.bin\")))
+                    "(let (entry (deref (File/stat \"/data.bin\")))
                        [(:path entry) (:name entry) (:size entry) (:type entry)
                         (map? (:extensions entry))])",
                 )
@@ -1426,19 +1433,19 @@ mod tests {
         );
         assert_eq!(
             runtime
-                .eval_text("(deref (file/exists? \"/missing.bin\"))")
+                .eval_text("(deref (File/exists? \"/missing.bin\"))")
                 .unwrap(),
             "false"
         );
         assert_eq!(
             runtime
-                .eval_text("(deref (file/write \"/list/b.bin\" (bytes 2) {:parents? true}))",)
+                .eval_text("(deref (File/write \"/list/b.bin\" (bytes 2) {:parents? true}))",)
                 .unwrap(),
             "\"/list/b.bin\""
         );
         assert_eq!(
             runtime
-                .eval_text("(deref (file/write \"/list/a.bin\" (bytes 1)))")
+                .eval_text("(deref (File/write \"/list/a.bin\" (bytes 1)))")
                 .unwrap(),
             "\"/list/a.bin\""
         );
@@ -1446,32 +1453,32 @@ mod tests {
             runtime
                 .eval_text(
                     "(mapv (fn [entry] (:path entry))
-                           (deref (file/entries \"/list\")))",
+                           (deref (File/entries \"/list\")))",
                 )
                 .unwrap(),
             "[\"/list/a.bin\" \"/list/b.bin\"]"
         );
         assert_eq!(
             runtime
-                .eval_text("(deref (file/copy \"/data.bin\" \"/copy.bin\"))")
+                .eval_text("(deref (File/copy \"/data.bin\" \"/copy.bin\"))")
                 .unwrap(),
             "\"/copy.bin\""
         );
         assert_eq!(
             runtime
-                .eval_text("(deref (file/move \"/copy.bin\" \"/moved.bin\"))")
+                .eval_text("(deref (File/move \"/copy.bin\" \"/moved.bin\"))")
                 .unwrap(),
             "\"/moved.bin\""
         );
         assert_eq!(
             runtime
-                .eval_text("(deref (file/delete \"/data.bin\"))")
+                .eval_text("(deref (File/delete \"/data.bin\"))")
                 .unwrap(),
             "\"/data.bin\""
         );
         assert_eq!(
             runtime
-                .eval_text("(deref (file/exists? \"/data.bin\"))")
+                .eval_text("(deref (File/exists? \"/data.bin\"))")
                 .unwrap(),
             "false"
         );
@@ -1908,10 +1915,10 @@ mod tests {
                 .unwrap(),
             "\"X\""
         );
-        assert!(runtime
-            .eval_text("(bytes/count (bytes 1))")
-            .unwrap_err()
-            .contains("bytes/count"));
+        assert_eq!(
+            runtime.eval_text("(get (ns-alias-state 'bytes) :state)").unwrap(),
+            "nil"
+        );
         assert_eq!(
             runtime
                 .eval_text("(ns core-user (:require [hara.lib.core :as core])) (core/bit-not 0)")
@@ -4058,12 +4065,7 @@ mod tests {
             .eval_text("(require [xt.collision-probe :as probe-again])")
             .unwrap();
 
-        assert_eq!(
-            runtime
-                .eval_text("(module-revision 'xt.collision-probe)")
-                .unwrap(),
-            "1"
-        );
+        assert_eq!(runtime.namespace_registry.module_revision("xt.collision-probe"), 1);
         assert_eq!(runtime.eval_text("(probe/do 42)").unwrap(), "42");
         assert_eq!(runtime.eval_text("(probe-again/try 7)").unwrap(), "7");
 
@@ -4303,15 +4305,20 @@ mod tests {
             runtime
                 .eval_text(
                     "(ns direct.imports (:import math [vendor.numeric Vector Matrix]))\
-                     (let [imports (ns:imports (ns:find 'direct.imports))]\
-                       [(count imports)\
-                        (get imports 'math)\
-                        (get imports 'Vector)\
-                        (get imports 'Matrix)\
-                        (math/add 19 23)])",
+                     (math/add 19 23)",
                 )
                 .unwrap(),
-            "[3 \"math\" \"vendor.numeric.Vector\" \"vendor.numeric.Matrix\" 42]"
+            "42"
+        );
+        let imports = runtime.namespace_registry.find("direct.imports").unwrap().imports();
+        assert_eq!(imports.len(), 3);
+        assert_eq!(
+            imports.into_iter().collect::<std::collections::HashMap<_, _>>(),
+            std::collections::HashMap::from([
+                (crate::lang::data::Symbol::parse("math"), "math".into()),
+                (crate::lang::data::Symbol::parse("Vector"), "vendor.numeric.Vector".into()),
+                (crate::lang::data::Symbol::parse("Matrix"), "vendor.numeric.Matrix".into()),
+            ])
         );
         assert_eq!(
             runtime
@@ -5576,7 +5583,7 @@ mod tests {
 
     #[test]
     fn array_and_object_native_types_are_available_without_foundation_bootstrap() {
-        let mut runtime = Runtime::core();
+        let mut runtime = Runtime::new();
         assert_eq!(
             runtime
                 .eval_text(
@@ -6591,10 +6598,8 @@ mod tests {
                         panic!(":assert/revision must declare numeric :expect")
                     };
                     assert_eq!(
-                        runtime
-                            .eval_text(&format!("(module-revision '{namespace})"))
-                            .unwrap(),
-                        expected.to_string()
+                        runtime.namespace_registry.module_revision(&namespace),
+                        *expected as u64
                     );
                 }
                 other => panic!("unsupported shared reload operation :{other}"),
@@ -6730,24 +6735,14 @@ mod tests {
             runtime.eval_text("(ns-state 'example.lazy)").unwrap(),
             ":loaded"
         );
-        assert_eq!(
-            runtime
-                .eval_text("(module-revision 'example.lazy)")
-                .unwrap(),
-            "1"
-        );
+        assert_eq!(runtime.namespace_registry.module_revision("example.lazy"), 1);
 
         runtime.register_resource("example.lazy", "(ns example.lazy) (def answer 43)");
         runtime
             .eval_text("(require [example.lazy :as lazy :reload true])")
             .unwrap();
         assert_eq!(runtime.eval_text("lazy/answer").unwrap(), "43");
-        assert_eq!(
-            runtime
-                .eval_text("(module-revision 'example.lazy)")
-                .unwrap(),
-            "2"
-        );
+        assert_eq!(runtime.namespace_registry.module_revision("example.lazy"), 2);
 
         runtime.register_resource(
             "example.lazy",
@@ -6757,12 +6752,7 @@ mod tests {
             .eval_text("(require [example.lazy :as lazy :reload true])")
             .is_err());
         assert_eq!(runtime.eval_text("lazy/answer").unwrap(), "43");
-        assert_eq!(
-            runtime
-                .eval_text("(module-revision 'example.lazy)")
-                .unwrap(),
-            "2"
-        );
+        assert_eq!(runtime.namespace_registry.module_revision("example.lazy"), 2);
         assert_eq!(
             runtime.eval_text("(ns-state 'example.lazy)").unwrap(),
             ":loaded"
@@ -6874,16 +6864,8 @@ mod tests {
             .eval_text("(require [graph.root :as graph])")
             .unwrap();
         assert_eq!(runtime.eval_text("graph/answer").unwrap(), "42");
-        assert_eq!(
-            runtime
-                .eval_text("(module-revision 'graph.dependency)")
-                .unwrap(),
-            "1"
-        );
-        assert_eq!(
-            runtime.eval_text("(module-revision 'graph.root)").unwrap(),
-            "1"
-        );
+        assert_eq!(runtime.namespace_registry.module_revision("graph.dependency"), 1);
+        assert_eq!(runtime.namespace_registry.module_revision("graph.root"), 1);
         assert_eq!(
             runtime
                 .namespace_registry
@@ -6897,10 +6879,7 @@ mod tests {
         runtime
             .eval_text("(require [graph.root :as graph])")
             .unwrap();
-        assert_eq!(
-            runtime.eval_text("(module-revision 'graph.root)").unwrap(),
-            "1"
-        );
+        assert_eq!(runtime.namespace_registry.module_revision("graph.root"), 1);
 
         runtime.register_resource(
             "cycle.first",
@@ -6925,16 +6904,8 @@ mod tests {
         assert!(cycle.contains("Cyclic namespace require"), "{cycle}");
         assert!(runtime.namespace_registry.find("cycle.first").is_none());
         assert!(runtime.namespace_registry.find("cycle.second").is_none());
-        assert_eq!(
-            runtime.eval_text("(module-revision 'cycle.first)").unwrap(),
-            "0"
-        );
-        assert_eq!(
-            runtime
-                .eval_text("(module-revision 'cycle.second)")
-                .unwrap(),
-            "0"
-        );
+        assert_eq!(runtime.namespace_registry.module_revision("cycle.first"), 0);
+        assert_eq!(runtime.namespace_registry.module_revision("cycle.second"), 0);
         assert!(runtime
             .namespace_registry
             .module_dependencies("cycle.first")
@@ -7192,18 +7163,8 @@ mod tests {
                 .unwrap(),
             "false"
         );
-        assert_eq!(
-            kernel
-                .eval(&alpha, "(module-revision 'session.module)")
-                .unwrap(),
-            "1"
-        );
-        assert_eq!(
-            kernel
-                .eval(&beta, "(module-revision 'session.module)")
-                .unwrap(),
-            "0"
-        );
+        assert_eq!(kernel.session(&alpha).unwrap().module_revision("session.module").unwrap(), 1);
+        assert_eq!(kernel.session(&beta).unwrap().module_revision("session.module").unwrap(), 0);
         assert!(kernel.eval(&beta, "(chosen)").is_err());
     }
 
@@ -7936,12 +7897,12 @@ mod tests {
             runtime
                 .eval_text(
                     "[(type (first {:a 1}))
-                      (map-entry? (first {:a 1}))
                       (type (IFind/find {:a 1} :a))
-                      (map-entry? (IFind/find {:a 1} :a))]",
+                      (count (first {:a 1}))
+                      (count (IFind/find {:a 1} :a))]",
                 )
                 .unwrap(),
-            "[:std.native.Tuple true :std.native.Tuple true]"
+            "[:std.native.Tuple :std.native.Tuple 2 2]"
         );
     }
 
@@ -8558,7 +8519,7 @@ mod tests {
     }
 
     #[test]
-    fn decimal_literals_parse_as_floats() {
+    fn floating_literals_parse_as_floats() {
         let mut runtime = Runtime::new();
         assert_eq!(
             runtime.eval_text("(+ 0.1 0.2)").unwrap(),

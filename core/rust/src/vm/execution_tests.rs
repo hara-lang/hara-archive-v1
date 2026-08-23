@@ -36,6 +36,19 @@ fn embedded_foundation_reduce_executes_in_bytecode() {
 }
 
 #[test]
+fn source_owned_string_alias_compiles_without_a_local_require() {
+    let registry = crate::embedding_namespace_registry();
+    let program = compile_source_with("(str/length \"hara\")", &registry)
+        .expect("the loaded string namespace owns the global str alias");
+    assert_eq!(
+        execute_program_with_globals(Rc::new(program), &registry)
+            .unwrap()
+            .display(),
+        "4"
+    );
+}
+
+#[test]
 fn assoc_accepts_a_bytecode_closure_as_the_replacement() {
     assert_eq!(
         eval("(let [f (fn [value] (+ value 1)) m (assoc {} :f f)] ((get m :f) 41))"),

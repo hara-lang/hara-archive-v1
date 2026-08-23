@@ -8,7 +8,8 @@
 ;;     and width-sensitive line breaking.
 ;;   * Every public definition carries documentation and portable schema metadata.
 ;; ============================================================================
-(ns std.foundation.pretty)
+(ns std.foundation.pretty
+  (:config {:global-alias pretty}))
 
 (def ^{:schema :map
        :doc "Default options for canonical and pretty document visitors."}

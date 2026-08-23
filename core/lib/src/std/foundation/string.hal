@@ -5,7 +5,8 @@
 ;; identifier case conversion, indexed edits, and escaping remain portable HAL.
 ;; ==========================================================================
 (ns std.foundation.string
-  (:config {:override [repeat reverse]}))
+  (:config {:override [repeat reverse]
+            :global-alias str}))
 
 (defn string-like?
   "Returns true when value can round-trip through a string representation."

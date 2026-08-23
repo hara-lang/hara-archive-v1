@@ -365,23 +365,6 @@ pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, Stri
                         _ => Err("ns-name expects a namespace".into()),
                     }
                 }
-                Form::Symbol(n) if n == "module-revision" => {
-                    if fs.len() != 2 {
-                        return Err("module-revision expects one namespace".into());
-                    }
-                    let name = match eval(&fs[1], env)? {
-                        Value::Symbol(value) => value.as_str().to_owned(),
-                        Value::String(value) => value,
-                        _ => {
-                            return Err(
-                                "module-revision expects a namespace symbol or string".into()
-                            )
-                        }
-                    };
-                    Ok(Value::Number(
-                        namespace_registry()?.module_revision(&name) as i64
-                    ))
-                }
                 Form::Symbol(n) if n == "ns-state" || n == "ns-loaded?" => {
                     if fs.len() != 2 {
                         return Err(format!("{n} expects one namespace"));
@@ -1881,7 +1864,6 @@ pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, Stri
                 Form::Symbol(n)
                     if [
                         "file/resolve",
-                        "file/parent",
                         "file/join",
                         "file/read",
                         "file/write",
@@ -2014,7 +1996,7 @@ pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, Stri
                         .collect::<Result<Vec<_>, _>>()?;
                     string_operation(n, values)
                 }
-                Form::Symbol(n) if n == "str/trim" || n == "str/upper" || n == "str/lower" => {
+                Form::Symbol(n) if n == "str/upper" || n == "str/lower" => {
                     if fs.len() != 2 {
                         return Err(format!("{n} expects one string"));
                     }
@@ -2023,7 +2005,6 @@ pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, Stri
                         _ => return Err(format!("{n} expects a string")),
                     };
                     match n.as_str() {
-                        "str/trim" => Ok(Value::String(text.trim().into())),
                         "str/upper" => Ok(Value::String(text.to_uppercase())),
                         "str/lower" => Ok(Value::String(text.to_lowercase())),
                         _ => unreachable!(),
@@ -3003,7 +2984,6 @@ pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, Stri
                         "tuple?",
                         "sequential?",
                         "map?",
-                        "map-entry?",
                         "set?",
                         "keyword?",
                         "symbol?",
@@ -3047,9 +3027,6 @@ pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, Stri
                             Value::Extension(receiver) => extension_has_category(receiver, "map"),
                             _ => false,
                         },
-                        "map-entry?" => {
-                            matches!(value, Value::Tuple(ref entry) if entry.len() == 2)
-                        }
                         "set?" => matches!(
                             value,
                             Value::Set(_) | Value::OrderedSet(_) | Value::SortedSet(_)

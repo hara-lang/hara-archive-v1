@@ -216,6 +216,7 @@ pub struct NamespaceRegistry<V> {
     current: Rc<RefCell<Symbol>>,
     loading_states: Rc<RefCell<HashMap<Symbol, NamespaceLoadState>>>,
     load_failures: Rc<RefCell<HashMap<Symbol, String>>>,
+    global_aliases: Rc<RefCell<HashMap<Symbol, Symbol>>>,
     module_revisions: Rc<RefCell<HashMap<Symbol, u64>>>,
     module_dependencies: Rc<RefCell<HashMap<Symbol, Vec<Symbol>>>>,
 }
@@ -225,6 +226,7 @@ pub struct NamespaceRegistrySnapshot<V> {
     current: Symbol,
     loading_states: HashMap<Symbol, NamespaceLoadState>,
     load_failures: HashMap<Symbol, String>,
+    global_aliases: HashMap<Symbol, Symbol>,
     module_revisions: HashMap<Symbol, u64>,
     module_dependencies: HashMap<Symbol, Vec<Symbol>>,
 }
@@ -235,6 +237,7 @@ pub struct NamespaceTransactionSnapshot<V> {
     current: Symbol,
     loading_states: HashMap<Symbol, NamespaceLoadState>,
     load_failures: HashMap<Symbol, String>,
+    global_aliases: HashMap<Symbol, Symbol>,
     module_revisions: HashMap<Symbol, u64>,
     module_dependencies: HashMap<Symbol, Vec<Symbol>>,
 }
@@ -292,6 +295,7 @@ impl<V: Clone> NamespaceRegistry<V> {
             current: Rc::new(RefCell::new(name)),
             loading_states: Rc::new(RefCell::new(loading_states)),
             load_failures: Rc::new(RefCell::new(HashMap::new())),
+            global_aliases: Rc::new(RefCell::new(HashMap::new())),
             module_revisions: Rc::new(RefCell::new(HashMap::new())),
             module_dependencies: Rc::new(RefCell::new(HashMap::new())),
         }
@@ -380,6 +384,34 @@ impl<V: Clone> NamespaceRegistry<V> {
             .borrow_mut()
             .remove(&Symbol::parse(name.as_ref()));
     }
+    pub fn register_global_alias(
+        &self,
+        alias: impl AsRef<str>,
+        namespace: impl AsRef<str>,
+    ) -> Result<(), String> {
+        let alias = Symbol::parse(alias.as_ref());
+        let namespace = Symbol::parse(namespace.as_ref());
+        if alias.get_namespace().is_some() || alias.as_str() == "-" {
+            return Err(format!("Invalid global namespace alias: {alias}"));
+        }
+        if let Some(previous) = self.global_aliases.borrow().get(&alias) {
+            if previous != &namespace {
+                return Err(format!(
+                    "Global namespace alias already refers to {previous}: {alias}"
+                ));
+            }
+            return Ok(());
+        }
+        self.global_aliases.borrow_mut().insert(alias, namespace);
+        Ok(())
+    }
+    pub fn global_aliases(&self) -> Vec<(Symbol, Symbol)> {
+        self.global_aliases
+            .borrow()
+            .iter()
+            .map(|(alias, namespace)| (alias.clone(), namespace.clone()))
+            .collect()
+    }
     pub fn module_revision(&self, name: impl AsRef<str>) -> u64 {
         self.module_revisions
             .borrow()
@@ -429,6 +461,7 @@ impl<V: Clone> NamespaceRegistry<V> {
             current: self.current.borrow().clone(),
             loading_states: self.loading_states.borrow().clone(),
             load_failures: self.load_failures.borrow().clone(),
+            global_aliases: self.global_aliases.borrow().clone(),
             module_revisions: self.module_revisions.borrow().clone(),
             module_dependencies: self.module_dependencies.borrow().clone(),
         }
@@ -453,6 +486,7 @@ impl<V: Clone> NamespaceRegistry<V> {
             current: self.current.borrow().clone(),
             loading_states: self.loading_states.borrow().clone(),
             load_failures: self.load_failures.borrow().clone(),
+            global_aliases: self.global_aliases.borrow().clone(),
             module_revisions: self.module_revisions.borrow().clone(),
             module_dependencies: self.module_dependencies.borrow().clone(),
         }
@@ -482,6 +516,7 @@ impl<V: Clone> NamespaceRegistry<V> {
         *self.current.borrow_mut() = snapshot.current;
         *self.loading_states.borrow_mut() = snapshot.loading_states;
         *self.load_failures.borrow_mut() = snapshot.load_failures;
+        *self.global_aliases.borrow_mut() = snapshot.global_aliases;
         *self.module_revisions.borrow_mut() = snapshot.module_revisions;
         *self.module_dependencies.borrow_mut() = snapshot.module_dependencies;
     }
@@ -512,6 +547,7 @@ impl<V: Clone> NamespaceRegistry<V> {
         *self.current.borrow_mut() = snapshot.current;
         *self.loading_states.borrow_mut() = snapshot.loading_states;
         *self.load_failures.borrow_mut() = snapshot.load_failures;
+        *self.global_aliases.borrow_mut() = snapshot.global_aliases;
         *self.module_revisions.borrow_mut() = snapshot.module_revisions;
         *self.module_dependencies.borrow_mut() = snapshot.module_dependencies;
     }
@@ -524,6 +560,9 @@ impl<V: Clone> NamespaceRegistry<V> {
         self.load_failures.borrow_mut().remove(&symbol);
         self.module_revisions.borrow_mut().remove(&symbol);
         self.module_dependencies.borrow_mut().remove(&symbol);
+        self.global_aliases
+            .borrow_mut()
+            .retain(|_, namespace| namespace != &symbol);
         self.namespaces.borrow_mut().remove(&symbol)
     }
     pub fn resolve(&self, symbol: &Symbol) -> Option<Var<V>>

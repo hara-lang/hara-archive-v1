@@ -15,8 +15,8 @@ fn configures_defaults_exclusions_aliases_and_requires_without_sources() {
             .remove(0),
     );
     let display = format!("{rewritten:?}");
-    assert!(display.contains("str/trim"));
-    assert!(display.contains("str/upper"));
+    assert!(display.contains("std.foundation.string/trim"));
+    assert!(display.contains("std.foundation.string/upper"));
     assert!(display.contains("bytes/count") == false);
     assert!(GeneratedNamespaceConfig::configure(
         &parse_forms("(:require [missing.lib :as x])").unwrap()
@@ -177,7 +177,11 @@ fn records_lazy_alias_without_an_eager_dependency() {
 
 #[test]
 fn coroutine_aliases_rewrite_to_fiber_control_forms() {
-    let config = GeneratedNamespaceConfig::defaults();
+    let mut config = GeneratedNamespaceConfig::defaults();
+    config.set_global_aliases([(
+        "co".to_owned(),
+        "std.foundation.coroutine".to_owned(),
+    )]);
     assert_eq!(
         config
             .rewrite(parse_forms("co/yield").unwrap().remove(0))
@@ -193,24 +197,19 @@ fn coroutine_aliases_rewrite_to_fiber_control_forms() {
 }
 
 #[test]
-fn only_portable_foundation_shorthands_are_automatic() {
+fn foundation_aliases_are_source_declared_not_runtime_defaults() {
     let config = GeneratedNamespaceConfig::defaults();
-    let mut foundation_aliases: Vec<_> = config
+    assert!(config
         .aliases()
         .into_iter()
-        .filter(|(_, namespace)| namespace.starts_with("std.foundation."))
-        .collect();
-    foundation_aliases.sort();
-    assert_eq!(
-        foundation_aliases,
-        vec![
-            ("bytes".into(), "std.foundation.bytes".into()),
-            ("co".into(), "std.foundation.coroutine".into()),
-            ("pretty".into(), "std.foundation.pretty".into()),
-            ("promise".into(), "std.foundation.promise".into()),
-            ("str".into(), "std.foundation.string".into()),
-        ]
-    );
+        .all(|(_, namespace)| !namespace.starts_with("std.foundation.")));
+    assert_eq!(config.global_alias(), None);
+
+    let declared = GeneratedNamespaceConfig::configure(
+        &parse_forms("(:config {:global-alias str})").unwrap(),
+    )
+    .unwrap();
+    assert_eq!(declared.global_alias(), Some("str"));
 
     let rebound = GeneratedNamespaceConfig::configure_with(
         &parse_forms("(:require [demo.kernel :as kernel])").unwrap(),

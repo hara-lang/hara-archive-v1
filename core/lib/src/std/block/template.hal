@@ -1,8 +1,7 @@
 (ns std.block.template
   (:require [std.foundation :as set]
     [std.block :as b]
-    [std.block.navigate :as nav]
-    [std.foundation :as f]))
+    [std.block.navigate :as nav]))
 
 (defn get-template-params
   [code]
@@ -33,7 +32,7 @@
         input                 (input-fn input)
         missing               (set/difference (set (map second params)) (set (keys input)))
         _                     (when (not-empty missing)
-                                (f/error "Missing params: " {:input input :missing missing}))]
+                                (std.foundation/error "Missing params: " {:input input :missing missing}))]
     (nav/root-string (reduce (fn [nav param]
                                (cond-> (nav/find-next-token nav param)
                                  (= (quote unquote) (first param))
@@ -60,4 +59,3 @@
                                                                                                                                        (std.foundation/seq (std.foundation/concat))))))))))
                           (std.foundation/list (std.foundation/seq (std.foundation/concat (std.foundation/list opts-args)
                                                                      (std.foundation/list body-form))))))))
-

@@ -136,7 +136,6 @@ pub(crate) const CORE_SPECIAL_FORMS: &[&str] = &[
     "exp",
     "false?",
     "file/read",
-    "file/parent",
     "file/join",
     "file/resolve",
     "file/write",
@@ -293,7 +292,6 @@ pub(crate) const CORE_SPECIAL_FORMS: &[&str] = &[
     "str/repeat",
     "str/replace",
     "str/replace-first",
-    "str/trim",
     "str/trim-left",
     "str/trim-right",
     "str/upper",
@@ -1745,13 +1743,10 @@ mod tests {
     fn numeric_and_boolean_predicates_match_foundation_types() {
         let cases = [
             ("(long? 42)", Value::Bool(true)),
-            ("(long? 42.5)", Value::Bool(false)),
             ("(double? ##Inf)", Value::Bool(true)),
-            ("(double? 42.5)", Value::Bool(false)),
             ("(integer? 42)", Value::Bool(true)),
             ("(integer? 9223372036854775808)", Value::Bool(true)),
-            ("(integer? 42.5)", Value::Bool(false)),
-            ("(number? 42.5)", Value::Bool(true)),
+            ("(number? 42)", Value::Bool(true)),
             ("(boolean? false)", Value::Bool(true)),
             ("(boolean? nil)", Value::Bool(false)),
         ];

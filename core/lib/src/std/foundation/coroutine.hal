@@ -34,7 +34,8 @@
 ;;                   +--- await(Promise) pauses until settlement
 ;; ============================================================================
 (ns std.foundation.coroutine
-  (:config {:blank true})
+  (:config {:blank true
+            :global-alias co})
   (:require [std.foundation]))
 
 (defn ^{:inline true :schema [:fn [:fn] :any]}

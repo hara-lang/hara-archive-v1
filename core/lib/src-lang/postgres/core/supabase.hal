@@ -1,7 +1,6 @@
 (ns postgres.core.supabase
   (:require [lang.core :as l]
-            [lang.core.script :as script]
-            [std.foundation :as f]))
+            [lang.core.script :as script]))
 
 (l/script :postgres {:macro-only true})
 

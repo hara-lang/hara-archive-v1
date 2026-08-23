@@ -1,6 +1,5 @@
 (ns postgres.core.system
-  (:require [lang.core :as l]
-            [std.foundation :as f]))
+  (:require [lang.core :as l]))
 
 (l/script :postgres)
 

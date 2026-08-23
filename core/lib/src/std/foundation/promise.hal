@@ -36,7 +36,8 @@
 ;; is best-effort and never exposes a host executor.
 ;; ============================================================================
 (ns std.foundation.promise
-  (:config {:blank true}))
+  (:config {:blank true
+            :global-alias promise}))
 
 (defn ^{:inline true :schema [:fn [:fn] :promise]}
   run

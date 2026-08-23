@@ -58,7 +58,7 @@ Base includes representation-level constructors, primitive predicates,
 `tuple` accepts zero through eight values. `vec` and `set` use bulk native
 construction and return an existing vector or persistent set unchanged. Derived
 operations such as `pair`, `pair?`, `unreduced`, `not-nil?`, `false?`, `true?`,
-`fn?`, `map-entry?`, `reduce`, `reduce-kv`, `merge`, and `select-keys` are
+`fn?`, `pair?`, `reduce`, `reduce-kv`, `merge`, and `select-keys` are
 canonical HAL source. `reduce-in` remains a portable Foundation algorithm
 because its protocol composition is not a primitive runtime operation;
 `reduce-kv` and `select-keys` use it so mutable-capable destinations retain the

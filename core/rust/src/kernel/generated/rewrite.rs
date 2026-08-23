@@ -1,5 +1,5 @@
 use super::super::Form;
-use super::{canonical, known_namespace, GeneratedNamespaceConfig, LIBRARIES};
+use super::{canonical, known_namespace, GeneratedNamespaceConfig};
 
 impl GeneratedNamespaceConfig {
     pub fn rewrite(&self, form: Form) -> Form {
@@ -97,12 +97,8 @@ impl GeneratedNamespaceConfig {
         if self.lazy_aliases.contains_key(alias) {
             return symbol.into();
         }
-        if LIBRARIES
-            .iter()
-            .any(|(_, _, default_alias)| *default_alias == alias)
-            && !self.aliases.contains_key(alias)
-        {
-            return format!("unavailable/{symbol}");
+        if let Some(namespace) = self.global_aliases.get(alias) {
+            return canonical(namespace, method);
         }
         self.aliases
             .get(alias)

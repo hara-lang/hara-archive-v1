@@ -10,11 +10,6 @@ const LIBRARIES: &[(&str, &str, &str)] = &[
     ("pretty", "std.foundation.pretty", "pretty"),
 ];
 
-pub(crate) fn foundation_library_aliases() -> impl Iterator<Item = (&'static str, &'static str)> {
-    LIBRARIES
-        .iter()
-        .map(|(_, namespace, alias)| (*namespace, *alias))
-}
 #[path = "generated/rewrite.rs"]
 mod rewrite;
 
@@ -57,6 +52,8 @@ const NATIVE_TYPES: &[&str] = &[
 #[derive(Debug, Clone, Default)]
 pub struct GeneratedNamespaceConfig {
     aliases: HashMap<String, String>,
+    global_alias: Option<String>,
+    global_aliases: HashMap<String, String>,
     lazy_aliases: HashMap<String, String>,
     refers: HashMap<String, String>,
     macro_refers: HashMap<String, String>,
@@ -74,15 +71,14 @@ pub struct GeneratedNamespaceConfig {
 
 impl GeneratedNamespaceConfig {
     pub fn defaults() -> Self {
-        let mut aliases: HashMap<String, String> = LIBRARIES
-            .iter()
-            .map(|(_, namespace, alias)| ((*alias).into(), (*namespace).into()))
-            .collect();
+        let mut aliases = HashMap::new();
         for native_type in NATIVE_TYPES {
             aliases.insert((*native_type).into(), format!("std.native.{native_type}"));
         }
         Self {
             aliases,
+            global_alias: None,
+            global_aliases: HashMap::new(),
             lazy_aliases: HashMap::new(),
             refers: HashMap::new(),
             macro_refers: HashMap::new(),
@@ -120,6 +116,7 @@ impl GeneratedNamespaceConfig {
         let mut native_flavor_imports = Vec::new();
         let mut native_imports = Vec::new();
         let mut role = "standard".to_owned();
+        let mut global_alias = None;
 
         for clause in clauses {
             let values = list(clause, "ns clauses must be non-empty lists")?;
@@ -143,6 +140,7 @@ impl GeneratedNamespaceConfig {
                         &mut excluded,
                         &mut overrides,
                         &mut role,
+                        &mut global_alias,
                     )?;
                 }
                 "intrinsics" => {
@@ -184,6 +182,7 @@ impl GeneratedNamespaceConfig {
         let mut config = Self::default();
         config.excluded_foundation = excluded_foundation;
         config.exposed_foundation = exposed_foundation;
+        config.global_alias = global_alias;
         config.native_flavor = native_flavor;
         config.native_imports = native_imports;
         config.native_flavor_imports = native_flavor_imports;
@@ -192,14 +191,13 @@ impl GeneratedNamespaceConfig {
         for native_type in NATIVE_TYPES {
             config.put_alias(native_type, &format!("std.native.{native_type}"))?;
         }
-        for (library, namespace, default_alias) in LIBRARIES {
+        for (library, namespace, _) in LIBRARIES {
             if excluded.contains(*library) {
                 continue;
             }
-            let alias = overrides
-                .get(*library)
-                .map_or(*default_alias, String::as_str);
-            config.put_alias(alias, namespace)?;
+            if let Some(alias) = overrides.get(*library) {
+                config.put_alias(alias, namespace)?;
+            }
         }
         for require in requires {
             config.apply_require(&require, &available)?;
@@ -261,6 +259,14 @@ impl GeneratedNamespaceConfig {
             .iter()
             .map(|(alias, namespace)| (alias.clone(), namespace.clone()))
             .collect()
+    }
+
+    pub fn global_alias(&self) -> Option<&str> {
+        self.global_alias.as_deref()
+    }
+
+    pub fn set_global_aliases(&mut self, aliases: impl IntoIterator<Item = (String, String)>) {
+        self.global_aliases = aliases.into_iter().collect();
     }
 
     fn put_alias(&mut self, alias: &str, namespace: &str) -> Result<(), String> {
@@ -504,6 +510,7 @@ fn parse_config(
     excluded: &mut HashSet<String>,
     overrides: &mut HashMap<String, String>,
     role: &mut String,
+    global_alias: &mut Option<String>,
 ) -> Result<(), String> {
     let options = match form {
         Form::Map(options) => options,
@@ -570,6 +577,16 @@ fn parse_config(
                     return Err(":config :role expects :standard, :internal, or :facade".into());
                 }
                 *role = value.to_owned();
+            }
+            "global-alias" => {
+                let value = symbol(value, ":config :global-alias expects an unqualified symbol")?;
+                if qualified_symbol(value) {
+                    return Err(":config :global-alias expects an unqualified symbol".into());
+                }
+                if value == "-" {
+                    return Err(":config :global-alias is reserved: -".into());
+                }
+                *global_alias = Some(value.to_owned());
             }
             other => return Err(format!("Unsupported :config option: :{other}")),
         }
@@ -704,11 +721,11 @@ fn canonical(namespace: &str, method: &str) -> String {
     if namespace == "std.foundation.coroutine" {
         return format!("std.foundation.coroutine/{method}");
     }
-    if let Some((_, _, alias)) = LIBRARIES
+    if LIBRARIES
         .iter()
-        .find(|(_, library_namespace, _)| *library_namespace == namespace)
+        .any(|(_, library_namespace, _)| *library_namespace == namespace)
     {
-        return format!("{alias}/{method}");
+        return format!("{namespace}/{method}");
     }
     match (namespace, method) {
         ("std.foundation", method) => method.into(),

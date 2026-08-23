@@ -96,7 +96,12 @@ impl Runtime {
     /// is validated but not executed; globals intern only at execution.
     pub fn compile_bytecode(&self, source: &str) -> Result<std::rc::Rc<vm::Program>, String> {
         core::with_macros(self.macros.clone(), || {
-            vm::compile_source_with(source, &self.namespace_registry)
+            let config = self
+                .generated_configs
+                .get(&self.current_namespace())
+                .cloned()
+                .unwrap_or_else(kernel::GeneratedNamespaceConfig::defaults);
+            vm::compile_source_with_config(source, &self.namespace_registry, config)
                 .map(|mut program| {
                     program.namespace =
                         Some(self.namespace_registry.current().name().as_str().to_owned());
@@ -228,4 +233,3 @@ impl Runtime {
         result
     }
 }
-

@@ -1,6 +1,5 @@
 (ns std.foundation.bootstrap-test
-  (:require [std.foundation.bootstrap :as bootstrap]
-            [std.foundation.string :as str]))
+  (:require [std.foundation.bootstrap :as bootstrap]))
 
 (def +unordered+
   (str "(ns sample-test)\n\n"

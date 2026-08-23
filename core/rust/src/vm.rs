@@ -133,7 +133,9 @@ pub use bundle::{
     encode_bytecode_bundle, eval_bytecode_bundle, eval_eager_bytecode_bundle_with_registries,
     BytecodeBundleModule, ModuleSource,
 };
-pub use compiler::{compile_halc_module, compile_source, compile_source_with};
+pub use compiler::{
+    compile_halc_module, compile_source, compile_source_with, compile_source_with_config,
+};
 pub use disassemble::disassemble;
 pub use error::{CompileError, CompileErrorKind, ValidationError, VmError};
 pub use fiber::{VmFiber, VmFiberState};

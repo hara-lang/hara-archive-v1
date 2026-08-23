@@ -1,8 +1,7 @@
 ;; std.fs — familiar direct-style filesystem API over std.native.File effects.
 (ns std.fs
   (:config {:override [list]})
-  (:require [std.foundation.string :as str]
-            [std.fs.path :as path]
+  (:require [std.fs.path :as path]
             [std.fs.walk :as walk]))
 
 (def copy-default-options

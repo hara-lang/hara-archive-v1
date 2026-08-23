@@ -106,6 +106,10 @@ impl Session {
         self.filesystem.as_ref().map(|filesystem| filesystem.id)
     }
 
+    pub(crate) fn module_revision(&self, name: &str) -> Result<u64, String> {
+        Ok(self.runtime()?.namespace_registry.module_revision(name))
+    }
+
     fn ensure_active(&self) -> Result<(), String> {
         match self.state {
             SessionState::Active => Ok(()),

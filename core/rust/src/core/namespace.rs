@@ -468,6 +468,9 @@ fn eval_namespace_form(fs: &[Form], env: &mut HashMap<String, Value>) -> Result<
     // an EvalFiber, so the core special form must still honor the one setting
     // that changes namespace construction itself.
     let config = crate::kernel::GeneratedNamespaceConfig::configure_with(clauses, |_| true)?;
+    if let Some(alias) = config.global_alias() {
+        registry.register_global_alias(alias, &name)?;
+    }
     if !config.blank() {
         refer_startup_defaults(&registry, &name);
     }
@@ -478,8 +481,8 @@ fn eval_namespace_form(fs: &[Form], env: &mut HashMap<String, Value>) -> Result<
     for (local, module) in config.native_imports() {
         destination.import(local, module.clone());
     }
-    for (_, default_alias) in crate::kernel::generated::foundation_library_aliases() {
-        destination.unalias(default_alias);
+    for (alias, _) in registry.global_aliases() {
+        destination.unalias(alias.as_str());
     }
     for (alias, target) in config.aliases() {
         if !target.starts_with("std.foundation.") {
@@ -594,7 +597,7 @@ fn eval_namespace_operation(
             },
             _ => Err("ns:name expects one namespace".into()),
         },
-        "ns:map" | "ns:aliases" | "ns:imports" => {
+        "ns:map" | "ns:aliases" => {
             if forms.len() != 2 {
                 return Err(format!("{operation} expects one namespace"));
             }
@@ -612,11 +615,6 @@ fn eval_namespace_operation(
                     .aliases()
                     .into_iter()
                     .map(|(name, value)| (Value::Symbol(name), Value::Namespace(Rc::new(value))))
-                    .collect(),
-                "ns:imports" => namespace
-                    .imports()
-                    .into_iter()
-                    .map(|(name, value)| (Value::Symbol(name), Value::String(value)))
                     .collect(),
                 _ => unreachable!(),
             };

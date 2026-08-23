@@ -1,7 +1,6 @@
 (ns code.query.conformance
   (:require [tool.sh :as sh]
             [std.fs :as fs]
-            [std.foundation.string :as str]
             [code.query.common]
             [code.query.compile]
             [code.query.match.impl]

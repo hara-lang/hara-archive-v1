@@ -8,7 +8,6 @@
             [code.framework :as framework]
             [code.manage.unit.structure :as structure]
             [tool.migrate.script]
-            [std.foundation :as f]
             [lang.common.grammar :as common-grammar]
             [lang.common.grammar-api :as grammar-api]
             [lang.common.grammar-macro :as grammar-macro]
@@ -18,7 +17,7 @@
             [work.flow.task :as task]
             [work.flow.task.selector :as selector]))
 
-(f/intern-all tool.migrate.script)
+(std.foundation/intern-all tool.migrate.script)
 
 (def rule-id :std.task/def-work)
 

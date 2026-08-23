@@ -216,9 +216,6 @@
 (defn ^{:inline true :schema [:fn [:any] :bool]}
   map? "Returns true when value is a persistent map." [value] (Base/map? value))
 
-(defn ^{:schema [:fn [:any] :bool]}
-  map-entry? "Returns true when value is a map entry." [value] (satisfies? IPair value))
-
 (defn ^{:inline true :schema [:fn [:any] :bool]}
   set? "Returns true when value is a persistent set." [value] (Base/set? value))
 

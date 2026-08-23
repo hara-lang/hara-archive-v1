@@ -73,6 +73,12 @@ pub fn compile_source(source: &str) -> Result<Program, CompileError> {
 
 fn compile_spanned_forms(forms: &[SpannedForm]) -> Result<Program, CompileError> {
     prepare_top_level_namespaces(forms)?;
+    compile_spanned_forms_without_namespace_preparation(forms)
+}
+
+fn compile_spanned_forms_without_namespace_preparation(
+    forms: &[SpannedForm],
+) -> Result<Program, CompileError> {
     let mut compiler = Compiler::new();
     compiler.predeclare_top_level(forms);
     let children = compiler.children(forms);
@@ -115,7 +121,118 @@ pub fn compile_source_with(
     source: &str,
     registry: &crate::kernel::NamespaceRegistry<crate::core::Value>,
 ) -> Result<Program, CompileError> {
-    crate::core::with_namespace_registry(registry, || compile_source(source))
+    let forms = crate::kernel::read_forms(source)?;
+    let config = source_namespace_config(&forms)?;
+    compile_spanned_forms_with_config(&forms, registry, config, true)
+}
+
+/// Compiles source against a caller-owned registry and namespace configuration.
+/// The configuration is applied to parsed forms before bytecode lowering so
+/// aliases remain source-positioned and the VM does not need an evaluator or
+/// text round-trip fallback. Runtime callers use this when their namespace
+/// declaration has already been loaded and its complete config is available.
+pub fn compile_source_with_config(
+    source: &str,
+    registry: &crate::kernel::NamespaceRegistry<crate::core::Value>,
+    config: crate::kernel::GeneratedNamespaceConfig,
+) -> Result<Program, CompileError> {
+    let forms = crate::kernel::read_forms(source)?;
+    compile_spanned_forms_with_config(&forms, registry, config, true)
+}
+
+fn compile_spanned_forms_with_config(
+    forms: &[SpannedForm],
+    registry: &crate::kernel::NamespaceRegistry<crate::core::Value>,
+    mut config: crate::kernel::GeneratedNamespaceConfig,
+    prepare_namespaces: bool,
+) -> Result<Program, CompileError> {
+    crate::core::with_namespace_registry(registry, || {
+        if prepare_namespaces {
+            prepare_top_level_namespaces(forms)?;
+        }
+        sync_registry_global_aliases(&mut config, registry);
+        let rewritten = forms
+            .iter()
+            .map(|form| rewrite_spanned_form(form, &config))
+            .collect::<Vec<_>>();
+        compile_spanned_forms_without_namespace_preparation(&rewritten)
+    })
+}
+
+fn source_namespace_config(
+    forms: &[SpannedForm],
+) -> Result<crate::kernel::GeneratedNamespaceConfig, CompileError> {
+    for form in forms {
+        let crate::kernel::Form::List(items) = crate::core::form_without_metadata(&form.form)
+        else {
+            continue;
+        };
+        let Some(crate::kernel::Form::Symbol(operator)) = items.first() else {
+            continue;
+        };
+        let clause_start = match operator.as_str() {
+            "ns" => 2,
+            "ns+" => 1,
+            _ => continue,
+        };
+        if items.len() < clause_start {
+            return Err(CompileError::new(
+                CompileErrorKind::UnsupportedForm,
+                "namespace declaration is missing its clauses",
+                Some(form.span.start),
+            ));
+        }
+        return crate::kernel::GeneratedNamespaceConfig::configure_with(
+            &items[clause_start..],
+            |_| true,
+        )
+        .map_err(|message| {
+            CompileError::new(
+                CompileErrorKind::UnsupportedForm,
+                message,
+                Some(form.span.start),
+            )
+        });
+    }
+    Ok(crate::kernel::GeneratedNamespaceConfig::defaults())
+}
+
+fn sync_registry_global_aliases(
+    config: &mut crate::kernel::GeneratedNamespaceConfig,
+    registry: &crate::kernel::NamespaceRegistry<crate::core::Value>,
+) {
+    let excluded = config.excluded_foundation().clone();
+    config.set_global_aliases(
+        registry
+            .global_aliases()
+            .into_iter()
+            .filter(|(_, namespace)| {
+                !excluded.contains(
+                    namespace
+                        .as_str()
+                        .strip_prefix("std.foundation.")
+                        .unwrap_or_default(),
+                )
+            })
+            .map(|(alias, namespace)| {
+                (alias.as_str().to_owned(), namespace.as_str().to_owned())
+            }),
+    );
+}
+
+fn rewrite_spanned_form(
+    form: &SpannedForm,
+    config: &crate::kernel::GeneratedNamespaceConfig,
+) -> SpannedForm {
+    SpannedForm {
+        form: config.rewrite(form.form.clone()),
+        span: form.span.clone(),
+        children: form
+            .children
+            .iter()
+            .map(|child| rewrite_spanned_form(child, config))
+            .collect(),
+    }
 }
 
 /// Lowers decoded HALC directly into bytecode while preserving its canonical
@@ -134,7 +251,12 @@ pub fn compile_halc_module(
         .cloned()
         .map(synthetic_spanned_form)
         .collect::<Vec<_>>();
-    let result = crate::core::with_namespace_registry(registry, || compile_spanned_forms(&forms));
+    let result = compile_spanned_forms_with_config(
+        &forms,
+        registry,
+        crate::kernel::GeneratedNamespaceConfig::defaults(),
+        false,
+    );
     registry.set_current(previous);
     let mut program = result?;
     program.namespace = Some(module.namespace.clone());

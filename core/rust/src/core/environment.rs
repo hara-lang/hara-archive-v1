@@ -1218,11 +1218,14 @@ pub(crate) fn refer_startup_defaults(registry: &NamespaceRegistry<Value>, namesp
             target.alias(*native_type, source);
         }
     }
-    for (library, alias) in crate::kernel::generated::foundation_library_aliases() {
-        if let Some(source) = registry.find(library) {
-            target.alias(alias, source);
+    for (alias, library) in registry.global_aliases() {
+        if target.name() == &library {
+            continue;
+        }
+        if let Some(source) = registry.find(library.as_str()) {
+            target.alias(alias.as_str(), source);
         } else {
-            target.lazy_alias(alias, library);
+            target.lazy_alias(alias.as_str(), library.as_str());
         }
     }
 }
