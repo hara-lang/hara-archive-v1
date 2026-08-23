@@ -157,6 +157,10 @@ impl LiveSession for BytecodeLiveSession {
                 let payload = self.session.run(boundary_limit).map_err(backend_error)?;
                 value_to_json(&payload)
             }
+            LiveSessionCommand::Call { .. } => Err(LiveSessionError::new(
+                "live-session/unsupported-operation",
+                "HBC observation backend does not support direct function calls",
+            )),
             LiveSessionCommand::Pause => Ok(JsonValue::Bool(self.session.pause())),
             LiveSessionCommand::Resume { settlement } => {
                 let settlement = settlement.map(settlement_state).transpose()?;

@@ -111,6 +111,67 @@ impl Session {
         self.register_live_session(Box::new(live_session))
     }
 
+    /// Starts the authoritative HBC Machine from an already validated HBC0
+    /// artifact. Source metadata is retained for revision fencing, while the
+    /// live target avoids a second source compilation during startup.
+    #[cfg(all(feature = "bytecode-observation", feature = "bytecode-instrumentation"))]
+    pub fn start_hbc_live_session_from_artifact(
+        &mut self,
+        live_session_id: impl Into<String>,
+        source: LiveSource,
+        artifact: &[u8],
+    ) -> Result<LiveSessionState, LiveSessionError> {
+        self.ensure_live_owner_active()?;
+        let live_session_id = live_session_id.into();
+        self.ensure_live_session_identity_available(&live_session_id)?;
+        let owner_session_id = self.name().to_owned();
+        let live_session = InstrumentedHbcLiveSession::start_from_artifact(
+            self.runtime()
+                .map_err(|message| LiveSessionError::new("live-session/owner-closed", message))?,
+            owner_session_id,
+            live_session_id,
+            source,
+            artifact,
+        )?;
+        self.register_live_session(Box::new(live_session))
+    }
+
+    /// Starts a prepared whole-Wasm session. Whole-Wasm exposes only the
+    /// operations its synchronous prepared backend can implement honestly.
+    #[cfg(all(feature = "whole-wasm", not(target_arch = "wasm32")))]
+    pub fn start_whole_wasm_live_session(
+        &mut self,
+        live_session_id: impl Into<String>,
+        source: LiveSource,
+    ) -> Result<LiveSessionState, LiveSessionError> {
+        self.ensure_live_owner_active()?;
+        let live_session_id = live_session_id.into();
+        self.ensure_live_session_identity_available(&live_session_id)?;
+        let live_session =
+            crate::live_session::WholeWasmLiveSession::start(live_session_id, source)?;
+        self.register_live_session(Box::new(live_session))
+    }
+
+    /// Starts a prepared whole-Wasm session from an already compiled HNW0
+    /// artifact, avoiding source compilation at session startup.
+    #[cfg(all(feature = "whole-wasm", not(target_arch = "wasm32")))]
+    pub fn start_whole_wasm_live_session_from_artifact(
+        &mut self,
+        live_session_id: impl Into<String>,
+        source: LiveSource,
+        artifact: &[u8],
+    ) -> Result<LiveSessionState, LiveSessionError> {
+        self.ensure_live_owner_active()?;
+        let live_session_id = live_session_id.into();
+        self.ensure_live_session_identity_available(&live_session_id)?;
+        let live_session = crate::live_session::WholeWasmLiveSession::from_artifact(
+            live_session_id,
+            source,
+            artifact.to_vec(),
+        )?;
+        self.register_live_session(Box::new(live_session))
+    }
+
     /// Compatibility-only feature slice for builds that explicitly enable the
     /// old observation feature without the shared instrumentation probe.
     #[cfg(all(
@@ -127,6 +188,30 @@ impl Session {
         self.ensure_live_session_identity_available(&live_session_id)?;
         let live_session =
             crate::live_session::BytecodeLiveSession::compile(live_session_id, source)?;
+        self.register_live_session(Box::new(live_session))
+    }
+
+    /// Compatibility-only artifact constructor for observation builds that do
+    /// not include the shared instrumentation probe.
+    #[cfg(all(
+        feature = "bytecode-observation",
+        not(feature = "bytecode-instrumentation")
+    ))]
+    pub fn start_hbc_live_session_from_artifact(
+        &mut self,
+        live_session_id: impl Into<String>,
+        source: LiveSource,
+        artifact: &[u8],
+    ) -> Result<LiveSessionState, LiveSessionError> {
+        self.ensure_live_owner_active()?;
+        let live_session_id = live_session_id.into();
+        self.ensure_live_session_identity_available(&live_session_id)?;
+        let live_session = crate::live_session::BytecodeLiveSession::from_artifact(
+            live_session_id,
+            source.source_id(),
+            source.revision(),
+            artifact,
+        )?;
         self.register_live_session(Box::new(live_session))
     }
 

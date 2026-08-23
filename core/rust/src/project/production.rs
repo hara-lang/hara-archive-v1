@@ -26,6 +26,7 @@ pub use graph::{Analysis, AnalysisOutput, BuildOutput, ModuleAnalysis, Retention
 pub use plan::BuildPlan;
 pub use report::{ANALYSIS_FORMAT, SHAKE_FORMAT};
 
+use crate::compiled_product::{CompiledProduct, CompiledProductKind};
 use crate::core::Value;
 use crate::kernel::{Form, GeneratedNamespaceConfig};
 use crate::lang::data::Symbol;
@@ -57,6 +58,44 @@ pub fn analyze(project: &Project, plan_source: &str) -> Result<Analysis, String>
     let plan = BuildPlan::parse(plan_source)?;
     let modules = collect_selected_modules(project, &plan)?;
     analyze_modules(&plan, modules)
+}
+
+/// Compiles one deterministic production project into the existing HBX0
+/// package without writing files. The returned immutable product is suitable
+/// for an embedding cache or an artifact-backed LiveSession.
+pub fn compile_hbc_package_product(
+    project: &Project,
+    plan_source: &str,
+) -> Result<CompiledProduct, String> {
+    let plan = BuildPlan::parse(plan_source)?;
+    let modules = collect_selected_modules(project, &plan)?;
+    let analysis = analyze_modules(&plan, modules)?;
+    if !analysis.succeeded() {
+        return Err(format!(
+            "production analysis failed with {} diagnostic(s)",
+            analysis.diagnostics.len()
+        ));
+    }
+    let build = ProductionBuild {
+        plan: plan.clone(),
+        analysis: analysis.clone(),
+    };
+    let compiled = bundle::compile::compile(&build)?;
+    bundle::load::validate_bundle(&compiled.bytes, &plan.entrypoints)?;
+    let module_digests = analysis
+        .modules
+        .iter()
+        .map(|module| module.digest.clone())
+        .collect();
+    Ok(CompiledProduct::new(
+        CompiledProductKind::HbcPackage,
+        analysis.input_digest,
+        module_digests,
+        format!("hara-production/{}", env!("CARGO_PKG_VERSION")),
+        "hbx0",
+        format!("{plan:?}"),
+        compiled.bytes,
+    ))
 }
 
 pub fn analyze_and_write(project: &Project, plan_source: &str) -> Result<AnalysisOutput, String> {

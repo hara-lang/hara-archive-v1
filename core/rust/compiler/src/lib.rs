@@ -1,6 +1,10 @@
 //! Full Hara compilation surface, kept outside VM-only deployments.
 
 pub use hara_vm::{Program, Value};
+pub use hara_wasm::compiled_product::{
+    sha256_hex, CompiledProduct, CompiledProductKind, CompiledProductManifest,
+    InMemoryProductCache, ProductCacheKey,
+};
 pub use hara_wasm::vm::{compile_halc_module, compile_source, compile_source_with, CompileError};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -21,7 +25,14 @@ impl CompileTarget {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CompiledArtifact {
     target: CompileTarget,
-    bytes: Vec<u8>,
+    product: CompiledProduct,
+}
+
+fn product_identity(target: CompileTarget) -> (CompiledProductKind, &'static str) {
+    match target {
+        CompileTarget::HbcModule => (CompiledProductKind::HbcModule, "hbc0"),
+        CompileTarget::WholeWasm => (CompiledProductKind::WholeWasm, "hnw0/2"),
+    }
 }
 
 impl CompiledArtifact {
@@ -30,30 +41,87 @@ impl CompiledArtifact {
     }
 
     pub fn bytes(&self) -> &[u8] {
-        &self.bytes
+        &self.product.bytes
     }
 
     pub fn into_bytes(self) -> Vec<u8> {
-        self.bytes
+        self.product.bytes
+    }
+
+    pub fn manifest(&self) -> &CompiledProductManifest {
+        &self.product.manifest
     }
 }
 
 pub fn compile(source: &str, target: CompileTarget) -> Result<CompiledArtifact, String> {
+    let product = compile_product(source, target)?;
+    Ok(CompiledArtifact { target, product })
+}
+
+pub fn compile_cached(
+    source: &str,
+    target: CompileTarget,
+    cache: &mut InMemoryProductCache,
+) -> Result<CompiledArtifact, String> {
+    let (kind, abi_version) = product_identity(target);
+    let key = ProductCacheKey::new(
+        kind,
+        sha256_hex(source.as_bytes()),
+        format!("hara-compiler/{}", env!("CARGO_PKG_VERSION")),
+        abi_version,
+        b"{}",
+    );
+    if let Some(product) = cache.get(&key) {
+        return Ok(CompiledArtifact {
+            target,
+            product: product.clone(),
+        });
+    }
+    let product = compile_product(source, target)?;
+    cache.insert(product.clone())?;
+    Ok(CompiledArtifact { target, product })
+}
+
+pub fn compile_product(source: &str, target: CompileTarget) -> Result<CompiledProduct, String> {
     let program = compile_source(source).map_err(|error| error.to_string())?;
-    let bytes = match target {
+    let (product, abi_version, bytes) = match target {
+        CompileTarget::HbcModule => (
+            CompiledProductKind::HbcModule,
+            "hbc0",
+            hara_wasm::vm::encode_program(&program)?,
+        ),
+        CompileTarget::WholeWasm => (
+            CompiledProductKind::WholeWasm,
+            "hnw0/2",
+            compile_whole_wasm(&program)?,
+        ),
+    };
+    Ok(CompiledProduct::new(
+        product,
+        sha256_hex(source.as_bytes()),
+        vec![sha256_hex(source.as_bytes())],
+        format!("hara-compiler/{}", env!("CARGO_PKG_VERSION")),
+        abi_version,
+        b"{}",
+        bytes,
+    ))
+}
+
+fn compile_bytes(source: &str, target: CompileTarget) -> Result<Vec<u8>, String> {
+    let program = compile_source(source).map_err(|error| error.to_string())?;
+    Ok(match target {
         CompileTarget::HbcModule => hara_wasm::vm::encode_program(&program)?,
         CompileTarget::WholeWasm => compile_whole_wasm(&program)?,
-    };
-    Ok(CompiledArtifact { target, bytes })
+    })
 }
 
 pub fn compile_bytecode(source: &str) -> Result<Vec<u8>, String> {
-    compile(source, CompileTarget::HbcModule).map(CompiledArtifact::into_bytes)
+    compile_bytes(source, CompileTarget::HbcModule)
 }
 
 #[cfg(feature = "full-wasm")]
 pub fn compile_wasm(source: &str) -> Result<Vec<u8>, String> {
-    compile(source, CompileTarget::WholeWasm).map(CompiledArtifact::into_bytes)
+    compile_bytes(source, CompileTarget::WholeWasm)
 }
 
 #[cfg(feature = "full-wasm")]
@@ -68,7 +136,9 @@ fn compile_whole_wasm(_program: &Program) -> Result<Vec<u8>, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{compile, compile_bytecode, CompileTarget};
+    use super::{
+        compile, compile_bytecode, CompiledProductKind, CompileTarget, InMemoryProductCache,
+    };
 
     #[test]
     fn compiler_output_executes_in_vm_only_crate() {
@@ -81,6 +151,20 @@ mod tests {
         let artifact = compile("(+ 19 23)", CompileTarget::HbcModule).unwrap();
         assert_eq!(artifact.target(), CompileTarget::HbcModule);
         assert_eq!(hara_vm::execute(artifact.bytes()).unwrap().display(), "42");
+        assert_eq!(artifact.manifest().product, CompiledProductKind::HbcModule);
+        artifact.product.verify().unwrap();
+    }
+
+    #[test]
+    fn cached_compilation_reuses_the_immutable_product() {
+        let mut cache = InMemoryProductCache::default();
+        let first =
+            super::compile_cached("(+ 19 23)", CompileTarget::HbcModule, &mut cache).unwrap();
+        let second =
+            super::compile_cached("(+ 19 23)", CompileTarget::HbcModule, &mut cache).unwrap();
+        assert_eq!(first.bytes(), second.bytes());
+        assert_eq!(first.manifest(), second.manifest());
+        assert_eq!(cache.len(), 1);
     }
 
     #[cfg(not(feature = "full-wasm"))]
