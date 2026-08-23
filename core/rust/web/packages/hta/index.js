@@ -158,7 +158,8 @@ export function parseHtaManifest(source) {
   const hostCallsValue = manifestField(value,"host-calls"), hostCalls = {}, hostCallCapabilities = {};
   if (hostCallsValue !== undefined) {
     if (!(hostCallsValue instanceof Map)) throw new Error("hta/manifest-malformed: host-calls must be a map");
-    for (const [service,methods] of hostCallsValue) {
+    for (const [service,declared] of hostCallsValue) {
+      let methods = declared;
       let capabilities = [];
       if (methods instanceof Map) {
         const declaredMethods = manifestField(methods,"methods");
