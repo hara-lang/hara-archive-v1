@@ -109,41 +109,42 @@ public class HaraHtaExtensionTest {
                 });
       }
     }
+  }
 
-    @Test
-    public void compositionFixturesMatchTheReviewedCrossHostDigests() throws Exception {
-      assertEquals(ADAPTER_FIXTURE_DIGEST, sha256(resource("adapter.wasm")));
-      assertEquals(LIBRARY_FIXTURE_DIGEST, sha256(resource("library.wasm")));
-    }
+  @Test
+  public void compositionFixturesMatchTheReviewedCrossHostDigests() throws Exception {
+    assertEquals(ADAPTER_FIXTURE_DIGEST, sha256(resource("adapter.wasm")));
+    assertEquals(LIBRARY_FIXTURE_DIGEST, sha256(resource("library.wasm")));
+  }
 
-    @Test
-    public void malformedWrappedLibraryIsRejectedBeforeAdapterInstantiation() throws Exception {
-      Path root = Files.createTempDirectory("hara-hta-malformed-");
-      Path extension = root.resolve("math/async");
-      Files.createDirectories(extension);
-      String descriptor =
-          "{:namespace \"math.async\" :version \"1.0.0\" :provider :wasm "
-              + ":module \"adapter.wasm\" :abi :hta.v1 "
-              + ":exports {\"sum\" {:args [:i64 :i64] :returns :i64 :async true}} "
-              + ":assets [\"library.wasm\"] :capabilities []}";
-      HaraExtensionTestProject.write(extension, descriptor);
-      Files.write(extension.resolve("adapter.wasm"), resource("adapter.wasm"));
-      Files.write(extension.resolve("library.wasm"), replaceUtf8(resource("library.wasm"), "add", "sub"));
-      Path project = extension.resolve("project.edn");
-      try {
-        HaraExtensionManifest manifest =
-            HaraExtensionManifest.parse(
-                HaraProject.read(project).extensionManifestSource("math.async"),
-                project.toString());
-        HaraExtensionPackage extensionPackage =
-            new HaraExtensionPackage(manifest, project.toUri().toURL());
-        extensionPackage.validateDeclaredFiles();
-        HaraException error =
-            assertThrows(HaraException.class, () -> new HaraWasmExtension(extensionPackage));
-        assertTrue(error.getMessage().startsWith("extension/module-invalid"));
-      } finally {
-        deleteTree(root);
-      }
+  @Test
+  public void malformedWrappedLibraryIsRejectedBeforeAdapterInstantiation() throws Exception {
+    Path root = Files.createTempDirectory("hara-hta-malformed-");
+    Path extension = root.resolve("math/async");
+    Files.createDirectories(extension);
+    String descriptor =
+        "{:namespace \"math.async\" :version \"1.0.0\" :provider :wasm "
+            + ":module \"adapter.wasm\" :abi :hta.v1 "
+            + ":exports {\"sum\" {:args [:i64 :i64] :returns :i64 :async true}} "
+            + ":assets [\"library.wasm\"] :capabilities []}";
+    HaraExtensionTestProject.write(extension, descriptor);
+    Files.write(extension.resolve("adapter.wasm"), resource("adapter.wasm"));
+    Files.write(
+        extension.resolve("library.wasm"), replaceUtf8(resource("library.wasm"), "add", "sub"));
+    Path project = extension.resolve("project.edn");
+    try {
+      HaraExtensionManifest manifest =
+          HaraExtensionManifest.parse(
+              HaraProject.read(project).extensionManifestSource("math.async"),
+              project.toString());
+      HaraExtensionPackage extensionPackage =
+          new HaraExtensionPackage(manifest, project.toUri().toURL());
+      extensionPackage.validateDeclaredFiles();
+      HaraException error =
+          assertThrows(HaraException.class, () -> new HaraWasmExtension(extensionPackage));
+      assertTrue(error.getMessage().startsWith("extension/module-invalid"));
+    } finally {
+      deleteTree(root);
     }
   }
 

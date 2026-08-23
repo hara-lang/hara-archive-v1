@@ -21,6 +21,7 @@ import org.graalvm.polyglot.proxy.ProxyObject;
 
 /** Generic, import-free Wasm extension instance. */
 final class HaraWasmExtension implements HaraExtensionRuntime {
+  private static final long MAX_FRAME_BYTES = 64L * 1024 * 1024;
   private final HaraExtensionManifest manifest;
   private final Context context;
   private final Map<String, Value> exports;
@@ -442,6 +443,7 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
   private Object readFrame(long packed) {
     long pointer = packed >>> 32;
     long size = packed & 0xffff_ffffL;
+    if (size > MAX_FRAME_BYTES) throw new HaraException("hta/event-size-invalid");
     if (pointer > Integer.MAX_VALUE
         || size > Integer.MAX_VALUE
         || memory.getBufferSize() < pointer + size) {

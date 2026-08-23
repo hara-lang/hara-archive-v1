@@ -85,6 +85,9 @@ pub fn generate_hta_adapter(
     interface: &WasmInterface,
 ) -> Result<AdapterArtifact, String> {
     let inspection = inspect_direct(module_bytes)?;
+    if inspection.start.is_some() {
+        return Err("wasm-adapter/start-denied: wrapped module declares a start function".into());
+    }
     verify_hta_scalar(interface, &inspection)?;
     let exports = ordered_exports(interface)?;
     let bytes = emit_hta_forwarder(&exports)?;
@@ -1082,6 +1085,8 @@ mod tests {
     #[test]
     fn start_functions_are_rejected_during_static_validation() {
         let error = generate_adapter(START, &interface()).unwrap_err();
+        assert!(error.starts_with("wasm-adapter/start-denied"));
+        let error = generate_hta_adapter(START, &async_interface()).unwrap_err();
         assert!(error.starts_with("wasm-adapter/start-denied"));
     }
 
