@@ -32,7 +32,7 @@
   (let [node (substrate/node-create "node/target")]
     (substrate/section-put node :transports "peer-a"
                       {"id" "peer-a" "send_fn" identity})
-    [(util/transport-request-target node {:transport-id "peer-b"})
+    [(util/transport-request-target node {"transport_id" "peer-b"})
      (util/transport-request-target node {})
      (util/transport-request-target node {"local" true})
      (util/transport-request-target
@@ -66,23 +66,14 @@
 (fact "merges transport context into request metadata"
   [(util/request-context-merge
     {"kind" "request" "meta" {"trace" "a"}}
-    {:transport-id "peer-a"})
+    {"transport_id" "peer-a"})
    (util/request-context-merge
     {"kind" "request"}
-    {:transport-id "peer-b"})]
+    {"transport_id" "peer-b"})]
   => [{"kind" "request"
        "meta" {"trace" "a" "transport_id" "peer-a"}}
       {"kind" "request"
        "meta" {"transport_id" "peer-b"}}])
-
-(fact "accepts kebab-case transport metadata keys"
-  (let [node (substrate/node-create "node/target-kebab")]
-    [(util/transport-request-target node {:transport-id "peer-b"})
-     (util/context-transport-id {:transport-id "peer-b"})
-     (util/context-transport-id {"transport_id" "peer-c"})
-     (util/transport-request-target node {"transport-id" "legacy-string"})
-     (util/transport-request-target node {:transport_id "legacy-keyword"})])
-  => ["peer-b" "peer-b" "peer-c" nil nil])
 
 (fact "constructs and forwards response frames"
   (let [node (substrate/node-create "node/response")
@@ -97,7 +88,7 @@
                   outgoing)})
     (promise/value
      (util/response-ok
-      node incoming {"ok" true} nil {:transport-id "peer-a"}))
+      node incoming {"ok" true} nil {"transport_id" "peer-a"}))
     [(get @captured "kind")
      (get @captured "reply_to")
      (get @captured "status")

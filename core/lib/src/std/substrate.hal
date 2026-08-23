@@ -96,9 +96,12 @@
      "id" transport-id
      "listener" nil
      "meta" (or (option-value implementation "meta" :meta) {})
-     "send_fn" (option-value implementation "send_fn" :send-fn)
-     "start_fn" (option-value implementation "start_fn" :start-fn)
-     "stop_fn" (option-value implementation "stop_fn" :stop-fn)}))
+     "send_fn" (or (option-value implementation "send_fn" :send_fn)
+                    (option-value implementation "send-fn" :send-fn))
+     "start_fn" (or (option-value implementation "start_fn" :start_fn)
+                     (option-value implementation "start-fn" :start-fn))
+     "stop_fn" (or (option-value implementation "stop_fn" :stop_fn)
+                    (option-value implementation "stop-fn" :stop-fn))}))
 
 (defn get-services
   [node]
@@ -331,7 +334,7 @@
                  context
                  (if (router/context-transport-id context)
                    context
-                   (assoc context :transport-id transport-id))]
+                   (assoc context "transport_id" transport-id))]
              (receive-frame node event context)))))
        (fn [listener]
          (let [started (assoc transport "listener" listener)]

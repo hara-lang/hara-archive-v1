@@ -6,7 +6,7 @@
 
 (def DEFAULT-TRANSPORT-SERVICE "db.runtime/default-transport")
 
-(defn- option-value
+(defn- compatible-get
   [value lookup-key]
   (cond
     (not (map? value)) nil
@@ -14,6 +14,11 @@
     (string? lookup-key) (get value (keyword lookup-key))
     (keyword? lookup-key) (get value (name lookup-key))
     :else nil))
+
+(defn- option
+  [value primary alternate]
+  (or (compatible-get value primary)
+      (compatible-get value alternate)))
 
 (defn set-default-transport
   "Sets the default server transport ID for database proxy requests."
@@ -29,7 +34,7 @@
 (defn get-transport-id
   "Resolves a transport from options, node default or first attached transport."
   [node options]
-  (or (option-value options :transport-id)
+  (or (option options :transport-id :transport_id)
       (get-default-transport node)
       (first (substrate/transport-list node))))
 
@@ -37,9 +42,9 @@
   "Preserves Substrate timeout, cancellation and metadata while choosing transport."
   [node options]
   (let [transport-id (get-transport-id node options)
-        timeout-ms (option-value options :timeout-ms)
-        signal (option-value options :signal)
-        metadata (or (option-value options :meta) {})
+        timeout-ms (option options :timeout-ms :timeout_ms)
+        signal (compatible-get options :signal)
+        metadata (or (compatible-get options :meta) {})
         base {:meta metadata}
         with-transport (if transport-id
                          (assoc base :transport-id transport-id)

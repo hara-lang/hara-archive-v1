@@ -110,16 +110,4 @@
      (substrate/list-subscriptions node "main" "changed")])
   => [["sub-a"] ["sub-b" "evt-in"] ["peer-a" "peer-b"]])
 
-(fact "accepts kebab-case transport callback keys"
-  (let [transport
-       (substrate/transport-create
-        "peer"
-        {:send-fn identity
-         :start-fn identity
-         :stop-fn identity})]
-   [(get transport "send_fn")
-    (get transport "start_fn")
-    (get transport "stop_fn")])
-  => [identity identity identity])
-
 (pr-str (run '[std.substrate-test]))

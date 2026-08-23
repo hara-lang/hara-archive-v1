@@ -31,7 +31,9 @@
     (if (nil? transport)
       (throw (ex :not-found {:transport-id transport-id} :ex/message (str "transport not found - " transport-id)))
       (let [send-function
-            (option-value transport "send_fn" :send-fn)]
+            (or (get transport "send_fn")
+                (get transport :send-fn)
+                (get transport :send_fn))]
         (if (nil? send-function)
           (throw (ex :not-found {:transport-id transport-id} :ex/message (str "transport missing send_fn - " transport-id)))
           (request/ensure-promise (send-function outgoing)))))))
@@ -56,7 +58,8 @@
   (let [meta (or meta {})]
     (if (option-value meta "local" :local)
       nil
-      (or (option-value meta "transport_id" :transport-id)
+      (or (option-value meta "transport_id" :transport_id)
+          (option-value meta "transport-id" :transport-id)
           (first (transport-list node))))))
 
 (defn stream-route-loop
@@ -98,7 +101,8 @@
 
 (defn context-transport-id
   [context]
-  (option-value context "transport_id" :transport-id))
+  (or (option-value context "transport_id" :transport_id)
+      (option-value context "transport-id" :transport-id)))
 
 (defn request-context-merge
   "Merges transport context into request metadata and returns a new frame."
@@ -113,7 +117,8 @@
 (defn response-target
   [incoming context]
   (or (context-transport-id context)
-      (option-value (get incoming "meta") "transport_id" :transport-id)))
+      (option-value (get incoming "meta") "transport_id" :transport_id)
+      (option-value (get incoming "meta") "transport-id" :transport-id)))
 
 (defn response-ok
   "Constructs and optionally sends a successful response."
@@ -256,7 +261,7 @@
       (promise/new
        (fn [resolve reject]
          (request/add-pending
-          node outgoing resolve reject {:transport-id target})
+          node outgoing resolve reject {"transport_id" target})
          (try
            (promise/catch
             (transport-send node target outgoing)
@@ -276,7 +281,8 @@
          space signal data meta
          (or (get meta "cause") (get meta :cause)))
         exclude-id
-        (option-value meta "transport_id" :transport-id)]
+        (or (option-value meta "transport_id" :transport_id)
+            (option-value meta "transport-id" :transport-id))]
     (promise/then
      (pubsub/receive-publish node stream)
      (fn [_]

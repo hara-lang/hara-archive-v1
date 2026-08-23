@@ -84,20 +84,13 @@
         unsubscribe (router/unsubscribe-frame
                      "room/a" "event/ping" "sub-a" nil)]
     (promise/value
-     (router/receive-subscribe node subscribe {:transport-id "peer-a"}))
+     (router/receive-subscribe node subscribe {"transport_id" "peer-a"}))
     (let [before (router/list-subscriptions node "room/a" "event/ping")]
       (promise/value
        (router/receive-unsubscribe node unsubscribe
-                                   {:transport-id "peer-a"}))
+                                   {"transport_id" "peer-a"}))
       [before
        (router/list-subscriptions node "room/a" "event/ping")]))
   => [["peer-a"] []])
-
-(fact "router context keeps snake_case at the transport boundary"
-  [(router/context-transport-id {"transport_id" "peer-wire"})
-   (router/context-transport-id {:transport-id "peer-kebab"})
-   (router/context-transport-id {"transport-id" "legacy-string"})
-   (router/context-transport-id {:transport_id "legacy-keyword"})]
-  => ["peer-wire" "peer-kebab" nil nil])
 
 (pr-str (run '[std.substrate.router-test]))

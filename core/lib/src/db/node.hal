@@ -58,9 +58,10 @@
 
 (defn option-transport-id
   [options]
-  (let [options (or options {})]
-    (or (get options :transport-id)
-        (get options "transport-id"))))
+  (or (get (or options {}) :transport-id)
+      (get (or options {}) :transport_id)
+      (get (or options {}) "transport-id")
+      (get (or options {}) "transport_id")))
 
 (defn get-transport-id
   [node options]
