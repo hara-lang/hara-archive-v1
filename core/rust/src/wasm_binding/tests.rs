@@ -1,4 +1,7 @@
-use super::{inspect_direct, WasmInterface, WasmValueType};
+use super::{
+    import_wit, inspect_direct, project_wit, WasmInterface, WasmValueType, WitImportOptions,
+    WitProjectionOptions, WitRoute,
+};
 
 const START_SENTINEL: &[u8] = b"\0asm\x01\0\0\0\x08\x01\0";
 
@@ -168,4 +171,97 @@ fn rejects_ambiguous_and_future_semantics() {
     assert!(WasmInterface::parse(&handles, "handles")
         .unwrap_err()
         .starts_with("wasm-interface/feature-unsupported"));
+}
+
+const WIT_SCALAR: &str = r#"
+package demo:calculator;
+
+interface calculator {
+  add: func(left: s64, right: s64) -> s64;
+}
+
+world calculator-world {
+  export calculator;
+}
+"#;
+
+const WIT_RICH: &str = r#"
+package demo:rich;
+
+interface rich {
+  record point {
+    x: s32,
+    y: s32,
+  }
+  variant choice {
+    point(point),
+    none,
+  }
+  resource stream;
+  transform: func(value: option<point>, data: list<string>) -> result<choice, string>;
+}
+
+world rich-world {
+  import host;
+  export rich;
+}
+"#;
+
+#[test]
+fn imports_scalar_wit_deterministically_and_keeps_the_direct_route() {
+    let options = WitImportOptions {
+        module: Some("fixtures/calculator.wasm".into()),
+        ..WitImportOptions::default()
+    };
+    let left = import_wit(WIT_SCALAR, "calculator.wit", &options).unwrap();
+    let right = import_wit(WIT_SCALAR, "calculator.wit", &options).unwrap();
+    assert_eq!(left, right);
+    assert_eq!(left.route, WitRoute::DirectImport);
+    assert!(left.diagnostics.is_empty());
+    assert!(left.interface_source.contains(":wasm/type :i64"));
+    let interface = WasmInterface::parse(&left.interface_source, "wit skeleton").unwrap();
+    let projection = project_wit(
+        &interface,
+        &WitProjectionOptions {
+            strict: true,
+            ..WitProjectionOptions::default()
+        },
+    )
+    .unwrap();
+    assert!(projection
+        .source
+        .contains("add: func(left: s64, right: s64) -> s64;"));
+    let round_trip = import_wit(&projection.source, "projection.wit", &options).unwrap();
+    assert_eq!(
+        interface,
+        WasmInterface::parse(&round_trip.interface_source, "round trip").unwrap()
+    );
+}
+
+#[test]
+fn rich_wit_reports_lossy_features_and_strict_mode_rejects_them() {
+    let permissive = import_wit(WIT_RICH, "rich.wit", &WitImportOptions::default()).unwrap();
+    assert_eq!(permissive.route, WitRoute::HtaRequire);
+    assert!(permissive
+        .diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.code == "option"));
+    assert!(permissive
+        .diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.code == "resource"));
+    assert!(permissive.normalized_ir.contains(":provenance"));
+
+    let strict = import_wit(
+        WIT_RICH,
+        "rich.wit",
+        &WitImportOptions {
+            strict: true,
+            ..WitImportOptions::default()
+        },
+    )
+    .unwrap_err();
+    assert!(strict.starts_with("wasm-wit/strict"));
+    assert!(strict.contains("option"));
+    assert!(strict.contains("world-import"));
 }

@@ -23,6 +23,8 @@ rust_files=(
   core/rust/src/wasm_binding/runtime/tests.rs
   core/rust/src/wasm_binding/syntax.rs
   core/rust/src/wasm_binding/tests.rs
+  core/rust/src/wasm_binding/wit.rs
+  core/rust/src/wasm_binding/wit_parser.rs
 )
 
 check_format_and_layout() {

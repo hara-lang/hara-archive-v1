@@ -9,6 +9,8 @@
 
 (def +route-operations+
   {:tool.cli.route/extension-inspect :inspect
+   :tool.cli.route/extension-wit-import :wit-import
+   :tool.cli.route/extension-wit-project :wit-project
    :tool.cli.route/extension-bind :bind
    :tool.cli.route/extension-check :check
    :tool.cli.route/extension-build :build
@@ -26,7 +28,7 @@
       {:operation operation :arguments arguments}
       (if (empty? arguments)
         (throw (ex :io {} :ex/message
-                   "extension requires inspect, bind, check, build, install, or test"))
+                   "extension requires inspect, wit-import, wit-project, bind, check, build, install, or test"))
         {:operation (keyword (first arguments))
          :arguments (vec (rest arguments))}))))
 
@@ -82,7 +84,11 @@
             more (tail remaining)
             inline-out (inline-option argument "--out")
             inline-module (inline-option argument "--module")
-            inline-namespace (inline-option argument "--namespace")]
+            inline-namespace (inline-option argument "--namespace")
+            inline-world (inline-option argument "--world")
+            inline-interface (inline-option argument "--interface")
+            inline-package (inline-option argument "--package")
+            inline-ir (inline-option argument "--ir")]
         (cond
           (= argument "--out")
           (let [value (required-flag-value more argument)]
@@ -102,6 +108,39 @@
                    positionals
                    (add-authoring-option options allowed :namespace argument value)))
 
+          (= argument "--world")
+          (let [value (required-flag-value more argument)]
+            (recur (tail more)
+                   positionals
+                   (add-authoring-option options allowed :world argument value)))
+
+          (= argument "--interface")
+          (let [value (required-flag-value more argument)]
+            (recur (tail more)
+                   positionals
+                   (add-authoring-option options allowed :interface argument value)))
+
+          (= argument "--package")
+          (let [value (required-flag-value more argument)]
+            (recur (tail more)
+                   positionals
+                   (add-authoring-option options allowed :package argument value)))
+
+          (= argument "--ir")
+          (let [value (required-flag-value more argument)]
+            (recur (tail more)
+                   positionals
+                   (add-authoring-option options allowed :ir argument value)))
+
+          (= argument "--strict")
+          (if (not (get allowed :strict))
+            (throw (ex :syntax {:option argument} :ex/message
+                       (str "unknown extension option: " argument)))
+            (if (has? options :strict)
+              (throw (ex :syntax {:option argument} :ex/message
+                         (str "duplicate extension option: " argument)))
+              (recur more positionals (assoc options :strict true))))
+
           inline-out
           (recur more positionals
                  (add-authoring-option options allowed :out "--out" inline-out))
@@ -114,6 +153,24 @@
           (recur more positionals
                  (add-authoring-option options allowed :namespace
                                        "--namespace" inline-namespace))
+
+          inline-world
+          (recur more positionals
+                 (add-authoring-option options allowed :world "--world" inline-world))
+
+          inline-interface
+          (recur more positionals
+                 (add-authoring-option options allowed :interface
+                                       "--interface" inline-interface))
+
+          inline-package
+          (recur more positionals
+                 (add-authoring-option options allowed :package
+                                       "--package" inline-package))
+
+          inline-ir
+          (recur more positionals
+                 (add-authoring-option options allowed :ir "--ir" inline-ir))
 
           (str/starts-with? argument "-")
           (throw (ex :syntax {:option argument} :ex/message
@@ -145,6 +202,53 @@
       (model/success
        {:host/action :extension-inspect
         :host/arguments host-arguments}
+       []))))
+
+(defn wit-import-command [arguments]
+  (let [parsed (parse-authoring-arguments
+               arguments
+               {:out true :module true :namespace true :world true
+                :interface true :ir true :strict true})
+       positionals (:positionals parsed)
+       options (:options parsed)]
+    (if (= 1 (count positionals))
+      nil
+      (throw (ex :io {:arguments arguments} :ex/message
+                "extension wit-import requires one .wit source")))
+    (let [source (first positionals)
+         output (required-authoring-option options :out "--out" "wit-import")
+         flags (vec (concat
+                     (if-let [value (:module options)] ["--module" value] [])
+                     (if-let [value (:namespace options)] ["--namespace" value] [])
+                     (if-let [value (:world options)] ["--world" value] [])
+                     (if-let [value (:interface options)] ["--interface" value] [])
+                     (if-let [value (:ir options)] ["--ir" value] [])
+                     (if (:strict options) ["--strict"] [])))]
+      (model/success
+       {:host/action :extension-wit-import
+       :host/arguments (vec (concat [source output] flags))}
+       []))))
+
+(defn wit-project-command [arguments]
+  (let [parsed (parse-authoring-arguments
+               arguments
+               {:out true :package true :interface true :world true :strict true})
+       positionals (:positionals parsed)
+       options (:options parsed)]
+    (if (= 1 (count positionals))
+      nil
+      (throw (ex :io {:arguments arguments} :ex/message
+                "extension wit-project requires one .hal interface")))
+    (let [interface (first positionals)
+         output (required-authoring-option options :out "--out" "wit-project")
+         flags (vec (concat
+                     (if-let [value (:package options)] ["--package" value] [])
+                     (if-let [value (:interface options)] ["--interface" value] [])
+                     (if-let [value (:world options)] ["--world" value] [])
+                     (if (:strict options) ["--strict"] [])))]
+      (model/success
+       {:host/action :extension-wit-project
+       :host/arguments (vec (concat [interface output] flags))}
        []))))
 
 (defn bind-command [arguments]
@@ -403,6 +507,8 @@
         arguments (:arguments resolved)]
     (cond
       (= operation :inspect) (inspect-command arguments)
+      (= operation :wit-import) (wit-import-command arguments)
+      (= operation :wit-project) (wit-project-command arguments)
       (= operation :bind) (bind-command arguments)
       :else
       (let [root (package-argument arguments operation)]

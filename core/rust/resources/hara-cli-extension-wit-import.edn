@@ -1,0 +1,22 @@
+{:extension/id :tool.cli.extension/wit-import
+ :extension/version "0.1.0"
+ :app/id :tool.cli/extension
+ :app/summary "Import WIT declarations into Hara interface skeletons."
+ :route
+ {:route/id :tool.cli.route/extension-wit-import
+  :route/path ["extension" "wit-import"]
+  :route/aliases []
+  :route/handler :tool.cli.handler/extension
+  :route/execution :finite
+  :route/tier :public
+  :route/summary "Import a WIT world or interface into a Hara .hal skeleton."
+  :route/arguments [{:argument/id :tool.cli.argument/extension-wit-import-command
+                     :argument/cardinality :one-or-more
+                     :argument/type :string}]
+  :route/options []
+  :route/formats [:text :edn]}
+ :handler
+ {:handler/id :tool.cli.handler/extension
+  :handler/input :tool.cli.schema/request
+  :handler/output :tool.cli.schema/result
+  :handler/registry :closed}}
