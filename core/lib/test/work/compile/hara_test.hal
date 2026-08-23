@@ -560,4 +560,73 @@
       (lowering/reset-closures)))
   => [9 9 2 2 9 9])
 
+^{:refer work.compile.hara/form :added "0.1"}
+(fact "generated ordinary forms preserve bind depth validation"
+  (lowering/reset-closures)
+  (try
+    (let [source-count (atom 0)
+          definition
+          (work/bind
+           {:id :compiled-invalid-depth
+            :maximum-depth 0}
+           (work/pure :source
+             (fn [input context]
+               (swap! source-count inc)
+               input))
+           (work/pure :continuation
+             (fn [value context]
+               (work/pure :produced
+                 (fn [produced-input produced-context]
+                   produced-input)))))
+          rebuilt (eval (lowering/form definition))
+          error-code
+          (fn [candidate]
+            (try
+              (evaluator/run nil candidate :input)
+              :passed
+              (catch Throwable error
+                (:work/error (ex-data error)))))]
+      [(error-code definition)
+       (error-code rebuilt)
+       (deref source-count)])
+    (finally
+      (lowering/reset-closures)))
+  => [:work/bind-invalid-depth :work/bind-invalid-depth 0])
+
+^{:refer work.compile.hara/form :added "0.1"}
+(fact "generated ordinary forms preserve nested bind depth limits"
+  (lowering/reset-closures)
+  (try
+    (let [inner
+          (work/bind
+           {:id :compiled-inner}
+           (work/pure :inner-source
+             (fn [input context] input))
+           (work/pure :inner-continuation
+             (fn [value context]
+               (work/pure :inner-produced
+                 (fn [produced-input produced-context]
+                   produced-input)))))
+          definition
+          (work/bind
+           {:id :compiled-outer
+            :maximum-depth 1}
+           (work/pure :outer-source
+             (fn [input context] input))
+           (work/pure :outer-continuation
+             (fn [value context] inner)))
+          rebuilt (eval (lowering/form definition))
+          error-code
+          (fn [candidate]
+            (try
+              (evaluator/run nil candidate :input)
+              :passed
+              (catch Throwable error
+                (:work/error (ex-data error)))))]
+      [(error-code definition)
+       (error-code rebuilt)])
+    (finally
+      (lowering/reset-closures)))
+  => [:work/bind-depth-exceeded :work/bind-depth-exceeded])
+
 (pr-str (run '[work.compile.hara-test]))
