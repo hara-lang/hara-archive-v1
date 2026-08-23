@@ -1,0 +1,25 @@
+(ns tool.migrate.policy.foundation.profile-test
+  (:use code.test)
+  (:require [tool.migrate.policy.foundation.profile :as profile]))
+
+^{:refer tool.migrate.policy.foundation.profile/profile}
+(fact "the active Foundation profile pins one coherent generation baseline"
+  (let [value (profile/profile :foundation-f55f)]
+    [(profile/valid-profile? value)
+     (:foundation/revision value)
+     (:foundation/tree value)
+     (:registry/root value)
+     (:hara/revision value)])
+  => [true
+      "f55f39855d5e9ea1b22f1d116df684c584323f80"
+      "3beb10f32e7d57139910ee9c9de1370e966ca935"
+      "01-lang/005-foundation-annex/draft/conformance/libraries"
+      "fd382c506348c1e96412e7398ac4cba7029b7885"])
+
+^{:refer tool.migrate.policy.foundation.profile/valid-profile?}
+(fact "profile validation rejects an unpinned Foundation revision"
+  (profile/valid-profile?
+   (assoc profile/+foundation-f55f+ :foundation/revision "not-a-sha"))
+  => false)
+
+(pr-str (run {:namespace "tool.migrate.policy.foundation.profile-test"}))

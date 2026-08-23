@@ -1577,7 +1577,7 @@
     (vec (map (fn [unit] (validate-unit root unit)) edits))
     (vec (map (fn [unit] (apply-unit root unit)) edits))))
 
-(def foundation-profile migrate-profile/+foundation-baa75a+)
+(def foundation-profile migrate-profile/+foundation-f55f+)
 (def foundation-corpus migrate-corpus/corpus-document)
 (def foundation-corpus-source migrate-corpus/corpus-source)
 (def foundation-report-source migrate-corpus/report-source)
