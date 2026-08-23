@@ -125,10 +125,65 @@ impl Runtime {
                 wasmtime_provider::WasmtimeExtensionProvider::compile_memory(&bytes, plan)?
             }
             extension::WasmAbi::HtaV1 => {
-                return Err(format!(
-                    "extension/provider-unsupported: wasm ABI :hta.v1 for {} requires HTA",
-                    namespace
-                ))
+                let package_manifest_path = package.root.join("package.edn");
+                let package_manifest = package_manifest::PackageManifest::read(
+                    &package_manifest_path,
+                )
+                .map_err(|error| error.to_string())?;
+                let module = package_manifest
+                    .wasm_imports
+                    .keys()
+                    .find(|candidate| {
+                        candidate.as_str() == package.manifest.module.as_deref().unwrap_or_default()
+                            || package_manifest
+                                .wasm_imports
+                                .get(*candidate)
+                                .and_then(|variant| variant.artifact.path.file_name())
+                                .and_then(|name| name.to_str())
+                                == package
+                                    .manifest
+                                    .module
+                                    .as_deref()
+                                    .and_then(|module| {
+                                        std::path::Path::new(module)
+                                            .file_name()
+                                            .and_then(|name| name.to_str())
+                                    })
+                    })
+                    .cloned()
+                    .or_else(|| {
+                        (package_manifest.wasm_imports.len() == 1)
+                            .then(|| package_manifest.wasm_imports.keys().next().cloned())
+                            .flatten()
+                    })
+                    .ok_or_else(|| {
+                        format!("package/missing-require-artifact: {namespace}")
+                    })?;
+                let mut requirements = package_manifest::PackageRuntimeRequirements {
+                    supported_targets: ["wasm32-wasi-preview1".to_owned()].into_iter().collect(),
+                    supported_abis: ["hta.v1".to_owned()].into_iter().collect(),
+                    ..package_manifest::PackageRuntimeRequirements::default()
+                };
+                if self.native_host_handler.is_some() {
+                    requirements.allowed_host_calls = package_manifest
+                        .wasm_imports
+                        .values()
+                        .flat_map(|variant| variant.host_calls.iter().cloned())
+                        .collect();
+                }
+                let loaded = package_hta_loader::load_hta_require_package(
+                    &package_manifest,
+                    &package.root,
+                    &module,
+                    &requirements,
+                    &package.source,
+                    self.native_host_handler.clone(),
+                )?;
+                if loaded.identity != package_manifest.identity {
+                    return Err(format!("package/identity-mismatch: {namespace}"));
+                }
+                self.wasm_extensions.insert(namespace.to_owned(), loaded.extension);
+                return Ok(());
             }
         };
         self.install_wasm_extension(
