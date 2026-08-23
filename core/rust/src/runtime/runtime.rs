@@ -118,7 +118,7 @@ impl Runtime {
     #[cfg(feature = "bytecode-vm")]
     pub(crate) fn prepare_foundation_bytecode(&mut self) {
         let foundation = self.namespace_registry.find_or_create("std.foundation");
-        for name in core::BYTECODE_BOOTSTRAP_ONLY_CALLABLES {
+        for name in core::foundation_bootstrap_callable_names() {
             let symbol = crate::lang::data::Symbol::parse(name);
             if foundation.resolve(&symbol).is_none() {
                 let value = core::direct_bootstrap_callable_value(name).unwrap_or_else(|| {

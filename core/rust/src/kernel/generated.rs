@@ -56,7 +56,7 @@ const NATIVE_TYPES: &[&str] = &[
     "Iter",
 ];
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct GeneratedNamespaceConfig {
     aliases: HashMap<String, String>,
     global_alias: Option<String>,
@@ -83,7 +83,10 @@ impl GeneratedNamespaceConfig {
         Self {
             aliases: HashMap::new(),
             global_alias: None,
-            global_aliases: HashMap::new(),
+            global_aliases: NATIVE_TYPES
+                .iter()
+                .map(|name| ((*name).into(), format!("std.native.{name}")))
+                .collect(),
             lazy_aliases: HashMap::new(),
             refers: HashMap::new(),
             macro_refers: HashMap::new(),
@@ -279,7 +282,11 @@ impl GeneratedNamespaceConfig {
     }
 
     pub fn set_global_aliases(&mut self, aliases: impl IntoIterator<Item = (String, String)>) {
-        self.global_aliases = aliases.into_iter().collect();
+        self.global_aliases = NATIVE_TYPES
+            .iter()
+            .map(|name| ((*name).into(), format!("std.native.{name}")))
+            .chain(aliases)
+            .collect();
     }
 
     fn put_alias(&mut self, alias: &str, namespace: &str) -> Result<(), String> {
@@ -288,6 +295,14 @@ impl GeneratedNamespaceConfig {
         }
         if alias == "-" {
             return Err("Namespace alias is reserved: -".into());
+        }
+        if let Some(previous) = self.global_aliases.get(alias) {
+            if previous != namespace {
+                return Err(format!(
+                    "Namespace alias already refers to {previous}: {alias}"
+                ));
+            }
+            return Ok(());
         }
         if let Some(previous) = self.aliases.get(alias) {
             if previous != namespace {
@@ -470,6 +485,12 @@ impl GeneratedNamespaceConfig {
             self.used_namespaces.push(target.into());
         }
         Ok(())
+    }
+}
+
+impl Default for GeneratedNamespaceConfig {
+    fn default() -> Self {
+        Self::defaults()
     }
 }
 
