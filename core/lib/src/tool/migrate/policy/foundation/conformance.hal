@@ -3,6 +3,7 @@
             [tool.migrate.common.git :as migrate-git]
             [tool.migrate.policy.foundation.profile :as profile]
             [std.fs.path :as path]
+            [std.fs :as fs]
             [code.project :as project]
             [tool.sh :as sh]
             [work.flow.task.command-task :as task]))
@@ -12,23 +13,31 @@
 
 (def +evidence-statuses+ #{:emitted :skipped :manual-review})
 
+(def +active-profile+ profile/+foundation-f55f+)
+(def +origin-generator+
+  "tool.migrate.policy.foundation.conformance/3")
+
 (def +foundation-revision+
-  "f55f39855d5e9ea1b22f1d116df684c584323f80")
+  (:foundation/revision +active-profile+))
 
 (def +foundation-tree+
-  "3beb10f32e7d57139910ee9c9de1370e966ca935")
+  (:foundation/tree +active-profile+))
 
 (def +hara-revision+
-  "fd382c506348c1e96412e7398ac4cba7029b7885")
+  (:hara/revision +active-profile+))
 
 (def +baseline+
-  {:foundation/repository "zcaudate-xyz/foundation-base"
+  {:foundation/repository (:foundation/repository +active-profile+)
    :foundation/revision +foundation-revision+
    :foundation/tree +foundation-tree+
-   :hara/repository "hara-lang/hara"
+   :foundation/source-roots (:foundation/source-roots +active-profile+)
+   :foundation/test-roots (:foundation/test-roots +active-profile+)
+   :external/rank (:external/rank +active-profile+)
+   :hara/repository (:hara/repository +active-profile+)
    :hara/revision +hara-revision+
-   :output/repository "hara-lang/hara-specs-registry"
-   :output/root "../hara-specs-registry/01-lang/005-foundation-annex/draft/conformance/libraries"})
+   :output/repository (:registry/repository +active-profile+)
+   :output/root (str "../hara-specs-registry/"
+                     (:registry/root +active-profile+))})
 
 (defn family-descriptor
   [family-id test-prefixes test-count target-namespace mappings output-path]
@@ -473,23 +482,106 @@
        :test/path test-path})
     (target-test-paths registry-root descriptor))))
 
+(defn foundation-source-path-for-test
+  "Maps each Foundation test root to its corresponding source root."
+  [test-path]
+  (let [source-root
+        (cond
+          (str/starts-with? test-path "test/") "src/"
+          (str/starts-with? test-path "test-java/") "src-java/"
+          (str/starts-with? test-path "test-lang/") "src-lang/"
+          :else nil)
+        prefix
+        (cond
+          (str/starts-with? test-path "test/") "test/"
+          (str/starts-with? test-path "test-java/") "test-java/"
+          (str/starts-with? test-path "test-lang/") "test-lang/"
+          :else nil)
+        suffix (if prefix
+                 (str/slice test-path
+                            (str/length prefix)
+                            (str/length test-path))
+                 nil)
+        suffix
+        (if (and suffix (str/ends-with? suffix "_test.clj"))
+          (str (str/slice suffix 0 (- (str/length suffix) 9)) ".clj")
+          suffix)]
+    (if (and source-root suffix)
+      (str source-root suffix)
+      nil)))
+
 (defn foundation-source-test-pairs
   "Discovers the exact Foundation source/test pairs from its pinned tree."
   [runner baseline descriptor]
   (vec
    (map
     (fn [test-path]
-      {:source/path
-       (let [suffix (str/slice test-path 5 (str/length test-path))]
-         (str "src/"
-              (str/slice suffix 0 (- (str/length suffix) 9))
-              ".clj"))
+      {:source/path (foundation-source-path-for-test test-path)
        :test/path test-path})
     (filter
      (fn [path]
        (and (str/ends-with? path ".clj")
             (path-selected? descriptor path)))
      (migrate-git/list-tree runner (:foundation/revision baseline))))))
+
+(defn foundation-source-path?
+  [baseline file-path]
+  (and
+   (str/ends-with? file-path ".clj")
+   (some
+    (fn [root]
+      (or (= file-path root)
+          (str/starts-with? file-path (str root "/"))))
+    (:foundation/source-roots baseline))))
+
+(defn foundation-source-entries
+  "Reads all pinned Foundation source namespaces and selected family tests."
+  [runner baseline descriptor]
+  (let [revision (:foundation/revision baseline)
+        paths (migrate-git/list-tree runner revision)
+        test-pairs (foundation-source-test-pairs runner baseline descriptor)
+        test-index
+        (reduce
+         (fn [output pair]
+           (assoc output (:source/path pair) (:test/path pair)))
+         {}
+         test-pairs)]
+    (corpus/compile-entries
+     (vec
+      (map
+       (fn [source-path]
+         (let [blob (migrate-git/blob-id runner revision source-path)
+               source (migrate-git/read-object runner blob)
+               entry (corpus/source-entry source-path blob source)
+               test-path (get test-index source-path)]
+           (if test-path
+             (let [test-blob (migrate-git/blob-id runner revision test-path)
+                   test-source (migrate-git/read-object runner test-blob)]
+               (corpus/attach-test entry test-path test-blob test-source))
+             entry)))
+       (filter
+        (fn [file-path]
+          (foundation-source-path? baseline file-path))
+        paths))))))
+
+(defn foundation-external-routes
+  "Extracts family-owned external dependency observations against all
+   Foundation source namespaces, so internal dependencies are not misclassified."
+  [runner baseline descriptor]
+  (let [selected
+        (set
+         (map :source/path
+              (foundation-source-test-pairs runner baseline descriptor)))
+        routes
+        (corpus/external-routes
+         (foundation-source-entries runner baseline descriptor)
+         (:external/rank baseline)
+         {:family/id (:family/id descriptor)})]
+    (vec
+     (filter
+      (fn [route]
+        (has? selected (:source/path route)))
+      routes))))
 
 (defn metadata-pairs
   "Returns a validated pair list from one metadata document."
@@ -572,7 +664,7 @@
    :document/type :foundation-library-origin
    :document/version "alpha"
    :document/status :draft
-   :origin/generator "tool.migrate.policy.foundation.conformance/2"
+   :origin/generator +origin-generator+
    :origin/family (:family/id descriptor)
    :origin/source {:repository (:foundation/repository baseline)
                    :revision (:foundation/revision baseline)
@@ -845,14 +937,20 @@
     (target-test-paths registry-root descriptor))))
 
 (defn generated-origin-document
-  [baseline descriptor pairs]
-  (let [pairs (sorted-pairs pairs)]
-    (assoc (origin-document baseline descriptor)
-         :origin/namespaces (pair-groups pairs)
-         :origin/cases pairs
-         :origin/accounting (accounting (map (fn [pair]
-                                               {:status (:pair/status pair)})
-                                             pairs)))))
+  ([baseline descriptor pairs]
+   (generated-origin-document baseline descriptor pairs []))
+  ([baseline descriptor pairs external-routes]
+   (let [pairs (sorted-pairs pairs)]
+     (assoc (origin-document baseline descriptor)
+            :origin/namespaces (pair-groups pairs)
+            :origin/cases pairs
+            :origin/accounting (accounting (map (fn [pair]
+                                                  {:status (:pair/status pair)})
+                                                pairs))
+            :origin/external-dependencies
+            (vec (sort-by :external/id external-routes))
+            :origin/external-accounting
+            (corpus/external-route-accounting external-routes)))))
 
 (defn generated-contract-document
   [baseline descriptor pairs]
@@ -871,6 +969,15 @@
          :contract/origin (str (:family/name descriptor) "/origin.edn")
          :conformance/namespaces (:origin/namespaces origin)
          :conformance/cases (:origin/cases origin)
+         :conformance/external-dependencies
+         (vec
+          (map
+           (fn [observation]
+             (assoc observation
+                    :review/disposition :pending
+                    :review/evidence []))
+           (:origin/external-dependencies origin)))
+         :external/accounting (:origin/external-accounting origin)
          :runtime/status {:rust :pending :jvm :pending :wasm :pending}
          :target/namespaces
          (vec
@@ -893,7 +1000,7 @@
   (let [generated? (and existing-source
                         (str/includes?
                          existing-source
-                         ":origin/generator \"tool.migrate.policy.foundation.conformance/2\""))]
+                         (str ":origin/generator \"" +origin-generator+ "\"")))]
     (cond
       (nil? existing-source) :create
       (= existing-source generated-source) :unchanged
@@ -906,15 +1013,21 @@
   (let [generated? (and existing-source
                         (str/includes?
                          existing-source
-                         ":origin/generator \"tool.migrate.policy.foundation.conformance/2\""))]
+                         (str ":origin/generator \"" +origin-generator+ "\"")))
+        reviewed? (and existing-source
+                       (str/includes?
+                        existing-source
+                        ":contract/status :reviewed"))]
     (cond
       (nil? existing-source) :create
       (= existing-source generated-source) :unchanged
+      reviewed? :preserve-reviewed
       (not generated?) :replace-legacy
       :else :preserve-reviewed)))
 
 (defn generated-metadata-document
-  [baseline descriptor metadata foundation-pairs hara-pairs origin]
+  [baseline descriptor metadata foundation-pairs hara-pairs origin
+   external-routes]
   (assoc metadata
          :foundation/source {:repository (:foundation/repository baseline)
                              :revision (:foundation/revision baseline)
@@ -925,15 +1038,29 @@
          :hara/source-test-pairs (vec hara-pairs)
          :generated/origin {:path (str (:family/name descriptor) "/origin.edn")
                             :sha256 (document-digest origin)
-                            :pair-count (count (:origin/cases origin))}))
+                            :pair-count (count (:origin/cases origin))
+                            :external-count (count external-routes)
+                            :external-accounting
+                            (:origin/external-accounting origin)}
+         :generated/external
+         {:sha256 (document-digest
+                   {:external/dependencies external-routes})
+          :count (count external-routes)
+          :accounting (:origin/external-accounting origin)}))
 
 (defn conformance-artifacts
   "Builds metadata, immutable origin, and initial contract sources together."
-  [baseline descriptor metadata foundation-pairs hara-pairs pairs]
-  (let [origin (generated-origin-document baseline descriptor pairs)
+  ([baseline descriptor metadata foundation-pairs hara-pairs pairs]
+   (conformance-artifacts
+    baseline descriptor metadata foundation-pairs hara-pairs pairs []))
+  ([baseline descriptor metadata foundation-pairs hara-pairs pairs
+    external-routes]
+  (let [origin (generated-origin-document
+                baseline descriptor pairs external-routes)
         contract (contract-from-origin baseline descriptor origin)
         metadata (generated-metadata-document
-                  baseline descriptor metadata foundation-pairs hara-pairs origin)]
+                  baseline descriptor metadata foundation-pairs hara-pairs
+                  origin external-routes)]
     {:metadata metadata
      :origin origin
      :contract contract
@@ -948,8 +1075,10 @@
               :source-test-count (count foundation-pairs)
               :hara-source-test-count (count hara-pairs)
               :pair-count (count pairs)
+              :external-count (count external-routes)
+              :external-accounting (:origin/external-accounting origin)
               :origin/path (str (:family/name descriptor) "/origin.edn")
-              :contract/path (:output/path descriptor)}}))
+              :contract/path (:output/path descriptor)}})))
 
 (defn foundation-runner
   "Builds the read-only Foundation Git runner used by tool.migrate."
@@ -984,14 +1113,19 @@
         pairs (extract-pairs-from-paths
                descriptor
                "."
-               (host-target-test-paths registry-root descriptor))]
+               (host-target-test-paths registry-root descriptor))
+        external-routes (foundation-external-routes
+                         runner
+                         baseline
+                         descriptor)]
     (conformance-artifacts
      baseline
      descriptor
      metadata
      foundation-pairs
      hara-pairs
-     pairs)))
+     pairs
+     external-routes)))
 
 (defn family-artifact-path
   [registry-root descriptor file]
@@ -1034,6 +1168,8 @@
                          :origin origin-state
                          :contract contract-state})))
 
+(declare validate-external-observations)
+
 (defn validate-contract-document
   "Rejects contracts that omit the registry authority or runtime test surface."
   [document]
@@ -1055,7 +1191,136 @@
              (= #{:rust :jvm :wasm}
                 (set (keys (:runtime/status document)))))
       []
-      [{:type :conformance/missing-runtime-contracts}]))))
+      [{:type :conformance/missing-runtime-contracts}])
+    (validate-external-observations
+     document
+     (:conformance/external-dependencies document)
+     (:external/accounting document)))))
+
+(declare external-observation-errors external-observation-accounting-valid?)
+
+(defn validate-origin-document
+  [document]
+  (vec
+   (concat
+    (if (and (map? document)
+             (= :foundation-library-origin (:document/type document))
+             (profile/sha? (get-in document [:origin/source :revision]))
+             (profile/sha? (get-in document [:origin/source :tree]))
+             (vector? (:origin/cases document)))
+      []
+      [{:type :conformance/invalid-origin-document}])
+    (validate-external-observations
+     document
+     (:origin/external-dependencies document)
+     (:origin/external-accounting document)))))
+
+(defn validate-metadata-document
+  [baseline descriptor document]
+  (vec
+   (concat
+    (if (and (map? document)
+             (= :foundation-library-conformance-metadata
+                (:document/type document))
+             (= (:family/id descriptor) (:family/id document))
+             (= (:foundation/revision baseline)
+                (get-in document [:foundation/source :revision]))
+             (= (:foundation/tree baseline)
+                (get-in document [:foundation/source :tree]))
+             (= (:hara/revision baseline)
+                (get-in document [:hara/source :revision]))
+             (vector? (:foundation/source-test-pairs document))
+             (vector? (:hara/source-test-pairs document))
+             (vector? (:target/test-paths document)))
+      []
+      [{:type :conformance/stale-or-invalid-metadata
+        :family/id (:family/id descriptor)}])
+    (if (and (map? (:generated/origin document))
+             (string? (get-in document [:generated/origin :sha256]))
+             (number? (get-in document [:generated/origin :pair-count]))
+             (number? (get-in document [:generated/origin :external-count]))
+             (external-observation-accounting-valid?
+              (get-in document [:generated/origin :external-accounting])))
+      []
+      [{:type :conformance/missing-generated-metadata
+        :family/id (:family/id descriptor)}])
+    (if (and (map? (:generated/external document))
+             (string? (get-in document [:generated/external :sha256]))
+             (number? (get-in document [:generated/external :count]))
+             (external-observation-accounting-valid?
+              (get-in document [:generated/external :accounting])))
+      []
+      [{:type :conformance/missing-external-metadata
+        :family/id (:family/id descriptor)}]))))
+
+(defn external-observation-errors
+  [observation]
+  (vec
+   (concat
+    (if (and (map? observation)
+             (string? (:external/id observation))
+             (keyword? (:family/id observation))
+             (not (nil? (:family/id observation)))
+             (not (empty? (:external/id observation))))
+      []
+      [{:type :conformance/external-missing-id
+        :id (:external/id observation)}])
+    (if (and (string? (:external/namespace observation))
+             (str/starts-with? (:external/namespace observation) "clojure."))
+      []
+      [{:type :conformance/external-invalid-namespace
+        :id (:external/id observation)}])
+    (if (and (string? (:source/path observation))
+             (profile/sha? (:source/blob observation))
+             (string? (:source/namespace observation))
+             (has? #{:source :test} (:observation/kind observation))
+             (map? (:form/location observation)))
+      []
+      [{:type :conformance/external-missing-provenance
+        :id (:external/id observation)}])
+    (if (has? +evidence-statuses+ (:extraction/status observation))
+      []
+      [{:type :conformance/external-invalid-status
+        :id (:external/id observation)}])
+    (if (or (= :derived (:referenced/status observation))
+            (and (= :manual-review (:referenced/status observation))
+                 (keyword? (:referenced/reason observation))))
+      []
+      [{:type :conformance/external-invalid-symbol-evidence
+        :id (:external/id observation)}]))))
+
+(defn external-observation-accounting-valid?
+  [accounting-value]
+  (and
+   (map? accounting-value)
+   (every? number?
+           (map #(get accounting-value %)
+                [:discovered :emitted :skipped :manual-review]))
+   (:complete? accounting-value)
+   (= (:discovered accounting-value)
+      (+ (:emitted accounting-value)
+         (:skipped accounting-value)
+         (:manual-review accounting-value)))))
+
+(defn validate-external-observations
+  "Validates family external evidence independently from Hara case pairs."
+  [document observations accounting-value]
+  (let [observations (vec (or observations []))
+        ids (map :external/id observations)]
+    (vec
+     (concat
+      (mapcat external-observation-errors observations)
+      (if (= observations (vec (sort-by :external/id observations)))
+        []
+        [{:type :conformance/external-unstable-order}])
+      (if (empty? (corpus/duplicate-values ids))
+        []
+        [{:type :conformance/external-duplicate-id
+          :ids (corpus/duplicate-values ids)}])
+      (if (external-observation-accounting-valid? accounting-value)
+        []
+        [{:type :conformance/external-incomplete-accounting
+          :family/id (:family/id document)}])))))
 
 (declare portable-value? accounting)
 
@@ -1068,41 +1333,227 @@
    :family/metadata (metadata-path descriptor)
    :family/contract (:output/path descriptor)})
 
+(defn external-summary
+  "Derives a planning view from published family contracts only."
+  [contracts]
+  (vec
+   (map
+    (fn [namespace]
+      (let [observations
+            (vec
+             (mapcat
+              (fn [contract]
+                 (map
+                 (fn [observation]
+                    (assoc observation
+                           :conformance/family
+                           (:conformance/family contract)))
+                  (filter
+                   (fn [observation]
+                     (= namespace (:external/namespace observation)))
+                   (:conformance/external-dependencies contract))))
+              contracts))]
+        {:external/namespace namespace
+         :families (vec (sort (distinct (map :conformance/family observations))))
+         :observation-count (count observations)
+         :accounting
+         (accounting
+          (map (fn [observation]
+                 {:status (:extraction/status observation)})
+               observations))}))
+    (sort
+     (distinct
+      (mapcat
+       (fn [contract]
+         (map :external/namespace
+              (:conformance/external-dependencies contract)))
+       contracts))))))
+
 (defn registry-document
   "Builds the registry index consumed by the Work task and runtime adapters."
-  [baseline families]
-  {:document/id :hara/foundation-library-conformance
-   :document/type :foundation-library-conformance-index
-   :document/version "alpha"
-   :document/status :draft
-   :conformance/authority :hara-specs-registry
-   :conformance/origin-root (:output/root baseline)
-   :conformance/runtimes
-   {:rust {:runtime/id :rust
-           :runtime/adapter :registry-hara-test
-           :runtime/report-path "core/target/conformance/libraries/rust.edn"
-           :runtime/command ["scripts/runtime/run-lib-tests"]}
-    :jvm {:runtime/id :jvm
-          :runtime/adapter :registry-jvm-hara-test
-          :runtime/report-path "core/target/conformance/libraries/jvm.edn"
-          :runtime/command ["mvn" "-q" "-f" "core/java/pom.xml" "-Ptruffle"
-                            "-Dtest=LibraryConformanceTest" "test"]}
-    :wasm {:runtime/id :wasm
-           :runtime/adapter :registry-wasm-hara-test
-           :runtime/report-path "core/target/conformance/libraries/wasm.edn"
-           :runtime/command ["npm" "--prefix" "core/rust/web"
-                             "run" "test:library-conformance"]}}
-   :conformance/families
-   (vec (map registry-entry (sort-by :family/name families)))})
+  ([baseline families]
+   (registry-document baseline families []))
+  ([baseline families contracts]
+   {:document/id :hara/foundation-library-conformance
+    :document/type :foundation-library-conformance-index
+    :document/version "alpha"
+    :document/status :draft
+    :conformance/authority :hara-specs-registry
+    :conformance/origin-root (:output/root baseline)
+    :conformance/runtimes
+    {:rust {:runtime/id :rust
+            :runtime/adapter :registry-hara-test
+            :runtime/report-path "core/target/conformance/libraries/rust.edn"
+            :runtime/command ["scripts/runtime/run-lib-tests"]}
+     :jvm {:runtime/id :jvm
+           :runtime/adapter :registry-jvm-hara-test
+           :runtime/report-path "core/target/conformance/libraries/jvm.edn"
+           :runtime/command ["mvn" "-q" "-f" "core/java/pom.xml" "-Ptruffle"
+                             "-Dtest=LibraryConformanceTest" "test"]}
+     :wasm {:runtime/id :wasm
+            :runtime/adapter :registry-wasm-hara-test
+            :runtime/report-path "core/target/conformance/libraries/wasm.edn"
+            :runtime/command ["npm" "--prefix" "core/rust/web"
+                              "run" "test:library-conformance"]}}
+    :conformance/families
+    (vec (map registry-entry (sort-by :family/name families)))
+    :conformance/external-summary (external-summary contracts)}))
 
 (defn write-registry-index
   "Writes the single registry index for the generated family set."
+  ([baseline registry-root families]
+   (write-registry-index baseline registry-root families []))
+  ([baseline registry-root families contracts]
+   (let [path (host-path registry-root "index.edn")
+         source (document-source
+                 (registry-document baseline families contracts))]
+     (host-write path source)
+     {:path path
+      :family-count (count families)
+      :external-summary (external-summary contracts)})))
+
+(defn validate-registry-index
+  "Detects family additions, removals, duplicates, and stale locators."
+  [baseline families document]
+  (let [entries (vec (or (:conformance/families document) []))
+         ids (map :family/id entries)
+         expected (vec (map registry-entry (sort-by :family/name families)))]
+     (vec
+      (concat
+       (if (and (map? document)
+                (= :foundation-library-conformance-index
+                   (:document/type document))
+                (= :hara-specs-registry (:conformance/authority document)))
+         []
+         [{:type :conformance/invalid-registry-index}])
+       (if (empty? (corpus/duplicate-values ids))
+         []
+         [{:type :conformance/duplicate-registry-family
+           :ids (corpus/duplicate-values ids)}])
+       (if (= entries expected)
+         []
+         [{:type :conformance/stale-registry-index
+           :expected expected
+           :actual entries}])))))
+
+(defn registry-origin-families
+  "Lists family directories represented by generated origin documents."
+  [registry-root]
+  (let [root (host-path registry-root ".")
+        prefix (str root "/")]
+    (vec
+     (sort
+      (keep
+       (fn [entry]
+         (let [file-path (:path entry)]
+            (if (and (= :file (:type entry))
+                     (string? file-path)
+                     (str/ends-with? file-path "/origin.edn")
+                     (str/starts-with? file-path prefix))
+              (let [relative (str/slice file-path
+                                         (str/length prefix)
+                                         (str/length file-path))
+                    separator (str/index-of relative "/")]
+                (if (< 0 separator)
+                  (str/slice relative 0 separator)
+                  nil))
+              nil)))
+       (fs/select
+        root
+        (fn [entry]
+           (and (= :file (:type entry))
+                (string? (:path entry))
+                (str/ends-with? (:path entry) "/origin.edn")))))))))
+
+(defn validate-registry-layout
+  "Detects family directories that are absent from or extra to the index."
+  [registry-root families index]
+  (let [expected (vec (sort (map :family/name families)))
+        actual (registry-origin-families registry-root)
+        indexed (vec (sort (map :family/path
+                                 (:conformance/families index))))]
+    (vec
+     (concat
+      (if (= expected actual)
+        []
+        [{:type :conformance/stale-family-directories
+           :expected expected
+           :actual actual}])
+      (if (= expected indexed)
+        []
+        [{:type :conformance/stale-family-index
+           :expected expected
+           :actual indexed}])))))
+
+(declare validate-family-artifacts)
+
+(defn read-family-publication
+  [registry-root descriptor]
+  (let [root (str (:family/name descriptor) "/")]
+    {:metadata
+     (read-host-document
+      (host-path registry-root (str root "metadata.edn")))
+     :origin
+     (read-host-document
+      (host-path registry-root (str root "origin.edn")))
+     :contract
+     (read-host-document
+      (host-path registry-root (str root "conformance.edn")))}))
+
+(defn validate-registry-publications
+  "Reads and validates every registry artifact against one generation plan."
   [baseline registry-root families]
-  (let [path (host-path registry-root "index.edn")
-        source (document-source (registry-document baseline families))]
-    (host-write path source)
-    {:path path
-     :family-count (count families)}))
+  (let [index (read-host-document (host-path registry-root "index.edn"))]
+    (vec
+     (concat
+      (validate-registry-index baseline families index)
+      (validate-registry-layout registry-root families index)
+      (mapcat
+       (fn [descriptor]
+         (let [publication (read-family-publication registry-root descriptor)]
+            (validate-family-artifacts
+             baseline
+             descriptor
+             (:metadata publication)
+             (:origin publication)
+             (:contract publication))))
+       families)))))
+
+(defn validate-family-artifacts
+  "Validates one complete publication and its shared external evidence IDs."
+  [baseline descriptor metadata origin contract]
+  (let [origin-observations (vec (:origin/external-dependencies origin))
+         contract-observations
+         (vec (:conformance/external-dependencies contract))]
+     (vec
+      (concat
+       (validate-metadata-document baseline descriptor metadata)
+       (validate-origin-document origin)
+       (validate-contract-document contract)
+       (if (and (= (:foundation/revision baseline)
+                   (get-in origin [:origin/source :revision]))
+                (= (:foundation/tree baseline)
+                   (get-in origin [:origin/source :tree]))
+                (= (:hara/revision baseline)
+                   (:hara/revision contract))
+                (= (document-digest origin)
+                   (get-in metadata [:generated/origin :sha256])))
+         []
+         [{:type :conformance/stale-family-pins
+           :family/id (:family/id descriptor)}])
+       (if (and (= (count origin-observations)
+                   (get-in metadata [:generated/external :count]))
+                (= (document-digest
+                    {:external/dependencies origin-observations})
+                   (get-in metadata [:generated/external :sha256])))
+         []
+         [{:type :conformance/stale-external-metadata
+           :family/id (:family/id descriptor)}])
+       (if (= (vec (map :external/id origin-observations))
+              (vec (map :external/id contract-observations)))
+         []
+         [{:type :conformance/external-contract-drift
+           :family/id (:family/id descriptor)}])))))
 
 (defn portable-value?
   [value]
@@ -1120,19 +1571,35 @@
     (set? value) (every? portable-value? value)
     :else false))
 
+(defn value-boundary
+  [value]
+  (cond
+    (portable-value? value)
+    {:status :portable :reason nil}
+
+    (fn? value)
+    {:status :manual-review :reason :closure}
+
+    (bytes? value)
+    {:status :manual-review :reason :native-handle}
+
+    :else
+    {:status :manual-review :reason :opaque-runtime-value}))
+
 (defn normalize-value
   [observation]
   (if (not (has? observation :foundation/expected))
     {:status :manual-review
      :expected nil
      :reason :missing-expectation}
-    (let [expected (:foundation/expected observation)]
-      (if (portable-value? expected)
+    (let [expected (:foundation/expected observation)
+          boundary (value-boundary expected)]
+      (if (= :portable (:status boundary))
         {:status :emitted
          :expected expected}
         {:status :manual-review
          :expected nil
-         :reason :non-portable-value}))))
+         :reason (:reason boundary)}))))
 
 (defn classify-form
   "Classifies host-prepared Foundation test-form evidence before extraction."
