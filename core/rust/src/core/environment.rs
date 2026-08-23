@@ -1220,17 +1220,8 @@ pub fn select_namespace_environment(
     refresh_namespace_environment(registry, env);
 }
 
-pub fn refer_startup_defaults(registry: &NamespaceRegistry<Value>, namespace: &str) {
+pub fn apply_global_aliases(registry: &NamespaceRegistry<Value>, namespace: &str) {
     let target = registry.find_or_create(namespace);
-    if namespace != "std.foundation" {
-        if let Some(foundation) = registry.find("std.foundation") {
-            for (name, var) in foundation.mappings() {
-                if target.resolve(&name).is_none() {
-                    target.map_var(name, var);
-                }
-            }
-        }
-    }
     for (alias, library) in registry.global_aliases() {
         if target.name() == &library {
             continue;

@@ -829,9 +829,14 @@ fn binding_value(env: &HashMap<String, Value>, name: &str) -> Option<Value> {
         .cloned()
         .map(|value| deref_binding_value(name, value))
         .or_else(|| {
-            namespace_registry()
-                .ok()?
+            let registry = namespace_registry().ok()?;
+            registry
                 .resolve(&crate::lang::data::Symbol::parse(name))
+                .or_else(|| {
+                    crate::core::canonical_intrinsic_symbol(name).and_then(|canonical| {
+                        registry.resolve(&crate::lang::data::Symbol::parse(&canonical))
+                    })
+                })
                 .map(|var| var.deref_value())
         })
         .or_else(|| {
@@ -873,7 +878,7 @@ fn foundation_fallback_omitted(env: &HashMap<String, Value>, name: &str) -> bool
         return false;
     };
     let local = crate::lang::data::Symbol::parse(name);
-    registry.current().resolve(&local).is_none()
+    registry.resolve(&local).is_none()
         && registry
             .find("std.foundation")
             .and_then(|foundation| foundation.resolve(&local))

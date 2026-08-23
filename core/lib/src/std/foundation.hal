@@ -187,7 +187,7 @@
   atom? "Returns true when value is an atom." [value] (std.native.Base/atom? value))
 
 (defn ^{:schema [:fn [:any] :bool]}
-  fn? "Returns true when value satisfies std.protocol.ifn.IFn." [value] (satisfies? std.protocol.ifn.IFn value))
+  fn? "Returns true when value satisfies IFn." [value] (satisfies? IFn value))
 
 (defn ^{:inline true :schema [:fn [:any] :bool]}
   function? "Returns true when value is a native function." [value] (std.native.Base/function? value))

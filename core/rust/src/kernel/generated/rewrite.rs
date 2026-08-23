@@ -83,6 +83,9 @@ impl GeneratedNamespaceConfig {
     }
 
     fn resolve_symbol(&self, symbol: &str) -> String {
+        if let Some(canonical) = crate::core::canonical_intrinsic_symbol(symbol) {
+            return canonical;
+        }
         if let Some((namespace, method)) = symbol.rsplit_once('/') {
             if known_namespace(namespace) {
                 return canonical(namespace, method);

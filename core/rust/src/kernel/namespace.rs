@@ -34,6 +34,8 @@ pub struct Namespace<V> {
     imports: Rc<RefCell<HashMap<Symbol, String>>>,
     native_flavor: Rc<RefCell<Option<String>>>,
     role: Rc<RefCell<String>>,
+    foundation_exposed: Rc<RefCell<Option<HashSet<String>>>>,
+    foundation_excluded: Rc<RefCell<HashSet<String>>>,
 }
 impl<V> Namespace<V> {
     pub fn new(name: impl AsRef<str>) -> Self {
@@ -45,6 +47,8 @@ impl<V> Namespace<V> {
             imports: Rc::new(RefCell::new(HashMap::new())),
             native_flavor: Rc::new(RefCell::new(None)),
             role: Rc::new(RefCell::new("standard".into())),
+            foundation_exposed: Rc::new(RefCell::new(None)),
+            foundation_excluded: Rc::new(RefCell::new(HashSet::new())),
         }
     }
     pub fn name(&self) -> &Symbol {
@@ -178,6 +182,28 @@ impl<V> Namespace<V> {
     pub fn set_role(&self, role: impl Into<String>) {
         *self.role.borrow_mut() = role.into();
     }
+    pub fn set_foundation_visibility(
+        &self,
+        exposed: Option<&HashSet<String>>,
+        excluded: &HashSet<String>,
+        blank: bool,
+    ) {
+        *self.foundation_exposed.borrow_mut() = if blank {
+            Some(HashSet::new())
+        } else {
+            exposed.cloned()
+        };
+        *self.foundation_excluded.borrow_mut() = excluded.clone();
+    }
+    pub(crate) fn foundation_visible(&self, name: &Symbol) -> bool {
+        if self.foundation_excluded.borrow().contains(name.as_str()) {
+            return false;
+        }
+        self.foundation_exposed
+            .borrow()
+            .as_ref()
+            .is_none_or(|exposed| exposed.contains(name.as_str()))
+    }
     pub fn role(&self) -> String {
         self.role.borrow().clone()
     }
@@ -250,6 +276,8 @@ struct NamespaceSnapshot<V> {
     imports: HashMap<Symbol, String>,
     native_flavor: Option<String>,
     role: String,
+    foundation_exposed: Option<HashSet<String>>,
+    foundation_excluded: HashSet<String>,
 }
 impl<V: Clone> Default for NamespaceRegistry<V> {
     fn default() -> Self {
@@ -280,6 +308,8 @@ impl<V: Clone> NamespaceRegistry<V> {
             imports: namespace.imports.borrow().clone(),
             native_flavor: namespace.native_flavor.borrow().clone(),
             role: namespace.role.borrow().clone(),
+            foundation_exposed: namespace.foundation_exposed.borrow().clone(),
+            foundation_excluded: namespace.foundation_excluded.borrow().clone(),
         }
     }
 
@@ -510,6 +540,8 @@ impl<V: Clone> NamespaceRegistry<V> {
             *namespace.imports.borrow_mut() = saved.imports;
             *namespace.native_flavor.borrow_mut() = saved.native_flavor;
             *namespace.role.borrow_mut() = saved.role;
+            *namespace.foundation_exposed.borrow_mut() = saved.foundation_exposed;
+            *namespace.foundation_excluded.borrow_mut() = saved.foundation_excluded;
             namespaces.insert(name, namespace);
         }
         *self.namespaces.borrow_mut() = namespaces;
@@ -541,6 +573,8 @@ impl<V: Clone> NamespaceRegistry<V> {
             *namespace.imports.borrow_mut() = saved.imports;
             *namespace.native_flavor.borrow_mut() = saved.native_flavor;
             *namespace.role.borrow_mut() = saved.role;
+            *namespace.foundation_exposed.borrow_mut() = saved.foundation_exposed;
+            *namespace.foundation_excluded.borrow_mut() = saved.foundation_excluded;
             namespaces.insert(name, namespace);
         }
         drop(namespaces);
@@ -593,7 +627,29 @@ impl<V: Clone> NamespaceRegistry<V> {
                 .get(&Symbol::parse(namespace_name))
                 .and_then(|namespace| namespace.mappings.borrow().get(&local).cloned());
         }
-        self.current().resolve(symbol)
+        let current = self.current();
+        current
+            .resolve(symbol)
+            .or_else(|| {
+                self.find("std.foundation")
+                    .filter(|_| current.foundation_visible(symbol))
+                    .and_then(|foundation| foundation.resolve(symbol))
+            })
+            .or_else(|| {
+                let name = symbol.as_str();
+                (name.starts_with("std.native.") || name.starts_with("std.protocol.")).then(
+                    || {
+                        self.namespaces.borrow().values().find_map(|namespace| {
+                            namespace
+                                .mappings
+                                .borrow()
+                                .values()
+                                .find(|var| var.symbol().as_str() == name)
+                                .cloned()
+                        })
+                    },
+                )?
+            })
     }
     pub fn set_var(&self, symbol: Symbol, var: Var<V>) -> Result<Var<V>, String>
     where
@@ -622,6 +678,25 @@ impl<V: Clone> NamespaceRegistry<V> {
                 )
             })
             .collect::<Vec<_>>();
+        if current.name().as_str() != "std.foundation" {
+            if let Some(foundation) = self.find("std.foundation") {
+                names.extend(
+                    foundation
+                        .mappings()
+                        .into_iter()
+                        .filter(|(name, _)| {
+                            current.foundation_visible(name) && current.resolve(name).is_none()
+                        })
+                        .map(|(name, var)| {
+                            (
+                                name.as_str().to_owned(),
+                                var.hara_metadata()
+                                    .is_some_and(|metadata| metadata.flag("public")),
+                            )
+                        }),
+                );
+            }
+        }
         for (alias, namespace) in current.aliases.borrow().iter() {
             names.extend(
                 namespace

@@ -9,13 +9,7 @@
 /// pass one around.
 #[cfg(feature = "bytecode-vm")]
 pub fn bytecode_namespace_registry() -> kernel::NamespaceRegistry<core::Value> {
-    let namespaces = core::minimal_namespace_registry();
-    let foundation = namespaces.find_or_create("std.foundation");
-    for (name, value) in core::exception_function_values() {
-        foundation.intern(name, value);
-    }
-    core::refer_startup_defaults(&namespaces, "user");
-    namespaces
+    core::minimal_namespace_registry()
 }
 
 #[cfg(feature = "bytecode-vm")]

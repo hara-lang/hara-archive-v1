@@ -208,7 +208,7 @@ impl Compiler {
                                 .map(|target| format!("{}/{}", target.as_str(), local))
                         })
                 } else {
-                    current
+                    registry
                         .resolve(&crate::lang::data::Symbol::parse(name))
                         .map(|var| var.symbol().as_str().to_owned())
                 }
@@ -254,7 +254,8 @@ impl Compiler {
                             .split_once('/')
                             .and_then(|(namespace, _)| registry.find(namespace))
                             .and_then(|_| registry.resolve(&crate::lang::data::Symbol::parse(name)))
-                            .or_else(|| current.resolve(&crate::lang::data::Symbol::parse(name))))
+                            .or_else(|| current.resolve(&crate::lang::data::Symbol::parse(name)))
+                            .or_else(|| registry.resolve(&crate::lang::data::Symbol::parse(name))))
                         .is_some_and(|var| {
                             crate::core::Primitive::from_symbol(name).is_none()
                                 || var.symbol().get_namespace() != Some("std.foundation")

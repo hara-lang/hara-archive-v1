@@ -4035,13 +4035,13 @@ mod tests {
             .resolve(&crate::lang::data::Symbol::parse("identity"))
             .expect("identity fallback is installed");
         assert_eq!(canonical.origin(), kernel::VarOrigin::HalFallback);
-        let referred = runtime
+        let user = runtime.namespace_registry.find("user").unwrap();
+        assert!(user.resolve(&crate::lang::data::Symbol::parse("identity")).is_none());
+        let fallback = runtime
             .namespace_registry
-            .find("user")
-            .unwrap()
             .resolve(&crate::lang::data::Symbol::parse("identity"))
             .unwrap();
-        assert!(canonical.same_identity(&referred));
+        assert!(canonical.same_identity(&fallback));
         assert_eq!(runtime.eval_text("(identity 42)").unwrap(), "42");
         assert_eq!(runtime.eval_text("(apply-with 2 + 1 3)").unwrap(), "6");
         assert_eq!(
@@ -8099,7 +8099,6 @@ mod tests {
         {
             register_lib_tree(&mut runtime, &lib_src, &entry);
         }
-        runtime.prepare_foundation_bytecode();
         let foundation = EMBEDDED_HAL_RESOURCES
             .iter()
             .find(|(namespace, _, _)| *namespace == "std.foundation")

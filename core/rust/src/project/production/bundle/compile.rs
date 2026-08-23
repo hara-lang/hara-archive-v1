@@ -38,9 +38,6 @@ pub(in crate::task::production) fn compile(
         runtime
             .eval_text(&module.namespace_form)
             .map_err(|error| format!("{}: namespace declaration: {error}", module.resource))?;
-        if module.resource == "std.foundation" {
-            runtime.prepare_foundation_bytecode();
-        }
         runtime.use_namespace(&module.resource);
         let artifact = runtime
             .compile_bytecode_artifact(&module.body)

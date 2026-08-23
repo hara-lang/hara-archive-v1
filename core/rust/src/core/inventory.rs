@@ -1059,7 +1059,7 @@ pub(crate) fn builtin_protocol_parents(protocol: &str) -> Vec<String> {
         .collect()
 }
 
-fn canonical_protocol_name(protocol: &str) -> String {
+pub(crate) fn canonical_protocol_name(protocol: &str) -> String {
     let simple = protocol.strip_prefix("std.foundation/").unwrap_or(protocol);
     if FOUNDATION_PROTOCOLS
         .iter()
@@ -1069,6 +1069,28 @@ fn canonical_protocol_name(protocol: &str) -> String {
     } else {
         protocol.to_owned()
     }
+}
+
+pub(crate) fn canonical_intrinsic_protocol_symbol(symbol: &str) -> Option<String> {
+    if let Some((protocol, method)) = symbol.rsplit_once('/') {
+        let canonical = canonical_protocol_name(protocol);
+        if canonical != protocol {
+            return Some(format!("{canonical}/{method}"));
+        }
+        return None;
+    }
+    let canonical = canonical_protocol_name(symbol);
+    (canonical != symbol).then_some(canonical)
+}
+
+pub(crate) fn canonical_intrinsic_symbol(symbol: &str) -> Option<String> {
+    canonical_intrinsic_protocol_symbol(symbol).or_else(|| {
+        let (native_type, method) = symbol.rsplit_once('/')?;
+        NATIVE_TYPES
+            .iter()
+            .any(|(candidate, _)| *candidate == native_type)
+            .then(|| format!("std.native.{native_type}/{method}"))
+    })
 }
 
 pub fn foundation_protocol_values() -> Vec<(String, Value)> {
@@ -1182,6 +1204,23 @@ mod native_work_protocol_tests {
             canonical_protocol_name("std.protocol.application/Portable"),
             "std.protocol.application/Portable"
         );
+        assert_eq!(
+            canonical_intrinsic_protocol_symbol("IFn"),
+            Some("std.protocol.ifn.IFn".into())
+        );
+        assert_eq!(
+            canonical_intrinsic_protocol_symbol("IFn/invoke"),
+            Some("std.protocol.ifn.IFn/invoke".into())
+        );
+        assert_eq!(
+            canonical_intrinsic_protocol_symbol("IAssoc/assoc"),
+            Some("std.protocol.iassoc.IAssoc/assoc".into())
+        );
+        assert_eq!(
+            canonical_intrinsic_symbol("Base/vec"),
+            Some("std.native.Base/vec".into())
+        );
+        assert_eq!(canonical_intrinsic_symbol("std.native/Base"), None);
     }
 
     #[test]
