@@ -12,10 +12,22 @@
 (defn frame-value
   "Reads a wire field from a string- or keyword-keyed frame."
   [value field]
-  (let [found (get value field frame-missing)]
-    (if (= found frame-missing)
-      (get value (keyword field) frame-missing)
-      found)))
+  (let [found (get value field frame-missing)
+        keyword-field (keyword field)
+        kebab-field (keyword (str/replace field "_" "-"))
+        keyword-value (get value keyword-field frame-missing)]
+    (cond
+      (not (= found frame-missing))
+      found
+
+      (not (= keyword-value frame-missing))
+      keyword-value
+
+      (not (= (get value kebab-field frame-missing) frame-missing))
+      (get value kebab-field frame-missing)
+
+      :else
+      frame-missing)))
 
 (defn frame-kind-name
   [kind]
@@ -78,10 +90,12 @@
 (defn wire-key
   [key]
   (if (keyword? key)
-    (name key)
+    (str/replace (name key) "-" "_")
     (if (string? key)
       key
       (throw "substrate wire maps require string or keyword keys"))))
+
+(declare wire-value)
 
 (defn wire-scalar
   [value]
@@ -94,12 +108,26 @@
     (let [key (nth map-keys index)]
       (wire-map-loop value map-keys (inc index)
                      (assoc output (wire-key key)
-                            (wire-scalar (get value key)))))))
+                            (wire-value (get value key)))))))
+
+(defn wire-vector-loop
+  [value index output]
+  (if (= index (count value))
+    output
+    (wire-vector-loop value
+                      (inc index)
+                      (conj output (wire-value (nth value index))))))
 
 (defn wire-value
   [value]
-  (if (map? value)
+  (cond
+    (map? value)
     (wire-map-loop value (vec (keys value)) 0 {})
+
+    (vector? value)
+    (wire-vector-loop value 0 [])
+
+    :else
     (wire-scalar value)))
 
 (defn optional-value
