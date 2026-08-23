@@ -1,0 +1,347 @@
+(ns code.manage.unit.contract
+  (:config {:role :internal})
+  (:require [std.foundation.string :as string]))
+
+(def +required-sections+
+  [:outcome :context :scope :non-goals :acceptance :validation
+   :relationships :readiness :delivery])
+
+(def +section-labels+
+  {:outcome "Outcome"
+   :context "Context and authority"
+   :scope "Scope"
+   :non-goals "Non-goals"
+   :acceptance "Acceptance criteria"
+   :validation "Validation"
+   :relationships "Relationships"
+   :readiness "Readiness"
+   :delivery "Delivery boundary"})
+
+(def +canonical-owners+ #{"greenways-ai" "hara-lang"})
+
+(defn normalize-title
+  "Normalizes a contract section title for deterministic matching."
+  [value]
+  (string/lower-case (string/trim (or value ""))))
+
+(defn section-key
+  "Maps supported contract section titles to stable keywords."
+  [title]
+  (case (normalize-title title)
+    "outcome" :outcome
+    "context" :context
+    "context and authority" :context
+    "scope" :scope
+    "non-goals" :non-goals
+    "non goals" :non-goals
+    "acceptance criteria" :acceptance
+    "validation" :validation
+    "relationships" :relationships
+    "readiness" :readiness
+    "delivery" :delivery
+    "delivery boundary" :delivery
+    nil))
+
+^{:public true}
+(defn parse-document
+  "Parses Markdown headings while preserving contract bodies and malformed headings."
+  [source]
+  (let [text (if (string? source) source "")
+        lines (string/split-lines text)]
+    (loop [remaining lines
+           line-number 0
+           current nil
+           sections []
+           malformed []]
+      (if (empty? remaining)
+        {:text text
+         :lines lines
+         :sections (if current
+                     (conj sections
+                           (assoc current
+                                  :body
+                                  (string/join "\n" (:body current))))
+                     sections)
+         :malformed malformed}
+        (let [line (first remaining)
+              value (string/trim (or line ""))
+              heading? (string/starts-with? value "#")
+              after-hashes
+              (loop [current value]
+                (if (string/starts-with? current "#")
+                  (recur (string/slice current 1))
+                  current))
+              valid? (and heading?
+                          (string/starts-with? after-hashes " "))
+              title (string/trim after-hashes)
+              key (section-key title)
+              heading {:title title :key key :valid? valid?}]
+          (cond
+            (and heading? valid?)
+            (recur
+             (rest remaining)
+             (inc line-number)
+             {:title title :key key :body []}
+             (if current
+               (conj sections
+                     (assoc current
+                            :body
+                            (string/join "\n" (:body current))))
+               sections)
+             malformed)
+
+            (and heading? key)
+            (recur
+             (rest remaining)
+             (inc line-number)
+             (if current
+               (assoc current :body (conj (:body current) line))
+               current)
+             sections
+             (conj malformed {:key key :line (inc line-number)}))
+
+            :else
+            (recur
+             (rest remaining)
+             (inc line-number)
+             (if current
+               (assoc current :body (conj (:body current) line))
+               current)
+             sections
+             malformed)))))))
+
+^{:public true}
+(defn canonical-github-link?
+  "Returns true only for canonical GitHub links in the connector organizations."
+  [value]
+  (if (not (string? value))
+    false
+    (let [parts (string/split value "/")]
+      (and (>= (count parts) 5)
+           (= "https:" (nth parts 0))
+           (= "" (nth parts 1))
+           (= "github.com" (nth parts 2))
+           (or (has? +canonical-owners+ (nth parts 3))
+               (and (= "orgs" (nth parts 3))
+                    (has? +canonical-owners+ (nth parts 4))))
+           (not (string/blank?
+                 (if (= "orgs" (nth parts 3))
+                   (nth parts 5)
+                   (nth parts 4))))
+           (not (string/ends-with? value "/"))
+           (not (string/includes? value "?"))
+           (not (string/includes? value "#"))))))
+
+(defn trim-link-punctuation
+  [value]
+  (loop [current value]
+    (if (and (string? current)
+             (> (string/length current) 0)
+             (or (string/ends-with? current ".")
+                 (string/ends-with? current ",")
+                 (string/ends-with? current ";")))
+      (recur (string/slice current 0 (dec (string/length current))))
+      current)))
+
+^{:public true}
+(defn extract-links
+  "Extracts HTTP(S) URL tokens without network access."
+  [text]
+  (vec
+   (filter
+    (fn [token]
+      (or (string/starts-with? token "https://")
+          (string/starts-with? token "http://")))
+    (map trim-link-punctuation
+         (re-split "[^A-Za-z0-9:/._?&#=%-]+"
+                   (if (string? text) text ""))))))
+
+^{:public true}
+(defn check-contract
+  "Checks one connector issue contract without credentials or network access."
+  [input]
+  (if (and (not (string? input))
+           (not (map? input)))
+    {:status :fail
+     :valid? false
+     :kind :issue-form
+     :findings
+     [{:code :contract/invalid-input
+       :path "contract"
+       :severity :error
+       :message "Contract input must be a string or map"}]
+     :summary {:total 1 :errors 1}}
+    (let [contract (if (string? input)
+                     {:kind :issue-form :source input}
+                     (assoc input :kind (or (:kind input) :issue-form)))
+          kind (:kind contract)
+          document (parse-document (:source contract))
+          headings (:sections document)
+          section-for
+          (fn [key]
+            (vec
+             (filter
+              (fn [section] (= key (:key section)))
+              headings)))
+          marker-for
+          (fn [line key]
+            (let [value (normalize-title line)
+                  label (normalize-title (get +section-labels+ key))
+                 short-label (normalize-title
+                              (case key
+                                :context "Context"
+                                :delivery "Delivery"
+                                (get +section-labels+ key)))
+                 id (str "id: " (name key))]
+              (or (= value (str "label: " label))
+                  (= value (str "label: " short-label))
+                  (string/starts-with? value (str label ":"))
+                  (string/starts-with? value (str short-label ":"))
+                  (= value id))))
+          count-for
+          (fn [key]
+            (let [sections (section-for key)
+                  markers
+                  (count
+                   (filter
+                    (fn [line] (marker-for line key))
+                    (:lines document)))]
+              (if (not (empty? sections))
+                (count sections)
+                markers)))
+          section-findings
+          (if (not= kind :issue-form)
+            [{:code :contract/unknown-kind
+              :path "kind"
+              :severity :error
+              :message (str "Unsupported contract kind: " (str kind))}]
+            (loop [remaining +required-sections+
+                   findings []]
+              (if (empty? remaining)
+                findings
+                (let [key (first remaining)
+                      sections (section-for key)
+                      count (count-for key)
+                      malformed
+                      (not
+                       (empty?
+                        (filter
+                         (fn [entry] (= key (:key entry)))
+                         (:malformed document))))
+                      next-findings
+                      (cond
+                        malformed
+                        (conj findings
+                              {:code :section/malformed
+                               :path (str "sections/" (name key))
+                               :severity :error
+                               :message (str "Malformed required section heading: "
+                                             (get +section-labels+ key))})
+
+                        (= count 0)
+                        (conj findings
+                              {:code :section/missing
+                               :path (str "sections/" (name key))
+                               :severity :error
+                               :message (str "Missing required section: "
+                                             (get +section-labels+ key))})
+
+                        (> count 1)
+                        (conj findings
+                              {:code :section/duplicate
+                               :path (str "sections/" (name key))
+                               :severity :error
+                               :message (str "Duplicate required section: "
+                                             (get +section-labels+ key))})
+
+                        (and (= count 1)
+                             (= 1 (count sections))
+                             (string/blank? (:body (first sections))))
+                        (conj findings
+                              {:code :section/empty
+                               :path (str "sections/" (name key))
+                               :severity :error
+                               :message (str "Empty required section: "
+                                             (get +section-labels+ key))})
+
+                        :else findings)]
+                  (recur (rest remaining) next-findings)))))
+          relationship-sections (section-for :relationships)
+          relationship-body
+          (if (has? contract :relationship)
+            (if (string? (:relationship contract))
+              (:relationship contract)
+              "")
+            (if (= 1 (count relationship-sections))
+              (:body (first relationship-sections))
+              (:text document)))
+          relationship-text (string/lower-case (or relationship-body ""))
+          advances-index (string/index-of relationship-text "advances")
+          advances-tail
+          (if (neg? advances-index)
+            ""
+            (string/slice relationship-body advances-index))
+          advances-link?
+          (not
+           (empty?
+            (filter canonical-github-link?
+                    (extract-links advances-tail))))
+          relationship-findings
+          (if (or (= true (:complete? contract))
+                  (= kind :catalog))
+            []
+            (if (and (string/includes? relationship-text "closes")
+                     (not advances-link?))
+              [{:code :relationship/closes-only
+                :path "sections/relationships"
+                :severity :error
+                :message "Incomplete work must use Advances rather than Closes-only"}]
+              (if (not advances-link?)
+                [{:code :relationship/advances-missing
+                  :path "sections/relationships"
+                  :severity :error
+                  :message "Incomplete work must declare an Advances GitHub link"}]
+                [])))
+          links
+          (if (has? contract :links)
+            (if (vector? (:links contract)) (:links contract) [])
+            (extract-links (:text document)))
+          link-findings
+          (if (empty? links)
+            [{:code :link/missing
+              :path "links"
+              :severity :error
+              :message "At least one canonical GitHub link is required"}]
+            (loop [remaining links
+                   index 0
+                   findings []]
+              (if (empty? remaining)
+                findings
+                (let [link (first remaining)
+                      next-findings
+                      (if (not (canonical-github-link? link))
+                        (conj findings
+                              {:code :link/noncanonical
+                               :path (str "links/" index)
+                               :severity :error
+                               :message (str "Link is not a canonical GitHub URL: "
+                                             (str link))})
+                        findings)]
+                  (recur (rest remaining) (inc index) next-findings)))))
+          findings
+          (vec
+           (sort-by
+            (fn [finding]
+              (str (:path finding)
+                   "|"
+                   (name (:code finding))
+                   "|"
+                   (:message finding)))
+            (concat section-findings relationship-findings link-findings)))
+          valid? (empty? findings)]
+      {:status (if valid? :pass :fail)
+       :valid? valid?
+       :kind kind
+       :findings findings
+       :summary {:total (count findings)
+                 :errors (count findings)}})))

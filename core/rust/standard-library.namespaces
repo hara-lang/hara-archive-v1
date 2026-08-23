@@ -9,6 +9,7 @@ code.manage.editor
 code.manage.ns-format
 code.manage.ns-rename
 code.manage.unit
+code.manage.unit.contract
 code.manage.unit.factcheck
 code.manage.unit.import
 code.manage.unit.isolate

@@ -84,6 +84,22 @@ a broad type, truthiness, non-nil, successful transport status, or "does not
 throw" check for a more specific domain result. Those checks are sufficient
 only when they are the documented behavior.
 
+## Connector issue contracts
+
+Validate an issue contract without GitHub credentials or network access:
+
+```shell
+hara --project core --offline manage contract-check path/to/issue-contract.md
+```
+
+The command prints deterministic EDN with `:status`, `:valid?`, `:findings`,
+and `:summary`, and exits non-successfully when `:valid?` is false. Use
+`--complete` only when the work is complete and may use a `Closes` relationship.
+Finding codes include `:section/missing`, `:section/duplicate`,
+`:section/malformed`, `:section/empty`, `:link/missing`,
+`:link/noncanonical`, `:relationship/advances-missing`, and
+`:relationship/closes-only`.
+
 Demonstrate that a new or materially changed test detects failure by running it
 against the pre-change behavior or a deliberately incorrect candidate or
 expectation, observing the focused test fail, then restoring the intended code
