@@ -33,6 +33,7 @@
      :dependency/occurrences (clj/dependency-occurrences source)
      :dependency/symbols
      (clj/dependency-symbol-references source (:dependencies summary))
+     :core/symbols (:core/symbols summary)
      :public-symbols (:public-symbols summary)
      :candidate/matches []
      :review/disposition :pending
@@ -43,15 +44,22 @@
   [entry test-path test-blob test-source]
   (let [summary (clj/source-summary test-source)]
     (assoc
-     entry
-     :test/path test-path
-     :test/blob test-blob
-     :test/namespace (:namespace summary)
-     :test/dependencies (:dependencies summary)
-     :test/dependency-occurrences (clj/dependency-occurrences test-source)
-     :test/dependency-symbols
-     (clj/dependency-symbol-references test-source (:dependencies summary))
-     :test/public-symbols (:public-symbols summary))))
+     (assoc
+      (assoc
+       (assoc
+        (assoc
+         (assoc
+          (assoc
+           (assoc
+            (assoc entry :test/path test-path)
+            :test/blob test-blob)
+           :test/namespace (:namespace summary))
+          :test/dependencies (:dependencies summary))
+         :test/dependency-occurrences (clj/dependency-occurrences test-source))
+        :test/dependency-symbols
+        (clj/dependency-symbol-references test-source (:dependencies summary)))
+       :test/core-symbols (:core/symbols summary))
+      :test/public-symbols (:public-symbols summary)))))
 
 (defn namespace-index
   [entries]
@@ -134,6 +142,9 @@
      :form/location evidence
      :referenced/symbols (vec (map :resolved/symbol references))
      :referenced/source-symbols (vec (map :source/symbol references))
+     :referenced/evidence (vec (map :reference/evidence references))
+     :referenced/idioms (sorted-unique (map :reference/idiom references))
+     :referenced/operations (sorted-unique (map :reference/operation references))
      :referenced/status (if (empty? references) :manual-review :derived)
      :referenced/reason (if (empty? references) :no-qualified-symbol-evidence nil)
      :capability (dependency-capability dependency)
@@ -141,6 +152,97 @@
      :candidate/matches []
      :review/disposition :pending
      :review/evidence []}))
+
+(defn core-reference-sources
+  [entry]
+  (vec
+   (keep
+    (fn [source]
+      (if (and (string? (:path source))
+               (vector? (:references source)))
+        source
+        nil))
+    [{:kind :source
+      :path (:source/path entry)
+      :references (vec (or (:core/symbols entry) []))}
+     {:kind :test
+      :path (:test/path entry)
+      :references (vec (or (:test/core-symbols entry) []))}])))
+
+(defn core-reference-record
+  [entry source family-id prefix index reference]
+  (let [reference-status (:reference/status reference)
+        extraction-status
+        (cond
+          (= :derived reference-status) :emitted
+          (= :skipped reference-status) :skipped
+          :else :manual-review)]
+    {:core/id (str prefix "/" (:path source) "#" (name (:kind source))
+                   "-" index)
+     :family/id family-id
+     :core/namespace "clojure.core"
+     :core/name (:reference/name reference)
+     :core/local-name (:reference/local-name reference)
+     :core/symbol (:resolved/symbol reference)
+     :core/kind (:reference/kind reference)
+     :core/operation (:reference/operation reference)
+     :core/status reference-status
+     :core/reason (:reference/reason reference)
+     :source/namespace (:namespace entry)
+     :source/path (:source/path entry)
+     :source/blob (:source/blob entry)
+     :test/path (:test/path entry)
+     :test/blob (:test/blob entry)
+     :observation/kind (:kind source)
+     :observation/path (:path source)
+     :observation/blob (if (= :test (:kind source))
+                         (:test/blob entry)
+                         (:source/blob entry))
+     :observation/index index
+     :reference/options (:reference/options reference)
+     :reference/evidence (:reference/evidence reference)
+     :extraction/status extraction-status
+     :review/disposition :pending
+     :review/evidence []}))
+
+(defn core-references
+  ([entries]
+   (core-references entries {}))
+  ([entries options]
+   (let [family-id (or (:family/id options) :foundation)
+         prefix (if (keyword? family-id) (name family-id) (str family-id))]
+     (vec
+      (sort-by
+       :core/id
+       (mapcat
+        (fn [entry]
+          (mapcat
+           (fn [source]
+             (map-indexed
+              (fn [index reference]
+                (core-reference-record
+                 entry source family-id prefix index reference))
+              (:references source)))
+           (core-reference-sources entry)))
+        entries))))))
+
+(defn core-reference-accounting
+  [references]
+  (let [discovered (count references)
+        emitted (count (filter (fn [reference]
+                                (= :emitted (:extraction/status reference)))
+                              references))
+        skipped (count (filter (fn [reference]
+                                (= :skipped (:extraction/status reference)))
+                              references))
+        manual (count (filter (fn [reference]
+                                (= :manual-review (:extraction/status reference)))
+                              references))]
+    {:discovered discovered
+     :emitted emitted
+     :skipped skipped
+     :manual-review manual
+     :complete? (= discovered (+ emitted skipped manual))}))
 
 (defn external-route-sources
   [entry]
@@ -381,9 +483,10 @@
         component (get (:components graph-plan) owner)
         dependencies (get (:graph graph-plan) (:namespace entry))]
     (assoc
-     entry
-     :dependency/rank (get (:ranks graph-plan) owner)
-     :dependency/component component
+     (assoc
+      (assoc entry
+             :dependency/rank (get (:ranks graph-plan) owner))
+      :dependency/component component)
      :dependency/cycle
      (or
       (> (count component) 1)
@@ -597,6 +700,7 @@
    (let [profile-value (profile/assert-profile profile-value)
          entries (compile-entries entries)
          routes (external-routes entries (:external/rank profile-value) options)
+         core-observations (core-references entries options)
          errors (validate-entries profile-value entries)]
     (if (not (empty? errors))
       (throw
@@ -613,6 +717,8 @@
      :foundation/rank-base (:foundation/rank-base profile-value)
      :external/routes routes
      :external/accounting (external-route-accounting routes)
+     :core/references core-observations
+     :core/accounting (core-reference-accounting core-observations)
      :namespaces entries
      :next/review (next-review entries)
      :next/unblocked-migration

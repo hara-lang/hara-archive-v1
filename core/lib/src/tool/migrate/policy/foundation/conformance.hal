@@ -15,7 +15,7 @@
 
 (def +active-profile+ profile/+foundation-f55f+)
 (def +origin-generator+
-  "tool.migrate.policy.foundation.conformance/3")
+  "tool.migrate.policy.foundation.conformance/4")
 
 (def +foundation-revision+
   (:foundation/revision +active-profile+))
@@ -277,10 +277,12 @@
   [runner revision descriptor]
   (let [paths (foundation-test-paths runner revision descriptor)
         expected (:source/test-count descriptor)]
-    (assoc descriptor
-           :source/discovered-tests paths
-           :source/discovered-count (count paths)
-           :source/inventory-complete? (= expected (count paths)))))
+    (assoc
+     (assoc
+      (assoc descriptor
+             :source/discovered-tests paths)
+      :source/discovered-count (count paths))
+     :source/inventory-complete? (= expected (count paths)))))
 
 ^{:public true}
 (defn baseline-inventory
@@ -582,6 +584,23 @@
       (fn [route]
         (has? selected (:source/path route)))
       routes))))
+
+(defn foundation-core-references
+  "Extracts family-owned implicit and qualified clojure.core observations."
+  [runner baseline descriptor]
+  (let [selected
+        (set
+         (map :source/path
+              (foundation-source-test-pairs runner baseline descriptor)))
+        references
+        (corpus/core-references
+         (foundation-source-entries runner baseline descriptor)
+         {:family/id (:family/id descriptor)})]
+    (vec
+     (filter
+      (fn [reference]
+        (has? selected (:source/path reference)))
+      references))))
 
 (defn metadata-pairs
   "Returns a validated pair list from one metadata document."
@@ -938,19 +957,26 @@
 
 (defn generated-origin-document
   ([baseline descriptor pairs]
-   (generated-origin-document baseline descriptor pairs []))
+   (generated-origin-document baseline descriptor pairs [] []))
   ([baseline descriptor pairs external-routes]
+   (generated-origin-document baseline descriptor pairs external-routes []))
+  ([baseline descriptor pairs external-routes core-references]
    (let [pairs (sorted-pairs pairs)]
-     (assoc (origin-document baseline descriptor)
-            :origin/namespaces (pair-groups pairs)
-            :origin/cases pairs
-            :origin/accounting (accounting (map (fn [pair]
-                                                  {:status (:pair/status pair)})
-                                                pairs))
-            :origin/external-dependencies
-            (vec (sort-by :external/id external-routes))
-            :origin/external-accounting
-            (corpus/external-route-accounting external-routes)))))
+     (merge
+      (origin-document baseline descriptor)
+      {:origin/namespaces (pair-groups pairs)
+       :origin/cases pairs
+       :origin/accounting (accounting (map (fn [pair]
+                                             {:status (:pair/status pair)})
+                                           pairs))
+       :origin/external-dependencies
+       (vec (sort-by :external/id external-routes))
+       :origin/external-accounting
+       (corpus/external-route-accounting external-routes)
+       :origin/core-references
+       (vec (sort-by :core/id core-references))
+       :origin/core-accounting
+       (corpus/core-reference-accounting core-references)}))))
 
 (defn generated-contract-document
   [baseline descriptor pairs]
@@ -959,31 +985,41 @@
 (defn contract-from-origin
   "Copies the immutable origin pair corpus into a reviewable contract."
   [baseline descriptor origin]
-  (assoc origin
-         :document/id (keyword "foundation.conformance" (:family/name descriptor))
-         :document/type :foundation-library-conformance
-         :conformance/authority :hara-specs-registry
-         :conformance/family (:family/id descriptor)
-         :conformance/status :pending
-         :contract/status :reviewed
-         :contract/origin (str (:family/name descriptor) "/origin.edn")
-         :conformance/namespaces (:origin/namespaces origin)
-         :conformance/cases (:origin/cases origin)
-         :conformance/external-dependencies
-         (vec
-          (map
-           (fn [observation]
-             (assoc observation
-                    :review/disposition :pending
-                    :review/evidence []))
-           (:origin/external-dependencies origin)))
-         :external/accounting (:origin/external-accounting origin)
-         :runtime/status {:rust :pending :jvm :pending :wasm :pending}
-         :target/namespaces
-         (vec
-          (sort
-           (distinct
-            (mapcat :target/namespaces (:mapping descriptor)))))))
+  (merge
+   origin
+   {:conformance/core-references
+    (vec
+     (map
+      (fn [observation]
+        (assoc
+         (assoc observation :review/disposition :pending)
+         :review/evidence []))
+      (:origin/core-references origin)))
+    :core/accounting (:origin/core-accounting origin)
+    :document/id (keyword "foundation.conformance" (:family/name descriptor))
+    :document/type :foundation-library-conformance
+    :conformance/authority :hara-specs-registry
+    :conformance/family (:family/id descriptor)
+    :conformance/status :pending
+    :contract/status :reviewed
+    :contract/origin (str (:family/name descriptor) "/origin.edn")
+    :conformance/namespaces (:origin/namespaces origin)
+    :conformance/cases (:origin/cases origin)
+    :conformance/external-dependencies
+    (vec
+     (map
+      (fn [observation]
+        (assoc
+         (assoc observation :review/disposition :pending)
+         :review/evidence []))
+      (:origin/external-dependencies origin)))
+    :external/accounting (:origin/external-accounting origin)
+    :runtime/status {:rust :pending :jvm :pending :wasm :pending}
+    :target/namespaces
+    (vec
+     (sort
+      (distinct
+       (mapcat :target/namespaces (:mapping descriptor)))))}))
 
 (defn document-source
   [document]
@@ -1026,27 +1062,42 @@
       :else :preserve-reviewed)))
 
 (defn generated-metadata-document
-  [baseline descriptor metadata foundation-pairs hara-pairs origin
-   external-routes]
-  (assoc metadata
-         :foundation/source {:repository (:foundation/repository baseline)
-                             :revision (:foundation/revision baseline)
-                             :tree (:foundation/tree baseline)}
-         :foundation/source-test-pairs (vec foundation-pairs)
-         :hara/source {:repository (:hara/repository baseline)
-                       :revision (:hara/revision baseline)}
-         :hara/source-test-pairs (vec hara-pairs)
-         :generated/origin {:path (str (:family/name descriptor) "/origin.edn")
-                            :sha256 (document-digest origin)
-                            :pair-count (count (:origin/cases origin))
-                            :external-count (count external-routes)
-                            :external-accounting
-                            (:origin/external-accounting origin)}
-         :generated/external
-         {:sha256 (document-digest
-                   {:external/dependencies external-routes})
-          :count (count external-routes)
-          :accounting (:origin/external-accounting origin)}))
+  ([baseline descriptor metadata foundation-pairs hara-pairs origin
+    external-routes]
+   (generated-metadata-document
+    baseline descriptor metadata foundation-pairs hara-pairs origin
+    external-routes []))
+  ([baseline descriptor metadata foundation-pairs hara-pairs origin
+    external-routes core-references]
+   (merge
+    metadata
+    {:foundation/source {:repository (:foundation/repository baseline)
+                         :revision (:foundation/revision baseline)
+                         :tree (:foundation/tree baseline)}
+     :foundation/source-test-pairs (vec foundation-pairs)
+     :hara/source {:repository (:hara/repository baseline)
+                   :revision (:hara/revision baseline)}
+     :hara/source-test-pairs (vec hara-pairs)
+     :generated/origin {:path (str (:family/name descriptor) "/origin.edn")
+                        :sha256 (document-digest origin)
+                        :pair-count (count (:origin/cases origin))
+                        :external-count (count (:origin/external-dependencies origin))
+                        :core-count (count (:origin/core-references origin))
+                        :external-accounting
+                        (:origin/external-accounting origin)
+                        :core-accounting
+                        (:origin/core-accounting origin)}
+     :generated/external
+     {:sha256 (document-digest
+               {:external/dependencies
+                (:origin/external-dependencies origin)})
+      :count (count (:origin/external-dependencies origin))
+      :accounting (:origin/external-accounting origin)}
+     :generated/core
+     {:sha256 (document-digest
+               {:core/references (:origin/core-references origin)})
+      :count (count (:origin/core-references origin))
+      :accounting (:origin/core-accounting origin)}})))
 
 (defn conformance-artifacts
   "Builds metadata, immutable origin, and initial contract sources together."
@@ -1055,12 +1106,17 @@
     baseline descriptor metadata foundation-pairs hara-pairs pairs []))
   ([baseline descriptor metadata foundation-pairs hara-pairs pairs
     external-routes]
+    (conformance-artifacts
+     baseline descriptor metadata foundation-pairs hara-pairs pairs
+     external-routes []))
+  ([baseline descriptor metadata foundation-pairs hara-pairs pairs
+    external-routes core-references]
   (let [origin (generated-origin-document
-                baseline descriptor pairs external-routes)
+                 baseline descriptor pairs external-routes core-references)
         contract (contract-from-origin baseline descriptor origin)
         metadata (generated-metadata-document
                   baseline descriptor metadata foundation-pairs hara-pairs
-                  origin external-routes)]
+                  origin external-routes core-references)]
     {:metadata metadata
      :origin origin
      :contract contract
@@ -1077,6 +1133,8 @@
               :pair-count (count pairs)
               :external-count (count external-routes)
               :external-accounting (:origin/external-accounting origin)
+              :core-count (count core-references)
+              :core-accounting (:origin/core-accounting origin)
               :origin/path (str (:family/name descriptor) "/origin.edn")
               :contract/path (:output/path descriptor)}})))
 
@@ -1114,6 +1172,10 @@
                descriptor
                "."
                (host-target-test-paths registry-root descriptor))
+        core-references (foundation-core-references
+                         runner
+                         baseline
+                         descriptor)
         external-routes (foundation-external-routes
                          runner
                          baseline
@@ -1125,7 +1187,8 @@
      foundation-pairs
      hara-pairs
      pairs
-     external-routes)))
+     external-routes
+     core-references)))
 
 (defn family-artifact-path
   [registry-root descriptor file]
@@ -1168,7 +1231,7 @@
                          :origin origin-state
                          :contract contract-state})))
 
-(declare validate-external-observations)
+(declare validate-external-observations validate-core-observations)
 
 (defn validate-contract-document
   "Rejects contracts that omit the registry authority or runtime test surface."
@@ -1195,7 +1258,11 @@
     (validate-external-observations
      document
      (:conformance/external-dependencies document)
-     (:external/accounting document)))))
+     (:external/accounting document))
+    (validate-core-observations
+     document
+     (:conformance/core-references document)
+     (:core/accounting document)))))
 
 (declare external-observation-errors external-observation-accounting-valid?)
 
@@ -1213,7 +1280,11 @@
     (validate-external-observations
      document
      (:origin/external-dependencies document)
-     (:origin/external-accounting document)))))
+     (:origin/external-accounting document))
+    (validate-core-observations
+     document
+     (:origin/core-references document)
+     (:origin/core-accounting document)))))
 
 (defn validate-metadata-document
   [baseline descriptor document]
@@ -1239,8 +1310,11 @@
              (string? (get-in document [:generated/origin :sha256]))
              (number? (get-in document [:generated/origin :pair-count]))
              (number? (get-in document [:generated/origin :external-count]))
+             (number? (get-in document [:generated/origin :core-count]))
              (external-observation-accounting-valid?
-              (get-in document [:generated/origin :external-accounting])))
+              (get-in document [:generated/origin :external-accounting]))
+             (external-observation-accounting-valid?
+              (get-in document [:generated/origin :core-accounting])))
       []
       [{:type :conformance/missing-generated-metadata
         :family/id (:family/id descriptor)}])
@@ -1251,6 +1325,14 @@
               (get-in document [:generated/external :accounting])))
       []
       [{:type :conformance/missing-external-metadata
+        :family/id (:family/id descriptor)}])
+    (if (and (map? (:generated/core document))
+             (string? (get-in document [:generated/core :sha256]))
+             (number? (get-in document [:generated/core :count]))
+             (external-observation-accounting-valid?
+              (get-in document [:generated/core :accounting])))
+      []
+      [{:type :conformance/missing-core-metadata
         :family/id (:family/id descriptor)}]))))
 
 (defn external-observation-errors
@@ -1274,7 +1356,10 @@
              (profile/sha? (:source/blob observation))
              (string? (:source/namespace observation))
              (has? #{:source :test} (:observation/kind observation))
-             (map? (:form/location observation)))
+             (map? (:form/location observation))
+             (vector? (:referenced/evidence observation))
+             (vector? (:referenced/idioms observation))
+             (vector? (:referenced/operations observation)))
       []
       [{:type :conformance/external-missing-provenance
         :id (:external/id observation)}])
@@ -1301,6 +1386,66 @@
       (+ (:emitted accounting-value)
          (:skipped accounting-value)
          (:manual-review accounting-value)))))
+
+(defn core-observation-errors
+  [observation]
+  (vec
+   (concat
+    (if (and (map? observation)
+             (string? (:core/id observation))
+             (not (empty? (:core/id observation)))
+             (keyword? (:family/id observation))
+             (= "clojure.core" (:core/namespace observation))
+             (string? (:core/name observation))
+             (string? (:source/path observation))
+             (profile/sha? (:source/blob observation))
+             (string? (:source/namespace observation))
+             (has? #{:source :test} (:observation/kind observation))
+             (profile/sha? (:observation/blob observation))
+             (string? (:observation/path observation))
+             (vector? (get-in observation [:reference/evidence :path]))
+             (map? (:reference/options observation))
+             (map? (:reference/evidence observation)))
+      []
+      [{:type :conformance/core-missing-provenance
+        :id (:core/id observation)}])
+    (if (has? +evidence-statuses+ (:extraction/status observation))
+      []
+      [{:type :conformance/core-invalid-status
+        :id (:core/id observation)}])
+    (if (and
+         (has? #{:derived :skipped :shadowed :manual-review}
+               (:core/status observation))
+         (or (= :derived (:core/status observation))
+             (keyword? (:core/reason observation)))
+         (if (= :derived (:core/status observation))
+           (and (= :emitted (:extraction/status observation))
+                (string? (:core/symbol observation)))
+           (and (= :manual-review (:extraction/status observation))
+                (nil? (:core/symbol observation)))))
+      []
+      [{:type :conformance/core-invalid-resolution
+        :id (:core/id observation)}]))))
+
+(defn validate-core-observations
+  "Validates implicit and qualified clojure.core evidence independently."
+  [document observations accounting-value]
+  (let [observations (vec (or observations []))
+        ids (map :core/id observations)]
+    (vec
+     (concat
+      (mapcat core-observation-errors observations)
+      (if (= observations (vec (sort-by :core/id observations)))
+        []
+        [{:type :conformance/core-unstable-order}])
+      (if (empty? (corpus/duplicate-values ids))
+        []
+        [{:type :conformance/core-duplicate-id
+          :ids (corpus/duplicate-values ids)}])
+      (if (external-observation-accounting-valid? accounting-value)
+        []
+        [{:type :conformance/core-incomplete-accounting
+          :family/id (:family/id document)}])))))
 
 (defn validate-external-observations
   "Validates family external evidence independently from Hara case pairs."
@@ -1549,6 +1694,23 @@
          []
          [{:type :conformance/stale-external-metadata
            :family/id (:family/id descriptor)}])
+       (let [origin-core-observations
+             (vec (:origin/core-references origin))
+             contract-core-observations
+             (vec (:conformance/core-references contract))]
+         (if (and (= (count origin-core-observations)
+                     (get-in metadata [:generated/core :count]))
+                  (= (document-digest
+                      {:core/references origin-core-observations})
+                     (get-in metadata [:generated/core :sha256])))
+           []
+           [{:type :conformance/stale-core-metadata
+             :family/id (:family/id descriptor)}]))
+       (if (= (vec (map :core/id (:origin/core-references origin)))
+              (vec (map :core/id (:conformance/core-references contract))))
+         []
+         [{:type :conformance/core-contract-drift
+           :family/id (:family/id descriptor)}])
        (if (= (vec (map :external/id origin-observations))
               (vec (map :external/id contract-observations)))
          []
@@ -1616,12 +1778,12 @@
   [form]
   (case (classify-form form)
     :portable (assoc form :status :emitted)
-    :skipped (assoc form
-                    :status :skipped
-                    :reason (or (:reason form) :host-only))
-    (assoc form
-           :status :manual-review
-           :reason (or (:reason form) :runner-boundary))))
+    :skipped (assoc
+              (assoc form :status :skipped)
+              :reason (or (:reason form) :host-only))
+    (assoc
+     (assoc form :status :manual-review)
+     :reason (or (:reason form) :runner-boundary))))
 
 (defn stable-id
   [descriptor observation]

@@ -66,9 +66,10 @@
       (throw
        (ex :io {:provider/id id
                  :provider/tier tier} :ex/message "Work provider tier is not supported")))
-    (assoc provider
-           :provider/api api
-           :provider/tier tier))))
+    (assoc
+     (assoc provider :provider/api api)
+     :provider/tier
+     tier))))
 
 (defn baseline
   [provider]

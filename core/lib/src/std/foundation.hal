@@ -1050,8 +1050,8 @@
 
 (defn ^{:schema [:fn [:any & :any] :any]}
   zip
-  "Returns tuples of source items in parallel, stopping at the shortest source.
-   The first source controls result mode."
+  "Returns pair vectors of source items in parallel, stopping at the shortest
+   source. The first source controls result mode."
   [value & values]
   (transform-like value
                   (apply std.native.Iter/iter-zip (concat [value] values))))

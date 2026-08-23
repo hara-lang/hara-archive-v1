@@ -1,5 +1,38 @@
 (ns std.foundation-test)
 
+^{:refer std.foundation/list}
+(Test/run
+ [{:name "constructs a list from all values"
+   :test (fn [] (vec (std.foundation/list 1 2 3)))
+   :expected [1 2 3]}])
+
+^{:refer std.foundation/vector}
+(Test/run
+ [{:name "constructs a vector from all values"
+   :test (fn [] (std.foundation/vector 1 2 3))
+   :expected [1 2 3]}])
+
+^{:refer std.foundation/tuple}
+(Test/run
+ [{:name "constructs a fixed-width tuple from all values"
+   :test (fn [] (let [value (std.foundation/tuple 1 2 3)]
+                  [(std.foundation/tuple? value)
+                   (count value)
+                   (first value)]))
+   :expected [true 3 1]}])
+
+^{:refer std.foundation/hash-map}
+(Test/run
+ [{:name "constructs a map from alternating entries"
+   :test (fn [] (std.foundation/hash-map :a 1 :b 2))
+   :expected {:a 1 :b 2}}])
+
+^{:refer std.foundation/hash-set}
+(Test/run
+ [{:name "constructs a set from all values"
+   :test (fn [] (std.foundation/hash-set 1 2 2))
+   :expected #{1 2}}])
+
 ^{:refer std.foundation/code-line}
 (Test/run [])
 
@@ -362,14 +395,32 @@
 ^{:refer std.foundation/get-in}
 (Test/run [])
 
+^{:refer std.foundation/assoc}
+(Test/run
+ [{:name "associates one key/value pair"
+   :test (fn [] (std.foundation/assoc {:a 1} :b 2))
+   :expected {:a 1 :b 2}}
+  {:name "keeps the Foundation Var fixed at three arguments"
+   :test (fn []
+           (try
+             (std.foundation/assoc {:a 1} :b 2 :c 3)
+             (catch Throwable error :arity-error)))
+   :expected :arity-error}])
+
 ^{:refer std.foundation/assoc-in}
 (Test/run [])
 
 ^{:refer std.foundation/update}
-(Test/run [])
+(Test/run
+ [{:name "passes variadic arguments to the update function"
+   :test (fn [] (std.foundation/update {:a 1} :a + 2 3))
+   :expected {:a 6}}])
 
 ^{:refer std.foundation/update-in}
-(Test/run [])
+(Test/run
+ [{:name "passes variadic arguments to the nested update function"
+   :test (fn [] (std.foundation/update-in {:a {:b 1}} [:a :b] + 2 3))
+   :expected {:a {:b 6}}}])
 
 ^{:refer std.foundation/key}
 (Test/run
@@ -417,11 +468,17 @@
 (Test/run [])
 
 ^{:refer std.foundation/interleave}
-(Test/run [])
+(Test/run
+ [{:name "interleaves all sources until the shortest ends"
+   :test (fn [] (vec (std.foundation/interleave [1 2] [:a :b :c])))
+   :expected [1 :a 2 :b]}])
 
 ^{:refer std.foundation/map}
 (Test/run
- [{:name "preserves vector shape and metadata"
+ [{:name "maps across multiple sources"
+   :test (fn [] (vec (std.foundation/map + [1 2] [10 20])))
+   :expected [11 22]}
+  {:name "preserves vector shape and metadata"
    :test (fn []
            (let [output (std.foundation/map inc (with-meta (vec [1 2]) {:tag :sample}))]
              [output (std.foundation/meta output)]))
@@ -491,7 +548,15 @@
 (Test/run [])
 
 ^{:refer std.foundation/zip}
-(Test/run [])
+(Test/run
+ [{:name "zips sources into pair vectors"
+   :test (fn []
+           (let [output (vec (std.foundation/zip [1 2] [:a :b]))
+                 first-pair (first output)]
+             [(count output)
+              (std.foundation/vector? first-pair)
+              (vec first-pair)]))
+   :expected [2 true [1 :a]]}])
 
 ^{:refer std.foundation/partition-pair}
 (Test/run [])
@@ -679,7 +744,22 @@
 (Test/run [])
 
 ^{:refer std.foundation/merge-with}
-(Test/run [])
+(Test/run
+ [{:name "combines duplicate keys across maps"
+   :test (fn [] (std.foundation/merge-with + {:a 1} {:a 2} {:b 3} nil))
+   :expected {:a 3 :b 3}}
+  {:name "returns an empty map with no sources"
+   :test (fn [] (std.foundation/merge-with +))
+   :expected {}}])
+
+^{:refer std.foundation/merge}
+(Test/run
+ [{:name "merges sources left to right and skips nil"
+   :test (fn [] (std.foundation/merge {:a 1} nil {:a 2 :b 3}))
+   :expected {:a 2 :b 3}}
+  {:name "returns an empty map with no sources"
+   :test (fn [] (std.foundation/merge))
+   :expected {}}])
 
 ^{:refer std.foundation/merge-nested}
 (Test/run
@@ -764,13 +844,22 @@
 (Test/run [])
 
 ^{:refer std.foundation/union}
-(Test/run [])
+(Test/run
+ [{:name "unions any number of sets"
+   :test (fn [] (std.foundation/union #{1 2} #{2 3} #{4}))
+   :expected #{1 2 3 4}}])
 
 ^{:refer std.foundation/intersection}
-(Test/run [])
+(Test/run
+ [{:name "intersects any number of sets"
+   :test (fn [] (std.foundation/intersection #{1 2 3} #{2 3} #{3 4}))
+   :expected #{3}}])
 
 ^{:refer std.foundation/difference}
-(Test/run [])
+(Test/run
+ [{:name "removes values from every remaining set"
+   :test (fn [] (std.foundation/difference #{1 2 3 4} #{2} #{3 5}))
+   :expected #{1 4}}])
 
 ^{:refer std.foundation/subset?}
 (Test/run [])

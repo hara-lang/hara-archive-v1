@@ -23,11 +23,14 @@
 
 (defn resource-merge-config [base override]
   (let [output (merge base override)]
-    (assoc output
-           :mode (merge (:mode base) (:mode override))
-           :config (merge (:config base) (:config override))
-           :instance (merge (:instance base) (:instance override))
-           :hook (merge (:hook base) (:hook override)))))
+    (assoc
+     (assoc
+      (assoc
+       (assoc output
+              :mode (merge (:mode base) (:mode override)))
+       :config (merge (:config base) (:config override)))
+      :instance (merge (:instance base) (:instance override)))
+     :hook (merge (:hook base) (:hook override)))))
 
 (defn spec-list []
   (keys (deref *resource-registry*)))

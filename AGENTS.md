@@ -15,6 +15,13 @@ Use `$hara-postgres` for native PostgreSQL DSL source, `$hara-xtalk` for XTalk
 or emitter work, `$hara-xtalk-compatibility` for target parity, and
 `$hara-dev-spec-writer` for language specifications.
 
+For collection/core call shapes, read
+`core/spec/std/variadic-functions.md` before editing. It records the
+source-backed Foundation and runtime boundaries, including the distinction
+between the fixed `std.foundation/assoc` Var and the evaluator's multi-pair
+intrinsic `assoc`; verify the actual resolved owner instead of assuming a
+Clojure equivalent has the same arity.
+
 ## Namespace roles and publication
 
 Do not add top-level `defn-`, `defmacro-`, or private Vars to `.hal` source.
