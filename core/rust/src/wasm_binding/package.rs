@@ -15,7 +15,10 @@ use super::{
 };
 
 #[cfg(test)]
+mod manifest;
+#[cfg(test)]
 mod tests;
+use manifest::package_document;
 
 pub const DIRECT_WASM_BINDING_SCHEMA: &str = "hara.wasm-binding/0-alpha";
 pub const DIRECT_WASM_CONFORMANCE_SCHEMA: &str = "hara.wasm-conformance/0-alpha";
@@ -245,117 +248,6 @@ fn project_document(interface: &WasmInterface, target: BindingTarget) -> Result<
         (
             keyword_form("project/extensions"),
             Form::Map(vec![(symbol_form(&interface.namespace), extension)]),
-        ),
-    ])))
-}
-
-fn package_document(
-    interface: &WasmInterface,
-    target: BindingTarget,
-    identity: &str,
-    files: &BTreeMap<String, Vec<u8>>,
-) -> Result<String, String> {
-    let file_entries = files
-        .iter()
-        .map(|(path, bytes)| {
-            (
-                string_form(path),
-                Form::Map(vec![
-                    (keyword_form("sha256"), string_form(&digest(bytes))),
-                    (keyword_form("size"), Form::Number(bytes.len() as i64)),
-                ]),
-            )
-        })
-        .collect();
-    let exports = interface
-        .exports
-        .iter()
-        .map(|export| keyword_form(&export.name))
-        .collect();
-    let entry_point = interface
-        .exports
-        .first()
-        .map(|export| export.wasm_export.clone())
-        .ok_or_else(|| "wasm-binding/package-invalid: package requires an export".to_owned())?;
-    let artifact = Form::Map(vec![
-        (
-            keyword_form("variant/artifact"),
-            Form::Map(vec![
-                (keyword_form("artifact/type"), keyword_form("wasm")),
-                (
-                    keyword_form("artifact/path"),
-                    string_form(&interface.module),
-                ),
-                (
-                    keyword_form("artifact/sha256"),
-                    string_form(
-                        files
-                            .get(&interface.module)
-                            .map(|bytes| digest(bytes))
-                            .ok_or_else(|| {
-                                format!(
-                                    "wasm-binding/package-invalid: missing module {}",
-                                    interface.module
-                                )
-                            })?
-                            .as_str(),
-                    ),
-                ),
-                (
-                    keyword_form("artifact/target"),
-                    string_form("wasm32-wasi-preview1"),
-                ),
-                (
-                    keyword_form("artifact/abi"),
-                    string_form(target.as_keyword()),
-                ),
-                (
-                    keyword_form("artifact/entry-point"),
-                    string_form(&entry_point),
-                ),
-            ]),
-        ),
-        (
-            keyword_form("variant/required-capabilities"),
-            Form::Set(Vec::new()),
-        ),
-        (keyword_form("variant/host-calls"), Form::Set(Vec::new())),
-        (keyword_form("variant/exports"), Form::Set(exports)),
-    ]);
-    Ok(document(Form::Map(vec![
-        (keyword_form("harp/format"), string_form("0.0.0-alpha")),
-        (
-            keyword_form("package"),
-            Form::Map(vec![
-                (keyword_form("identity"), string_form(identity)),
-                (keyword_form("version"), string_form(GENERATED_VERSION)),
-                (
-                    keyword_form("provenance"),
-                    Form::Map(vec![
-                        (
-                            keyword_form("repository"),
-                            string_form("generated/hara-wasm-bindgen"),
-                        ),
-                        (
-                            keyword_form("commit"),
-                            string_form(
-                                digest(
-                                    files
-                                        .get("project.edn")
-                                        .map(Vec::as_slice)
-                                        .unwrap_or_default(),
-                                )
-                                .trim_start_matches("sha256:"),
-                            ),
-                        ),
-                    ]),
-                ),
-            ]),
-        ),
-        (keyword_form("files"), Form::Map(file_entries)),
-        (
-            keyword_form("wasm-imports"),
-            Form::Map(vec![(keyword_form(&interface.namespace), artifact)]),
         ),
     ])))
 }

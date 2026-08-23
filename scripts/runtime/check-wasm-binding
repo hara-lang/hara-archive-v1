@@ -15,6 +15,7 @@ rust_files=(
   core/rust/src/wasm_binding/canonical.rs
   core/rust/src/wasm_binding/direct.rs
   core/rust/src/wasm_binding/memory.rs
+  core/rust/src/wasm_binding/package/manifest.rs
   core/rust/src/wasm_binding/package.rs
   core/rust/src/wasm_binding/package/tests.rs
   core/rust/src/wasm_binding/parser.rs
