@@ -3,7 +3,10 @@ use hara_wasm::cli_app;
 use hara_wasm::kernel::{parse, Form};
 use hara_wasm::native_cli::{install_native_kernel, RuntimeBroker};
 use hara_wasm::project;
-#[cfg(feature = "bytecode-vm")]
+#[cfg(all(
+    feature = "bytecode-vm",
+    not(any(target_arch = "wasm32", feature = "raw-wasm"))
+))]
 use hara_wasm::task::production;
 use hara_wasm::wasm_binding;
 use hara_wasm::Runtime;
@@ -221,14 +224,20 @@ fn execute_host_action(
             }
         }
         "production-analyze" => {
-            #[cfg(feature = "bytecode-vm")]
+            #[cfg(all(
+                feature = "bytecode-vm",
+                not(any(target_arch = "wasm32", feature = "raw-wasm"))
+            ))]
             {
                 analyze_production(options, arguments)
             }
-            #[cfg(not(feature = "bytecode-vm"))]
+            #[cfg(not(all(
+                feature = "bytecode-vm",
+                not(any(target_arch = "wasm32", feature = "raw-wasm"))
+            )))]
             {
                 let _ = (options, arguments);
-                Err("production analysis requires the bytecode-vm feature".into())
+                Err("production analysis is unavailable for this target".into())
             }
         }
         value => Err(format!("unknown Hara host action: {value}")),
@@ -448,7 +457,10 @@ fn authoring_path(options: &Options, value: &str, label: &str) -> Result<PathBuf
     Ok(capability_root(options, &cwd).join(relative))
 }
 
-#[cfg(feature = "bytecode-vm")]
+#[cfg(all(
+    feature = "bytecode-vm",
+    not(any(target_arch = "wasm32", feature = "raw-wasm"))
+))]
 fn analyze_production(options: &Options, arguments: &[String]) -> Result<(), String> {
     if arguments.len() != 1 {
         return Err("project production build requires one serialized build plan".into());
