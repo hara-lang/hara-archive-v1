@@ -801,6 +801,16 @@ public final class HbcMachine {
     return failure instanceof HbcThrown thrown ? thrown.value : failure.getMessage();
   }
 
+  /**
+   * Returns the guest value carried by an HBC throw when it crosses into a Truffle AST, while
+   * leaving ordinary Java runtime failures unchanged. HBC handlers use {@link #caughtValue} for
+   * their local binding semantics; this boundary helper is for the source-level {@code try/catch}
+   * implementation.
+   */
+  public static Object guestThrownValue(RuntimeException failure) {
+    return failure instanceof HbcThrown thrown ? thrown.value : failure;
+  }
+
   private static void truncate(ArrayList<Object> stack, int depth) {
     while (stack.size() > depth) stack.remove(stack.size() - 1);
   }

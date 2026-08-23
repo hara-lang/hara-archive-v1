@@ -32,6 +32,10 @@ pub(super) fn parse_manifest(source: &str) -> Result<PackageManifest, PackageMan
         .transpose()?;
     let files = parse_files(required_value(root, "files", "package.edn")?)?;
 
+    let schema_catalog = optional_value(root, "schema/catalog", "package.edn")?
+        .map(|value| parse_schema_catalog(value, &files))
+        .transpose()?;
+
     if let Some(descriptor) = optional_value(root, "descriptor", "package.edn")? {
         validate_descriptor(descriptor)?;
     }
@@ -57,10 +61,42 @@ pub(super) fn parse_manifest(source: &str) -> Result<PackageManifest, PackageMan
         version,
         provenance,
         files,
+        schema_catalog,
         wasm_imports,
         flavors,
         canonical_edn: canonical_form(&form).to_string(),
     })
+}
+
+fn parse_schema_catalog(
+    value: &Form,
+    files: &BTreeMap<PathBuf, PackageFile>,
+) -> Result<PackageCatalogDescriptor, PackageManifestError> {
+    let entries = expect_map(value, ":schema/catalog")?;
+    let format = required_string(entries, "format", ":schema/catalog")?;
+    let path = parse_relative_path(&required_string(
+        entries,
+        "path",
+        ":schema/catalog",
+    )?)?;
+    let sha256 = required_string(entries, "sha256", ":schema/catalog")?;
+    validate_sha256(&sha256)?;
+    let file = files.get(&path).ok_or_else(|| {
+        PackageManifestError::new(
+            "package/catalog-missing",
+            format!(":schema/catalog :path is not declared in :files: {}", path.display()),
+        )
+    })?;
+    if file.sha256 != sha256 {
+        return Err(PackageManifestError::new(
+            "package/catalog-digest-mismatch",
+            format!(
+                "{} declares {}, but :files declares {}",
+                path.display(), sha256, file.sha256
+            ),
+        ));
+    }
+    Ok(PackageCatalogDescriptor { format, path, sha256 })
 }
 
 fn parse_provenance(value: &Form) -> Result<PackageProvenance, PackageManifestError> {

@@ -33,7 +33,7 @@
 (def +profile-v2-coordinate+ (catalog/coordinate +catalog+ :model/profile 2))
 (def +account-coordinate+ (catalog/coordinate +catalog+ :model/account 1))
 
-^{:refer 'std.typed.catalog/catalog
+^{:refer std.typed.catalog/catalog
   :id 'stable-schema-identity}
 (fact "catalog entries have canonical ids, versions, and reproducible hashes"
   (let [profile-v1 (catalog/lookup +catalog+ :model/profile 1)
@@ -67,7 +67,31 @@
            (:schema/hash (catalog/lookup semantic-change :model/profile 1)))])
   => [:model/profile 1 true 71 2 true true])
 
-^{:refer 'std.typed.catalog/catalog
+^{:refer std.typed.catalog/catalog
+  :id 'map-entry-order-does-not-change-hash}
+(fact "canonical map hashing ignores map insertion order"
+  (let [left
+        (catalog/catalog
+         [{:schema/id :fixture/value
+           :schema/version 1
+           :schema/form
+           '[:map {:optional true :description "x"}
+             [:id :int]]}])
+        right
+        (catalog/catalog
+         [{:schema/id :fixture/value
+           :schema/version 1
+           :schema/form
+           '[:map {:description "x" :optional true}
+             [:id :int]]}])
+        left-hash (:schema/hash (catalog/lookup left :fixture/value 1))
+        right-hash (:schema/hash (catalog/lookup right :fixture/value 1))]
+    [left-hash right-hash (= left-hash right-hash)])
+  => ["sha256:ce5a64c050ea73b6f76e6f3083bcb1327c9f753114bc5effd7337fbfbb5ba3d7"
+      "sha256:ce5a64c050ea73b6f76e6f3083bcb1327c9f753114bc5effd7337fbfbb5ba3d7"
+      true])
+
+^{:refer std.typed.catalog/catalog
   :id 'schema-version-participates-in-hash}
 (fact "the same semantic form at a different version has a different hash"
   (let [value
@@ -79,7 +103,28 @@
      (:schema/hash (catalog/lookup value :demo/value 2))))
   => true)
 
-^{:refer 'std.typed.catalog/catalog
+^{:refer std.typed.catalog/dependencies
+  :id 'direct-dependencies-have-portable-order}
+(fact "direct dependencies are ordered independently of set iteration"
+  (let [value
+        (catalog/catalog
+         [{:schema/id :order/id :schema/version 1 :schema/form :int}
+          {:schema/id :order/node
+           :schema/version 1
+           :schema/form '[:map [:id (var Id)]]}
+          {:schema/id :order/root
+           :schema/version 1
+           :schema/form '[:map
+                          [:node (var Node)]
+                          [:id (var Id)]]}])
+        root (catalog/coordinate value :order/root 1)]
+    (catalog/dependencies value root))
+  => [[:schema :order/id 1
+       "sha256:60e8e3905ca0b3b9c0ea43caabc8ac328682f920726046edaf0428c8e921e31b"]
+      [:schema :order/node 1
+       "sha256:0dee5d74fbd3c812e4b405f96e6bce59de2935cb48381796bfa48d77cbe0fa28"]])
+
+^{:refer std.typed.catalog/catalog
   :id 'reject-mismatched-schema-hash}
 (fact "a supplied hash is an assertion, not mutable metadata"
   (try
@@ -94,7 +139,7 @@
          (:type (ex-data error)))))
   => true)
 
-^{:refer 'IDeps
+^{:refer IDeps
   :id 'schema-catalog-dependency-contract}
 (fact "catalogs expose exact pinned schema dependencies through IDeps"
   [(= :model/account (:schema/id (dep-get +catalog+ +account-coordinate+)))
@@ -111,7 +156,7 @@
         +account-coordinate+}
       [+id-coordinate+ +profile-v2-coordinate+ +account-coordinate+]])
 
-^{:refer 'std.typed.catalog/schema-registry
+^{:refer std.typed.catalog/schema-registry
   :id 'ordinary-symbol-registry-view}
 (fact "identified catalogs retain the ordinary symbol lookup surface"
   [(registry/lookup (catalog/schema-registry +catalog+) 'model/Id)
@@ -122,7 +167,7 @@
         [:id (var Id)]
         [:nickname {:optional true :description "Display name"} :str]]])
 
-^{:refer 'std.typed.catalog/catalog
+^{:refer std.typed.catalog/catalog
   :id 'schema-id-symbol-case-bridge}
 (fact "kebab-case schema ids map reversibly to PascalCase references"
   (let [value
@@ -177,7 +222,7 @@
 (def +mutual-b-coordinate+
   (catalog/coordinate +mutual-catalog+ :graph/b 1))
 
-^{:refer 'std.typed.catalog/dependency-closure
+^{:refer std.typed.catalog/dependency-closure
   :id 'exact-transitive-dependency-closure}
 (fact "dependency closure and order remain exact and dependency-first"
   [(catalog/dependency-closure +catalog+ +account-coordinate+)
@@ -185,7 +230,7 @@
   => [[+id-coordinate+ +profile-v2-coordinate+]
       [+id-coordinate+ +profile-v2-coordinate+ +account-coordinate+]])
 
-^{:refer 'std.typed.catalog/dependency-components
+^{:refer std.typed.catalog/dependency-components
   :id 'self-recursive-schema-component}
 (fact "self recursion is represented as an explicit dependency-first component"
   (let [components
@@ -210,7 +255,7 @@
       true
       [+recursive-id-coordinate+ +recursive-coordinate+]])
 
-^{:refer 'std.typed.catalog/dependency-components
+^{:refer std.typed.catalog/dependency-components
   :id 'mutually-recursive-schema-component}
 (fact "mutual structural recursion is deterministic under entry reordering"
   (let [reordered (catalog/catalog (vec (reverse +mutual-entries+)))
@@ -239,7 +284,7 @@
       [+mutual-b-coordinate+]
       [+mutual-a-coordinate+ +mutual-b-coordinate+]])
 
-^{:refer 'std.typed.catalog/catalog
+^{:refer std.typed.catalog/catalog
   :id 'reject-reference-only-cycle}
 (fact "reference-only cycles retain a structured cyclic-reference diagnostic"
   (try
@@ -262,7 +307,7 @@
       :std.typed.schema/cyclic-reference
       2])
 
-^{:refer 'std.typed.catalog/dependency-components
+^{:refer std.typed.catalog/dependency-components
   :id 'exact-version-pinning-in-components}
 (fact "component analysis retains the exact version selected at construction"
   (let [value

@@ -107,6 +107,23 @@ public class StdTypedCatalogDocumentTest {
             + "      (:cause/type (ex-data error))])))");
   }
 
+  private static String rejectionByCodeExpression(String fixture) {
+    return evaluate(
+        "(ns std-typed-catalog-document-truffle-code-rejection "
+            + "  (:require [std.typed :as typed])) "
+            + "(require 'std.typed.catalog.document {:reload true}) "
+            + "(require 'std.typed {:reload true}) "
+            + "(pr-str "
+            + " (try "
+            + "   (typed/catalog-document-verify-json "
+            + haraString(fixture)
+            + ") "
+            + "   :unexpected-success "
+            + "   (catch :hara/argument error "
+            + "     [(:cause/type (ex-data error)) "
+            + "      (:finding/type (ex-data error))])))");
+  }
+
   @Test
   public void exactRegistryBytesRoundTripThroughStdTypedCatalog() throws IOException {
     assertEquals(
@@ -138,6 +155,14 @@ public class StdTypedCatalogDocumentTest {
             + ":std.typed.catalog.document/catalog-rejected "
             + ":std.typed.catalog/invalid-catalog]",
         rejectionExpression(fixture));
+  }
+
+  @Test
+  public void hbcRejectionMatchesStructuredCodeAndPreservesData() throws IOException {
+    String fixture = replaceFirstN(fixtureText(), ACCOUNT_HASH, STALE_HASH, 2);
+    assertEquals(
+        "[:std.typed.catalog/invalid-catalog :std.typed.catalog.document/catalog-rejected]",
+        rejectionByCodeExpression(fixture));
   }
 
   @Test

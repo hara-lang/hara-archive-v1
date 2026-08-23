@@ -16,6 +16,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 
 mod archive;
+mod catalog;
 mod parse;
 #[cfg(test)]
 mod tests;
@@ -88,6 +89,19 @@ pub struct PackageFile {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PackageCatalogDescriptor {
+    pub format: String,
+    pub path: PathBuf,
+    pub sha256: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PackageCatalogAdmission {
+    pub format: String,
+    pub report: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PackageArtifact {
     pub artifact_type: PackageArtifactType,
     pub path: PathBuf,
@@ -145,6 +159,7 @@ pub struct PackageManifest {
     pub version: Version,
     pub provenance: Option<PackageProvenance>,
     pub files: BTreeMap<PathBuf, PackageFile>,
+    pub schema_catalog: Option<PackageCatalogDescriptor>,
     pub wasm_imports: BTreeMap<String, PackageVariant>,
     pub flavors: BTreeMap<String, PackageVariant>,
     canonical_edn: String,
@@ -200,6 +215,42 @@ impl PackageManifest {
 
     pub fn canonical_edn(&self) -> &str {
         &self.canonical_edn
+    }
+
+    pub fn admit_catalog_bytes(
+        &self,
+        bytes: &[u8],
+    ) -> Result<PackageCatalogAdmission, PackageManifestError> {
+        let descriptor = self.schema_catalog.as_ref().ok_or_else(|| {
+            PackageManifestError::new(
+                "package/catalog-missing",
+                "package does not declare :schema/catalog",
+            )
+        })?;
+        self.verify_file_bytes(&descriptor.path, bytes)?;
+        let source = std::str::from_utf8(bytes).map_err(|error| {
+            PackageManifestError::new(
+                "package/catalog-invalid",
+                format!("catalog {} is not UTF-8 JSON: {error}", descriptor.path.display()),
+            )
+        })?;
+        catalog::admit(&descriptor.format, source)
+    }
+
+    pub fn admit_catalog_at(
+        &self,
+        root: &Path,
+    ) -> Result<Option<PackageCatalogAdmission>, PackageManifestError> {
+        let Some(descriptor) = &self.schema_catalog else {
+            return Ok(None);
+        };
+        let bytes = fs::read(root.join(&descriptor.path)).map_err(|error| {
+            PackageManifestError::new(
+                "package/catalog-missing",
+                format!("cannot read catalog {}: {error}", descriptor.path.display()),
+            )
+        })?;
+        self.admit_catalog_bytes(&bytes).map(Some)
     }
 
     pub fn select_variant(

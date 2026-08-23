@@ -24,7 +24,35 @@ pub(super) fn read_archive(path: &Path) -> Result<PackageManifest, PackageManife
     let source = read_manifest_source(&mut archive)?;
     let manifest = PackageManifest::parse(&source)?;
     verify_archive_files(&mut archive, &manifest)?;
+    verify_archive_catalog(&mut archive, &manifest)?;
     Ok(manifest)
+}
+
+fn verify_archive_catalog(
+    archive: &mut ZipArchive<File>,
+    manifest: &PackageManifest,
+) -> Result<(), PackageManifestError> {
+    let Some(descriptor) = &manifest.schema_catalog else {
+        return Ok(());
+    };
+    let name = descriptor
+        .path
+        .to_str()
+        .ok_or_else(|| PackageManifestError::new("package/catalog-missing", "catalog path is not UTF-8"))?;
+    let mut entry = archive.by_name(name).map_err(|error| {
+        PackageManifestError::new(
+            "package/catalog-missing",
+            format!("archive is missing declared catalog {name}: {error}"),
+        )
+    })?;
+    let mut bytes = Vec::new();
+    entry.read_to_end(&mut bytes).map_err(|error| {
+        PackageManifestError::new(
+            "package/catalog-invalid",
+            format!("cannot read catalog {name}: {error}"),
+        )
+    })?;
+    manifest.admit_catalog_bytes(&bytes).map(|_| ())
 }
 
 fn read_manifest_source(archive: &mut ZipArchive<File>) -> Result<String, PackageManifestError> {

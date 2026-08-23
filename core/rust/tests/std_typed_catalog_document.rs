@@ -32,19 +32,39 @@ fn hara_string(value: &str) -> String {
 }
 
 fn evaluate(source: &str) -> String {
-    let mut runtime = Runtime::new();
-    runtime
-        .eval_native(source)
+    let source = source.to_owned();
+    std::thread::Builder::new()
+        .stack_size(64 * 1024 * 1024)
+        .spawn(move || {
+            let mut runtime = Runtime::new();
+            for (namespace, resource) in [
+        ("std.typed", include_str!("../../lib/src/std/typed.hal")),
+        ("std.typed.catalog", include_str!("../../lib/src/std/typed/catalog.hal")),
+        (
+            "std.typed.catalog.document",
+            include_str!("../../lib/src/std/typed/catalog/document.hal"),
+        ),
+        ("std.typed.explain", include_str!("../../lib/src/std/typed/explain.hal")),
+        ("std.typed.infer", include_str!("../../lib/src/std/typed/infer.hal")),
+        ("std.typed.registry", include_str!("../../lib/src/std/typed/registry.hal")),
+        ("std.typed.schema", include_str!("../../lib/src/std/typed/schema.hal")),
+            ] {
+                runtime.register_resource(namespace, resource);
+            }
+            runtime.eval_native(&source)
+        })
+        .expect("start Hara runtime thread")
+        .join()
+        .expect("Hara runtime thread must not panic")
         .unwrap_or_else(|error| panic!("evaluate registry fixture through Hara: {error}"))
 }
 
 fn verify_expression(fixture: &str, body: &str) -> String {
     evaluate(&format!(
-        "(ns std-typed-catalog-document-rust-probe \
-           (:require [std.typed :as typed])) \
-         (require 'std.typed.catalog.document {{:reload true}}) \
-         (require 'std.typed {{:reload true}}) \
-         (let [verified (typed/catalog-document-verify-json {})] {})",
+        "(do \
+           (require 'std.typed.catalog.document) \
+           (require 'std.typed) \
+           (let [verified (std.typed/catalog-document-verify-json {})] {}))",
         hara_string(fixture),
         body
     ))
@@ -52,17 +72,16 @@ fn verify_expression(fixture: &str, body: &str) -> String {
 
 fn rejection_expression(fixture: &str) -> String {
     evaluate(&format!(
-        "(ns std-typed-catalog-document-rust-rejection \
-           (:require [std.typed :as typed])) \
-         (require 'std.typed.catalog.document {{:reload true}}) \
-         (require 'std.typed {{:reload true}}) \
-         (try \
-           (typed/catalog-document-verify-json {}) \
-           :unexpected-success \
-           (catch Throwable error \
-             [(:type (ex-data error)) \
-              (:finding/type (ex-data error)) \
-              (:cause/type (ex-data error))]))",
+        "(do \
+           (require 'std.typed.catalog.document) \
+           (require 'std.typed) \
+           (try \
+             (std.typed/catalog-document-verify-json {}) \
+             :unexpected-success \
+             (catch Throwable error \
+               [(:type (ex-data error)) \
+                (:finding/type (ex-data error)) \
+                (:cause/type (ex-data error))])))",
         hara_string(fixture)
     ))
 }
@@ -76,8 +95,8 @@ fn exact_registry_bytes_round_trip_through_std_typed_catalog() {
             "(let [report (:verification verified) \
                    admitted (:catalog verified) \
                    account-coordinate (first (:catalog/coordinates report)) \
-                   account (typed/catalog-resolve admitted account-coordinate) \
-                   order (typed/catalog-dependency-order admitted)] \
+                   account (std.typed/catalog-resolve admitted account-coordinate) \
+                   order (std.typed/catalog-dependency-order admitted)] \
                [(:status report) \
                 (:catalog/entry-count report) \
                 (:catalog/component-count report) \
@@ -87,7 +106,7 @@ fn exact_registry_bytes_round_trip_through_std_typed_catalog() {
                 (= (:catalog/component-order report) \
                    (vec \
                     (map :component/id \
-                         (typed/catalog-dependency-components admitted))))])"
+                         (std.typed/catalog-dependency-components admitted))))])"
         ),
         "[:verified 5 5 true true true true]"
     );

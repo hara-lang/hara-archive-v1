@@ -104,7 +104,7 @@
      (if (= index length)
        true
        (let [character (str (str/char-at value index))]
-         (if (nil? (str/index-of +hex-digits+ character))
+         (if (< (str/index-of +hex-digits+ character) 0)
            false
            (recur (inc index))))))))
 
@@ -131,10 +131,10 @@
    (string? value)
    (not (str/blank? value))
    (not (str/starts-with? value "/"))
-   (nil? (str/index-of value "\\"))
+   (< (str/index-of value "\\") 0)
    (not (= value ".."))
    (not (str/starts-with? value "../"))
-   (nil? (str/index-of value "/../"))))
+   (< (str/index-of value "/../") 0)))
 
 (defn- owner-name?
   [value]
@@ -146,12 +146,11 @@
        separator
        (> separator 0)
        (< separator (dec length))
-       (nil?
-        (str/index-of
-         (str/slice value (inc separator))
-         "/"))
+       (< (str/index-of
+           (str/slice value (inc separator))
+           "/") 0)
        (not (str/starts-with? value ":"))
-       (nil? (str/index-of value " "))))))
+       (< (str/index-of value " ") 0)))))
 
 (defn- sorted-unique-by?
   [values selector]

@@ -42,6 +42,7 @@ import hara.truffle.HaraProtocolImplementation;
 import hara.truffle.HaraStruct;
 import hara.truffle.HaraType;
 import hara.truffle.HaraVar;
+import hara.truffle.HbcMachine;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -1362,6 +1363,15 @@ public final class HaraNodes {
         throw failure;
       } catch (RuntimeException failure) {
         if (failure instanceof RecurException) throw failure;
+        Object guestFailure = HbcMachine.guestThrownValue(failure);
+        if (guestFailure != failure) {
+          for (CatchClause clause : catches) {
+            if (clause.matches(guestFailure)) {
+              return clause.executeCatch(frame, guestFailure);
+            }
+          }
+          throw failure;
+        }
         for (CatchClause clause : catches) {
           if (clause.matches(failure)) {
             return clause.executeCatch(frame, failure);

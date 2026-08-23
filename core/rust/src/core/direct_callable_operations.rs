@@ -71,6 +71,7 @@ fn direct_predicate_operation(
         "keyword?" => matches!(value, Value::Keyword(_)),
         "list?" => matches!(value, Value::List(_)),
         "long?" => numeric::to_i64_exact(value).is_ok(),
+        "map-entry?" => matches!(value, Value::Tuple(entry) if entry.len() == 2),
         "map?" => match value {
             Value::Map(_)
             | Value::OrderedMap(_)
@@ -97,6 +98,40 @@ fn direct_predicate_operation(
         }
     };
     Ok(Value::Bool(result))
+}
+
+fn direct_file_operation(
+    specification: &DirectCallableSpec,
+    arguments: Vec<Value>,
+) -> Result<Value, String> {
+    if specification.symbol != "file/parent" {
+        return Err(format!(
+            "missing direct file implementation: {}",
+            specification.symbol
+        ));
+    }
+    let [Value::String(path)] = arguments.as_slice() else {
+        return Err("file/parent expects a path".into());
+    };
+    crate::file::logical_parent(path)
+        .map(|parent| parent.map(Value::String).unwrap_or(Value::Nil))
+        .map_err(|error| format!("file/parent: {error:?}"))
+}
+
+fn direct_string_operation(
+    specification: &DirectCallableSpec,
+    arguments: Vec<Value>,
+) -> Result<Value, String> {
+    if specification.symbol != "str/trim" {
+        return Err(format!(
+            "missing direct string implementation: {}",
+            specification.symbol
+        ));
+    }
+    let [Value::String(text)] = arguments.as_slice() else {
+        return Err("str/trim expects one string".into());
+    };
+    Ok(Value::String(text.trim().into()))
 }
 
 fn direct_promise_operation(
@@ -334,7 +369,24 @@ fn direct_namespace_callable_operation(
             result
         }
         "intern-var" => direct_intern_var(arguments),
+        "module-revision" => {
+            let name = direct_namespace_identifier(&arguments[0], "module-revision")?;
+            Ok(Value::Number(
+                namespace_registry()?.module_revision(&name) as i64,
+            ))
+        }
         "ns-alias-state" => direct_namespace_alias_state(arguments),
+        "ns:imports" => {
+            let [Value::Namespace(namespace)] = arguments.as_slice() else {
+                return Err("ns:imports expects a namespace".into());
+            };
+            Ok(Value::Map(PMap::from_iter(
+                namespace
+                    .imports()
+                    .into_iter()
+                    .map(|(name, host_type)| (Value::Symbol(name), Value::String(host_type))),
+            )))
+        }
         "var-sym" => match &arguments[0] {
             Value::Var(var) => Ok(Value::Symbol(var.symbol().clone())),
             value => Err(format!("var-sym expects a var, got {}", value.display())),
