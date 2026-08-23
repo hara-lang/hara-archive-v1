@@ -1,0 +1,59 @@
+(ns tool.cli.test.project-test
+  (:use code.test)
+  (:require [tool.cli.test.project :as test-project]))
+
+(def current-project
+  {:project/id 'hara.lang
+   :project/root "/"
+   :project/source-paths ["lib/src" "lib/src-lang"]
+   :project/test-paths ["lib/test" "lib/test-lang"]})
+(def known-file "lib/test/std/config_test.hal")
+
+[
+^{:refer tool.cli.test.project/project-start}
+(test-check "project start prefers the global project option"
+            [(test-project/project-start
+              {:request/options {:project "/"}
+               :request/cwd "/ignored"})
+             (test-project/project-start
+              {:request/options {:root "/"}
+               :request/cwd "/ignored"})]
+            ["/" "/"])
+
+^{:refer tool.cli.test.project/discover}
+(test-check "project discovery preserves an already discovered request project"
+            (test-project/discover {:request/project current-project})
+            current-project)
+
+^{:refer tool.cli.test.project/explicit-file}
+(test-check "explicit files resolve within the selected project"
+            [(str/ends-with?
+              (test-project/explicit-file current-project known-file)
+              known-file)
+             (try
+               (test-project/explicit-file current-project "lib/test")
+               :not-thrown
+               (catch Throwable error (ex-message error)))
+             (try
+               (test-project/explicit-file current-project "missing.hal")
+               :not-thrown
+               (catch Throwable error (ex-message error)))]
+            [true
+             "--file accepts files, not directories"
+             "test file does not exist: /missing.hal"])
+
+^{:refer tool.cli.test.project/files}
+(test-check "file discovery uses project test paths and explicit files"
+            [(count (test-project/files current-project [known-file]))
+             (some (fn [path] (str/ends-with? path "std/config_test.hal"))
+                   (test-project/files current-project []))]
+            [1 true])
+
+^{:refer tool.cli.test.project/records}
+(test-check "project records carry the declared test namespace"
+            (get
+             (first (test-project/records
+                    current-project
+                    (test-project/files current-project [known-file])))
+             :namespace)
+            'std.config-test)]

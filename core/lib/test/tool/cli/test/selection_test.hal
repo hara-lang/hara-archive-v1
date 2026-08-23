@@ -1,0 +1,28 @@
+(ns tool.cli.test.selection-test
+  (:use code.test)
+  (:require [tool.cli.test.selection :as selection]))
+
+(def records
+  [{:namespace 'std.foundation-test :path "foundation.hal"}
+   {:namespace 'code.test-test :path "code_test.hal"}
+   {:namespace 'hara.other :path "other.hal"}])
+
+[
+^{:refer tool.cli.test.selection/matching?}
+(test-check "selection reuses task selector prefix and collection semantics"
+            [(selection/matching? 'std {:namespace 'std.foundation-test})
+             (selection/matching? ['std 'code.test]
+                                  {:namespace 'code.test-test})
+             (selection/matching? '(code test)
+                                  {:namespace 'code.test-test})
+             (selection/matching? #{'hara.other}
+                                  {:namespace 'hara.other})]
+            [true true true true])
+
+^{:refer tool.cli.test.selection/select}
+(test-check "selection filters records while preserving order"
+            [(selection/select '[std]
+                               records)
+             (selection/select nil records)]
+            [[{:namespace 'std.foundation-test :path "foundation.hal"}]
+             records])]

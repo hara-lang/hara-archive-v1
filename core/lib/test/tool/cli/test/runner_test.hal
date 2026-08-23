@@ -1,0 +1,75 @@
+(ns tool.cli.test.runner-test
+  (:use code.test)
+  (:require [tool.cli.test.runner :as runner]))
+
+[
+^{:refer tool.cli.test.runner/vector-tail}
+(test-check "runner tail returns a vector after the selected index"
+            [(runner/vector-tail [0 1 2 3] 2)
+             (runner/vector-tail [0 1] 2)]
+            [[2 3] []])
+
+^{:refer tool.cli.test.runner/native-result-counts}
+(test-check "native results are counted through the code.test result contract"
+            (runner/native-result-counts
+             [(Result/create :success true)
+              (Result/create :success false)])
+            {:passed 1 :failed 1})
+
+^{:refer tool.cli.test.runner/code-test-result-counts}
+(test-check "code.test summaries count errors and non-passed empty runs"
+            [(runner/code-test-result-counts
+              {:status :passed :counts {:passed 3 :failed 0}})
+             (runner/code-test-result-counts
+              {:status :failed :counts {:passed 2 :failed 1 :error 2 :timeout 1}})
+             (runner/code-test-result-counts
+              {:status :failed :counts {:passed 0 :failed 0}})]
+            [{:passed 3 :failed 0}
+             {:passed 2 :failed 4}
+             {:passed 0 :failed 1}])
+
+^{:refer tool.cli.test.runner/result-counts}
+(test-check "result normalization accepts serialized code.test summaries"
+            [(runner/result-counts
+              (pr-str {:status :passed :counts {:passed 4 :failed 0}}))
+             (try
+               (runner/result-counts :invalid)
+               :not-thrown
+               (catch Throwable error (ex-message error)))]
+            [{:passed 4 :failed 0}
+             "test file must return a code.test/run summary or native test result vector"])
+
+^{:refer tool.cli.test.runner/run-file}
+(test-check "runner converts file evaluation errors into failed file results"
+            (let [result
+                  (runner/run-file
+                   {:path "core/missing-test-file.hal"
+                    :namespace 'missing-test}
+                   0)]
+              [(:path result) (:namespace result) (:passed result) (:failed result)
+               (string? (:error result))])
+            ["core/missing-test-file.hal" 'missing-test 0 1 true])
+
+^{:refer tool.cli.test.runner/run-files}
+(test-check "runner handles an empty file batch"
+            (runner/run-files [])
+            [])
+
+^{:refer tool.cli.test.runner/summary}
+(test-check "runner summary accumulates file counts"
+            (runner/summary [{:passed 2 :failed 0}
+                             {:passed 3 :failed 1}])
+            {:passed 5 :failed 1})
+
+^{:refer tool.cli.test.runner/result-messages}
+(test-check "runner messages report each file and the aggregate"
+            (runner/result-messages
+             [{:path "one.hal" :passed 1 :failed 0}
+              {:path "two.hal" :passed 0 :failed 1 :error "broken"}]
+             {:passed 1 :failed 1})
+            [{:message/stream :stdout
+              :message/text "test one.hal: 1 passed, 0 failed\n"}
+             {:message/stream :stderr
+              :message/text "test two.hal: 0 passed, 1 failed\n"}
+             {:message/stream :stdout
+              :message/text "test result: 1 passed, 1 failed\n"}])]

@@ -1,0 +1,127 @@
+(ns tool.cli.test.runner
+  (:config {:role :internal})
+  (:require [code.project :as project]
+            [code.test.result :as test-result]
+            [tool.cli.model :as model]))
+
+(defn vector-tail
+  [values start]
+  (vec (drop start values)))
+
+(defn native-result-counts
+  [results]
+  (reduce
+   (fn [counts result]
+     (if (not (Result/instance? result))
+       (throw
+        (ex :state {}
+            :ex/message "native test result is not a Result"))
+       (if (test-result/passed? result)
+         (update counts :passed inc)
+         (update counts :failed inc))))
+   {:passed 0 :failed 0}
+   results))
+
+(defn code-test-result-counts
+  [summary]
+  (let [status (:status summary)
+        counts (:counts summary)]
+    (if (not (keyword? status))
+      (throw
+       (ex :state {}
+           :ex/message "code.test/run result is missing :status")))
+    (if (not (map? counts))
+      (throw
+       (ex :state {}
+           :ex/message "code.test/run result is missing :counts")))
+    (let [passed (or (:passed counts) 0)
+          failed (+ (or (:failed counts) 0)
+                    (or (:error counts) 0)
+                    (or (:timeout counts) 0))]
+      {:passed passed
+       :failed (if (and (not= status :passed) (= failed 0)) 1 failed)})))
+
+(defn result-counts
+  [value]
+  (let [result (if (string? value) (Edn/read value) value)]
+    (cond
+      (or (vector? result) (list? result))
+      (native-result-counts result)
+
+      (map? result)
+      (code-test-result-counts result)
+
+      :else
+      (throw
+       (ex :state {}
+           :ex/message
+           "test file must return a code.test/run summary or native test result vector")))))
+
+(defn run-file
+  [record index]
+  (let [path (:path record)
+        namespace (:namespace record)
+        session (str "tool.cli.test." index)]
+    (try
+      (do
+        (Kernel/session-create session)
+        (try
+          (let [value (Kernel/session-eval session (project/read-text path))
+                value (if (nil? value)
+                        (Kernel/session-eval
+                         session
+                         (str "(pr-str (code.test/run {:namespace "
+                              (pr-str namespace)
+                              "}))"))
+                        value)
+                counts (result-counts value)]
+            (Kernel/session-close session)
+            (assoc counts :path path :namespace namespace :value value))
+          (catch Throwable error
+            (Kernel/session-close session)
+            {:path path
+             :namespace namespace
+             :passed 0
+             :failed 1
+             :error (str error)})))
+      (catch Throwable error
+        {:path path
+         :namespace namespace
+         :passed 0
+         :failed 1
+         :error (str error)}))))
+
+(defn run-files
+  [records]
+  (loop [remaining (vec records)
+         index 0
+         results []]
+    (if (empty? remaining)
+      results
+      (recur (vector-tail remaining 1)
+             (inc index)
+             (conj results (run-file (first remaining) index))))))
+
+(defn summary
+  [results]
+  (reduce
+   (fn [output result]
+     (update (update output :passed + (:passed result))
+             :failed + (:failed result)))
+   {:passed 0 :failed 0}
+   results))
+
+(defn result-messages
+  [results counts]
+  (conj
+   (reduce
+    (fn [messages result]
+      (conj messages
+            (model/message
+             (if (:error result) :stderr :stdout)
+             (str "test " (:path result) ": "
+                  (:passed result) " passed, " (:failed result) " failed\n"))))
+    []
+    results)
+   (model/message (str "test result: " (:passed counts) " passed, "
+                      (:failed counts) " failed\n"))))

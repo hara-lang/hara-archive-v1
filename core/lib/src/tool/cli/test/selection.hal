@@ -1,0 +1,13 @@
+(ns tool.cli.test.selection
+  (:config {:role :internal})
+  (:require [work.flow.task.selector :as selector]))
+
+(defn matching?
+  [selected record]
+  (selector/matches? selected (:namespace record)))
+
+(defn select
+  [selected records]
+  (if (nil? selected)
+    (vec records)
+    (vec (filter (fn [record] (matching? selected record)) records))))

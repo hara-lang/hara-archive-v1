@@ -1,0 +1,43 @@
+(ns tool.cli.test-test
+  (:use code.test)
+  (:require [tool.cli.test :as test]))
+
+(def current-project
+  {:project/id 'hara.lang
+   :project/root "/"
+   :project/source-paths ["lib/src" "lib/src-lang"]
+   :project/test-paths ["lib/test" "lib/test-lang"]})
+
+[
+^{:refer tool.cli.test/parse-arguments}
+(test-check "public test parsing delegates to long-flag arguments"
+            (test/parse-arguments ["--only" "[std]"])
+            {:files [] :selector ['std] :selector-mode :only})
+
+^{:refer tool.cli.test/selected-records}
+(test-check "selected records filter project files by namespace"
+            (let [records
+                  (test/selected-records
+                   current-project
+                   {:files ["lib/test/std/config_test.hal"]
+                    :selector ['std]
+                    :selector-mode :only})]
+              [(count records) (:namespace (first records))])
+            [1 'std.config-test])
+
+^{:refer tool.cli.test/execute}
+(test-check "execute returns a resolution error for an empty selection"
+            (let [result
+                  (test/execute
+                   {:request/project current-project
+                    :request/arguments ["--only" "missing.namespace"]
+                    :request/cwd "."})]
+              [(:result/outcome result)
+               (get-in result [:result/data :test/selector])
+               (:result/exit result)])
+            [:tool.cli.outcome/resolution-error 'missing.namespace 2])
+
+^{:refer tool.cli.test/handler}
+(test-check "public test handler is callable by the registry"
+            (fn? test/handler)
+            true)]

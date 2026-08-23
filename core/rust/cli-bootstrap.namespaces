@@ -59,6 +59,7 @@ std.lib.format.terminal
 std.lib.format.version
 std.foundation
 std.foundation.string
+std.fs.path
 std.lib.component
 std.lib.zip
 std.typed.explain
@@ -68,6 +69,7 @@ std.typed.schema
 tool.cli.asset
 tool.cli.deploy-manifest
 tool.cli.dispatch
+tool.cli.extension
 tool.cli.handlers
 tool.cli.host
 tool.cli.identity
@@ -83,6 +85,11 @@ tool.cli.route
 tool.cli.snapshot
 tool.cli.spec
 tool.cli.tap
+tool.cli.test
+tool.cli.test.arguments
+tool.cli.test.project
+tool.cli.test.runner
+tool.cli.test.selection
 tool.cli.template
 tool.cli.verify
 tool.lint

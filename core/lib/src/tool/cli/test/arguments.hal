@@ -1,0 +1,78 @@
+(ns tool.cli.test.arguments
+  (:config {:role :internal}))
+
+(defn required-value
+  [option remaining]
+  (if (or (empty? remaining)
+          (str/starts-with? (first remaining) "--"))
+    (throw
+     (ex :syntax {:option option}
+         :ex/message (str "usage: " option " requires a value")))
+    (first remaining)))
+
+(defn selector-value
+  [option value]
+  (try
+    (let [selected (read-string value)]
+      (if (nil? selected)
+        (throw
+         (ex :syntax {:option option :value value}
+             :ex/message
+             (str "usage: " option " requires a non-nil EDN selector"))))
+      selected)
+    (catch Throwable error
+      (if (= :syntax (:ex/type (ex-data error)))
+        (throw error)
+        (throw
+         (ex :syntax {:option option :value value}
+             :ex/message
+             (str "usage: " option " requires an EDN selector")))))))
+
+(defn parse
+  "Parses public `hara test` command arguments. Positional paths are not
+   accepted; project selection belongs to the global --project option."
+  [arguments]
+  (loop [remaining (vec arguments)
+         output {:files [] :selector nil :selector-mode nil}]
+    (if (empty? remaining)
+      output
+      (let [argument (first remaining)
+            tail (vec (rest remaining))]
+        (cond
+          (= argument "--only")
+          (if (:selector-mode output)
+            (throw
+             (ex :syntax {:arguments arguments}
+                 :ex/message "usage: --only and --use cannot be combined"))
+            (let [value (required-value argument tail)]
+              (recur (vec (rest tail))
+                     (assoc output
+                            :selector (selector-value argument value)
+                            :selector-mode :only))))
+
+          (= argument "--use")
+          (if (:selector-mode output)
+            (throw
+             (ex :syntax {:arguments arguments}
+                 :ex/message "usage: --only and --use cannot be combined"))
+            (let [value (required-value argument tail)]
+              (recur (vec (rest tail))
+                     (assoc output
+                            :selector [(selector-value argument value)]
+                            :selector-mode :use))))
+
+          (= argument "--file")
+          (let [value (required-value argument tail)]
+            (recur (vec (rest tail))
+                   (update output :files conj value)))
+
+          (str/starts-with? argument "-")
+          (throw
+           (ex :syntax {:option argument}
+               :ex/message (str "usage: unknown test option " argument)))
+
+          :else
+          (throw
+           (ex :syntax {:argument argument}
+               :ex/message
+               (str "usage: test does not accept positional paths: " argument))))))))

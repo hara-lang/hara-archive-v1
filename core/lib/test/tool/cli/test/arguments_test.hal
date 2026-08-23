@@ -1,0 +1,47 @@
+(ns tool.cli.test.arguments-test
+  (:use code.test)
+  (:require [tool.cli.test.arguments :as arguments]))
+
+[
+^{:refer tool.cli.test.arguments/required-value}
+(test-check "test flags require a following value"
+            [(try
+               (arguments/parse ["--file"])
+               :not-thrown
+               (catch Throwable error (ex-message error)))
+             (try
+               (arguments/parse ["--only" "--use" "std.foundation"])
+               :not-thrown
+               (catch Throwable error (ex-message error)))]
+            ["usage: --file requires a value"
+             "usage: --only requires a value"])
+
+^{:refer tool.cli.test.arguments/selector-value}
+(test-check "selectors are read as EDN values"
+            [(arguments/parse ["--only" "[std]"])
+             (arguments/parse ["--use" "std.foundation"])]
+            [{:files [] :selector ['std] :selector-mode :only}
+             {:files [] :selector ['std.foundation] :selector-mode :use}])
+
+^{:refer tool.cli.test.arguments/parse}
+(test-check "public test arguments support repeatable files and reject conflicts"
+            [(arguments/parse ["--file" "one.hal"
+                               "--file" "two.hal"])
+             (try
+               (arguments/parse ["--only" "[std]" "--use" "std.foundation"])
+               :not-thrown
+               (catch Throwable error (ex-message error)))
+             (try
+               (arguments/parse ["test.hal"])
+               :not-thrown
+               (catch Throwable error (ex-message error)))
+             (try
+               (arguments/parse ["--only" "["])
+               :not-thrown
+               (catch Throwable error (ex-message error)))]
+            [{:files ["one.hal" "two.hal"]
+              :selector nil
+              :selector-mode nil}
+             "usage: --only and --use cannot be combined"
+             "usage: test does not accept positional paths: test.hal"
+             "usage: --only requires an EDN selector"])]

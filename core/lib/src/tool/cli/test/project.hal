@@ -1,0 +1,66 @@
+(ns tool.cli.test.project
+  (:config {:role :internal})
+  (:require [code.project :as project]))
+
+(defn project-start
+  [request]
+  (or (:project (:request/options request))
+      (:root (:request/options request))
+      (:request/cwd request)
+      (os/cwd)))
+
+(defn discover
+  [request]
+  (or (and (map? (:request/project request))
+           (:request/project request))
+      (project/discover (project-start request))))
+
+(defn explicit-file
+  [current-project path]
+  (let [absolute (project/project-absolute-path current-project path)
+        metadata (try
+                   (deref (file/stat absolute))
+                   (catch Throwable error nil))]
+    (cond
+      (not (or (= "/" (project/normalized-path (:project/root current-project)))
+               (project/path-under-root? (:project/root current-project) absolute)))
+      (throw
+       (ex :argument {:path path}
+           :ex/message "test file must be inside the selected project"))
+
+      (= :file (:type metadata))
+      (if (str/ends-with? absolute ".hal")
+        absolute
+        (throw
+         (ex :argument {:path absolute}
+             :ex/message "test file must use the .hal extension")))
+
+      (= :directory (:type metadata))
+      (throw
+       (ex :argument {:path absolute}
+           :ex/message "--file accepts files, not directories"))
+
+      :else
+      (throw
+       (ex :not-found {:path absolute}
+           :ex/message (str "test file does not exist: " absolute))))))
+
+(defn files
+  [current-project paths]
+  (if (empty? paths)
+    (let [discovered (project/files-in current-project
+                                       (:project/test-paths current-project)
+                                       ".hal")]
+      (if (empty? discovered)
+        (throw
+         (ex :not-found {}
+             :ex/message
+             "project has no .hal files under :project/test-paths"))
+        discovered))
+    (vec (map (fn [path] (explicit-file current-project path)) paths))))
+
+(defn records
+  [current-project paths]
+  (vec (map (fn [path]
+              (project/project-file-record current-project path))
+            paths)))

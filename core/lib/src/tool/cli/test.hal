@@ -1,0 +1,56 @@
+(ns tool.cli.test
+  (:config {:role :internal})
+  (:require [code.project :as project]
+            [tool.cli.model :as model]
+            [tool.cli.test.arguments :as arguments]
+            [tool.cli.test.project :as test-project]
+            [tool.cli.test.runner :as runner]
+            [tool.cli.test.selection :as selection]
+            [work.base :as work]))
+
+(defn parse-arguments
+  [arguments]
+  (arguments/parse arguments))
+
+(defn selected-records
+  [current-project parsed]
+  (selection/select
+   (:selector parsed)
+   (test-project/records
+    current-project
+    (test-project/files current-project (:files parsed)))))
+
+(defn execute
+  [request]
+  (let [parsed (parse-arguments (:request/arguments request))
+        current-project (test-project/discover request)
+        records (selected-records current-project parsed)]
+    (if (empty? records)
+      (model/failure
+       :tool.cli.outcome/resolution-error
+       :tool.cli/test-files-not-found
+       "no test files match the requested selector"
+       {:test/project (:project/id current-project)
+        :test/selector (:selector parsed)})
+      (let [registered (project/register-resources current-project)
+            results (runner/run-files records)
+            counts (runner/summary results)
+            data {:test/project (:project/id current-project)
+                  :test/registered registered
+                  :test/files results
+                  :test/passed (:passed counts)
+                  :test/failed (:failed counts)}
+            messages (runner/result-messages results counts)]
+        (if (= 0 (:failed counts))
+          (model/success data messages)
+          (model/result :tool.cli.outcome/failed data messages))))))
+
+(def +command-work+
+  (work/step
+   {:id 'tool.cli/test :version 1}
+   (fn [request context] (execute request))))
+
+^{:public true}
+(defn handler
+  [request]
+  (work/run +command-work+ request))

@@ -201,11 +201,11 @@
    :route/handler :tool.cli.handler/project-test
    :route/execution :finite
    :route/tier :public
-   :route/summary "Run one test file or discover project tests."
-   :route/arguments [{:argument/id :tool.cli.argument/test-path
-                      :argument/cardinality :optional
-                      :argument/type :path}]
-   :route/options [:tool.cli.option/project :tool.cli.option/format]
+   :route/summary "Run project tests with --only, --use or repeatable --file selectors."
+   :route/arguments []
+   :route/options [:tool.cli.option/project :tool.cli.option/format
+                   :tool.cli.option/test-only :tool.cli.option/test-use
+                   :tool.cli.option/test-file]
    :route/formats [:text :edn]}
   {:route/id :tool.cli.route/project-add
    :route/path ["project" "add"]
@@ -770,6 +770,18 @@
    :option/names ["--format"]
    :option/type :enum
    :option/values [:text :edn]
+   :option/scope :route}
+  {:option/id :tool.cli.option/test-only
+   :option/names ["--only"]
+   :option/type :string
+   :option/scope :route}
+  {:option/id :tool.cli.option/test-use
+   :option/names ["--use"]
+   :option/type :string
+   :option/scope :route}
+  {:option/id :tool.cli.option/test-file
+   :option/names ["--file"]
+   :option/type :path
    :option/scope :route}
   {:option/id :tool.cli.option/tap
    :option/names ["--tap"]

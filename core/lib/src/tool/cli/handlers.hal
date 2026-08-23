@@ -1,7 +1,6 @@
 (ns tool.cli.handlers
   (:require [code.project.deploy.cli :as deploy]
             [code.manage.cli :as manage]
-            [code.test.cli :as code-test]
             [tool.cli.asset :as asset]
             [tool.cli.extension :as extension]
             [tool.cli.identity :as identity]
@@ -14,6 +13,7 @@
             [tool.cli.snapshot :as snapshot]
             [tool.cli.spec :as spec]
             [tool.cli.tap :as tap]
+            [tool.cli.test :as test]
             [tool.cli.template :as template]
             [lang.seedgen.cli :as seedgen]))
 
@@ -52,7 +52,7 @@
    (registered-handler :tool.cli.handler/manage manage/handler)
    :tool.cli.handler/project-test
    (registered-handler :tool.cli.handler/project-test
-                       code-test/handler)
+                       test/handler)
    :tool.cli.handler/project-new
    (registered-handler :tool.cli.handler/project-new project-command/handler)
    :tool.cli.handler/project-check
