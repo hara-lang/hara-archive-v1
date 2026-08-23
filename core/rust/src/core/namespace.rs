@@ -298,7 +298,7 @@ fn eval_require_spec(
         if registry.load_state(&target).is_none() {
             registry.set_load_state(&target, NamespaceLoadState::Unloaded);
         }
-    } else {
+    } else if !crate::kernel::generated::known_namespace(&target) {
         ensure_namespace(registry, env, &target, reload)?;
     }
     let requiring = registry.current().name().as_str().to_owned();

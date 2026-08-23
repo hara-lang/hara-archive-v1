@@ -1,11 +1,8 @@
-(ns work.base.model
-  (:config {:override [Runtime]}))
+(ns work.base.model)
 
 (defstruct Work [spec])
 (defstruct WorkRef [id])
 (defstruct WorkObserver [function state])
-(defstruct Runtime
-  [mode store executor receipt observer definitions runtime-version schema-version])
 
 (def runtime-keys
   #{:work/executor
@@ -27,48 +24,25 @@
   (and (map? runtime)
        (= runtime-keys (set (keys runtime)))))
 
-(defn normalise-runtime
-  [runtime]
-  (if (canonical-runtime? runtime)
-    runtime
-    (runtime-map
-     (:executor runtime)
-     (:store runtime)
-     (:definitions runtime)
-     {:work/mode (:mode runtime)
-      :work/runtime-version (:runtime-version runtime)
-      :work/schema-version (:schema-version runtime)}
-     {:work/receipt (:receipt runtime)
-      :work/observer (:observer runtime)})))
-
 (defn runtime-mode
   [runtime]
-  (:work/mode (:work/policy (normalise-runtime runtime))))
+  (:work/mode (:work/policy runtime)))
 
 (defn runtime-store
   [runtime]
-  (:work/store (normalise-runtime runtime)))
+  (:work/store runtime))
 
 (defn runtime-executor
   [runtime]
-  (:work/executor (normalise-runtime runtime)))
+  (:work/executor runtime))
 
 (defn runtime-receipt
   [runtime]
-  (:work/receipt (:work/hooks (normalise-runtime runtime))))
+  (:work/receipt (:work/hooks runtime)))
 
 (defn runtime-hooks
   [runtime]
-  (:work/hooks (normalise-runtime runtime)))
-
-;; Compatibility accessors for the pre-provider runtime layout. New runtime
-;; code should use runtime-store and runtime-executor directly.
-(defn runtime-backend
-  [runtime]
-  (let [store (runtime-store runtime)]
-    (or (:provider/legacy store)
-        (:provider/operations store)
-        store)))
+  (:work/hooks runtime))
 
 (defn runtime-handlers
   [runtime]
@@ -76,19 +50,19 @@
 
 (defn runtime-observer
   [runtime]
-  (:work/observer (:work/hooks (normalise-runtime runtime))))
+  (:work/observer (:work/hooks runtime)))
 
 (defn runtime-definitions
   [runtime]
-  (:work/registry (normalise-runtime runtime)))
+  (:work/registry runtime))
 
 (defn runtime-code-version
   [runtime]
-  (:work/runtime-version (:work/policy (normalise-runtime runtime))))
+  (:work/runtime-version (:work/policy runtime)))
 
 (defn runtime-schema-version
   [runtime]
-  (:work/schema-version (:work/policy (normalise-runtime runtime))))
+  (:work/schema-version (:work/policy runtime)))
 
 (extend-type Work IWork
   (work-spec [work]
@@ -163,20 +137,6 @@
     (if state
       (vec (deref state))
       [])))
-
-;; ---------------------------------------------------------------------------
-;; Compatibility seams
-;; ---------------------------------------------------------------------------
-
-(defn backend-call
-  "Deprecated compatibility dispatch for legacy backend maps."
-  [backend operation & arguments]
-  (let [operations (or (:provider/operations backend) backend)
-        function (get operations operation)]
-    (if function
-      (apply function arguments)
-      (throw
-       (ex :generic {:operation operation} :ex/message "Work backend operation is not installed")))))
 
 (defn provider-capability?
   [provider capability]

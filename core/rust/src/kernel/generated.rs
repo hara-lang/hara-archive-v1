@@ -410,10 +410,12 @@ impl GeneratedNamespaceConfig {
                             return Err(":require :refer-macros expects unqualified symbols".into());
                         }
                         let canonical = canonical(target, name);
-                        if let Some(previous) = self.macro_refers.insert(name.into(), canonical) {
-                            return Err(format!(
-                                "Referred macro already exists: {name} ({previous})"
-                            ));
+                        if let Some(previous) = self.macro_refers.insert(name.into(), canonical.clone()) {
+                            if previous != canonical {
+                                return Err(format!(
+                                    "Referred macro already exists: {name} ({previous})"
+                                ));
+                            }
                         }
                     }
                 }
@@ -720,7 +722,7 @@ pub(crate) fn normalize_namespace(value: &str) -> &str {
         value => value,
     }
 }
-fn known_namespace(value: &str) -> bool {
+pub(crate) fn known_namespace(value: &str) -> bool {
     let value = normalize_namespace(value);
     value == "std.foundation"
         || value == "std.foundation.coroutine"

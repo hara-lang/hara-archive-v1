@@ -1,5 +1,12 @@
 import { parseEDNString } from "edn-data";
 import { unzipSync } from "fflate";
+import {
+  HtaKeyword,
+  HtaSymbol,
+  loadHtaExtension,
+  parseEdnData,
+  parseHtaManifest
+} from "../../hta/index.js";
 
 const ednOptions = {
   mapAs: "object",
@@ -11,9 +18,123 @@ const ednOptions = {
 };
 
 const textDecoder = new TextDecoder();
+const hostDispatchers = new WeakMap();
+const packageCleanups = new WeakMap();
 
 function parseEdn(source) {
   return parseEDNString(String(source), ednOptions);
+}
+
+function manifestField(map, name) {
+  if (!(map instanceof Map)) return undefined;
+  for (const [key, value] of map) {
+    if (key instanceof HtaKeyword && key.name === name) return value;
+  }
+  return undefined;
+}
+
+function extensionName(value) {
+  if (typeof value === "string") return value;
+  if (value instanceof HtaKeyword || value instanceof HtaSymbol) return value.name;
+  return undefined;
+}
+
+function archivePath(root, path) {
+  const prefix = root ? `${root.replace(/\/$/, "")}/` : "";
+  const result = `${prefix}${path}`;
+  if (!safeArchivePath(result)) throw new Error(`package/extension-path-unsafe: ${result}`);
+  return result;
+}
+
+function extensionDescriptor(namespace, declaration) {
+  const fields = [...declaration];
+  if (!manifestField(declaration, "namespace")) {
+    fields.push([new HtaKeyword("namespace"), namespace]);
+  }
+  return `{${fields.map(([key, value]) => `${ednValue(key)} ${ednValue(value)}`).join(" ")}}`;
+}
+
+function ednValue(value) {
+  if (value instanceof HtaKeyword) return `:${value.name}`;
+  if (value instanceof HtaSymbol) return value.name;
+  if (typeof value === "string") return JSON.stringify(value);
+  if (value === null) return "nil";
+  if (value === true) return "true";
+  if (value === false) return "false";
+  if (Array.isArray(value)) return `[${value.map(ednValue).join(" ")}]`;
+  if (value instanceof Map) {
+    return `{${[...value].map(([key, item]) => `${ednValue(key)} ${ednValue(item)}`).join(" ")}}`;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  throw new Error("package/extension-manifest-unsupported");
+}
+
+function sourceBridge(namespace, manifest) {
+  const bindings = manifest.exports.map((name) => {
+    if (!/^[A-Za-z][A-Za-z0-9_?!*+-]*$/.test(name)) {
+      throw new Error(`package/extension-export-invalid: ${name}`);
+    }
+    const arity = manifest.exportArity[name] ?? 0;
+    const arguments_ = Array.from({ length: arity }, (_, index) => `arg${index}`);
+    const values = arguments_.length ? `[${arguments_.join(" ")}]` : "[]";
+    return `(defn ${name} [${arguments_.join(" ")}] (Host/call ${JSON.stringify(namespace)} ${JSON.stringify(name)} ${values}))`;
+  });
+  return `(ns ${namespace}) ${bindings.join(" ")}`;
+}
+
+function toPlainHta(value) {
+  if (Array.isArray(value)) return value.map(toPlainHta);
+  if (value instanceof Uint8Array) return value;
+  if (value instanceof HtaKeyword || value instanceof HtaSymbol) return value.name;
+  if (value instanceof Map) {
+    const result = Object.create(null);
+    for (const [key, item] of value) result[String(key instanceof HtaKeyword || key instanceof HtaSymbol ? key.name : key)] = toPlainHta(item);
+    return result;
+  }
+  return value;
+}
+
+function toHtaValue(value) {
+  if (Array.isArray(value)) return value.map(toHtaValue);
+  if (value instanceof Uint8Array) return value;
+  if (value && typeof value === "object" && !(value instanceof Map)) {
+    return new Map(Object.entries(value).map(([key, item]) => [new HtaKeyword(key), toHtaValue(item)]));
+  }
+  if (value instanceof Map) return new Map([...value].map(([key, item]) => [toHtaValue(key), toHtaValue(item)]));
+  return value;
+}
+
+function registerHostService(runtime, service, handler) {
+  const key = runtimeKey(runtime);
+  let state = hostDispatchers.get(key);
+  if (!state) {
+    const routes = new Map();
+    const dispatcher = (requestedService, operation, arguments_) => {
+      const route = routes.get(requestedService);
+      if (!route) throw new Error(`host/unsupported-service: ${requestedService}`);
+      return route(operation, arguments_);
+    };
+    installHostHandler(runtime, dispatcher);
+    state = { routes, dispatcher };
+    hostDispatchers.set(key, state);
+  }
+  if (state.routes.has(service)) throw new Error(`host/service-already-installed: ${service}`);
+  state.routes.set(service, handler);
+  return () => {
+    if (state.routes.get(service) === handler) state.routes.delete(service);
+  };
+}
+
+function installHostHandler(runtime, handler) {
+  const install = runtime.installHostHandler
+    ?? runtime.raw?.install_host_handler
+    ?? runtime.raw?.installHostHandler;
+  if (typeof install !== "function") throw new Error("package/host-handler-unavailable");
+  install.call(runtime.installHostHandler ? runtime : runtime.raw, handler);
+}
+
+function runtimeKey(runtime) {
+  return runtime?.raw ?? runtime;
 }
 
 function hex(bytes) {
@@ -74,12 +195,23 @@ export async function loadLockedPackageResources(
   origin = defaultPackagesOrigin,
   targets
 ) {
+  const loaded = await loadLockedPackageArtifacts(lockSource, request, origin, targets);
+  return loaded.resources;
+}
+
+async function loadLockedPackageArtifacts(
+  lockSource,
+  request = (...args) => globalThis.fetch(...args),
+  origin = defaultPackagesOrigin,
+  targets
+) {
   const lock = parseEdn(lockSource);
   if (lock["lock/format"] !== "0.0.0-alpha") {
     throw new Error("project.lock.edn requires :lock/format \"0.0.0-alpha\"");
   }
 
   const staged = {};
+  const extensions = [];
   for (const coordinate of lockedClosure(lock, targets)) {
     const entry = lock.packages[coordinate];
     const registryCommit = entry["registry-commit"];
@@ -125,7 +257,8 @@ export async function loadLockedPackageResources(
       }
     }
 
-    const manifest = parseEdn(textDecoder.decode(files["package.edn"]));
+    const manifestSource = textDecoder.decode(files["package.edn"]);
+    const manifest = parseEdn(manifestSource);
     for (const [path, file] of Object.entries(manifest.files ?? {})) {
       const bytes = files[path];
       if (!bytes) {
@@ -145,8 +278,44 @@ export async function loadLockedPackageResources(
       }
       staged[namespace] = textDecoder.decode(bytes);
     }
+    const manifestData = parseEdnData(manifestSource, "package/manifest-malformed");
+    const declaredExtensions = manifestField(manifestData, "extensions");
+    const declarations = Array.isArray(declaredExtensions) && declaredExtensions.length === 0
+      ? undefined
+      : declaredExtensions;
+    if (declarations !== undefined && !(declarations instanceof Map)) {
+      throw new Error(`Locked package ${coordinate} has invalid extensions`);
+    }
+    for (const [key, declaration] of declarations ?? []) {
+      const namespace = extensionName(key);
+      if (!namespace || !(declaration instanceof Map)) {
+        throw new Error(`Locked package ${coordinate} has an invalid extension`);
+      }
+      const root = manifestField(declaration, "root") ?? "";
+      if (typeof root !== "string") throw new Error(`Locked package ${coordinate} has an invalid extension root`);
+      const descriptor = extensionDescriptor(namespace, declaration);
+      const parsed = parseHtaManifest(descriptor);
+      for (const asset of [
+        parsed.provider === "wasm" ? parsed.module : parsed.browserTarget?.module,
+        ...parsed.assets
+      ]) {
+        const path = archivePath(root, asset);
+        if (!files[path]) throw new Error(`Locked package ${coordinate} is missing extension asset: ${path}`);
+      }
+      if (parsed.provider !== "hta") {
+        throw new Error(`Locked package ${coordinate} has an unsupported extension provider: ${parsed.provider}`);
+      }
+      extensions.push(Object.freeze({
+        coordinate,
+        namespace,
+        declaration,
+        descriptor,
+        manifest: parsed,
+        files: new Map(Object.entries(files))
+      }));
+    }
   }
-  return staged;
+  return Object.freeze({ resources: staged, extensions: Object.freeze(extensions) });
 }
 
 /** Installs the on-demand Package capability used by std.native.Package. */
@@ -207,21 +376,248 @@ export function installPackageProvider(runtime, lockSource, options = {}) {
     }
     throw new Error(`package/unsupported-operation: ${operation}`);
   };
-  runtime.raw?.install_host_handler?.(handler);
+  registerHostService(runtime, "package", (operation, arguments_) => handler("package", operation, arguments_));
   return Object.freeze({ active, handler });
+}
+
+async function activateBrowserHtaExtensions(runtime, extensions, options = {}) {
+  const supportedCapabilities = new Set(options.capabilities ?? []);
+  const records = [];
+  const removeRoutes = [];
+  const objectUrls = [];
+  const workerFactory = options.workerFactory
+    ?? ((url, workerOptions) => {
+      if (typeof Worker !== "function") throw new Error("package/hta-worker-unavailable");
+      return new Worker(url, workerOptions);
+    });
+  const createObjectURL = options.createObjectURL
+    ?? globalThis.URL?.createObjectURL?.bind(globalThis.URL);
+  const revokeObjectURL = options.revokeObjectURL
+    ?? globalThis.URL?.revokeObjectURL?.bind(globalThis.URL);
+  const BlobConstructor = options.Blob ?? globalThis.Blob;
+
+  const createUrl = (bytes, path) => {
+    if (typeof createObjectURL !== "function" || typeof BlobConstructor !== "function") {
+      throw new Error("package/hta-object-url-unavailable");
+    }
+    const url = createObjectURL(new BlobConstructor([bytes], { type: mimeType(path) }));
+    objectUrls.push(url);
+    return url;
+  };
+
+  try {
+    for (const extension of extensions) {
+      const missing = extension.manifest.capabilities.filter(capability => !supportedCapabilities.has(capability));
+      if (missing.length) {
+        throw new Error(`package/extension-capability-unsupported: ${extension.namespace}:${missing.join(",")}`);
+      }
+      const hostCalls = extensionHostCalls(extension.manifest, options.hostCalls);
+      const root = manifestField(extension.declaration, "root") ?? "";
+      const modulePath = archivePath(root, extension.manifest.browserTarget.module);
+      const moduleBytes = extension.files.get(modulePath);
+      if (!moduleBytes) throw new Error(`package/extension-asset-missing:${extension.namespace}:${modulePath}`);
+      const assetBytes = new Map();
+      const assetUrls = new Map();
+      for (const asset of extension.manifest.assets) {
+        const path = archivePath(root, asset);
+        const bytes = extension.files.get(path);
+        if (!bytes) throw new Error(`package/extension-asset-missing:${extension.namespace}:${path}`);
+        assetBytes.set(path, bytes);
+      }
+      const building = new Set();
+      const assetUrl = (path) => {
+        if (assetUrls.has(path)) return assetUrls.get(path);
+        if (building.has(path)) throw new Error(`package/extension-asset-cycle: ${path}`);
+        building.add(path);
+        const bytes = assetBytes.get(path);
+        if (!isJavaScript(path)) {
+          const url = createUrl(bytes, path);
+          assetUrls.set(path, url);
+          building.delete(path);
+          return url;
+        }
+        let source = textDecoder.decode(bytes);
+        for (const dependency of assetBytes.keys()) {
+          if (dependency !== path && sourceReferences(source, dependency, path)) assetUrl(dependency);
+        }
+        source = rewriteAssetReferences(source, path, assetUrls);
+        const url = createUrl(new TextEncoder().encode(source), path);
+        assetUrls.set(path, url);
+        building.delete(path);
+        return url;
+      };
+      for (const path of assetBytes.keys()) assetUrl(path);
+      const moduleSource = rewriteAssetReferences(
+        textDecoder.decode(moduleBytes),
+        modulePath,
+        assetUrls
+      );
+      const workerUrl = createUrl(new TextEncoder().encode(moduleSource), modulePath);
+      const worker = workerFactory(workerUrl, {
+        type: "module",
+        name: `hara-${extension.namespace}`
+      });
+      const record = { context: null, worker };
+      records.push(record);
+      const context = await loadHtaExtension({
+        worker,
+        descriptor: extension.descriptor,
+        hostCalls
+      });
+      record.context = context;
+      const route = (operation, arguments_) => {
+        const request = context.call(operation, toHtaValue(arguments_ ?? []));
+        return context.promiseProvider.create((resolve, reject, onCancel) => {
+          onCancel(() => request.cancel?.());
+          request.then(
+            value => {
+              try {
+                resolve(toPlainHta(value));
+              } catch (error) {
+                reject(error);
+              }
+            },
+            error => reject(stableExtensionError(error))
+          );
+        });
+      };
+      removeRoutes.push(registerHostService(runtime, extension.namespace, route));
+    }
+  } catch (error) {
+    for (const remove of removeRoutes.reverse()) remove();
+    for (const record of records.reverse()) {
+      if (record.context) await record.context.close().catch(() => {});
+      else record.worker.terminate?.();
+    }
+    for (const url of objectUrls.reverse()) revokeObjectURL?.(url);
+    throw error;
+  }
+
+  let cleaned = false;
+  const cleanup = async () => {
+    if (cleaned) return;
+    cleaned = true;
+    for (const remove of removeRoutes.slice().reverse()) remove();
+    for (const record of records.slice().reverse()) {
+      if (record.context) await record.context.close().catch(() => {});
+      else record.worker.terminate?.();
+    }
+    for (const url of objectUrls.slice().reverse()) revokeObjectURL?.(url);
+  };
+  const key = runtimeKey(runtime);
+  const previous = packageCleanups.get(key);
+  packageCleanups.set(key, async () => {
+    await cleanup();
+    if (previous) await previous();
+  });
+  return Object.freeze({
+    namespaces: Object.freeze(extensions.map(extension => extension.namespace)),
+    cleanup
+  });
+}
+
+function extensionHostCalls(manifest, configured = {}) {
+  const hostCalls = {};
+  for (const [service, methods] of Object.entries(manifest.hostCalls)) {
+    for (const method of methods) {
+      const key = `${service}/${method}`;
+      const handler = configured?.[key] ?? configured?.[service]?.[method];
+      if (typeof handler !== "function") {
+        throw new Error(`package/extension-host-call-unsupported: ${key}`);
+      }
+      hostCalls[key] = handler;
+    }
+  }
+  return hostCalls;
+}
+
+function stableExtensionError(error) {
+  if (!error?.code || String(error.message).startsWith(`${error.code}:`)) return error;
+  const wrapped = new Error(`${error.code}: ${error.message}`);
+  wrapped.code = error.code;
+  wrapped.data = error.data;
+  return wrapped;
+}
+
+function mimeType(path) {
+  if (path.endsWith(".mjs") || path.endsWith(".js")) return "text/javascript";
+  if (path.endsWith(".wasm")) return "application/wasm";
+  return "application/octet-stream";
+}
+
+function isJavaScript(path) {
+  return path.endsWith(".mjs") || path.endsWith(".js");
+}
+
+function sourceReferences(source, assetPath, fromPath) {
+  return assetReferences(assetPath, fromPath).some(reference =>
+    ["\"", "'", "`"].some(quote => source.includes(`${quote}${reference}${quote}`)));
+}
+
+function rewriteAssetReferences(source, fromPath, urls) {
+  let rewritten = source;
+  for (const [assetPath, url] of urls) {
+    for (const reference of assetReferences(assetPath, fromPath)) {
+      for (const quote of ["\"", "'", "`"]) {
+        rewritten = rewritten.replaceAll(`${quote}${reference}${quote}`, `${quote}${url}${quote}`);
+      }
+    }
+  }
+  return rewritten;
+}
+
+function assetReferences(assetPath, fromPath) {
+  const directory = fromPath.includes("/")
+    ? fromPath.slice(0, fromPath.lastIndexOf("/") + 1)
+    : "";
+  const relative = assetPath.startsWith(directory)
+    ? assetPath.slice(directory.length)
+    : assetPath;
+  const suffix = assetPath.match(/(?:^|\/)assets\/(.+)$/)?.[1];
+  return [...new Set([
+    relative,
+    `./${relative}`,
+    suffix && `/assets/${suffix}`
+  ].filter(Boolean))];
+}
+
+export async function disposeBrowserPackageProviders(runtime) {
+  const key = runtimeKey(runtime);
+  const cleanup = packageCleanups.get(key);
+  packageCleanups.delete(key);
+  await cleanup?.();
 }
 
 /** Verifies a lock completely, then atomically exposes its HAL resources. */
 export async function installLockedPackages(runtime, lockSource, options = {}) {
   runtime.raw?.registerPackageLock?.(lockSource);
-  const resources = await loadLockedPackageResources(
+  const loaded = await loadLockedPackageArtifacts(
     lockSource,
     options.fetch,
     options.origin ?? defaultPackagesOrigin,
     options.targets
   );
-  for (const [namespace, source] of Object.entries(resources)) {
-    runtime.registerResource(namespace, source);
+  const resources = Object.entries(loaded.resources);
+  const bridges = loaded.extensions.map(extension => [
+    extension.namespace,
+    sourceBridge(extension.namespace, extension.manifest)
+  ]);
+  const names = new Set();
+  for (const [namespace] of [...resources, ...bridges]) {
+    if (names.has(namespace)) throw new Error(`package/namespace-collision: ${namespace}`);
+    names.add(namespace);
   }
-  return Object.keys(resources);
+  const extensionState = await activateBrowserHtaExtensions(runtime, loaded.extensions, options);
+  const registered = [];
+  try {
+    for (const [namespace, source] of [...resources, ...bridges]) {
+      runtime.registerResource(namespace, source);
+      registered.push([namespace, source]);
+    }
+  } catch (error) {
+    for (const [namespace] of registered.reverse()) runtime.unregisterResource?.(namespace);
+    await extensionState.cleanup();
+    throw error;
+  }
+  return [...resources, ...bridges].map(([namespace]) => namespace);
 }

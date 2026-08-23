@@ -8,8 +8,8 @@ Tracking: #392, #490, #491, #492, #493, #494
 baseline reporting abstraction. It is not only a minimal workflow kernel.
 
 The complete accepted `std.task` behavior must be expressible through
-`std.work.template.task`, which compiles into ordinary work nodes and executes
-through `IWorkRuntime`.
+`work.flow.task`, which compiles into ordinary Work nodes and executes through
+the canonical evaluator and executor capabilities.
 
 ## Baseline
 
@@ -46,8 +46,8 @@ Provider descriptors declare a versioned API and one of `:baseline` or
 
 ```text
 IWork         describes immutable work structure and identity
-IWorkRuntime  starts, queries and commands executions
-IWorkObserver receives committed events
+IWorkHost     owns live execution and run lifecycle
+IWorkRun      exposes status, results, cancellation and events
 ```
 
 Reporting is an observer composition; no fourth public protocol is introduced.
@@ -95,7 +95,7 @@ This branch establishes:
 - explicit baseline classification for the inline executor and inferred
   classification for existing providers;
 - the portable report document/profile contract;
-- a working local `std.work.template.task` compiler built from existing work
+- a working local `work.flow.task` compiler built from existing Work
   and command operators;
 - committed task-stage events;
 - structured warning/error/result/summary/report output;

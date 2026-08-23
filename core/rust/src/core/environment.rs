@@ -234,8 +234,30 @@ impl ProtocolRegistry {
             qualified = canonical_protocol_name(protocol);
             qualified.as_str()
         };
+        let known_method = self
+            .methods
+            .borrow()
+            .contains_key(&(protocol.to_owned(), method.to_owned()))
+            || self
+                .guest_declarations
+                .borrow()
+                .contains(&(protocol.to_owned(), method.to_owned()))
+            || FOUNDATION_PROTOCOLS
+                .iter()
+                .any(|(name, _)| builtin_protocol_name(name) == protocol);
+        if !known_method {
+            return Err(format!("missing protocol method: {protocol}/{method}"));
+        }
         if let Some(Value::Extension(receiver)) = arguments.first() {
-            return self.invoke_extension(receiver, protocol, method, arguments);
+            let extension_method = self.extension_methods.borrow().contains_key(&(
+                receiver.provider.clone(),
+                receiver.type_name.clone(),
+                protocol.to_owned(),
+                method.to_owned(),
+            ));
+            if extension_method {
+                return self.invoke_extension(receiver, protocol, method, arguments);
+            }
         }
         let named_type = match arguments.first() {
             Some(Value::Struct(receiver)) => Some(receiver.ty.name.as_str()),

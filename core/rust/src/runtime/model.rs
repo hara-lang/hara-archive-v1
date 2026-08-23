@@ -93,6 +93,7 @@ fn ignore_socket_event(_event: core::SocketEvent) {}
 #[cfg(not(feature = "raw-wasm"))]
 #[wasm_bindgen(start)]
 pub fn init_wasm() {
+    #[cfg(target_arch = "wasm32")]
     console_error_panic_hook::set_once();
 }
 

@@ -7,6 +7,12 @@
 
 (def provider-backend (work/memory-backend))
 
+(defstruct TestExecutor [descriptor function])
+
+(extend-type TestExecutor IWorkExecutor
+  (work-execute [executor request]
+    ((:function executor) request)))
+
 (def provider-store
   {:provider/role :work/store
    :provider/id :test-memory
@@ -17,15 +23,14 @@
 (def executor-count (atom 0))
 
 (def provider-executor
-  {:provider/role :work/executor
-   :provider/id :test-executor
-   :provider/capabilities #{:synchronous}
-   :provider/operations
-   {:execute
-    (fn [runtime frame item input]
-      (swap! executor-count inc)
-      {:input input
-       :work/id (:id (work/work-spec item))})}})
+  (work.provider-test/TestExecutor
+   {:provider/role :work/executor
+    :provider/id :test-executor
+    :provider/capabilities #{:synchronous}}
+   (fn [request]
+     (swap! executor-count inc)
+     {:input (:work/input request)
+      :work/id (:node/id request)})))
 
 (def provider-runtime
   (work/local-runtime
@@ -95,6 +100,17 @@
        :provider/capabilities #{}
        :provider/operations {}}}) false)
          (catch Throwable error true))
+    true)
+
+    (test-check "executor maps cannot bypass the IWorkExecutor boundary"
+    (try
+      (work/local-runtime
+       {:executor
+        {:provider/role :work/executor
+         :provider/id :legacy
+         :provider/operations {:execute identity}}})
+      false
+      (catch Throwable error true))
     true)])
 
 results

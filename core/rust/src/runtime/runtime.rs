@@ -1255,6 +1255,24 @@ impl Runtime {
             .map_err(|error| JsValue::from_str(&error))
     }
 
+    #[cfg(all(target_arch = "wasm32", not(feature = "raw-wasm")))]
+    #[wasm_bindgen(js_name = installMemoryWasmBinding)]
+    pub fn install_memory_wasm_binding_js(
+        &mut self,
+        manifest_source: &str,
+        interface_source: &str,
+        bindings_source: &str,
+        bytes: &[u8],
+    ) -> Result<(), JsValue> {
+        self.install_memory_wasm_binding_browser(
+            manifest_source,
+            interface_source,
+            bindings_source,
+            bytes,
+        )
+        .map_err(|error| JsValue::from_str(&error))
+    }
+
     #[cfg(feature = "bytecode-vm")]
     #[cfg_attr(not(feature = "raw-wasm"), wasm_bindgen(js_name = compileBytecodeArtifact))]
     pub fn compile_bytecode_artifact_js(&self, source: &str) -> Result<Vec<u8>, JsValue> {

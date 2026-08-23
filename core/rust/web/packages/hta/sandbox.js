@@ -17,7 +17,7 @@ export const MAX_BROWSER_SANDBOX_LIMITS = Object.freeze({
 });
 
 const REQUEST_KEYS = new Set(["operation", "source", "limits"]);
-const LIMIT_KEYS = new Set(["outputBytes", "wallMs"]);
+const LIMIT_KEYS = new Set(["sourceBytes", "outputBytes", "wallMs"]);
 const TEXT_ENCODER = new TextEncoder();
 const MAX_TRANSFER_DEPTH = 32;
 const MAX_TRANSFER_ITEMS = 65_536;
@@ -72,7 +72,14 @@ function validateLimits(value) {
   if (value === undefined) return { ...DEFAULT_BROWSER_SANDBOX_LIMITS };
   const limits = exactObject(value, LIMIT_KEYS, "sandbox limits");
   return {
-    sourceBytes: DEFAULT_BROWSER_SANDBOX_LIMITS.sourceBytes,
+    sourceBytes:
+      limits.sourceBytes === undefined
+        ? DEFAULT_BROWSER_SANDBOX_LIMITS.sourceBytes
+        : positiveInteger(
+            limits.sourceBytes,
+            "limits.sourceBytes",
+            MAX_BROWSER_SANDBOX_LIMITS.sourceBytes,
+          ),
     outputBytes:
       limits.outputBytes === undefined
         ? DEFAULT_BROWSER_SANDBOX_LIMITS.outputBytes

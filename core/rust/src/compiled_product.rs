@@ -38,6 +38,7 @@ impl CompiledProductKind {
 pub struct ProductCacheKey {
     pub kind: CompiledProductKind,
     pub source_digest: String,
+    pub module_digests: Vec<String>,
     pub compiler_id: String,
     pub abi_version: String,
     pub options_digest: String,
@@ -51,9 +52,28 @@ impl ProductCacheKey {
         abi_version: impl Into<String>,
         options: impl AsRef<[u8]>,
     ) -> Self {
+        Self::with_module_digests(
+            kind,
+            source_digest,
+            compiler_id,
+            abi_version,
+            options,
+            Vec::new(),
+        )
+    }
+
+    pub fn with_module_digests(
+        kind: CompiledProductKind,
+        source_digest: impl Into<String>,
+        compiler_id: impl Into<String>,
+        abi_version: impl Into<String>,
+        options: impl AsRef<[u8]>,
+        module_digests: Vec<String>,
+    ) -> Self {
         Self {
             kind,
             source_digest: source_digest.into(),
+            module_digests,
             compiler_id: compiler_id.into(),
             abi_version: abi_version.into(),
             options_digest: sha256_hex(options.as_ref()),
@@ -95,6 +115,7 @@ impl CompiledProductManifest {
         ProductCacheKey {
             kind: self.product,
             source_digest: self.source_digest.clone(),
+            module_digests: self.module_digests.clone(),
             compiler_id: self.compiler_id.clone(),
             abi_version: self.abi_version.clone(),
             options_digest: self.options_digest.clone(),
@@ -237,6 +258,30 @@ mod tests {
         assert_eq!(cache.len(), 2);
         cache.clear();
         assert!(cache.is_empty());
+    }
+
+    #[test]
+    fn cache_keys_include_module_dependencies() {
+        let first = CompiledProduct::new(
+            CompiledProductKind::HbcModule,
+            "source-digest",
+            vec!["module-a".into()],
+            "hara-test",
+            "1",
+            "{}",
+            b"first".to_vec(),
+        );
+        let second = CompiledProduct::new(
+            CompiledProductKind::HbcModule,
+            "source-digest",
+            vec!["module-b".into()],
+            "hara-test",
+            "1",
+            "{}",
+            b"first".to_vec(),
+        );
+
+        assert_ne!(first.cache_key(), second.cache_key());
     }
 
     #[test]

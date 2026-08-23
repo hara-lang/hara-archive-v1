@@ -248,6 +248,6 @@
 
 (defn run-task
   ([task-value input]
-   (work/run task-value input))
+   (work/run work/default-host task-value input))
   ([runtime task-value input]
    (work/run runtime task-value input)))

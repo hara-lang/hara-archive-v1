@@ -966,6 +966,9 @@ pub(crate) fn call_function(function: &Function, arguments: Vec<Value>) -> Resul
         if function.variadic.is_none() && function.params.len() != arguments.len() {
             #[cfg(feature = "evaluation-journal")]
             evaluation_journal_exit(operation, function, None);
+            if function.name.as_deref() == Some("type") {
+                return Err("type expects one value".into());
+            }
             return Err(format!(
                 "function expects {} arguments",
                 function.params.len()
@@ -987,10 +990,22 @@ pub(crate) fn call_function(function: &Function, arguments: Vec<Value>) -> Resul
             )
         });
     }
-    let caller_scoped_macroexpand = function.name.as_deref() == Some("macroexpand")
-        && function.namespace.as_deref() == Some("std.foundation");
+    let caller_scoped_foundation = function.namespace.as_deref() == Some("std.foundation")
+        && matches!(
+            function.name.as_deref(),
+            Some(
+                "macroexpand"
+                    | "env-current"
+                    | "env-snapshot"
+                    | "env-vars"
+                    | "env-namespaces"
+                    | "env-namespace"
+                    | "env-module"
+                    | "env-resolve"
+            )
+        );
     let namespace_scope = namespace_registry().ok().and_then(|registry| {
-        (!caller_scoped_macroexpand)
+        (!caller_scoped_foundation)
             .then_some(())
             .and_then(|_| function.namespace.as_ref())
             .map(|namespace| {
@@ -1001,6 +1016,11 @@ pub(crate) fn call_function(function: &Function, arguments: Vec<Value>) -> Resul
     });
     let result = (|| {
         if function.variadic.is_none() && function.params.len() != arguments.len() {
+            if function.namespace.as_deref() == Some("std.foundation")
+                && function.name.as_deref() == Some("type")
+            {
+                return Err("type expects one value".into());
+            }
             return Err(format!(
                 "function expects {} arguments",
                 function.params.len()

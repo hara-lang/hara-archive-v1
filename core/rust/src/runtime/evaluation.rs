@@ -239,6 +239,34 @@ impl Runtime {
         self.install_direct_wasm_provider(logical, exports, provider)
     }
 
+    #[cfg(all(target_arch = "wasm32", not(feature = "raw-wasm")))]
+    fn install_memory_wasm_binding_browser(
+        &mut self,
+        manifest_source: &str,
+        interface_source: &str,
+        bindings_source: &str,
+        bytes: &[u8],
+    ) -> Result<(), String> {
+        let manifest = extension::ExtensionManifest::parse(
+            manifest_source,
+            "browser memory.v1 manifest",
+        )?;
+        let interface = crate::wasm_binding::WasmInterface::parse(
+            interface_source,
+            "browser memory.v1 interface",
+        )?;
+        let plan = interface.memory_plan()?;
+        if bindings_source != plan.canonical_source() {
+            return Err(
+                "native/binding-mismatch: bindings.edn is not the canonical memory.v1 plan".into(),
+            );
+        }
+        Self::verify_memory_manifest(&manifest, &interface, &plan)?;
+        let provider =
+            crate::browser_wasm_provider::BrowserWasmProvider::compile_memory(bytes, plan)?;
+        self.install_wasm_extension(manifest_source, "browser memory.v1 manifest", provider)
+    }
+
     fn install_direct_wasm_provider<P: extension::WasmExtensionProvider + 'static>(
         &mut self,
         logical: &str,
@@ -276,6 +304,100 @@ impl Runtime {
         let import = extension::WasmExtension::new(manifest, provider)?;
         self.native_wasm_imports.insert(logical.into(), import);
         Ok(())
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn verify_memory_manifest(
+        manifest: &extension::ExtensionManifest,
+        interface: &crate::wasm_binding::WasmInterface,
+        plan: &crate::wasm_binding::MemoryBindingPlan,
+    ) -> Result<(), String> {
+        if manifest.provider != "wasm" || manifest.abi != extension::WasmAbi::MemoryV1 {
+            return Err(
+                "native/manifest-mismatch: manifest must declare a Wasm :memory.v1 provider"
+                    .into(),
+            );
+        }
+        if manifest.namespace != interface.namespace
+            || manifest.module.as_deref() != Some(interface.module.as_str())
+        {
+            return Err(
+                "native/manifest-mismatch: manifest namespace or module differs from interface"
+                    .into(),
+            );
+        }
+        if !manifest.capabilities.is_empty() {
+            return Err(
+                "native/manifest-mismatch: memory.v1 cannot require host capabilities".into(),
+            );
+        }
+        if !manifest.assets.iter().any(|asset| asset == "bindings.edn") {
+            return Err(
+                "native/manifest-mismatch: memory.v1 packages must declare bindings.edn as an asset"
+                    .into(),
+            );
+        }
+        if manifest.exports.len() != plan.functions.len() {
+            return Err(
+                "native/manifest-mismatch: manifest exports do not match bindings.edn".into(),
+            );
+        }
+        for function in &plan.functions {
+            let specification = manifest
+                .exports
+                .iter()
+                .find(|(name, _)| name == &function.name)
+                .map(|(_, specification)| specification)
+                .ok_or_else(|| {
+                    format!(
+                        "native/manifest-mismatch: manifest export {} differs from bindings.edn",
+                        function.name
+                    )
+                })?;
+            let arguments = function
+                .arguments
+                .iter()
+                .map(|argument| Self::hara_type_keyword(&argument.hara_type))
+                .collect::<Vec<_>>();
+            if specification.raw_name(&function.name) != function.wasm_export
+                || specification.asynchronous
+                || specification.arguments != arguments
+                || specification.returns != Self::hara_type_keyword(&function.returns.hara_type)
+            {
+                return Err(format!(
+                    "native/manifest-mismatch: manifest export {} differs from bindings.edn",
+                    function.name
+                ));
+            }
+        }
+        if manifest
+            .exports
+            .iter()
+            .any(|(name, _)| !plan.functions.iter().any(|function| function.name == *name))
+        {
+            return Err(
+                "native/manifest-mismatch: manifest exports do not match bindings.edn".into(),
+            );
+        }
+        Ok(())
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn hara_type_keyword(value: &crate::wasm_binding::HaraValueType) -> String {
+        match value {
+            crate::wasm_binding::HaraValueType::I32 => "i32".into(),
+            crate::wasm_binding::HaraValueType::I64 => "i64".into(),
+            crate::wasm_binding::HaraValueType::F32 => "f32".into(),
+            crate::wasm_binding::HaraValueType::F64 => "f64".into(),
+            crate::wasm_binding::HaraValueType::Boolean => "boolean".into(),
+            crate::wasm_binding::HaraValueType::String => "string".into(),
+            crate::wasm_binding::HaraValueType::Bytes => "bytes".into(),
+            crate::wasm_binding::HaraValueType::Record(name) => format!("[record {name}]"),
+            crate::wasm_binding::HaraValueType::Variant(name) => format!("[variant {name}]"),
+            crate::wasm_binding::HaraValueType::Handle(name) => format!("[handle {name}]"),
+            crate::wasm_binding::HaraValueType::Callback(name) => format!("[callback {name}]"),
+            crate::wasm_binding::HaraValueType::Void => "void".into(),
+        }
     }
 
     fn bind_direct_wasm_imports(
