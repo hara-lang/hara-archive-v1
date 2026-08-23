@@ -95,7 +95,10 @@ jobs:
             ':(exclude)core/lib/examples' \
             contrib \
             hara-specs-registry \
-            scripts/runtime/run-lib-tests; then
+            scripts/runtime/run-lib-tests \
+            scripts/runtime/check-work-flow-make-clean \
+            scripts/runtime/check_work_flow_make_clean.py \
+            scripts/runtime/check_work_flow_make_clean_test.py; then
             echo "run_core=false" >> "$GITHUB_OUTPUT"
             echo "No core runtime changes detected."
           else
@@ -115,6 +118,10 @@ jobs:
       - name: Reject Work make scratch outputs
         if: steps.scope.outputs.run_core == 'true'
         run: bash scripts/runtime/check-work-flow-make-clean
+
+      - name: Test Work make scratch audit
+        if: steps.scope.outputs.run_core == 'true'
+        run: python3 scripts/runtime/check_work_flow_make_clean_test.py
 
       - name: Set up Rust
         if: steps.scope.outputs.run_core == 'true'
