@@ -19,8 +19,8 @@ export const MAX_BROWSER_SANDBOX_LIMITS = Object.freeze({
 const REQUEST_KEYS = new Set(["operation", "source", "limits"]);
 const LIMIT_KEYS = new Set(["outputBytes", "wallMs"]);
 const TEXT_ENCODER = new TextEncoder();
-const MAX_TRANSER_DEPTH = 32;
-const MAX_TRANSER_ITEMS = 65_536;
+const MAX_TRANSFER_DEPTH = 32;
+const MAX_TRANSFER_ITEMS = 65_536;
 
 function fail(code, message) {
   const error = new Error(message);
@@ -108,7 +108,7 @@ function projectMap(value, state, depth) {
   const projected = {};
   const entries = [...value.entries()];
   state.items += entries.length;
-  if (state.items > MAX_TRANSER_ITEMS) {
+  if (state.items > MAX_TRANSFER_ITEMS) {
     throw fail("sandbox/result-limit", "sandbox result contains too many values");
   }
   for (const [key, item] of entries) {
@@ -124,7 +124,12 @@ function projectMap(value, state, depth) {
     if (Object.prototype.hasOwnProperty.call(projected, name)) {
       throw fail("sandbox/result-non-transferable", `sandbox map key collision: ${name}`);
     }
-    projected[name] = projectValue(item, state, depth + 1);
+    Object.defineProperty(projected, name, {
+      value: projectValue(item, state, depth + 1),
+      enumerable: true,
+      configurable: true,
+      writable: true,
+    });
   }
   return projected;
 }
@@ -230,7 +235,7 @@ export class BrowserWasmSandbox {
     }
     this.workerUrl = options.workerUrl;
     this.moduleUrl = options.moduleUrl;
-    this.modulebytes = options.moduleBytes;
+    this.moduleBytes = options.moduleBytes;
     this.workerFactory = options.workerFactory ?? defaultWorkerFactory;
     this.contextFactory = options.contextFactory ?? defaultContextFactory;
     this.setTimer = options.setTimer ?? ((callback, milliseconds) => setTimeout(callback, milliseconds));
@@ -258,6 +263,7 @@ export class BrowserWasmSandbox {
     this.activePromise = null;
     const cancelled = active.cancel?.() === true;
     this.state = "cancelling";
+    if (!cancelled) this.close();
     return cancelled;
   }
 
@@ -300,28 +306,26 @@ export class BrowserWasmSandbox {
       throw fail("sandbox/cancelled", "sandbox request was cancelled before start");
     }
 
-    this.state = "starting";
-    this.worker = this.workerFactory(this.workerUrl);
-    this.context = this.contextFactory({
-      worker: this.worker,
-      moduleUrl: this.moduleUrl,
-      moduleBytes: this.moduleBytes,
-      hostCalls: Object.freeze({}),
-      filesystemHost: null,
-      kernelId: null,
-    });
-
     let timer;
     let timedOut = false;
     const onAbort = () => this.cancel();
-    signal?.addEventListener("abort", onAbort, { once: true });
-
-    timer = this.setTimer(() => {
-      timedOut = true;
-      if (!this.cancel()) this.close();
-    }, request.limits.wallMs);
-
+    this.state = "starting";
     try {
+      this.worker = this.workerFactory(this.workerUrl);
+      this.context = this.contextFactory({
+        worker: this.worker,
+        moduleUrl: this.moduleUrl,
+        moduleBytes: this.moduleBytes,
+        hostCalls: Object.freeze({}),
+        filesystemHost: null,
+        kernelId: null,
+      });
+      signal?.addEventListener("abort", onAbort, { once: true });
+      timer = this.setTimer(() => {
+        timedOut = true;
+        if (!this.cancel()) this.close();
+      }, request.limits.wallMs);
+      if (signal?.aborted) throw fail("sandbox/cancelled", "sandbox request was cancelled");
       await this.context.ready;
       if (timedOut) throw fail("sandbox/timed-out", "sandbox wall-time limit expired");
       this.state = "running";

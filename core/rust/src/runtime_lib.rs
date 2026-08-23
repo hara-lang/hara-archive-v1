@@ -21,7 +21,6 @@ mod filesystem_bridge;
 mod filesystem_mount;
 #[path = "runtime/filesystem_adapter.rs"]
 pub mod filesystem_runtime;
-#[cfg(not(target_arch = "wasm32"))]
 pub mod hta;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod invoke_hta;
