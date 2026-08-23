@@ -3,7 +3,19 @@
   (:require [code.framework :as framework]))
 
 (def sample-source
-  "(ns sample.core)\n\n(defn answer \"Returns the answer.\" [] 42)\n(defn- hidden [] nil)\n(defmacro wrap [form] form)\n(def value 1)\n(defn ^{:schema [:fn [] :int]}\n  schema-answer\n  \"Returns the schema answer.\"\n  []\n  43)\n")
+  "(ns sample.core)\n\n(defn ^{:public true} answer \"Returns the answer.\" [] 42)\n(defn- hidden [] nil)\n(defmacro ^{:public true} wrap [form] form)\n(def value 1)\n(defn ^{:schema [:fn [] :int]}\n  schema-answer\n  \"Returns the schema answer.\"\n  []\n  43)\n")
+
+^{:refer code.framework/definition-info}
+(fact "definition metadata distinguishes reachable helpers from documented Vars"
+  (map
+   (fn [entry]
+     [(:name entry) (:reachable entry) (:public entry)])
+   (:definitions (framework/analyse-source sample-source)))
+  => [["answer" true true]
+      ["hidden" false false]
+      ["wrap" true true]
+      ["value" true false]
+      ["schema-answer" true false]])
 
 (fact "source analysis exposes stable definition metadata"
   (let [analysis (framework/analyse-source sample-source)]

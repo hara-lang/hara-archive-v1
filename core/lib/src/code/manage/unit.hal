@@ -90,6 +90,10 @@
   [unit]
   (structure/public-definitions (analyse unit)))
 
+(defn reachable-definitions
+  [unit]
+  (structure/reachable-definitions (analyse unit)))
+
 (defn public-definition-names
   [unit]
   (vec
@@ -97,6 +101,14 @@
     (fn [entry]
       (:name entry))
     (public-definitions unit))))
+
+(defn reachable-definition-names
+  [unit]
+  (vec
+   (map
+    (fn [entry]
+      (:name entry))
+    (reachable-definitions unit))))
 
 (defn fact-source
   [unit]
@@ -234,7 +246,7 @@
          options
          source-namespace)
         alias (or (:alias options) "subject")
-        definitions (structure/public-definitions analysis)
+        definitions (structure/reachable-definitions analysis)
         before (or (:test-source unit) "")
         test-path (scaffold/test-path-for unit options)
         missing
