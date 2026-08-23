@@ -155,7 +155,11 @@ interface calculator {
 
 #[test]
 fn rejects_unsafe_module_options() {
-    for module in ["../calculator.wasm", "calculator\\module.wasm", "drive:calculator.wasm"] {
+    for module in [
+        "../calculator.wasm",
+        "calculator\\module.wasm",
+        "drive:calculator.wasm",
+    ] {
         assert!(import_wit(
             SCALAR,
             "unsafe-module.wit",

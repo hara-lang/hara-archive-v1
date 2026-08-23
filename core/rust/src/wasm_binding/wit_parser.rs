@@ -189,12 +189,7 @@ impl Parser {
                 }
                 "interface" => {
                     let name = self.required_word("interface name")?;
-                    insert_unique(
-                        &mut interfaces,
-                        name,
-                        self.interface_body()?,
-                        "interface",
-                    )?;
+                    insert_unique(&mut interfaces, name, self.interface_body()?, "interface")?;
                 }
                 "world" => {
                     let name = self.required_word("world name")?;
