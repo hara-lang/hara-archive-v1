@@ -1009,11 +1009,15 @@ pub(crate) const FOUNDATION_PROTOCOLS: &[(&str, &[(&str, usize)])] = &[
 ];
 
 pub fn builtin_protocol_namespace(protocol: &str) -> String {
-    format!("std.protocol.{}", protocol.to_ascii_lowercase())
+    format!(
+        "std.protocol.{}.{}",
+        protocol.to_ascii_lowercase(),
+        protocol
+    )
 }
 
 pub(crate) fn builtin_protocol_name(protocol: &str) -> String {
-    format!("{}/{}", builtin_protocol_namespace(protocol), protocol)
+    builtin_protocol_namespace(protocol)
 }
 
 pub(crate) fn builtin_protocol_parents(protocol: &str) -> Vec<String> {
@@ -1148,14 +1152,14 @@ mod native_work_protocol_tests {
 
     #[test]
     fn canonical_protocol_names_preserve_std_protocol_identity() {
-        assert_eq!(canonical_protocol_name("IFn"), "std.protocol.ifn/IFn");
+        assert_eq!(canonical_protocol_name("IFn"), "std.protocol.ifn.IFn");
         assert_eq!(
             canonical_protocol_name("std.foundation/IFn"),
-            "std.protocol.ifn/IFn"
+            "std.protocol.ifn.IFn"
         );
         assert_eq!(
-            canonical_protocol_name("std.protocol.ifn/IFn"),
-            "std.protocol.ifn/IFn"
+            canonical_protocol_name("std.protocol.ifn.IFn"),
+            "std.protocol.ifn.IFn"
         );
         assert_eq!(
             canonical_protocol_name("std.protocol.application/Portable"),

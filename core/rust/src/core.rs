@@ -171,6 +171,7 @@ include!("core/direct_callable.rs");
 include!("core/direct_callable_catalog.rs");
 include!("core/direct_callable_impl.rs");
 include!("core/direct_callable_operations.rs");
+include!("core/bootstrap.rs");
 #[cfg(test)]
 include!("core/direct_callable_probe.rs");
 #[cfg(test)]
