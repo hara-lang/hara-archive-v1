@@ -412,108 +412,108 @@ impl ProtocolRegistry {
     /// Returns the built-in collection protocol registry used by evaluator dispatch.
     pub fn core() -> Self {
         let mut registry = Self::new();
-        registry.register_marker("std.protocol.icoll/IColl", Value::supports_native_icoll);
-        registry.register_marker("std.protocol.imutable/IMutable", |value| {
+        registry.register_marker("std.protocol.icoll.IColl", Value::supports_native_icoll);
+        registry.register_marker("std.protocol.imutable.IMutable", |value| {
             native_protocol_supports("IMutable", value)
         });
-        registry.register_marker("std.protocol.ipersistent/IPersistent", |value| {
+        registry.register_marker("std.protocol.ipersistent.IPersistent", |value| {
             native_protocol_supports("IPersistent", value)
         });
-        registry.register_marker("std.protocol.iofn/IOFn", |value| {
+        registry.register_marker("std.protocol.iofn.IOFn", |value| {
             matches!(value, Value::Keyword(_))
         });
-        registry.register("std.protocol.icount/ICount", "count", protocol_count);
-        registry.register("std.protocol.inth/INth", "nth", protocol_nth);
-        registry.register("std.protocol.ilookup/ILookup", "lookup", protocol_lookup);
+        registry.register("std.protocol.icount.ICount", "count", protocol_count);
+        registry.register("std.protocol.inth.INth", "nth", protocol_nth);
+        registry.register("std.protocol.ilookup.ILookup", "lookup", protocol_lookup);
         registry.register(
-            "std.protocol.ipointer/IPointer",
+            "std.protocol.ipointer.IPointer",
             "ptr-context",
             protocol_pointer_context,
         );
-        registry.register("std.protocol.ifind/IFind", "find", protocol_find);
-        registry.register("std.protocol.iassoc/IAssoc", "assoc", protocol_assoc);
-        registry.register("std.protocol.iconj/IConj", "conj", protocol_conj);
-        registry.register("std.protocol.icons/ICons", "cons", protocol_cons);
-        registry.register("std.protocol.idissoc/IDissoc", "dissoc", protocol_dissoc);
-        registry.register("std.protocol.iempty/IEmpty", "empty", protocol_empty);
+        registry.register("std.protocol.ifind.IFind", "find", protocol_find);
+        registry.register("std.protocol.iassoc.IAssoc", "assoc", protocol_assoc);
+        registry.register("std.protocol.iconj.IConj", "conj", protocol_conj);
+        registry.register("std.protocol.icons.ICons", "cons", protocol_cons);
+        registry.register("std.protocol.idissoc.IDissoc", "dissoc", protocol_dissoc);
+        registry.register("std.protocol.iempty.IEmpty", "empty", protocol_empty);
         registry.register(
-            "std.protocol.iequality/IEquality",
+            "std.protocol.iequality.IEquality",
             "equality",
             protocol_equality,
         );
         registry.register(
-            "std.protocol.idisplay/IDisplay",
+            "std.protocol.idisplay.IDisplay",
             "display",
             protocol_display,
         );
         registry.register(
-            "std.protocol.iencodable/IEncodable",
+            "std.protocol.iencodable.IEncodable",
             "encode-with",
             protocol_encode_with,
         );
         registry.register(
-            "std.protocol.iexinfo/IExInfo",
+            "std.protocol.iexinfo.IExInfo",
             "data",
             |arguments| match arguments {
                 [Value::ExceptionInfo(value)] => Ok((*value.data).clone()),
                 [_] => {
-                    Err("missing protocol implementation: std.protocol.iexinfo/IExInfo/data".into())
+                    Err("missing protocol implementation: std.protocol.iexinfo.IExInfo/data".into())
                 }
                 _ => Err("IExInfo/data expects one argument".into()),
             },
         );
-        registry.register("std.protocol.ihash/IHash", "hash", protocol_hash);
+        registry.register("std.protocol.ihash.IHash", "hash", protocol_hash);
         registry.register(
-            "std.protocol.ihashcached/IHashCached",
+            "std.protocol.ihashcached.IHashCached",
             "hash-current",
             protocol_hash_current,
         );
         registry.register(
-            "std.protocol.ihashcached/IHashCached",
+            "std.protocol.ihashcached.IHashCached",
             "hash-put",
             protocol_hash_put,
         );
         registry.register_when(
-            "std.protocol.ifn/IFn",
+            "std.protocol.ifn.IFn",
             "invoke",
             Value::supports_native_ifn,
             protocol_invoke,
         );
-        registry.register("std.protocol.ipair/IPair", "key", protocol_pair_key);
-        registry.register("std.protocol.ipair/IPair", "value", protocol_pair_value);
+        registry.register("std.protocol.ipair.IPair", "key", protocol_pair_key);
+        registry.register("std.protocol.ipair.IPair", "value", protocol_pair_value);
         registry.register(
-            "std.protocol.ipeekfirst/IPeekFirst",
+            "std.protocol.ipeekfirst.IPeekFirst",
             "peek-first",
             protocol_peek_first,
         );
         registry.register(
-            "std.protocol.ipeeklast/IPeekLast",
+            "std.protocol.ipeeklast.IPeekLast",
             "peek-last",
             protocol_peek_last,
         );
         registry.register(
-            "std.protocol.ipopfirst/IPopFirst",
+            "std.protocol.ipopfirst.IPopFirst",
             "pop-first",
             protocol_pop_first,
         );
         registry.register(
-            "std.protocol.ipoplast/IPopLast",
+            "std.protocol.ipoplast.IPopLast",
             "pop-last",
             protocol_pop_last,
         );
         registry.register(
-            "std.protocol.ipushfirst/IPushFirst",
+            "std.protocol.ipushfirst.IPushFirst",
             "push-first",
             protocol_push_first,
         );
         registry.register(
-            "std.protocol.ipushlast/IPushLast",
+            "std.protocol.ipushlast.IPushLast",
             "push-last",
             protocol_push_last,
         );
-        registry.register("std.protocol.iiter/IIter", "iter", protocol_iter);
+        registry.register("std.protocol.iiter.IIter", "iter", protocol_iter);
         registry.register(
-            "std.protocol.iiterator/IIterator",
+            "std.protocol.iiterator.IIterator",
             "iter-next?",
             |arguments| {
                 arguments
@@ -523,7 +523,7 @@ impl ProtocolRegistry {
             },
         );
         registry.register(
-            "std.protocol.iiterator/IIterator",
+            "std.protocol.iiterator.IIterator",
             "iter-next",
             |arguments| {
                 arguments
@@ -533,7 +533,7 @@ impl ProtocolRegistry {
             },
         );
         registry.register(
-            "std.protocol.iclose/IClose",
+            "std.protocol.iclose.IClose",
             "close",
             |arguments| match arguments {
                 [Value::Coroutine(coroutine)] => {
@@ -549,111 +549,111 @@ impl ProtocolRegistry {
             },
         );
         registry.register(
-            "std.protocol.inamespaced/INamespaced",
+            "std.protocol.inamespaced.INamespaced",
             "name",
             protocol_namespaced_name,
         );
         registry.register(
-            "std.protocol.inamespaced/INamespaced",
+            "std.protocol.inamespaced.INamespaced",
             "namespace",
             protocol_namespaced_namespace,
         );
         registry.register(
-            "std.protocol.istringlike/IStringLike",
+            "std.protocol.istringlike.IStringLike",
             "to-string",
             protocol_string_like_to_string,
         );
         registry.register(
-            "std.protocol.istringlike/IStringLike",
+            "std.protocol.istringlike.IStringLike",
             "from-string",
             protocol_string_like_from_string,
         );
-        registry.register("std.protocol.iobjtype/IObjType", "meta", protocol_meta);
+        registry.register("std.protocol.iobjtype.IObjType", "meta", protocol_meta);
         registry.register(
-            "std.protocol.iobjtype/IObjType",
+            "std.protocol.iobjtype.IObjType",
             "with-meta",
             protocol_with_meta,
         );
-        registry.register("std.protocol.ideref/IDeref", "deref", protocol_deref);
+        registry.register("std.protocol.ideref.IDeref", "deref", protocol_deref);
         registry.register(
-            "std.protocol.iapplicable/IApplicable",
+            "std.protocol.iapplicable.IApplicable",
             "apply-default",
             protocol_apply_default,
         );
         registry.register(
-            "std.protocol.iapplicable/IApplicable",
+            "std.protocol.iapplicable.IApplicable",
             "apply-in",
             protocol_apply_in,
         );
         registry.register(
-            "std.protocol.iapplicable/IApplicable",
+            "std.protocol.iapplicable.IApplicable",
             "transform-in",
             protocol_transform_in,
         );
         registry.register(
-            "std.protocol.iapplicable/IApplicable",
+            "std.protocol.iapplicable.IApplicable",
             "transform-out",
             protocol_transform_out,
         );
         registry.register(
-            "std.protocol.iinvokein/IInvokeIn",
+            "std.protocol.iinvokein.IInvokeIn",
             "invoke-in",
             protocol_invoke_in,
         );
         registry.register(
-            "std.protocol.idereftimeout/IDerefTimeout",
+            "std.protocol.idereftimeout.IDerefTimeout",
             "deref-timeout",
             protocol_deref_timeout,
         );
-        registry.register("std.protocol.ireset/IReset", "reset", protocol_reset);
-        registry.register("std.protocol.icas/ICas", "cas", protocol_cas);
-        registry.register("std.protocol.ireduce/IReduce", "reduce", protocol_reduce);
+        registry.register("std.protocol.ireset.IReset", "reset", protocol_reset);
+        registry.register("std.protocol.icas.ICas", "cas", protocol_cas);
+        registry.register("std.protocol.ireduce.IReduce", "reduce", protocol_reduce);
         registry.register(
-            "std.protocol.itomutable/IToMutable",
+            "std.protocol.itomutable.IToMutable",
             "to-mutable",
             protocol_to_mutable,
         );
         registry.register(
-            "std.protocol.itopersistent/IToPersistent",
+            "std.protocol.itopersistent.IToPersistent",
             "to-persistent",
             protocol_to_persistent,
         );
         registry.register(
-            "std.protocol.ipromise/IPromise",
+            "std.protocol.ipromise.IPromise",
             "state",
             protocol_promise_state,
         );
         registry.register(
-            "std.protocol.ipromise/IPromise",
+            "std.protocol.ipromise.IPromise",
             "value",
             protocol_promise_value,
         );
-        registry.register("std.protocol.ipromise/IPromise", "then", |arguments| {
+        registry.register("std.protocol.ipromise.IPromise", "then", |arguments| {
             protocol_promise_chain("promise/then", arguments)
         });
-        registry.register("std.protocol.ipromise/IPromise", "catch", |arguments| {
+        registry.register("std.protocol.ipromise.IPromise", "catch", |arguments| {
             protocol_promise_chain("promise/catch", arguments)
         });
-        registry.register("std.protocol.ipromise/IPromise", "finally", |arguments| {
+        registry.register("std.protocol.ipromise.IPromise", "finally", |arguments| {
             protocol_promise_chain("promise/finally", arguments)
         });
         registry.register(
-            "std.protocol.ipromise/IPromise",
+            "std.protocol.ipromise.IPromise",
             "cancel",
             protocol_promise_cancel,
         );
         registry.register(
-            "std.protocol.icoroutine/ICoroutine",
+            "std.protocol.icoroutine.ICoroutine",
             "status",
             protocol_coroutine_status,
         );
         registry.register(
-            "std.protocol.icoroutine/ICoroutine",
+            "std.protocol.icoroutine.ICoroutine",
             "resume",
             protocol_coroutine_resume,
         );
         registry.register(
-            "std.protocol.istream/IStream",
+            "std.protocol.istream.IStream",
             "next",
             |arguments| match arguments {
                 [Value::Stream(stream)] => Ok(stream_next(stream)),
@@ -662,7 +662,7 @@ impl ProtocolRegistry {
             },
         );
         registry.register(
-            "std.protocol.istreamwrite/IStreamWrite",
+            "std.protocol.istreamwrite.IStreamWrite",
             "write",
             |arguments| match arguments {
                 [_target, _value] => Err("IStreamWrite/write expects a writable stream".into()),
@@ -670,7 +670,7 @@ impl ProtocolRegistry {
             },
         );
         registry.register(
-            "std.protocol.iabort/IAbort",
+            "std.protocol.iabort.IAbort",
             "abort",
             |arguments| match arguments {
                 [_target, _error] => Err("IAbort/abort expects an abortable stream".into()),
@@ -678,17 +678,17 @@ impl ProtocolRegistry {
             },
         );
         registry.register(
-            "std.protocol.iwatch/IWatch",
+            "std.protocol.iwatch.IWatch",
             "watch-add",
             protocol_watch_add,
         );
         registry.register(
-            "std.protocol.iwatch/IWatch",
+            "std.protocol.iwatch.IWatch",
             "watch-remove",
             protocol_watch_remove,
         );
         registry.register(
-            "std.protocol.iwatch/IWatch",
+            "std.protocol.iwatch.IWatch",
             "watch-list",
             protocol_watch_list,
         );
@@ -1231,13 +1231,6 @@ pub fn refer_startup_defaults(registry: &NamespaceRegistry<Value>, namespace: &s
             }
         }
     }
-    for (protocol, _) in FOUNDATION_PROTOCOLS {
-        let protocol_namespace = builtin_protocol_namespace(protocol);
-        if let Some(source) = registry.find(&protocol_namespace) {
-            target.alias(protocol, source);
-        }
-    }
-    refer_native_aliases(registry, namespace);
     for (alias, library) in registry.global_aliases() {
         if target.name() == &library {
             continue;
@@ -1246,31 +1239,6 @@ pub fn refer_startup_defaults(registry: &NamespaceRegistry<Value>, namespace: &s
             target.alias(alias.as_str(), source);
         } else {
             target.lazy_alias(alias.as_str(), library.as_str());
-        }
-    }
-    for (alias, library) in [
-        ("str", "std.foundation.string"),
-        ("promise", "std.foundation.promise"),
-        ("bytes", "std.foundation.bytes"),
-        ("co", "std.foundation.coroutine"),
-        ("pretty", "std.foundation.pretty"),
-    ] {
-        target.lazy_alias(alias, library);
-    }
-}
-
-pub(crate) fn refer_native_aliases(registry: &NamespaceRegistry<Value>, namespace: &str) {
-    let target = registry.find_or_create(namespace);
-    for (protocol, _) in FOUNDATION_PROTOCOLS {
-        let protocol_namespace = builtin_protocol_namespace(protocol);
-        if let Some(source) = registry.find(&protocol_namespace) {
-            target.alias(protocol, source);
-        }
-    }
-    for (native_type, _) in NATIVE_TYPES {
-        if let Some(source) = registry.find(&format!("std.native.{native_type}")) {
-            target.alias(*native_type, source.clone());
-            target.alias(native_type.to_ascii_lowercase(), source);
         }
     }
 }

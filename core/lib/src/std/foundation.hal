@@ -44,16 +44,16 @@
 ;; first-class use. The compiler validates `:inline true` against their
 ;; transparent forwarding form and lowers direct calls to the Base operation.
 (defn ^{:inline true :schema [:fn [& :any] :list]}
-  list "Creates a persistent list from values." [& values] (apply Base/list values))
+  list "Creates a persistent list from values." [& values] (apply std.native.Base/list values))
 
 (defn ^{:inline true :schema [:fn [& :any] :vector]}
-  vector "Creates a persistent vector from values." [& values] (apply Base/vector values))
+  vector "Creates a persistent vector from values." [& values] (apply std.native.Base/vector values))
 
 (defn ^{:inline true :schema [:fn [:any] :vector]}
-  vec "Converts value to a persistent vector." [value] (Base/vec value))
+  vec "Converts value to a persistent vector." [value] (std.native.Base/vec value))
 
 (defn ^{:inline true :schema [:fn [:any] :set]}
-  set "Converts value to a persistent set." [value] (Base/set value))
+  set "Converts value to a persistent set." [value] (std.native.Base/set value))
 
 (defn ^{:schema [:fn [:any :any] :any]}
   pair "Creates a key/value pair." [left right] (tuple left right))
@@ -63,92 +63,92 @@
   (and (tuple? value) (= 2 (count value))))
 
 (defn ^{:inline true :schema [:fn [& :any] :any]}
-  tuple "Creates a fixed-width tuple from values." [& values] (apply Base/tuple values))
+  tuple "Creates a fixed-width tuple from values." [& values] (apply std.native.Base/tuple values))
 
 (defn ^{:inline true :schema [:fn [& :any] :map]}
-  hash-map "Creates a persistent map from alternating keys and values." [& entries] (apply Base/hash-map entries))
+  hash-map "Creates a persistent map from alternating keys and values." [& entries] (apply std.native.Base/hash-map entries))
 
 (defn ^{:inline true :schema [:fn [& :any] :set]}
-  hash-set "Creates a persistent set from values." [& values] (apply Base/hash-set values))
+  hash-set "Creates a persistent set from values." [& values] (apply std.native.Base/hash-set values))
 
 (defn ^{:inline true :schema [:fn [:any] :atom]}
-  atom "Creates an atom containing value." [value] (Base/atom value))
+  atom "Creates an atom containing value." [value] (std.native.Base/atom value))
 
 (defn ^{:inline true :schema [:fn [] :int]}
   time-ms
   "Returns Unix wall-clock milliseconds; the value may jump when the system clock is corrected."
   []
-  (OS/time-ms))
+  (std.native.OS/time-ms))
 
 (defn ^{:inline true :schema [:fn [] :int]}
   time-ns
   "Returns a runtime-local monotonic nanosecond counter for elapsed-time differences."
   []
-  (OS/time-ns))
+  (std.native.OS/time-ns))
 
 (defn ^{:schema [:fn [:fn & :any] :any]}
   stream
   "Creates a lazy asynchronous pull stream from a coroutine body and its initial arguments."
   [function & arguments]
-  (apply Stream/generate function arguments))
+  (apply std.native.Stream/generate function arguments))
 
 (defn ^{:schema [:fn [:any] :bool]}
   stream?
   "Returns true when value implements the native stream contract."
   [value]
-  (satisfies? IStream value))
+  (satisfies? std.protocol.istream.IStream value))
 
 (defn ^{:inline true :schema [:fn [:map] :any]}
-  pointer "Creates a context pointer from descriptor." [descriptor] (Base/pointer descriptor))
+  pointer "Creates a context pointer from descriptor." [descriptor] (std.native.Base/pointer descriptor))
 
 (defn ^{:inline true
         :schema [:function [:fn [:str] :symbol]
                            [:fn [:str :str] :symbol]]}
   symbol
   "Creates a symbol with an optional namespace."
-  ([name] (Base/symbol name))
-  ([namespace name] (Base/symbol namespace name)))
+  ([name] (std.native.Base/symbol name))
+  ([namespace name] (std.native.Base/symbol namespace name)))
 
 (defn ^{:inline true
         :schema [:function [:fn [:str] :keyword]
                            [:fn [:str :str] :keyword]]}
   keyword
   "Creates a keyword with an optional namespace."
-  ([name] (Base/keyword name))
-  ([namespace name] (Base/keyword namespace name)))
+  ([name] (std.native.Base/keyword name))
+  ([namespace name] (std.native.Base/keyword namespace name)))
 
 (defn ^{:inline true :schema [:fn [:any] :any]}
-  reduced "Wraps value as an early reduction result." [value] (Base/reduced value))
+  reduced "Wraps value as an early reduction result." [value] (std.native.Base/reduced value))
 
 (defn ^{:schema [:fn [:fn & :any] :any]}
   apply "Applies function to leading arguments and a final sequential value."
   [function & arguments]
-  (Base/apply Base/apply (ICons/cons arguments function)))
+  (std.native.Base/apply std.native.Base/apply (std.protocol.icons.ICons/cons arguments function)))
 
 (defn ^{:inline true :schema [:fn [:any] :bool]}
-  not "Returns true when value is false or nil." [value] (Base/not value))
+  not "Returns true when value is false or nil." [value] (std.native.Base/not value))
 
 (defn ^{:inline true :schema [:fn [:any] :bool]}
-  boolean "Coerces value to true or false using Hara truthiness." [value] (Base/boolean value))
+  boolean "Coerces value to true or false using Hara truthiness." [value] (std.native.Base/boolean value))
 
 (defn ^{:inline true :schema [:fn [:any :any] :int]}
-  compare "Compares two mutually orderable Hara values." [left right] (Base/compare left right))
+  compare "Compares two mutually orderable Hara values." [left right] (std.native.Base/compare left right))
 
 (defn ^{:inline true :schema [:fn [:any] :bool]}
-  reduced? "Returns true when value is a reduced result." [value] (Base/reduced? value))
+  reduced? "Returns true when value is a reduced result." [value] (std.native.Base/reduced? value))
 
 (defn ^{:schema [:fn [:any] :any]}
   unreduced "Returns the value carried by a reduced result, or value unchanged." [value]
-  (Base/unreduced value))
+  (std.native.Base/unreduced value))
 
 (defn ^{:inline true :schema [:fn [:any] :bool]}
-  nil? "Returns true when value is nil." [value] (Base/nil? value))
+  nil? "Returns true when value is nil." [value] (std.native.Base/nil? value))
 
 (defn ^{:schema [:fn [:any] :bool]}
   not-nil? "Returns true when value is not nil." [value] (not (nil? value)))
 
 (defn ^{:inline true :schema [:fn [:any] :bool]}
-  boolean? "Returns true when value is a boolean." [value] (Base/boolean? value))
+  boolean? "Returns true when value is a boolean." [value] (std.native.Base/boolean? value))
 
 (defn ^{:schema [:fn [:any] :bool]}
   false? "Returns true when value is false." [value] (= false value))
@@ -157,141 +157,141 @@
   true? "Returns true when value is true." [value] (= true value))
 
 (defn ^{:inline true :schema [:fn [:any] :bool]}
-  string? "Returns true when value is a string." [value] (Base/string? value))
+  string? "Returns true when value is a string." [value] (std.native.Base/string? value))
 
 (defn ^{:inline true :schema [:fn [:any] :bool]}
-  char? "Returns true when value is a character." [value] (Base/char? value))
+  char? "Returns true when value is a character." [value] (std.native.Base/char? value))
 
 (defn ^{:inline true :schema [:fn [:any] :bool]}
-  number? "Returns true when value is numeric." [value] (Base/number? value))
+  number? "Returns true when value is numeric." [value] (std.native.Base/number? value))
 
 (defn ^{:inline true :schema [:fn [:any] :bool]}
-  integer? "Returns true when value is an integer." [value] (Base/integer? value))
+  integer? "Returns true when value is an integer." [value] (std.native.Base/integer? value))
 
 (defn ^{:inline true :schema [:fn [:any] :bool]}
-  long? "Returns true when value is a signed 64-bit integer." [value] (Base/long? value))
+  long? "Returns true when value is a signed 64-bit integer." [value] (std.native.Base/long? value))
 
 (defn ^{:inline true :schema [:fn [:any] :bool]}
-  double? "Returns true when value is an IEEE-754 double." [value] (Base/double? value))
+  double? "Returns true when value is an IEEE-754 double." [value] (std.native.Base/double? value))
 
 (defn ^{:inline true :schema [:fn [:any] :bool]}
-  keyword? "Returns true when value is a keyword." [value] (Base/keyword? value))
+  keyword? "Returns true when value is a keyword." [value] (std.native.Base/keyword? value))
 
 (defn ^{:inline true :schema [:fn [:any] :bool]}
-  symbol? "Returns true when value is a symbol." [value] (Base/symbol? value))
+  symbol? "Returns true when value is a symbol." [value] (std.native.Base/symbol? value))
 
 (defn ^{:inline true :schema [:fn [:any] :bool]}
-  pointer? "Returns true when value is a context pointer." [value] (Base/pointer? value))
+  pointer? "Returns true when value is a context pointer." [value] (std.native.Base/pointer? value))
 
 (defn ^{:inline true :schema [:fn [:any] :bool]}
-  atom? "Returns true when value is an atom." [value] (Base/atom? value))
+  atom? "Returns true when value is an atom." [value] (std.native.Base/atom? value))
 
 (defn ^{:schema [:fn [:any] :bool]}
-  fn? "Returns true when value satisfies IFn." [value] (satisfies? IFn value))
+  fn? "Returns true when value satisfies std.protocol.ifn.IFn." [value] (satisfies? std.protocol.ifn.IFn value))
 
 (defn ^{:inline true :schema [:fn [:any] :bool]}
-  function? "Returns true when value is a native function." [value] (Base/function? value))
+  function? "Returns true when value is a native function." [value] (std.native.Base/function? value))
 
 (defn ^{:inline true :schema [:fn [:any] :bool]}
-  bytes? "Returns true when value is a byte buffer." [value] (Base/bytes? value))
+  bytes? "Returns true when value is a byte buffer." [value] (std.native.Base/bytes? value))
 
 (defn ^{:inline true :schema [:fn [:any] :bool]}
-  array? "Returns true when value is a mutable array." [value] (Base/array? value))
+  array? "Returns true when value is a mutable array." [value] (std.native.Base/array? value))
 
 (defn ^{:inline true :schema [:fn [:any] :bool]}
-  object? "Returns true when value is a mutable object." [value] (Base/object? value))
+  object? "Returns true when value is a mutable object." [value] (std.native.Base/object? value))
 
 (defn ^{:inline true :schema [:fn [:any] :bool]}
-  list? "Returns true when value is a persistent list." [value] (Base/list? value))
+  list? "Returns true when value is a persistent list." [value] (std.native.Base/list? value))
 
 (defn ^{:inline true :schema [:fn [:any] :bool]}
-  cons? "Returns true when value is a Cons sequence." [value] (Base/cons? value))
+  cons? "Returns true when value is a Cons sequence." [value] (std.native.Base/cons? value))
 
 (defn ^{:inline true :schema [:fn [:any] :bool]}
-  vector? "Returns true when value is a persistent vector." [value] (Base/vector? value))
+  vector? "Returns true when value is a persistent vector." [value] (std.native.Base/vector? value))
 
 (defn ^{:inline true :schema [:fn [:any] :bool]}
-  tuple? "Returns true when value is a tuple." [value] (Base/tuple? value))
+  tuple? "Returns true when value is a tuple." [value] (std.native.Base/tuple? value))
 
 (defn ^{:inline true :schema [:fn [:any] :bool]}
-  map? "Returns true when value is a persistent map." [value] (Base/map? value))
+  map? "Returns true when value is a persistent map." [value] (std.native.Base/map? value))
 
 (defn ^{:inline true :schema [:fn [:any] :bool]}
-  set? "Returns true when value is a persistent set." [value] (Base/set? value))
+  set? "Returns true when value is a persistent set." [value] (std.native.Base/set? value))
 
 (defn ^{:inline true :schema [:fn [:any] :bool]}
-  sequential? "Returns true when value has sequential collection semantics." [value] (Base/sequential? value))
+  sequential? "Returns true when value has sequential collection semantics." [value] (std.native.Base/sequential? value))
 
 (defn ^{:inline true :schema [:fn [:any] :bool]}
-  coll? "Returns true when value satisfies the runtime collection capability." [value] (Base/coll? value))
+  coll? "Returns true when value satisfies the runtime collection capability." [value] (std.native.Base/coll? value))
 
 (defn ^{:inline true :schema [:fn [:any :any] :bool]}
-  satisfies? "Returns true when value satisfies protocol." [protocol value] (Base/satisfies? protocol value))
+  satisfies? "Returns true when value satisfies protocol." [protocol value] (std.native.Base/satisfies? protocol value))
 
 (defn ^{:inline true :schema [:fn [:any] :keyword]}
-  type "Returns value's portable runtime type keyword." [value] (Base/type value))
+  type "Returns value's portable runtime type keyword." [value] (std.native.Base/type value))
 
 (defn ^{:inline true :schema [:fn [:any :any] :bool]}
-  instance? "Returns true when value is an instance of descriptor." [descriptor value] (Base/instance? descriptor value))
+  instance? "Returns true when value is an instance of descriptor." [descriptor value] (std.native.Base/instance? descriptor value))
 
 (defn ^{:inline true :schema [:fn [:any] :any]}
-  schema "Compiles schema data into a SchemaType." [value] (Schema/compile value))
+  schema "Compiles schema data into a SchemaType." [value] (std.native.Schema/compile value))
 
 (defn ^{:inline true :schema [:fn [:any] :any]}
-  schema-of "Returns the compiled schema contract of variable." [variable] (Schema/of variable))
+  schema-of "Returns the compiled schema contract of variable." [variable] (std.native.Schema/of variable))
 
 ;; Runtime-backed namespace and evaluation operations remain ordinary functions for
 ;; first-class use while direct calls lower to the native Runtime object.
 (defn ^{:inline true :schema [:fn [:any] :symbol]}
-  var-sym "Returns the qualified symbol naming variable." [variable] (Runtime/var-sym variable))
+  var-sym "Returns the qualified symbol naming variable." [variable] (std.native.Runtime/var-sym variable))
 
 (defn ^{:inline true :schema [:fn [] :symbol]}
-  env-current "Returns the active namespace symbol." [] (Runtime/current))
+  env-current "Returns the active namespace symbol." [] (std.native.Runtime/current))
 
 (defn ^{:inline true :schema [:fn [] :map]}
-  env-snapshot "Returns a stable descriptor of the current environment." [] (Runtime/snapshot))
+  env-snapshot "Returns a stable descriptor of the current environment." [] (std.native.Runtime/snapshot))
 
 (defn ^{:inline true
         :schema [:function [:fn [] :map]
                            [:fn [:any] :map]]}
   env-vars
   "Returns Vars owned by the active or supplied namespace."
-  ([] (Runtime/vars))
-  ([namespace] (Runtime/vars namespace)))
+  ([] (std.native.Runtime/vars))
+  ([namespace] (std.native.Runtime/vars namespace)))
 
 (defn ^{:inline true :schema [:fn [] :vector]}
-  env-namespaces "Returns descriptors for every known namespace." [] (Runtime/namespaces))
+  env-namespaces "Returns descriptors for every known namespace." [] (std.native.Runtime/namespaces))
 
 (defn ^{:inline true :schema [:fn [:any] :any]}
-  env-namespace "Returns a namespace descriptor, or nil when unknown." [namespace] (Runtime/namespace namespace))
+  env-namespace "Returns a namespace descriptor, or nil when unknown." [namespace] (std.native.Runtime/namespace namespace))
 
 (defn ^{:inline true :schema [:fn [:str] :any]}
-  env-module "Returns the loaded module descriptor for path, or nil." [path] (Runtime/module path))
+  env-module "Returns the loaded module descriptor for path, or nil." [path] (std.native.Runtime/module path))
 
 (defn ^{:inline true :schema [:fn [:symbol] :any]}
-  env-resolve "Resolves symbol without triggering namespace or package loading." [symbol] (Runtime/resolve symbol))
+  env-resolve "Resolves symbol without triggering namespace or package loading." [symbol] (std.native.Runtime/resolve symbol))
 
 (defn ^{:inline true
         :schema [:function [:fn [:symbol] :any]
                            [:fn [:any :symbol] :any]]}
   ns-alias-state
   "Returns load state for an alias in the active or supplied namespace."
-  ([alias] (Runtime/alias-state alias))
-  ([namespace alias] (Runtime/alias-state namespace alias)))
+  ([alias] (std.native.Runtime/alias-state alias))
+  ([namespace alias] (std.native.Runtime/alias-state namespace alias)))
 
 (defn ^{:inline true
         :schema [:function [:fn [:any :symbol :any] :any]
                            [:fn [:any :symbol :any :map] :any]]}
   intern-var
   "Interns a Var root and optional metadata into namespace."
-  ([namespace symbol variable] (Runtime/intern-var namespace symbol variable))
-  ([namespace symbol variable metadata] (Runtime/intern-var namespace symbol variable metadata)))
+  ([namespace symbol variable] (std.native.Runtime/intern-var namespace symbol variable))
+  ([namespace symbol variable metadata] (std.native.Runtime/intern-var namespace symbol variable metadata)))
 
 (defn ^{:inline true :schema [:fn [:any :any] :any]}
-  eval-in-ns "Evaluates form values in an existing namespace." [namespace forms] (Runtime/eval-in namespace forms))
+  eval-in-ns "Evaluates form values in an existing namespace." [namespace forms] (std.native.Runtime/eval-in namespace forms))
 
 (defn ^{:inline true :schema [:fn [:any] :any]}
-  eval "Evaluates one form value in the active namespace." [form] (Runtime/eval form))
+  eval "Evaluates one form value in the active namespace." [form] (std.native.Runtime/eval form))
 
 (defmacro code-line
   "Expands to the line number of the invocation form."
@@ -306,7 +306,7 @@
   read-forms
   "Reads every top-level form from a capability-gated HAL source file."
   [path]
-  (Edn/read-forms path))
+  (std.native.Edn/read-forms path))
 
 ;; ---------------------------------------------------------------------------
 ;; Completed outcomes
@@ -317,18 +317,18 @@
                            [:fn [:keyword :any :map] :any]]}
   result
   "Creates or synchronizes a native Result."
-  ([value] (Result/synchronize value))
+  ([value] (std.native.Result/synchronize value))
   ([value options]
    (if (or (= value :success) (= value :error))
-     (Result/create value options)
-     (Result/synchronize value options)))
-  ([status value context] (Result/create status value context)))
+     (std.native.Result/create value options)
+     (std.native.Result/synchronize value options)))
+  ([status value context] (std.native.Result/create status value context)))
 
 (defn ^{:inline true :schema [:fn [:any] :bool]}
   result?
   "Returns true when value is a native Result."
   [value]
-  (Result/instance? value))
+  (std.native.Result/instance? value))
 
 ;; ---------------------------------------------------------------------------
 ;; Metadata
@@ -336,17 +336,17 @@
 
 (defn ^{:schema [:fn [:any] :map]}
   meta
-  "Returns value metadata through IObjType, or nil when none is present."
+  "Returns value metadata through std.protocol.iobjtype.IObjType, or nil when none is present."
   [value]
-  (if (satisfies? IObjType value)
-    (IObjType/meta value)
+  (if (satisfies? std.protocol.iobjtype.IObjType value)
+    (std.protocol.iobjtype.IObjType/meta value)
     nil))
 
 (defn ^{:inline true :schema [:fn [:any :map] :any]}
   with-meta
-  "Returns value carrying metadata through IObjType."
+  "Returns value carrying metadata through std.protocol.iobjtype.IObjType."
   [value metadata]
-  (IObjType/with-meta value metadata))
+  (std.protocol.iobjtype.IObjType/with-meta value metadata))
 
 
 ;; ---------------------------------------------------------------------------
@@ -433,7 +433,7 @@
   concat
   "Returns a lazy sequence containing each source in order."
   [& sources]
-  (seq (apply Iter/iter-concat sources)))
+  (seq (apply std.native.Iter/iter-concat sources)))
 
 (defn ^{:schema [:function [:fn [:fn :fn] :fn]
                             [:fn [:fn :fn :fn] :fn]
@@ -505,7 +505,7 @@
   has?
   "Returns true if collection contains key, including when its value is nil."
   [collection key]
-  (not-nil? (IFind/find collection key)))
+  (not-nil? (std.protocol.ifind.IFind/find collection key)))
 
 ;; ---------------------------------------------------------------------------
 ;; RegExp
@@ -517,39 +517,39 @@
   regexp
   "Compiles a pattern string, returning RegExp values unchanged."
   [pattern]
-  (if (RegExp/instance? pattern)
+  (if (std.native.RegExp/instance? pattern)
     pattern
-    (RegExp/compile pattern)))
+    (std.native.RegExp/compile pattern)))
 
 (defn ^{:inline true :schema [:fn [:regex] :str]}
   re-pattern
   "Returns the source pattern of a RegExp value."
   [regex]
-  (RegExp/pattern regex))
+  (std.native.RegExp/pattern regex))
 
 (defn ^{:schema [:fn [[:or :str :regex] :str] [:maybe :str]]}
   re-find
   "Returns the first match in input, or nil when the pattern does not match."
   [pattern input]
-  (RegExp/find (regexp pattern) input))
+  (std.native.RegExp/find (regexp pattern) input))
 
 (defn ^{:schema [:fn [[:or :str :regex] :str] :bool]}
   re-matches
   "Returns true when pattern matches all of input."
   [pattern input]
-  (RegExp/matches (regexp pattern) input))
+  (std.native.RegExp/matches (regexp pattern) input))
 
 (defn ^{:schema [:fn [[:or :str :regex] :str :str] :str]}
   re-replace
   "Replaces every match in input using numbered $1 capture groups."
   [pattern input replacement]
-  (RegExp/replace (regexp pattern) input replacement))
+  (std.native.RegExp/replace (regexp pattern) input replacement))
 
 (defn ^{:schema [:fn [[:or :str :regex] :str] [:maybe [:vector :str]]]}
   re-split
   "Splits input around matches and returns the resulting vector."
   [pattern input]
-  (RegExp/split (regexp pattern) input))
+  (std.native.RegExp/split (regexp pattern) input))
 
 ;; ---------------------------------------------------------------------------
 ;; References
@@ -559,22 +559,22 @@
   reset!
   "Sets reference to value through IReset and returns value."
   [reference value]
-  (IReset/reset reference value))
+  (std.protocol.ireset.IReset/reset reference value))
 
 (defn ^{:inline true :schema [:fn [:any :any :any] :bool]}
   cas!
   "Atomically replaces old-value with new-value through ICas."
   [reference old-value new-value]
-  (ICas/cas reference old-value new-value))
+  (std.protocol.icas.ICas/cas reference old-value new-value))
 
 (defn ^{:schema [:fn [:any :fn & :any] :any]}
   swap!
   "Atomically applies function to reference through an ICas retry loop."
   [reference function & arguments]
   (loop []
-    (let [old-value (IDeref/deref reference)
+    (let [old-value (std.protocol.ideref.IDeref/deref reference)
           new-value (apply function old-value arguments)]
-      (if (ICas/cas reference old-value new-value)
+      (if (std.protocol.icas.ICas/cas reference old-value new-value)
         new-value
         (recur)))))
 
@@ -589,11 +589,11 @@
    (swap-return! reference function false))
   ([reference function state?]
    (loop []
-     (let [old-value (IDeref/deref reference)
+     (let [old-value (std.protocol.ideref.IDeref/deref reference)
            result (function old-value)
            output (first result)
            new-value (second result)]
-       (if (ICas/cas reference old-value new-value)
+       (if (std.protocol.icas.ICas/cas reference old-value new-value)
          (if state? [output new-value] output)
          (recur))))))
 
@@ -601,19 +601,19 @@
   watch-add
   "Adds a keyed watch callback through IWatch and returns reference."
   [reference key function]
-  (IWatch/watch-add reference key function))
+  (std.protocol.iwatch.IWatch/watch-add reference key function))
 
 (defn ^{:inline true :schema [:fn [:any :any] :any]}
   watch-remove
   "Removes keyed watch through IWatch and returns reference."
   [reference key]
-  (IWatch/watch-remove reference key))
+  (std.protocol.iwatch.IWatch/watch-remove reference key))
 
 (defn ^{:inline true :schema [:fn [:any] :any]}
   watch-list
   "Returns reference's watch iterator through IWatch."
   [reference]
-  (IWatch/watch-list reference))
+  (std.protocol.iwatch.IWatch/watch-list reference))
 
 ;; ---------------------------------------------------------------------------
 ;; Mutability conversion
@@ -621,15 +621,15 @@
 
 (defn ^{:inline true :schema [:fn [:any] :any]}
   to-mutable
-  "Converts a persistent receiver through IToMutable."
+  "Converts a persistent receiver through std.protocol.itomutable.IToMutable."
   [value]
-  (IToMutable/to-mutable value))
+  (std.protocol.itomutable.IToMutable/to-mutable value))
 
 (defn ^{:inline true :schema [:fn [:any] :any]}
   to-persistent
-  "Converts a mutable receiver through IToPersistent."
+  "Converts a mutable receiver through std.protocol.itopersistent.IToPersistent."
   [value]
-  (IToPersistent/to-persistent value))
+  (std.protocol.itopersistent.IToPersistent/to-persistent value))
 
 ;; ---------------------------------------------------------------------------
 ;; Reduced values and reduction
@@ -639,8 +639,8 @@
                             [:fn [:fn :any :any] :any]]}
   reduce
   "Reduces source with function, optionally beginning with initial."
-  ([function source] (IReduce/reduce source function))
-  ([function initial source] (IReduce/reduce source function initial)))
+  ([function source] (std.protocol.ireduce.IReduce/reduce source function))
+  ([function initial source] (std.protocol.ireduce.IReduce/reduce source function initial)))
 
 (defn ^{:schema [:fn [:fn :any :map] :any]}
   reduce-kv
@@ -648,20 +648,20 @@
   [function initial source]
   (reduce-in initial
              (fn [output entry]
-               (function output (IPair/key entry) (IPair/value entry)))
+               (function output (std.protocol.ipair.IPair/key entry) (std.protocol.ipair.IPair/value entry)))
              source))
 
 (defn ^{:schema [:fn [:any :fn :any] :any]}
   reduce-in
   "Reduces source into initial, using mutable conversion when supported."
   [initial function source]
-  (let [converted (satisfies? IToMutable initial)
+  (let [converted (satisfies? std.protocol.itomutable.IToMutable initial)
         accumulator (if converted
-                      (IToMutable/to-mutable initial)
+                      (std.protocol.itomutable.IToMutable/to-mutable initial)
                       initial)
         output (reduce function accumulator source)]
-    (if (and converted (satisfies? IToPersistent output))
-      (IToPersistent/to-persistent output)
+    (if (and converted (satisfies? std.protocol.itopersistent.IToPersistent output))
+      (std.protocol.itopersistent.IToPersistent/to-persistent output)
       output)))
 
 ;; ---------------------------------------------------------------------------
@@ -672,16 +672,16 @@
   empty?
   "Returns true if value yields no items."
   [value]
-  (if (satisfies? ICount value)
-    (= 0 (ICount/count value))
+  (if (satisfies? std.protocol.icount.ICount value)
+    (= 0 (std.protocol.icount.ICount/count value))
     (not (iter-next? (iter value)))))
 
 (defn ^{:schema [:fn [:any] :any]}
   first
   "Returns the first item of value, or nil if value is empty."
   [value]
-  (if (satisfies? IPeekFirst value)
-    (IPeekFirst/peek-first value)
+  (if (satisfies? std.protocol.ipeekfirst.IPeekFirst value)
+    (std.protocol.ipeekfirst.IPeekFirst/peek-first value)
     (let [it (iter value)]
       (if (iter-next? it) (iter-next it) nil))))
 
@@ -694,7 +694,7 @@
   rest
   "Returns all but the first item of value as a seq, or nil if empty."
   [value]
-  (seq (Iter/iter-drop 1 value)))
+  (seq (std.native.Iter/iter-drop 1 value)))
 
 (defn ^{:schema [:fn [:any] :any]}
   not-empty
@@ -705,8 +705,8 @@
   last
   "Returns the last item of value, or nil if value is empty."
   [value]
-  (if (satisfies? IPeekLast value)
-    (IPeekLast/peek-last value)
+  (if (satisfies? std.protocol.ipeeklast.IPeekLast value)
+    (std.protocol.ipeeklast.IPeekLast/peek-last value)
     (let [it (iter value)]
       (if (iter-next? it)
         (loop [result (iter-next it)]
@@ -726,6 +726,12 @@
 ;; ---------------------------------------------------------------------------
 ;; Nested associative access
 ;; ---------------------------------------------------------------------------
+
+(defn ^{:public true :schema [:fn [:any :any :any] :any]}
+  assoc
+  "Returns value with key associated to new-value through IAssoc."
+  [value key new-value]
+  (std.protocol.iassoc.IAssoc/assoc value key new-value))
 
 (defn ^{:schema [:fn [:any [:vector :any]] :any]}
   get-in
@@ -786,31 +792,31 @@
   [source keys]
   (reduce-in {}
              (fn [output requested]
-               (let [entry (IFind/find source requested)]
+               (let [entry (std.protocol.ifind.IFind/find source requested)]
                  (if entry
-                   (assoc output requested (IPair/value entry))
+                   (assoc output requested (std.protocol.ipair.IPair/value entry))
                    output)))
              keys))
 
 (defn ^{:inline true :schema [:fn [:any] :any]}
   key
   "Returns the key of a map entry."
-  [entry] (IPair/key entry))
+  [entry] (std.protocol.ipair.IPair/key entry))
 
 (defn ^{:inline true :schema [:fn [:any] :any]}
   val
   "Returns the value of a map entry."
-  [entry] (IPair/value entry))
+  [entry] (std.protocol.ipair.IPair/value entry))
 
 (defn ^{:schema [:fn [:any] :any]}
   keys
   "Returns a vector of the map's keys."
-  [value] (vec (Iter/iter-map key value)))
+  [value] (vec (std.native.Iter/iter-map key value)))
 
 (defn ^{:schema [:fn [:any] :any]}
   vals
   "Returns a vector of the map's values."
-  [value] (vec (Iter/iter-map val value)))
+  [value] (vec (std.native.Iter/iter-map val value)))
 
 ;; ---------------------------------------------------------------------------
 ;; Lazy producers and transformers
@@ -858,9 +864,9 @@
   range
   "Returns a lazy seq of numbers: from 0 upward, below end, or from start
    below end."
-  ([] (seq (Iter/iter-range 0)))
-  ([end] (seq (Iter/iter-range end)))
-  ([start end] (seq (Iter/iter-range start end))))
+  ([] (seq (std.native.Iter/iter-range 0)))
+  ([end] (seq (std.native.Iter/iter-range end)))
+  ([start end] (seq (std.native.Iter/iter-range start end))))
 
 (defn- ^{:schema [:fn [:any :any] :any]}
   materialize-groups
@@ -868,26 +874,26 @@
   [template groups]
   (transform-like
    template
-   (Iter/iter-map (fn [group] (collect-like template group)) groups)))
+   (std.native.Iter/iter-map (fn [group] (collect-like template group)) groups)))
 
 (defn ^{:schema [:function [:fn [:any] :any]
                             [:fn [:num :any] :any]]}
   repeat
   "Returns a lazy seq of value repeated forever, or amount times."
-  ([value] (seq (Iter/iter-constantly value)))
-  ([amount value] (seq (Iter/iter-take amount (Iter/iter-constantly value)))))
+  ([value] (seq (std.native.Iter/iter-constantly value)))
+  ([amount value] (seq (std.native.Iter/iter-take amount (std.native.Iter/iter-constantly value)))))
 
 (defn ^{:schema [:function [:fn [:fn] :any]
                             [:fn [:num :fn] :any]]}
   repeatedly
   "Returns a lazy seq of calls to function, forever or amount times."
-  ([function] (seq (Iter/iter-repeatedly function)))
-  ([amount function] (seq (Iter/iter-take amount (Iter/iter-repeatedly function)))))
+  ([function] (seq (std.native.Iter/iter-repeatedly function)))
+  ([amount function] (seq (std.native.Iter/iter-take amount (std.native.Iter/iter-repeatedly function)))))
 
 (defn ^{:schema [:fn [:fn :any] :any]}
   iterate
   "Returns a lazy seq of seed, (function seed), (function (function seed)), …"
-  [function seed] (seq (Iter/iter-iterate function seed)))
+  [function seed] (seq (std.native.Iter/iter-iterate function seed)))
 
 (defn ^{:schema [:function [:fn [:fn] :fn]
                             [:fn [:fn :any] :any]]}
@@ -895,9 +901,9 @@
   "Returns a source-sensitive transform, or transforms items while predicate holds."
   ([predicate]
    (fn [value]
-     (transform-like value (Iter/iter-take-while predicate value))))
+     (transform-like value (std.native.Iter/iter-take-while predicate value))))
   ([predicate value]
-   (transform-like value (Iter/iter-take-while predicate value))))
+   (transform-like value (std.native.Iter/iter-take-while predicate value))))
 
 (defn ^{:schema [:function [:fn [:fn] :fn]
                             [:fn [:fn :any] :any]]}
@@ -905,9 +911,9 @@
   "Returns a source-sensitive transform, or drops items while predicate holds."
   ([predicate]
    (fn [value]
-     (transform-like value (Iter/iter-drop-while predicate value))))
+     (transform-like value (std.native.Iter/iter-drop-while predicate value))))
   ([predicate value]
-   (transform-like value (Iter/iter-drop-while predicate value))))
+   (transform-like value (std.native.Iter/iter-drop-while predicate value))))
 
 (defn ^{:schema [:function [:fn [:num] :fn]
                             [:fn [:num :any] :any]]}
@@ -916,9 +922,9 @@
    at most amount items."
   ([amount]
    (fn [value]
-     (materialize-groups value (Iter/iter-partition-all amount value))))
+     (materialize-groups value (std.native.Iter/iter-partition-all amount value))))
   ([amount value]
-   (materialize-groups value (Iter/iter-partition-all amount value))))
+   (materialize-groups value (std.native.Iter/iter-partition-all amount value))))
 
 (defn ^{:schema [:function [:fn [:num] :fn]
                             [:fn [:num :any] :any]]}
@@ -927,9 +933,9 @@
    exactly amount items."
   ([amount]
    (fn [value]
-     (materialize-groups value (Iter/iter-partition amount value))))
+     (materialize-groups value (std.native.Iter/iter-partition amount value))))
   ([amount value]
-   (materialize-groups value (Iter/iter-partition amount value))))
+   (materialize-groups value (std.native.Iter/iter-partition amount value))))
 
 (defn ^{:schema [:function [:fn [:any] :fn]
                             [:fn [:any :any] :any]]}
@@ -937,9 +943,9 @@
   "Returns a source-sensitive transform, or inserts separator between items."
   ([separator]
    (fn [value]
-     (transform-like value (Iter/iter-interpose separator value))))
+     (transform-like value (std.native.Iter/iter-interpose separator value))))
   ([separator value]
-   (transform-like value (Iter/iter-interpose separator value))))
+   (transform-like value (std.native.Iter/iter-interpose separator value))))
 
 (defn ^{:schema [:fn [:any & :any] :any]}
   interleave
@@ -947,7 +953,7 @@
    source controls result mode."
   [value & values]
   (transform-like value
-                  (apply Iter/iter-interleave (concat [value] values))))
+                  (apply std.native.Iter/iter-interleave (concat [value] values))))
 
 (defn ^{:schema [:function [:fn [:fn] :fn]
                             [:fn [:fn :any & :any] :any]]}
@@ -956,12 +962,12 @@
    sources. The first source controls result mode."
   ([function]
    (fn [value]
-     (transform-like value (Iter/iter-map function value))))
+     (transform-like value (std.native.Iter/iter-map function value))))
   ([function value & rest]
    (let [sources (concat [value] rest)
-         tuples (apply Iter/iter-zip sources)]
+         tuples (apply std.native.Iter/iter-zip sources)]
      (transform-like value
-                     (Iter/iter-map
+                     (std.native.Iter/iter-map
                       (fn [arguments] (apply function arguments))
                       tuples)))))
 
@@ -971,9 +977,9 @@
   "Returns a source-sensitive transform, or keeps matching items."
   ([predicate]
    (fn [value]
-     (transform-like value (Iter/iter-filter predicate value))))
+     (transform-like value (std.native.Iter/iter-filter predicate value))))
   ([predicate value]
-   (transform-like value (Iter/iter-filter predicate value))))
+   (transform-like value (std.native.Iter/iter-filter predicate value))))
 
 (defn ^{:schema [:function [:fn [:num] :fn]
                             [:fn [:num :any] :any]]}
@@ -981,8 +987,8 @@
   "Returns a source-sensitive transform, or the first amount items."
   ([amount]
    (fn [value]
-     (transform-like value (Iter/iter-take amount value))))
-  ([amount value] (transform-like value (Iter/iter-take amount value))))
+     (transform-like value (std.native.Iter/iter-take amount value))))
+  ([amount value] (transform-like value (std.native.Iter/iter-take amount value))))
 
 (defn ^{:schema [:function [:fn [:num] :fn]
                             [:fn [:num :any] :any]]}
@@ -990,8 +996,8 @@
   "Returns a source-sensitive transform, or all but the first amount items."
   ([amount]
    (fn [value]
-     (transform-like value (Iter/iter-drop amount value))))
-  ([amount value] (transform-like value (Iter/iter-drop amount value))))
+     (transform-like value (std.native.Iter/iter-drop amount value))))
+  ([amount value] (transform-like value (std.native.Iter/iter-drop amount value))))
 
 (defn ^{:inline true
         :schema [:function [:fn [:str :int] :str]
@@ -999,9 +1005,9 @@
   subs
   "Returns the string slice from start (inclusive) to optional end (exclusive)."
   ([value start]
-   (String/slice value start))
+   (std.native.String/slice value start))
   ([value start end]
-   (String/slice value start end)))
+   (std.native.String/slice value start end)))
 
 (defn ^{:schema [:function [:fn [:vector :int] :vector]
                             [:fn [:vector :int :int] :vector]]}
@@ -1023,9 +1029,9 @@
   "Returns a source-sensitive transform, or maps and concatenates."
   ([function]
    (fn [value]
-     (transform-like value (Iter/iter-mapcat function value))))
+     (transform-like value (std.native.Iter/iter-mapcat function value))))
   ([function value]
-   (transform-like value (Iter/iter-mapcat function value))))
+   (transform-like value (std.native.Iter/iter-mapcat function value))))
 
 (defn ^{:schema [:function [:fn [:fn] :fn]
                             [:fn [:fn :any] :any]]}
@@ -1033,14 +1039,14 @@
   "Returns a source-sensitive transform, or keeps non-nil mapped results."
   ([function]
    (fn [value]
-     (transform-like value (Iter/iter-keep function value))))
+     (transform-like value (std.native.Iter/iter-keep function value))))
   ([function value]
-   (transform-like value (Iter/iter-keep function value))))
+   (transform-like value (std.native.Iter/iter-keep function value))))
 
 (defn ^{:schema [:fn [:any] :any]}
   cycle
   "Returns a lazy seq repeating the items of value forever."
-  [value] (seq (Iter/iter-cycle value)))
+  [value] (seq (std.native.Iter/iter-cycle value)))
 
 (defn ^{:schema [:fn [:any & :any] :any]}
   zip
@@ -1048,26 +1054,26 @@
    The first source controls result mode."
   [value & values]
   (transform-like value
-                  (apply Iter/iter-zip (concat [value] values))))
+                  (apply std.native.Iter/iter-zip (concat [value] values))))
 
 (defn ^{:schema [:fn [:any] :any]}
   partition-pair
   "Returns value partitioned into pairs using its source result mode."
-  [value] (transform-like value (Iter/iter-partition-pair value)))
+  [value] (transform-like value (std.native.Iter/iter-partition-pair value)))
 
 (defn ^{:schema [:function [:fn [:fn] :fn]
                             [:fn [:fn :any] :bool]]}
   every?
   "Unary form returns a reusable terminal; collection form tests every item."
-  ([predicate] (partial Iter/iter-every? predicate))
-  ([predicate value] (Iter/iter-every? predicate value)))
+  ([predicate] (partial std.native.Iter/iter-every? predicate))
+  ([predicate value] (std.native.Iter/iter-every? predicate value)))
 
 (defn ^{:schema [:function [:fn [:fn] :fn]
                             [:fn [:fn :any] :bool]]}
   any?
   "Unary form returns a reusable terminal; collection form tests any item."
-  ([predicate] (partial Iter/iter-any? predicate))
-  ([predicate value] (Iter/iter-any? predicate value)))
+  ([predicate] (partial std.native.Iter/iter-any? predicate))
+  ([predicate value] (std.native.Iter/iter-any? predicate value)))
 
 (defn ^{:schema [:fn [:fn :any] :any]}
   some
@@ -1101,175 +1107,175 @@
   long
   "Converts a numeric value to a signed 64-bit integer by truncating toward zero."
   [value]
-  (Num/long value))
+  (std.native.Num/long value))
 
 (defn ^{:inline true :schema [:fn [:num] :float]}
   double
   "Converts a numeric value to an IEEE-754 double."
   [value]
-  (Num/double value))
+  (std.native.Num/double value))
 
 (defn ^{:inline true :schema [:fn [:str] [:maybe :int]]}
   parse-long
   "Parses a signed 64-bit integer string, returning nil when invalid."
   [value]
-  (Num/parse-long value))
+  (std.native.Num/parse-long value))
 
 (defn ^{:inline true :schema [:fn [:str] [:maybe :float]]}
   parse-double
   "Parses an IEEE-754 double string, returning nil when invalid."
   [value]
-  (Num/parse-double value))
+  (std.native.Num/parse-double value))
 
 (defn ^{:inline true :schema [:fn [& :any] :any]}
   bit-and
   "Returns the bitwise conjunction of values through the portable Bits boundary."
   [& values]
-  (apply Bits/and values))
+  (apply std.native.Bits/and values))
 
 (defn ^{:inline true :schema [:fn [& :any] :any]}
   bit-or
   "Returns the bitwise disjunction of values through the portable Bits boundary."
   [& values]
-  (apply Bits/or values))
+  (apply std.native.Bits/or values))
 
 (defn ^{:inline true :schema [:fn [& :any] :any]}
   bit-xor
   "Returns the bitwise exclusive-or of values through the portable Bits boundary."
   [& values]
-  (apply Bits/xor values))
+  (apply std.native.Bits/xor values))
 
 (defn ^{:inline true :schema [:fn [:any] :any]}
   bit-not
   "Returns the bitwise complement of value through the portable Bits boundary."
   [value]
-  (Bits/not value))
+  (std.native.Bits/not value))
 
 (defn ^{:inline true :schema [:fn [& :any] :any]}
   bit-shift-left
   "Left-shifts the first value by the remaining shift counts."
   [& values]
-  (apply Bits/shift-left values))
+  (apply std.native.Bits/shift-left values))
 
 (defn ^{:inline true :schema [:fn [& :any] :any]}
   bit-shift-right
   "Right-shifts the first value by the remaining shift counts."
   [& values]
-  (apply Bits/shift-right values))
+  (apply std.native.Bits/shift-right values))
 
 (defn ^{:inline true :schema [:fn [:num] :num]}
   abs
   "Returns the absolute magnitude of value."
   [value]
-  (Maths/abs value))
+  (std.native.Maths/abs value))
 
 (defn ^{:inline true :schema [:fn [:num] :num]}
   acos
   "Returns the arc cosine of value in radians."
   [value]
-  (Maths/acos value))
+  (std.native.Maths/acos value))
 
 (defn ^{:inline true :schema [:fn [:num] :num]}
   acosh
   "Returns the inverse hyperbolic cosine of value."
   [value]
-  (Maths/acosh value))
+  (std.native.Maths/acosh value))
 
 (defn ^{:inline true :schema [:fn [:num] :num]}
   asin
   "Returns the arc sine of value in radians."
   [value]
-  (Maths/asin value))
+  (std.native.Maths/asin value))
 
 (defn ^{:inline true :schema [:fn [:num] :num]}
   asinh
   "Returns the inverse hyperbolic sine of value."
   [value]
-  (Maths/asinh value))
+  (std.native.Maths/asinh value))
 
 (defn ^{:inline true :schema [:fn [:num] :num]}
   atan
   "Returns the arc tangent of value in radians."
   [value]
-  (Maths/atan value))
+  (std.native.Maths/atan value))
 
 (defn ^{:inline true :schema [:fn [:num :num] :num]}
   atan2
   "Returns the angle for y and x in radians."
   [y x]
-  (Maths/atan2 y x))
+  (std.native.Maths/atan2 y x))
 
 (defn ^{:inline true :schema [:fn [:num] :num]}
   atanh
   "Returns the inverse hyperbolic tangent of value."
   [value]
-  (Maths/atanh value))
+  (std.native.Maths/atanh value))
 
 (defn ^{:inline true :schema [:fn [:num] :num]}
   ceil
   "Rounds value upward to the nearest integral number."
   [value]
-  (Maths/ceil value))
+  (std.native.Maths/ceil value))
 
 (defn ^{:inline true :schema [:fn [:num] :num]}
   cos
   "Returns the cosine of value in radians."
   [value]
-  (Maths/cos value))
+  (std.native.Maths/cos value))
 
 (defn ^{:inline true :schema [:fn [:num] :num]}
   cosh
   "Returns the hyperbolic cosine of value."
   [value]
-  (Maths/cosh value))
+  (std.native.Maths/cosh value))
 
 (defn ^{:inline true :schema [:fn [:num] :num]}
   exp
   "Returns Euler's number raised to value."
   [value]
-  (Maths/exp value))
+  (std.native.Maths/exp value))
 
 (defn ^{:inline true :schema [:fn [:num] :num]}
   floor
   "Rounds value downward to the nearest integral number."
   [value]
-  (Maths/floor value))
+  (std.native.Maths/floor value))
 
 (defn ^{:inline true :schema [:fn [:num :num] :num]}
   pow
   "Returns value raised to exponent."
   [value exponent]
-  (Maths/pow value exponent))
+  (std.native.Maths/pow value exponent))
 
 (defn ^{:inline true :schema [:fn [:num] :num]}
   sin
   "Returns the sine of value in radians."
   [value]
-  (Maths/sin value))
+  (std.native.Maths/sin value))
 
 (defn ^{:inline true :schema [:fn [:num] :num]}
   sinh
   "Returns the hyperbolic sine of value."
   [value]
-  (Maths/sinh value))
+  (std.native.Maths/sinh value))
 
 (defn ^{:inline true :schema [:fn [:num] :num]}
   sqrt
   "Returns the non-negative square root of value."
   [value]
-  (Maths/sqrt value))
+  (std.native.Maths/sqrt value))
 
 (defn ^{:inline true :schema [:fn [:num] :num]}
   tan
   "Returns the tangent of value in radians."
   [value]
-  (Maths/tan value))
+  (std.native.Maths/tan value))
 
 (defn ^{:inline true :schema [:fn [:num] :num]}
   tanh
   "Returns the hyperbolic tangent of value."
   [value]
-  (Maths/tanh value))
+  (std.native.Maths/tanh value))
 
 ;; ---------------------------------------------------------------------------
 ;; Sorting and selection
@@ -1456,7 +1462,7 @@
   filterv
   "Returns a vector of the items for which predicate returns true."
   [predicate values]
-  (vec (Iter/iter-filter predicate values)))
+  (vec (std.native.Iter/iter-filter predicate values)))
 
 (defn ^{:schema [:fn [:fn :any] :vector]}
   map-indexed
@@ -2365,8 +2371,8 @@
   [name expression]
   (let [qualified (symbol (str (:ns &env)) (str name))]
     (list 'if
-          (list 'Runtime/resolve (list 'quote qualified))
-          (list 'Runtime/resolve (list 'quote qualified))
+          (list 'std.native.Runtime/resolve (list 'quote qualified))
+          (list 'std.native.Runtime/resolve (list 'quote qualified))
           (list 'eval (list 'quote (list 'def name expression))))))
 
 (defmacro ->
@@ -2405,15 +2411,15 @@
   apply-in
   "Invokes value in runtime after IApplicable input and output transforms."
   [value runtime args]
-  (let [input (IApplicable/transform-in value runtime args)
-        result (IApplicable/apply-in value runtime input)]
-    (IApplicable/transform-out value runtime args result)))
+  (let [input (std.protocol.iapplicable.IApplicable/transform-in value runtime args)
+        result (std.protocol.iapplicable.IApplicable/apply-in value runtime input)]
+    (std.protocol.iapplicable.IApplicable/transform-out value runtime args result)))
 
 (defn ^{:schema [:fn [:any :any] :any]}
   apply-as
   "Invokes value using its default IApplicable runtime."
   [value args]
-  (apply-in value (IApplicable/apply-default value) args))
+  (apply-in value (std.protocol.iapplicable.IApplicable/apply-default value) args))
 
 (defn ^{:schema [:fn [:any & :any] :any]}
   invoke-as
@@ -2556,7 +2562,7 @@
 (defmacro with-out-string
   "Captures text written by p and println while evaluating body."
   [& body]
-  (list 'Printer/capture
+  (list 'std.native.Printer/capture
         (apply list 'fn [] body)))
 
 (defmacro with-close
@@ -2573,7 +2579,7 @@
                   (list 'finally
                         (list 'if
                               resource
-                              (list 'IClose/close resource)
+                              (list 'std.protocol.iclose.IClose/close resource)
                               nil)))))))
 
 ;; ---------------------------------------------------------------------------
@@ -2681,11 +2687,11 @@
          expected# ~expected]
      (try
        (let [actual# ~actual]
-         (Test/result name# actual# expected# (Test/compare actual# expected#)))
+         (std.native.Test/result name# actual# expected# (std.native.Test/compare actual# expected#)))
        (catch Throwable error#
-         (Test/result
+         (std.native.Test/result
           name# nil expected#
-          (Result/create
+          (std.native.Result/create
            :error error#
            {:test {:actual nil :expected expected#}
             :failures []}))))))
@@ -2697,10 +2703,10 @@
 
 (defn ^{:schema [:fn [:any :any] :any]}
   dep-get
-  "Returns one dependency entry from a map graph or IDeps context."
+  "Returns one dependency entry from a map graph or std.protocol.ideps.IDeps context."
   [context id]
-  (if (satisfies? IDeps context)
-    (IDeps/dep-get context id)
+  (if (satisfies? std.protocol.ideps.IDeps context)
+    (std.protocol.ideps.IDeps/dep-get context id)
     (let [value (get context id)]
       (if (and (map? value) (has? value :entry))
         (:entry value)
@@ -2710,8 +2716,8 @@
   dep-entries
   "Returns one entry's dependencies as a set."
   [context id]
-  (if (satisfies? IDeps context)
-    (set (IDeps/dep-entries context id))
+  (if (satisfies? std.protocol.ideps.IDeps context)
+    (set (std.protocol.ideps.IDeps/dep-entries context id))
     (let [value (get context id)
           dependencies (if (and (map? value) (has? value :deps))
                          (:deps value)
@@ -2720,10 +2726,10 @@
 
 (defn ^{:schema [:fn [:any] :vector]}
   dep-keys
-  "Lists dependency identifiers from a map graph or IDeps context."
+  "Lists dependency identifiers from a map graph or std.protocol.ideps.IDeps context."
   [context]
-  (if (satisfies? IDeps context)
-    (vec (IDeps/dep-keys context))
+  (if (satisfies? std.protocol.ideps.IDeps context)
+    (vec (std.protocol.ideps.IDeps/dep-keys context))
     (vec (keys context))))
 
 (defn ^{:schema [:fn [:any :any] :map]}

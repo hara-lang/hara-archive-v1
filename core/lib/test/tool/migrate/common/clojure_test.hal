@@ -1,0 +1,46 @@
+(ns tool.migrate.common.clojure-test
+  (:use code.test)
+  (:require [tool.migrate.common.clojure :as clj]))
+
+(def source
+  "(ns demo.core
+     (:require [clojure.string :as string]
+               [clojure.tools.reader :as reader]
+               [demo.local :as local]))
+   (defn run [value]
+     (string/join \",\" (reader/read-string value) (local/value value))))")
+
+^{:refer tool.migrate.common.clojure/dependency-occurrences}
+(fact "dependency occurrences preserve source order and parser evidence"
+  (let [occurrences (clj/dependency-occurrences source)]
+    [(mapv :dependency/name occurrences)
+     (select-keys (:dependency/evidence (first occurrences))
+                  [:tag :source])
+     (vector? (:path (:dependency/evidence (first occurrences))))])
+  => [["clojure.string" "clojure.tools.reader" "demo.local"]
+      {:tag :vector :source "[clojure.string :as string]"}
+      true])
+
+^{:refer tool.migrate.common.clojure/dependencies}
+(fact "dependencies remain unique and sorted for compatibility"
+  (clj/dependencies
+   "(ns demo.core (:require [zeta.core] [clojure.string] [zeta.core]))")
+  => ["clojure.string" "zeta.core"])
+
+^{:refer tool.migrate.common.clojure/namespace-aliases}
+(fact "namespace aliases resolve to their declared dependency namespaces"
+  (clj/namespace-aliases source)
+  => {"local" "demo.local" "reader" "clojure.tools.reader"
+      "string" "clojure.string"})
+
+^{:refer tool.migrate.common.clojure/dependency-symbol-references}
+(fact "qualified references resolve aliases and exclude local namespaces"
+  (clj/dependency-symbol-references
+   source
+   ["clojure.string" "clojure.tools.reader" "demo.local"])
+  => [{:source/symbol "string/join"
+       :resolved/symbol "clojure.string/join"}
+      {:source/symbol "reader/read-string"
+       :resolved/symbol "clojure.tools.reader/read-string"}])
+
+(pr-str (run {:namespace "tool.migrate.common.clojure-test"}))

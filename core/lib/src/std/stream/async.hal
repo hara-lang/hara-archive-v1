@@ -10,28 +10,28 @@
   ([buffer] (channel/create buffer)))
 
 (defn take [source]
-  (IStream/next source))
+  (std.protocol.istream.IStream/next source))
 
 (defn put [target value]
-  (IStreamWrite/write target value))
+  (std.protocol.istreamwrite.IStreamWrite/write target value))
 
 (defn offer [target value]
-  (IStreamOffer/offer target value))
+  (std.protocol.istreamoffer.IStreamOffer/offer target value))
 
 (defn poll [target]
-  (IStreamPoll/poll target))
+  (std.protocol.istreampoll.IStreamPoll/poll target))
 
 (defn closed? [target]
-  (IClosed/closed? target))
+  (std.protocol.iclosed.IClosed/closed? target))
 
 (defn flush [target]
-  (IFlush/flush target))
+  (std.protocol.iflush.IFlush/flush target))
 
 (defn close [target]
-  (IClose/close target))
+  (std.protocol.iclose.IClose/close target))
 
 (defn abort [target error]
-  (IAbort/abort target error))
+  (std.protocol.iabort.IAbort/abort target error))
 
 (defn go [function]
   (promise/run
@@ -46,20 +46,20 @@
   (if (write-operation? operation)
     (let [target (nth operation 0)
           value (nth operation 1)]
-      (if (not (and (satisfies? IStreamOffer target)
-                    (satisfies? IClosed target)))
+      (if (not (and (satisfies? std.protocol.istreamoffer.IStreamOffer target)
+                    (satisfies? std.protocol.iclosed.IClosed target)))
         (throw (ex :io {:error/type :stream.async/invalid-alternative
                          :operation operation} :ex/message "Write alternatives require offer and closed capabilities")))
-      (if (IStreamOffer/offer target value)
+      (if (std.protocol.istreamoffer.IStreamOffer/offer target value)
         {:ready true :result [true target]}
-        (if (IClosed/closed? target)
+        (if (std.protocol.iclosed.IClosed/closed? target)
           {:ready true :result [false target]}
           nil)))
     (do
-      (if (not (satisfies? IStreamPoll operation))
+      (if (not (satisfies? std.protocol.istreampoll.IStreamPoll operation))
         (throw (ex :io {:error/type :stream.async/invalid-alternative
                          :operation operation} :ex/message "Read alternatives require a poll capability")))
-      (let [result (IStreamPoll/poll operation)]
+      (let [result (std.protocol.istreampoll.IStreamPoll/poll operation)]
         (if result
           {:ready true :result [(:value result) operation]}
           nil)))))

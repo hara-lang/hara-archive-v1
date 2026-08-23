@@ -6,11 +6,15 @@ on:
     paths:
       - 'core/lib/src/code/framework/**'
       - 'core/lib/src/code/manage/**'
-      - 'core/lib/src/code/migrate/**'
+      - 'core/lib/src/tool/migrate/**'
+      - 'core/lib/src/work/verify/conformance.hal'
       - 'core/lib/test/code/framework*'
       - 'core/lib/test/code/manage*'
-      - 'core/lib/test/code/migrate*'
-      - 'core/spec/code-migrate/**'
+      - 'core/lib/test/tool/migrate_test.hal'
+      - 'core/lib/test/tool/migrate_navigation_test.hal'
+      - 'core/lib/test/tool/migrate/**'
+      - 'core/lib/test/work/verify/**'
+      - 'core/spec/tool-migrate/**'
       - 'core/rust/standard-library.namespaces'
       - 'scripts/runtime/foundation_target_snapshot*'
       - 'scripts/runtime/sync-rust-hal-src'
@@ -20,11 +24,15 @@ on:
     paths:
       - 'core/lib/src/code/framework/**'
       - 'core/lib/src/code/manage/**'
-      - 'core/lib/src/code/migrate/**'
+      - 'core/lib/src/tool/migrate/**'
+      - 'core/lib/src/work/verify/conformance.hal'
       - 'core/lib/test/code/framework*'
       - 'core/lib/test/code/manage*'
-      - 'core/lib/test/code/migrate*'
-      - 'core/spec/code-migrate/**'
+      - 'core/lib/test/tool/migrate_test.hal'
+      - 'core/lib/test/tool/migrate_navigation_test.hal'
+      - 'core/lib/test/tool/migrate/**'
+      - 'core/lib/test/work/verify/**'
+      - 'core/spec/tool-migrate/**'
       - 'core/rust/standard-library.namespaces'
       - 'scripts/runtime/foundation_target_snapshot*'
       - 'scripts/runtime/sync-rust-hal-src'
@@ -54,13 +62,13 @@ jobs:
           git --git-dir=.foundation.git remote add origin \
             https://github.com/zcaudate-xyz/foundation-base.git
           git --git-dir=.foundation.git fetch --depth=1 origin \
-            baa75aabd6a879753d7d5cb07271b1448271e7cb
+            f55f39855d5e9ea1b22f1d116df684c584323f80
           test "$(git --git-dir=.foundation.git rev-parse \
-            'baa75aabd6a879753d7d5cb07271b1448271e7cb^{commit}')" = \
-            baa75aabd6a879753d7d5cb07271b1448271e7cb
+            'f55f39855d5e9ea1b22f1d116df684c584323f80^{commit}')" = \
+            f55f39855d5e9ea1b22f1d116df684c584323f80
           test "$(git --git-dir=.foundation.git rev-parse \
-            'baa75aabd6a879753d7d5cb07271b1448271e7cb^{tree}')" = \
-            26d494f60c4970df56eba8ac40f92affeee4e159
+            'f55f39855d5e9ea1b22f1d116df684c584323f80^{tree}')" = \
+            3beb10f32e7d57139910ee9c9de1370e966ca935
           git --git-dir=.foundation.git show-ref \
             > target-foundation-before.refs || true
           git --git-dir=.foundation.git count-objects -v \
@@ -79,16 +87,12 @@ jobs:
             echo 'Retired translator surface remains.' >&2
             exit 1
           fi
-          (
-            cd core/spec/code-migrate
-            sha256sum --check foundation-baa75a.sha256
-          )
-          test "$(grep -o ':foundation/revision \"[0-9a-f]*\"' \
-            core/spec/code-migrate/foundation-baa75a.edn | head -1)" = \
-            ':foundation/revision "baa75aabd6a879753d7d5cb07271b1448271e7cb"'
-          test "$(grep -o ':foundation/tree \"[0-9a-f]*\"' \
-            core/spec/code-migrate/foundation-baa75a.edn | head -1)" = \
-            ':foundation/tree "26d494f60c4970df56eba8ac40f92affeee4e159"'
+          grep -q \
+            'f55f39855d5e9ea1b22f1d116df684c584323f80' \
+            core/lib/src/tool/migrate/policy/foundation/profile.hal
+          grep -q \
+            '3beb10f32e7d57139910ee9c9de1370e966ca935' \
+            core/lib/src/tool/migrate/policy/foundation/profile.hal
           test ! -e foundation-base/.git/index
           test ! -d .foundation-reference
 
@@ -132,16 +136,15 @@ jobs:
       - name: Run focused framework, manage, and migrate tests
         run: |
           ./scripts/runtime/run-lib-tests \
-            core/lib/test/code/framework_source_test.hal \
             core/lib/test/code/framework_test.hal \
-            core/lib/test/code/manage_transform_test.hal \
             core/lib/test/code/manage_cli_test.hal \
-            core/lib/test/code/migrate_git_test.hal \
-            core/lib/test/code/migrate_corpus_test.hal \
-            core/lib/test/code/migrate_rules_test.hal \
-            core/lib/test/code/migrate_clojure_test.hal \
-            core/lib/test/code/migrate_project_test.hal \
-            core/lib/test/code/migrate_navigation_test.hal
+            core/lib/test/tool/migrate_test.hal \
+            core/lib/test/tool/migrate_navigation_test.hal \
+            core/lib/test/tool/migrate/common/clojure_test.hal \
+            core/lib/test/tool/migrate/common/corpus_test.hal \
+            core/lib/test/tool/migrate/policy/foundation/conformance_test.hal \
+            core/lib/test/tool/migrate/policy/foundation/profile_test.hal \
+            core/lib/test/work/verify/conformance_test.hal
 
       - name: Run complete Hara library harness
         run: ./scripts/runtime/run-lib-tests

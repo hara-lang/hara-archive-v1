@@ -815,6 +815,7 @@ fn deref_binding_value(name: &str, value: Value) -> Value {
     match value {
         Value::Var(var)
             if name.starts_with("std.native.")
+                || name.starts_with("std.protocol.")
                 || var.symbol().get_name() == Symbol::parse(name).get_name() =>
         {
             var.deref_value()
@@ -915,7 +916,7 @@ pub(crate) fn call_value(callable: Value, arguments: Vec<Value>) -> Result<Value
             let mut protocol_arguments = Vec::with_capacity(arguments.len() + 1);
             protocol_arguments.push(value);
             protocol_arguments.extend(arguments);
-            protocol_call("std.protocol.ifn/IFn", "invoke", &protocol_arguments)
+            protocol_call("std.protocol.ifn.IFn", "invoke", &protocol_arguments)
         }
         Value::Pointer(pointer) => pointer_context_call(
             &pointer,

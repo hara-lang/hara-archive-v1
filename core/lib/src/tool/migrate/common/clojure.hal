@@ -166,16 +166,79 @@
     dependency-entry-name
     (rest (nav/code-children clause)))))
 
+(defn dependency-occurrences
+  "Returns dependency entries in source order, retaining parser evidence."
+  [input]
+  (vec
+   (mapcat
+    (fn [clause]
+      (keep
+       (fn [entry]
+         (let [name (dependency-entry-name (nav/current entry))]
+           (if name
+             {:dependency/name name
+              :dependency/evidence (nav/evidence entry)}
+             nil)))
+       (rest (nav/code-child-locations clause))))
+    (filter dependency-clause?
+            (nav/namespace-clause-locations (nav/block-input input))))))
+
 (defn dependencies
   [input]
   (unique-sorted
-   (reduce
-    (fn [output clause]
-      (if (dependency-clause? clause)
-        (into output (clause-dependencies clause))
-        output))
-    []
-    (nav/namespace-clauses input))))
+   (map :dependency/name
+        (dependency-occurrences input))))
+
+(defn namespace-aliases
+  [input]
+  (reduce
+   (fn [output clause]
+     (reduce
+      (fn [output entry]
+        (let [values (vec (nav/code-children entry))]
+          (if (and (vector? values)
+                   (<= 3 (count values))
+                   (= ":as" (block/string (nth values 1))))
+            (assoc output
+                   (block/string (nth values 2))
+                   (block/string (first values)))
+            output)))
+      output
+      (rest (nav/code-children clause))))
+   {}
+   (filter dependency-clause?
+           (nav/namespace-clauses (nav/block-input input)))))
+
+(defn dependency-symbol-references
+  "Collects qualified tokens and resolves namespace aliases deterministically."
+  [input dependencies]
+  (let [aliases (namespace-aliases input)
+        dependency-index
+        (reduce (fn [output dependency]
+                  (assoc output dependency true))
+                {}
+                dependencies)]
+    (vec
+     (sort-by
+      (fn [reference]
+        [(:resolved/symbol reference) (:source/symbol reference)])
+      (keep
+       (fn [location]
+         (let [value (nav/current location)]
+           (if (block/token? value)
+             (let [text (block/string value)
+                   separator (or (str/index-of text "/") -1)]
+               (if (< 0 separator)
+                 (let [alias (str/slice text 0 separator)
+                       name (str/slice text (inc separator) (count text))
+                       namespace (or (get aliases alias) alias)]
+                   (if (has? dependency-index namespace)
+                     {:source/symbol text
+                      :resolved/symbol (str namespace "/" name)}
+                     nil))
+                 nil))
+             nil)))
+       (nav/walk-locations (nav/block-input input)))))))
 
 (def +non-binding-definitions+
   #{"defmethod" "defimpl" "defimpl.xt"})

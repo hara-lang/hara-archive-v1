@@ -10,24 +10,24 @@
                              source
                              (fn [value] (promise/from [:sent value]))
                              (fn [] (swap! closed inc)))]
-             (let [received (deref (IStream/next connection))
-                   sent (deref (IStreamWrite/write connection :value))]
-               (IClose/close connection)
-               (IClose/close connection)
+             (let [received (deref (std.protocol.istream.IStream/next connection))
+                   sent (deref (std.protocol.istreamwrite.IStreamWrite/write connection :value))]
+               (std.protocol.iclose.IClose/close connection)
+               (std.protocol.iclose.IClose/close connection)
                [(duplex/duplex? connection)
-                (satisfies? IStream connection)
-                (satisfies? IStreamWrite connection)
-                received sent (deref closed) (IClosed/closed? connection)])))
+                (satisfies? std.protocol.istream.IStream connection)
+                (satisfies? std.protocol.istreamwrite.IStreamWrite connection)
+                received sent (deref closed) (std.protocol.iclosed.IClosed/closed? connection)])))
    :expected [true true true :received [:sent :value] 1 true]}
   {:name "adapts processes without a native Duplex value"
    :test (fn []
            (let [process (Process/spawn
                           ["sh" "-c" "read line; printf reply:$line"])
                  connection (duplex/from-process process)]
-             (deref (IStreamWrite/write connection (str/encode-utf8 "hello\n")))
+             (deref (std.protocol.istreamwrite.IStreamWrite/write connection (str/encode-utf8 "hello\n")))
              (Process/close-input process)
-             (let [reply (str/decode-utf8 (deref (IStream/next connection)))
+             (let [reply (str/decode-utf8 (deref (std.protocol.istream.IStream/next connection)))
                    status (deref (Process/wait process))]
-               (IClose/close connection)
+               (std.protocol.iclose.IClose/close connection)
                [reply status])))
    :expected ["reply:hello" 0]}])

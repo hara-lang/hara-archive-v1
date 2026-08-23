@@ -230,7 +230,7 @@ pub fn resume_protocol_form(
                     Ok(mut arguments) => {
                         arguments.insert(0, receiver);
                         k(crate::core::protocol_call(
-                            "std.protocol.icoroutine/ICoroutine",
+                            "std.protocol.icoroutine.ICoroutine",
                             "resume",
                             &arguments,
                         ))
