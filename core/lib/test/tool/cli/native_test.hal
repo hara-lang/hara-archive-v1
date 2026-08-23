@@ -1,0 +1,10 @@
+(ns tool.cli.native-test
+  (:require [tool.cli.native :as native]
+            ))
+
+[
+^{:refer tool.cli.native/package-check}
+(test-check "package checks validate a project through Hara project data"
+            (native/package-check ".")
+            {:identity "hara.lang"
+             :version "0.1.0"})]
