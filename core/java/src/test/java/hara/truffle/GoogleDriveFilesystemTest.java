@@ -183,6 +183,31 @@ public class GoogleDriveFilesystemTest {
         assertEquals("conflict", error.code());
         assertEquals("revision-mismatch", error.providerCode());
       }
+      try {
+        join(
+            filesystem.move(
+                IFilesystem.CallContext.create(),
+                "/README.md",
+                "/README.md",
+                new IFilesystem.MoveOptions(false, false, false),
+                new IFilesystem.MutationContext("stale", null)));
+        fail("expected same-path revision conflict");
+      } catch (FilesystemException error) {
+        assertEquals("conflict", error.code());
+        assertEquals("revision-mismatch", error.providerCode());
+      }
+      try {
+        join(
+            filesystem.mkdir(
+                IFilesystem.CallContext.create(),
+                "/data",
+                new IFilesystem.MkdirOptions(false, true),
+                new IFilesystem.MutationContext("stale", null)));
+        fail("expected mkdir revision conflict");
+      } catch (FilesystemException error) {
+        assertEquals("conflict", error.code());
+        assertEquals("revision-mismatch", error.providerCode());
+      }
       join(filesystem.close(IFilesystem.CallContext.create()));
     }
   }

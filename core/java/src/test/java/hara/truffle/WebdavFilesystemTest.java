@@ -65,6 +65,19 @@ public class WebdavFilesystemTest {
       IFilesystem.Entry stat = join(filesystem.stat(IFilesystem.CallContext.create(), "/README.md"));
       assertEquals("README.md", stat.name());
       assertEquals(IFilesystem.EntryType.FILE, stat.type());
+      try {
+        join(
+            filesystem.move(
+                IFilesystem.CallContext.create(),
+                "/README.md",
+                "/README.md",
+                new IFilesystem.MoveOptions(false, false, false),
+                new IFilesystem.MutationContext("stale", null)));
+        fail("expected same-path revision conflict");
+      } catch (FilesystemException error) {
+        assertEquals("conflict", error.code());
+        assertEquals("revision-mismatch", error.providerCode());
+      }
 
       IFilesystem.Mutation created =
           join(
