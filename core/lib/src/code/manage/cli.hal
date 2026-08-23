@@ -292,4 +292,4 @@
    (fn [request context] (execute request))))
 
 (defn handler [request]
-  (work/run +command-work+ request))
+  (work/run work/default-host +command-work+ request))

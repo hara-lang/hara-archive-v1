@@ -249,7 +249,15 @@ impl ProtocolRegistry {
             return Err(format!("missing protocol method: {protocol}/{method}"));
         }
         if let Some(Value::Extension(receiver)) = arguments.first() {
-            return self.invoke_extension(receiver, protocol, method, arguments);
+            let extension_method = self.extension_methods.borrow().contains_key(&(
+                receiver.provider.clone(),
+                receiver.type_name.clone(),
+                protocol.to_owned(),
+                method.to_owned(),
+            ));
+            if extension_method {
+                return self.invoke_extension(receiver, protocol, method, arguments);
+            }
         }
         let named_type = match arguments.first() {
             Some(Value::Struct(receiver)) => Some(receiver.ty.name.as_str()),

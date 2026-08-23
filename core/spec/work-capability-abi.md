@@ -45,8 +45,8 @@ IWorkRun
 IWorkHost
 ```
 
-No `IWorkRuntime` or `IWorkMachine` protocol is defined. Runtime configuration
-is ordinary Hara data. Runtime-produced Work under `:bind` does not add another
+No separate runtime or machine protocol is defined. Runtime configuration is
+ordinary Hara data. Runtime-produced Work under `:bind` does not add another
 protocol.
 
 ## IWorkExecutor
@@ -110,9 +110,9 @@ item identity, user Work context, deadline, retry policy, and executor/store
 authority. Runtime production cannot be used to escape or replace those
 capabilities.
 
-Legacy executor provider maps are temporarily wrapped behind an adapter. The
-adapter receives only the leaf Work description carried by the canonical
-request; it never receives the enclosing structural Work tree.
+Legacy executor provider maps are rejected. Concrete executors must implement
+`IWorkExecutor` and receive only the canonical leaf request; they never receive
+the enclosing structural Work tree.
 
 `IWorkExecutor` does not extend `IComponent`. A concrete process pool, remote
 worker, or sandbox executor may separately implement lifecycle protocols.

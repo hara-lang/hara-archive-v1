@@ -69,18 +69,20 @@ impl Runtime {
         let source_digest = crate::compiled_product::sha256_hex(source.as_bytes());
         let compiler_id = format!("hara-runtime/{}", env!("CARGO_PKG_VERSION"));
         let options = format!("target=HBC0;namespace={}", self.current_namespace());
-        let key = crate::compiled_product::ProductCacheKey::new(
+        let program = self.compile_bytecode(source)?;
+        let bytes = vm::encode_program(program.as_ref())?;
+        let module_digest = crate::compiled_product::sha256_hex(&bytes);
+        let key = crate::compiled_product::ProductCacheKey::with_module_digests(
             crate::compiled_product::CompiledProductKind::HbcModule,
             source_digest.clone(),
             compiler_id.clone(),
             "hbc0",
             options.as_bytes(),
+            vec![module_digest],
         );
         if let Some(product) = self.product_cache.borrow().get(&key).cloned() {
             return Ok(product);
         }
-        let program = self.compile_bytecode(source)?;
-        let bytes = vm::encode_program(program.as_ref())?;
         let product = crate::compiled_product::CompiledProduct::new(
             crate::compiled_product::CompiledProductKind::HbcModule,
             source_digest,
@@ -103,17 +105,19 @@ impl Runtime {
         let compiler_id = format!("hara-runtime/{}", env!("CARGO_PKG_VERSION"));
         let options = format!("target=HNW0;namespace={}", self.current_namespace());
         let abi_version = format!("hnw0/{}", crate::whole_wasm::HNW_ABI_VERSION);
-        let key = crate::compiled_product::ProductCacheKey::new(
+        let hbc_product = self.compile_bytecode_product(source)?;
+        let module_digest = hbc_product.manifest.artifact_digest.clone();
+        let key = crate::compiled_product::ProductCacheKey::with_module_digests(
             crate::compiled_product::CompiledProductKind::WholeWasm,
             source_digest.clone(),
             compiler_id.clone(),
             abi_version.clone(),
             options.as_bytes(),
+            vec![module_digest],
         );
         if let Some(product) = self.product_cache.borrow().get(&key).cloned() {
             return Ok(product);
         }
-        let hbc_product = self.compile_bytecode_product(source)?;
         let hbc = hbc_product.bytes;
         let bytes = crate::whole_wasm::compile_artifact_from_hbc(&hbc)?;
         let product = crate::compiled_product::CompiledProduct::new(

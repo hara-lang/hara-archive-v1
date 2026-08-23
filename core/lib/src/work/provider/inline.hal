@@ -1,7 +1,7 @@
 (ns work.provider.inline
   (:require [work.provider.profile :as profile]))
 
-(defstruct InlineExecutor [descriptor targets legacy])
+(defstruct InlineExecutor [descriptor targets])
 
 (defn local-target
   [function]
@@ -74,5 +74,4 @@
      {:provider/role :work/executor
       :provider/id :inline
       :provider/capabilities #{:synchronous :sequential :cleanup}})
-    (or targets {})
-    false)))
+    (or targets {}))))

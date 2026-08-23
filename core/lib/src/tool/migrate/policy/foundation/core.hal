@@ -1491,7 +1491,7 @@
 
 (defn plan
   [input]
-  (work/run migration input))
+  (work/run work/default-host migration input))
 
 (defn planned-edits
   [plan]

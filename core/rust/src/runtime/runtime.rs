@@ -2,7 +2,7 @@
 const EMBEDDED_FOUNDATION_BYTECODE: &[u8] =
     include_bytes!(concat!(env!("HARA_SOURCE_ROOT"), "/assets/std.foundation.hbx"));
 
-#[wasm_bindgen]
+#[cfg_attr(not(feature = "raw-wasm"), wasm_bindgen)]
 impl Runtime {
     fn empty() -> Runtime {
         let namespace_registry = core::minimal_namespace_registry();
@@ -49,7 +49,7 @@ impl Runtime {
             )]),
             #[cfg(feature = "evaluation-journal")]
             next_journal_id: 1,
-            #[cfg(target_arch = "wasm32")]
+            #[cfg(all(target_arch = "wasm32", not(feature = "raw-wasm")))]
             host_handler: None,
             #[cfg(not(target_arch = "wasm32"))]
             native_host_handler: None,
@@ -60,7 +60,7 @@ impl Runtime {
         }
     }
 
-    #[wasm_bindgen(constructor)]
+    #[cfg_attr(not(feature = "raw-wasm"), wasm_bindgen(constructor))]
     pub fn new() -> Runtime {
         let mut runtime = Runtime::empty();
         runtime
@@ -509,7 +509,7 @@ impl Runtime {
                                     core::with_namespace_registry(&self.namespace_registry, || {
                                         core::with_namespace_source(namespace_source, || {
                                             core::with_protocols(&self.protocols, || {
-                                                #[cfg(target_arch = "wasm32")]
+                                                #[cfg(all(target_arch = "wasm32", not(feature = "raw-wasm")))]
                                                 if let Some(handler) = &self.host_handler {
                                                     let handler = handler.clone();
                                                     return core::with_host_calls(
@@ -549,7 +549,7 @@ impl Runtime {
                                     core::with_namespace_source(namespace_source, || {
                                         core::with_protocols(&self.protocols, || -> Result<(Result<core::Value, String>, core::EvalFiber), String> {
                                     let mut fiber = self.evaluator.start_fiber(form)?;
-                                    #[cfg(target_arch = "wasm32")]
+                                    #[cfg(all(target_arch = "wasm32", not(feature = "raw-wasm")))]
                                     if let Some(handler) = &self.host_handler {
                                         let handler = handler.clone();
                                         let result = core::with_host_calls(
@@ -776,7 +776,7 @@ impl Runtime {
     }
 
     /// Installs the JS host handler that backs `std.native.Host/call`.
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(all(target_arch = "wasm32", not(feature = "raw-wasm")))]
     pub fn install_host_handler(&mut self, handler: js_sys::Function) {
         self.host_handler = Some(handler);
     }
@@ -950,7 +950,7 @@ impl Runtime {
 
     /// Registers exact package ownership from project.lock.edn without
     /// downloading or loading any namespace.
-    #[wasm_bindgen(js_name = registerPackageLock)]
+    #[cfg_attr(not(feature = "raw-wasm"), wasm_bindgen(js_name = registerPackageLock))]
     pub fn register_package_lock(&mut self, source: &str) -> Result<(), JsValue> {
         let packages = package_catalog::catalog_from_lock(source)
             .map_err(|error| JsValue::from_str(&error))?;
@@ -1165,7 +1165,7 @@ impl Runtime {
     }
 
     #[cfg(target_arch = "wasm32")]
-    #[wasm_bindgen(js_name = installDirectWasmImport)]
+    #[cfg_attr(not(feature = "raw-wasm"), wasm_bindgen(js_name = installDirectWasmImport))]
     pub fn install_direct_wasm_import_js(
         &mut self,
         logical: &str,
@@ -1175,8 +1175,26 @@ impl Runtime {
             .map_err(|error| JsValue::from_str(&error))
     }
 
+    #[cfg(target_arch = "wasm32")]
+    #[wasm_bindgen(js_name = installMemoryWasmBinding)]
+    pub fn install_memory_wasm_binding_js(
+        &mut self,
+        manifest_source: &str,
+        interface_source: &str,
+        bindings_source: &str,
+        bytes: &[u8],
+    ) -> Result<(), JsValue> {
+        self.install_memory_wasm_binding_browser(
+            manifest_source,
+            interface_source,
+            bindings_source,
+            bytes,
+        )
+        .map_err(|error| JsValue::from_str(&error))
+    }
+
     #[cfg(feature = "bytecode-vm")]
-    #[wasm_bindgen(js_name = compileBytecodeArtifact)]
+    #[cfg_attr(not(feature = "raw-wasm"), wasm_bindgen(js_name = compileBytecodeArtifact))]
     pub fn compile_bytecode_artifact_js(&self, source: &str) -> Result<Vec<u8>, JsValue> {
         self.compile_bytecode_product(source)
             .map(|product| product.bytes)
@@ -1187,7 +1205,7 @@ impl Runtime {
     /// `source`. Hosts can cache the bytes and manifest without guessing the
     /// target or ABI from a filename.
     #[cfg(feature = "bytecode-vm")]
-    #[wasm_bindgen(js_name = compileBytecodeManifest)]
+    #[cfg_attr(not(feature = "raw-wasm"), wasm_bindgen(js_name = compileBytecodeManifest))]
     pub fn compile_bytecode_manifest_js(&self, source: &str) -> Result<String, JsValue> {
         let product = self
             .compile_bytecode_product(source)
@@ -1199,7 +1217,7 @@ impl Runtime {
     /// Compiles source into an HNW0 artifact whose generated module can be
     /// instantiated by either Wasmtime or a browser WebAssembly engine.
     #[cfg(feature = "whole-wasm")]
-    #[wasm_bindgen(js_name = compileWholeWasmArtifact)]
+    #[cfg_attr(not(feature = "raw-wasm"), wasm_bindgen(js_name = compileWholeWasmArtifact))]
     pub fn compile_whole_wasm_artifact_js(&self, source: &str) -> Result<Vec<u8>, JsValue> {
         self.compile_whole_wasm_product(source)
             .map(|product| product.bytes)
@@ -1207,7 +1225,7 @@ impl Runtime {
     }
 
     #[cfg(feature = "whole-wasm")]
-    #[wasm_bindgen(js_name = compileWholeWasmManifest)]
+    #[cfg_attr(not(feature = "raw-wasm"), wasm_bindgen(js_name = compileWholeWasmManifest))]
     pub fn compile_whole_wasm_manifest_js(&self, source: &str) -> Result<String, JsValue> {
         let product = self
             .compile_whole_wasm_product(source)
@@ -1217,7 +1235,7 @@ impl Runtime {
     }
 
     #[cfg(feature = "bytecode-vm")]
-    #[wasm_bindgen(js_name = evalBytecodeArtifact)]
+    #[cfg_attr(not(feature = "raw-wasm"), wasm_bindgen(js_name = evalBytecodeArtifact))]
     pub fn eval_bytecode_artifact_js(&mut self, bytes: &[u8]) -> Result<String, JsValue> {
         self.eval_bytecode_artifact(bytes)
             .map_err(|error| JsValue::from_str(&error))

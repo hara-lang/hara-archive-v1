@@ -66,7 +66,9 @@ public final class HaraNativeTestRunner {
             "Unable to load test file: " + file + " (" + error.getMessage() + ")", error);
       }
       Matcher namespace = TEST_NAMESPACE.matcher(source);
-      if (namespace.find() && namespace.group(1).matches("[A-Za-z0-9_.-]+")) {
+      if (namespace.find()
+          && namespace.group(1).matches("[A-Za-z0-9_.-]+")
+          && !value.hasArrayElements()) {
         try {
           value = context.eval(HaraLanguage.ID, testRunSource(namespace.group(1)));
         } catch (RuntimeException error) {
@@ -79,8 +81,7 @@ public final class HaraNativeTestRunner {
               error);
         }
       }
-      String transfer = value.isString() ? value.asString() : value.toString();
-      return parseResult(file, transfer);
+      return parseResult(file, value);
     }
   }
 
@@ -135,6 +136,27 @@ public final class HaraNativeTestRunner {
 
   @SuppressWarnings({"rawtypes", "unchecked"})
   static Result parseResult(Path path, Value value) {
+    if (value.hasArrayElements()) {
+      int passed = 0;
+      int failed = 0;
+      for (long index = 0; index < value.getArraySize(); index++) {
+        String item = value.getArrayElement(index).toString();
+        if (item.startsWith("#hara/Result[:success true")) passed++;
+        else if (item.startsWith("#hara/Result[:success false")
+            || item.startsWith("#hara/Result[:error")) failed++;
+        else throw new HaraException("direct test result must be a native Result");
+      }
+      return new Result(
+          path,
+          failed == 0,
+          passed + failed,
+          passed + failed,
+          passed,
+          failed,
+          0,
+          0,
+          value.toString());
+    }
     return parseResult(path, value.isString() ? value.asString() : value.toString());
   }
 

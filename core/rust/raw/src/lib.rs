@@ -111,6 +111,11 @@ const SUBSTRATE_RESOURCES: &[(&str, &str)] = &[
     ),
 ];
 
+const SANDBOX_FORBIDDEN_NATIVE_TYPES: &[&str] = &[
+    "Runtime", "Kernel", "Sandbox", "Package", "Crypto", "OS", "Process", "File", "Socket", "Host",
+];
+const MAX_SANDBOX_SOURCE_BYTES: usize = 1_048_576;
+
 #[no_mangle]
 pub extern "C" fn version() -> i32 {
     1
@@ -170,6 +175,7 @@ struct Session {
     evaluation_queue: VecDeque<EvaluationRequest>,
     resources: Rc<RefCell<HashMap<String, String>>>,
     mount_id: Option<u64>,
+    allow_host_calls: bool,
     #[cfg(feature = "evaluation-journal")]
     next_journal_id: u64,
 }
@@ -214,6 +220,35 @@ impl Session {
                 .collect(),
         ));
         Self::shared("ROOT", resources, Rc::new(RefCell::new(VecDeque::new())))
+    }
+
+    fn sandbox(name: &str, events: Rc<RefCell<VecDeque<Vec<u8>>>>) -> Self {
+        let resources = Rc::new(RefCell::new(
+            FOUNDATION_RESOURCES
+                .iter()
+                .map(|(name, source)| ((*name).into(), (*source).into()))
+                .collect(),
+        ));
+        let mut session = Self::shared(name, resources, events);
+        for native_type in SANDBOX_FORBIDDEN_NATIVE_TYPES {
+            let qualified = format!("std.native.{native_type}");
+            session.namespaces.remove(&qualified);
+            for owner in ["user", "std.foundation", "std.native"] {
+                if let Some(owner) = session.namespaces.find(owner) {
+                    owner.unalias(native_type);
+                    owner.unmap(&lang::data::Symbol::parse(native_type));
+                    owner.unmap(&lang::data::Symbol::parse(&qualified));
+                }
+            }
+            session.env.retain(|binding, _| {
+                binding != native_type
+                    && binding != &qualified
+                    && !binding.starts_with(&format!("{native_type}/"))
+                    && !binding.starts_with(&format!("{qualified}/"))
+            });
+        }
+        session.allow_host_calls = false;
+        session
     }
 
     fn shared(
@@ -328,6 +363,7 @@ impl Session {
             evaluation_queue: VecDeque::new(),
             resources,
             mount_id: None,
+            allow_host_calls: true,
             #[cfg(feature = "evaluation-journal")]
             next_journal_id: 1,
         }
@@ -432,7 +468,11 @@ impl Session {
         let queue = pending.clone();
         let next = Rc::new(RefCell::new(self.next_call));
         let ids = next.clone();
+        let allow_host_calls = self.allow_host_calls;
         let handler = Rc::new(move |service: String, method: String, args: Vec<Value>| {
+            if !allow_host_calls {
+                return Err("hta/host-call-denied: sandbox has no host calls".into());
+            }
             let call = *ids.borrow();
             *ids.borrow_mut() += 1;
             let promise = Promise::new();
@@ -1160,6 +1200,7 @@ struct SessionKernel {
     events: Rc<RefCell<VecDeque<Vec<u8>>>>,
     sessions: HashMap<String, Session>,
     task_sessions: HashMap<u64, String>,
+    sandbox_sessions: HashSet<String>,
     mounts: HashMap<u64, FilesystemMount>,
     next_mount_id: u64,
 }
@@ -1184,6 +1225,7 @@ impl SessionKernel {
             events,
             sessions,
             task_sessions: HashMap::new(),
+            sandbox_sessions: HashSet::new(),
             mounts: HashMap::new(),
             next_mount_id: 1,
         }
@@ -1337,7 +1379,24 @@ impl SessionKernel {
                 mount.attachments = mount.attachments.saturating_sub(1);
             }
         }
+        self.sandbox_sessions.remove(name);
         Ok(())
+    }
+
+    fn cleanup_task(&mut self, task: u64) {
+        let Some(session) = self.task_sessions.remove(&task) else {
+            return;
+        };
+        if !self.sandbox_sessions.remove(&session) {
+            return;
+        }
+        if let Some(runtime) = self.sessions.remove(&session) {
+            if let Some(mount_id) = runtime.mount_id {
+                if let Some(mount) = self.mounts.get_mut(&mount_id) {
+                    mount.attachments = mount.attachments.saturating_sub(1);
+                }
+            }
+        }
     }
 
     fn drain_ready(&mut self) {
@@ -1407,6 +1466,21 @@ fn enqueue_event(events: &Rc<RefCell<VecDeque<Vec<u8>>>>, value: Value) {
         }
     }
 }
+
+fn terminal_task(bytes: &[u8]) -> Option<u64> {
+    match hta::decode(bytes) {
+        Ok(Value::Vector(values)) if values.len() >= 2 => match (&values[0], &values[1]) {
+            (Value::Number(kind), Value::Number(task))
+                if (*kind == 0 || *kind == 1) && *task > 0 =>
+            {
+                Some(*task as u64)
+            }
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
 fn request(bytes: &[u8]) -> Result<(String, Vec<Value>), String> {
     match hta::decode(bytes)? {
         Value::Vector(values) if values.len() == 2 => {
@@ -1476,6 +1550,11 @@ fn dispatch(
         },
         "eval-bound" => dispatch_eval(kernel, task, "ROOT", &args, true),
         "complete" => dispatch_complete(kernel, task, "ROOT", &args),
+        "sandbox/eval" => match args.as_slice() {
+            [Value::String(source)] => dispatch_sandbox_eval(kernel, task, source),
+            _ => Err("hta sandbox/eval expects one source string".into()),
+        },
+        "sandbox/call" | "sandbox/check" => Err(format!("hta/capability-unsupported: {target}")),
         "session/eval" => match args.as_slice() {
             [Value::String(session), Value::String(source)] => {
                 dispatch_eval_values(kernel, task, session, source, None)
@@ -1734,6 +1813,34 @@ fn dispatch(
         },
         _ => Err(format!("hta/target-unknown: {target}")),
     }
+}
+
+fn dispatch_sandbox_eval(
+    kernel: &mut SessionKernel,
+    task: u64,
+    source: &str,
+) -> Result<(), String> {
+    if source.is_empty() {
+        return Err("sandbox/eval requires non-empty source".into());
+    }
+    if source.len() > MAX_SANDBOX_SOURCE_BYTES {
+        return Err(format!(
+            "sandbox/source-limit: source exceeds {MAX_SANDBOX_SOURCE_BYTES} bytes"
+        ));
+    }
+    let name = format!("__hta_sandbox_{task}");
+    if kernel.sessions.contains_key(&name) {
+        return Err(format!("sandbox/task-exists: {task}"));
+    }
+    kernel
+        .sessions
+        .insert(name.clone(), Session::sandbox(&name, kernel.events.clone()));
+    kernel.sandbox_sessions.insert(name.clone());
+    kernel.task_sessions.insert(task, name.clone());
+    kernel
+        .session_mut(&name)?
+        .enqueue_source(task, source, Vec::new());
+    Ok(())
 }
 
 #[cfg(feature = "evaluation-journal")]
@@ -2049,13 +2156,13 @@ pub extern "C" fn hta_next_event() -> i64 {
     KERNEL.with(|cell| {
         let mut kernel = cell.borrow_mut();
         kernel.drain_ready();
-        let output_value = kernel
-            .events
-            .borrow_mut()
-            .pop_front()
-            .map(output)
-            .unwrap_or(0);
-        output_value
+        let Some(bytes) = kernel.events.borrow_mut().pop_front() else {
+            return 0;
+        };
+        if let Some(task) = terminal_task(&bytes) {
+            kernel.cleanup_task(task);
+        }
+        output(bytes)
     })
 }
 #[no_mangle]
@@ -2158,6 +2265,7 @@ pub extern "C" fn hta_drop_task(task: i64) -> i32 {
         let mut kernel = kernel.borrow_mut();
         let task = task as u64;
         if let Some(session) = kernel.task_sessions.remove(&task) {
+            let sandbox = kernel.sandbox_sessions.remove(&session);
             if let Some(runtime) = kernel.sessions.get_mut(&session) {
                 if let Some(mut fiber) = runtime.fibers.remove(&task) {
                     fiber.cancel();
@@ -2172,6 +2280,9 @@ pub extern "C" fn hta_drop_task(task: i64) -> i32 {
                     .evaluation_queue
                     .retain(|request| request.task() != task);
                 runtime.finish_evaluation(task);
+            }
+            if sandbox {
+                kernel.sessions.remove(&session);
             }
         }
         0
@@ -2271,7 +2382,10 @@ pub extern "C" fn eval_error_code(source_ptr: *const u8, source_len: usize) -> i
 
 #[cfg(test)]
 mod tests {
-    use super::{dispatch, emit_settlement, eval_error_code, evaluate, Session, SessionKernel};
+    use super::{
+        dispatch, emit_settlement, eval_error_code, evaluate, terminal_task, Session,
+        SessionKernel, MAX_SANDBOX_SOURCE_BYTES,
+    };
     use hara_runtime::core::{PromiseRejection, PromiseState, Value};
     use hara_runtime::lang::data::Symbol;
     use hara_runtime::lang::protocol::IDeref;
@@ -3169,6 +3283,119 @@ mod tests {
         assert_eq!(
             completion_value(&mut runtime, 2),
             Value::String("hara".into())
+        );
+    }
+
+    #[test]
+    fn restricted_sandbox_fences_native_surfaces_and_host_calls() {
+        let events = Rc::new(RefCell::new(VecDeque::new()));
+        let mut runtime = Session::sandbox("sandbox", events);
+        for native_type in super::SANDBOX_FORBIDDEN_NATIVE_TYPES {
+            let qualified = format!("std.native.{native_type}");
+            assert!(runtime.namespaces.find(&qualified).is_none(), "{qualified}");
+            assert!(!runtime.env.contains_key(*native_type), "{native_type}");
+            assert!(!runtime.env.contains_key(&qualified), "{qualified}");
+            assert!(
+                runtime
+                    .namespaces
+                    .find("user")
+                    .unwrap()
+                    .resolve(&Symbol::parse(native_type))
+                    .is_none(),
+                "{native_type}"
+            );
+            let (_, methods) = hara_runtime::core::NATIVE_TYPES
+                .iter()
+                .find(|(name, _)| *name == *native_type)
+                .unwrap();
+            for method in *methods {
+                for symbol in [
+                    format!("{native_type}/{method}"),
+                    format!("{qualified}/{method}"),
+                ] {
+                    assert!(
+                        runtime
+                            .namespaces
+                            .find("user")
+                            .unwrap()
+                            .resolve(&Symbol::parse(&symbol))
+                            .is_none(),
+                        "{symbol}"
+                    );
+                }
+            }
+        }
+        assert!(runtime.namespaces.find("std.native.String").is_some());
+        runtime
+            .start_fiber(
+                1,
+                "(try (Host/call \"service\" \"method\" []) (catch error :unreachable))",
+            )
+            .unwrap();
+        assert!(matches!(
+            completion_value(&mut runtime, 1),
+            Value::Keyword(value) if value.as_str() == "unreachable"
+        ));
+        runtime.start_fiber(2, "(+ 40 2)").unwrap();
+        assert_eq!(completion_value(&mut runtime, 2), Value::Number(42));
+    }
+
+    #[test]
+    fn sandbox_eval_uses_one_private_session_per_task_and_cleans_it_up() {
+        let mut kernel = SessionKernel::new();
+        for (task, expected) in [(1_u64, 42_i64), (2, 7)] {
+            dispatch(
+                &mut kernel,
+                task,
+                "sandbox/eval",
+                vec![Value::String(if task == 1 {
+                    "(+ 40 2)".into()
+                } else {
+                    "(+ 3 4)".into()
+                })],
+            )
+            .unwrap();
+            let session = kernel.task_sessions.get(&task).cloned().unwrap();
+            assert!(session.starts_with("__hta_sandbox_"));
+            assert!(kernel.sandbox_sessions.contains(&session));
+            let bytes = kernel.events.borrow_mut().pop_front().unwrap();
+            let value = hara_runtime::hta::decode(&bytes).unwrap();
+            let Value::Vector(values) = value else {
+                panic!("expected sandbox result event");
+            };
+            assert_eq!(
+                values.iter().cloned().collect::<Vec<_>>(),
+                vec![
+                    Value::Number(0),
+                    Value::Number(task as i64),
+                    Value::Number(expected)
+                ]
+            );
+            assert!(terminal_task(&bytes).is_some());
+            kernel.cleanup_task(task);
+            assert!(!kernel.task_sessions.contains_key(&task));
+            assert!(!kernel.sessions.contains_key(&session));
+            assert!(!kernel.sandbox_sessions.contains(&session));
+        }
+        assert_eq!(
+            dispatch(
+                &mut kernel,
+                3,
+                "sandbox/call",
+                vec![Value::String("not-source".into())]
+            )
+            .unwrap_err(),
+            "hta/capability-unsupported: sandbox/call"
+        );
+        assert_eq!(
+            dispatch(
+                &mut kernel,
+                4,
+                "sandbox/eval",
+                vec![Value::String("x".repeat(MAX_SANDBOX_SOURCE_BYTES + 1))]
+            )
+            .unwrap_err(),
+            "sandbox/source-limit: source exceeds 1048576 bytes"
         );
     }
 }

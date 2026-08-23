@@ -1,5 +1,5 @@
 use super::*;
-use crate::lang::data::{List as PList, OrderedMap, OrderedSet};
+use crate::lang::data::{List as PList, OrderedSet};
 
 #[path = "fiber/coroutine.rs"]
 pub(crate) mod coroutine;
@@ -32,6 +32,7 @@ const SYNC_SPECIAL_FORMS: &[&str] = &[
     "field",
     "fn",
     "fn*",
+    "hash",
     "if",
     "intern-var",
     "let",
@@ -166,6 +167,7 @@ pub(crate) const CORE_SPECIAL_FORMS: &[&str] = &[
     "fn*",
     "get",
     "get-in",
+    "hash",
     "identity",
     "if",
     "inc",
@@ -588,11 +590,11 @@ fn one(form: Form, env: Rc<RefCell<HashMap<String, Value>>>, k: Cont) -> Step {
                 env,
                 Box::new(move |r| {
                     k(r.map(|v| {
-                        Value::OrderedMap(Box::new(
+                        Value::Map(
                             v.chunks_exact(2)
                                 .map(|p| (p[0].clone(), p[1].clone()))
-                                .collect::<OrderedMap<Value, Value>>(),
-                        ))
+                                .collect::<PMap<Value, Value>>(),
+                        )
                     }))
                 }),
             )
@@ -1400,6 +1402,11 @@ fn call(f: Rc<Function>, args: Vec<Value>, k: Cont) -> Step {
         return k(crate::core::call_function(&f, args));
     }
     if f.variadic.is_none() && f.params.len() != args.len() {
+        if f.namespace.as_deref() == Some("std.foundation")
+            && f.name.as_deref() == Some("type")
+        {
+            return k(Err("type expects one value".into()));
+        }
         return k(Err(format!(
             "function expects {} arguments",
             f.params.len()

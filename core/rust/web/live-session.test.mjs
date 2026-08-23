@@ -9,6 +9,7 @@ import {
   LiveSessionRuntime,
   createBytecodeLiveBackend,
   createInterpreterLiveBackend,
+  createWholeWasmLiveBackend,
 } from "./host/live-session.js";
 
 let nextRequestId = 0;
@@ -250,6 +251,52 @@ test("browser serialization uses the native live-session schemas and statuses", 
     assert.equal(returned.state.status, "returned");
     assert.equal(returned.state.sequence, 4);
   }
+});
+
+test("whole-Wasm live sessions use async instantiation and exact capabilities", async () => {
+  let instantiations = 0;
+  const backend = createWholeWasmLiveBackend({
+    Host: class WholeWasmHost {},
+    async instantiate(artifact, Host) {
+      instantiations += 1;
+      assert.ok(artifact instanceof Uint8Array);
+      assert.equal(typeof Host, "function");
+      await Promise.resolve();
+      return { call: () => 42n };
+    },
+  });
+  const runtime = new LiveSessionRuntime({ backends: [backend] });
+  const sessionId = "lesson/whole-wasm";
+  const revision = "sha256:artifact";
+  const started = await runtime.dispatchAsync({
+    protocol: LIVE_SESSION_PROTOCOL,
+    "request-id": "whole-wasm/start",
+    "session-id": sessionId,
+    op: "start",
+    payload: {
+      "source-id": "lesson.hnw",
+      revision,
+      artifact: Uint8Array.from([72, 78, 87, 48]),
+      backend: "whole-wasm",
+    },
+  });
+
+  assert.equal(instantiations, 1);
+  assert.equal(started.state.backend, "whole-wasm");
+  assert.deepEqual(started.payload.capabilities.operations, ["run", "call", "dispose"]);
+  assert.deepEqual(started.payload.capabilities["replacement-policies"], []);
+
+  const result = await runtime.dispatchAsync({
+    protocol: LIVE_SESSION_PROTOCOL,
+    "request-id": "whole-wasm/run",
+    "session-id": sessionId,
+    generation: 0,
+    revision,
+    op: "run",
+  });
+  assert.equal(result.state.status, "returned");
+  assert.equal(result.state.sequence, 1);
+  assert.equal(result.payload.result, 42n);
 });
 
 test("generation and revision fences reject stale commands before mutation", () => {
