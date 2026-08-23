@@ -13,7 +13,16 @@ fn ensure_namespace(
     name: &str,
     reload: bool,
 ) -> Result<(), String> {
-    match registry.load_state(name) {
+    // Resource replacement currently re-marks a namespace as `Unloaded`.
+    // Preserve the sticky-failure contract by treating an accompanying
+    // failure detail as `Failed` until an explicit reload succeeds.
+    let load_state = match registry.load_state(name) {
+        Some(NamespaceLoadState::Unloaded) if registry.load_failure(name).is_some() => {
+            Some(NamespaceLoadState::Failed)
+        }
+        state => state,
+    };
+    match load_state {
         Some(NamespaceLoadState::Loaded) if !reload => return Ok(()),
         Some(NamespaceLoadState::Loading) => {
             return Err(format!("Cyclic namespace require: {name}"));
@@ -34,7 +43,20 @@ fn ensure_namespace(
     }
 
     let requiring = registry.current().name().as_str().to_owned();
-    let previous_state = registry.load_state(name);
+    // A host resource replacement can mark a materialized namespace as
+    // `Unloaded` so the next require considers the new source.  The old
+    // namespace is still the rollback baseline, however, and a failed reload
+    // must restore it as `Loaded` rather than making the prior generation
+    // appear failed.
+    let previous_state = match load_state {
+        Some(NamespaceLoadState::Unloaded) if registry.find(name).is_some() => {
+            Some(NamespaceLoadState::Loaded)
+        }
+        Some(state) => Some(state),
+        None => registry
+            .find(name)
+            .map(|_| NamespaceLoadState::Loaded),
+    };
     let registry_before = registry.transaction_snapshot([requiring.as_str(), name]);
     // Qualified and aliased bindings are a derived namespace view. Snapshot
     // only unqualified bindings (including lexical locals), then rebuild the
@@ -119,7 +141,14 @@ fn ensure_namespace(
         *env = environment_before;
         registry.restore_transaction(registry_before);
         refresh_namespace_environment(registry, env);
-        if previous_state != Some(NamespaceLoadState::Loaded) {
+        if previous_state == Some(NamespaceLoadState::Loaded) {
+            // A failed reload must restore the complete previously loaded
+            // boundary, including its observable load state and failure
+            // marker.  The transaction snapshot restores namespace values,
+            // but load state is maintained separately.
+            registry.set_load_state(name, NamespaceLoadState::Loaded);
+            registry.clear_load_failure(name);
+        } else {
             registry.set_load_state(name, NamespaceLoadState::Failed);
             registry.set_load_failure(name, error.clone());
         }
