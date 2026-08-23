@@ -186,7 +186,7 @@ fn host_call_bridge(
     })
 }
 
-#[wasm_bindgen]
+#[cfg_attr(not(feature = "raw-wasm"), wasm_bindgen)]
 pub fn target_profile() -> String {
     if cfg!(target_os = "wasi") {
         "wasi".into()
@@ -197,7 +197,7 @@ pub fn target_profile() -> String {
     }
 }
 
-#[wasm_bindgen]
+#[cfg_attr(not(feature = "raw-wasm"), wasm_bindgen)]
 pub fn version() -> String {
     "hara-wasm/0.1 core-language slice".to_string()
 }
