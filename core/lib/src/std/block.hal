@@ -6,6 +6,7 @@
             [std.block.type :as type]
             [std.block.value :as block-value]
             [std.block.layout :as layout]
+            [std.block.heal :as block-heal]
             [std.lib.zip :as zip]))
 
 (def block? base/block?)
@@ -56,6 +57,7 @@
 (def parse-root parse/parse-root)
 (def parse-first parse/parse-first)
 (def parse-source parse/parse-source)
+(def heal block-heal/heal)
 
 (def void? type/void-block?)
 (def code? type/code-block?)

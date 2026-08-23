@@ -140,6 +140,9 @@
                  :row 1 :col 1 :end-row 1 :end-col 10}
                 2
                 [:tool.lint/reader-error :tool.lint/reader-error]])
+   (test-check "root facade exports portable healing"
+               (block/heal "(+ 1 2")
+               "(+ 1 2)")
    (test-check "parser indexes CRLF source positions in one pass"
                (let [source "a\r\n[b\nc]"
                      parsed (block/parse-string source)

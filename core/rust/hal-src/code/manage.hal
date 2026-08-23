@@ -414,7 +414,7 @@
   [operation input]
   (let [task-value (command-task operation)
         batch
-        (work/run task-value input)
+        (work/run work/default-host task-value input)
         records (batch-records batch)
         values
         (vec
@@ -481,4 +481,4 @@
   [operation input]
   (if (= operation :incomplete-report)
     (incomplete-report (:units input))
-    (work/run (command-task operation) input)))
+    (work/run work/default-host (command-task operation) input)))
