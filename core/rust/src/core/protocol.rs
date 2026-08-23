@@ -1926,7 +1926,8 @@ impl Value {
         )
     }
     fn supports_native_iassoc(value: &Self) -> bool {
-        Self::supports_native_map(value) || matches!(value, Self::Vector(_))
+        Self::supports_native_map(value)
+            || matches!(value, Self::Vector(_) | Self::MutableCollection(_))
     }
     fn supports_native_idissoc(value: &Self) -> bool {
         Self::supports_native_iassoc(value)
