@@ -71,6 +71,14 @@ test("validates the one-operation closed request", () => {
   const request = validateBrowserSandboxRequest({ operation: "sandbox.eval", source: "(+ 40 2)" });
   assert.equal(request.source, "(+ 40 2)");
   assert.equal(request.limits.wallMs, 5000);
+  assert.equal(
+    validateBrowserSandboxRequest({
+      operation: "sandbox.eval",
+      source: "1",
+      limits: { sourceBytes: 128 },
+    }).limits.sourceBytes,
+    128,
+  );
   assert.throws(
     () => validateBrowserSandboxRequest({ operation: "sandbox.call", source: "(+ 40 2)" }),
     { code: "sandbox/capability-unsupported" },
@@ -111,6 +119,15 @@ test("rejects ambiguous runtime configuration and source overflow", () => {
         limits: { wallMs: 30_001 },
       }),
     { code: "sandbox/limit-invalid" },
+  );
+  assert.throws(
+    () =>
+      validateBrowserSandboxRequest({
+        operation: "sandbox.eval",
+        source: "12",
+        limits: { sourceBytes: 1 },
+      }),
+    { code: "sandbox/source-limit" },
   );
 });
 
