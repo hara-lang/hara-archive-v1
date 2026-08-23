@@ -1,4 +1,8 @@
 pub(crate) fn direct_callable_spec(name: &str) -> Option<&'static DirectCallableSpec> {
+    let canonical_name = name
+        .strip_prefix("std.foundation.coroutine/")
+        .map(|member| format!("Coroutine/{member}"));
+    let name = canonical_name.as_deref().unwrap_or(name);
     DIRECT_CALLABLE_CATALOG
         .iter()
         .find(|specification| specification.symbol == name)

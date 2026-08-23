@@ -218,27 +218,45 @@
     :else (throw (ex :argument {:input input} :ex/message "Invalid resource input"))))
 
 (defn resource-call-fn [function]
-  (fn
-    ([type arguments]
-     (let [alias (get (deref *resource-aliases*) type)]
-       (let [type (if alias (first alias) type)
-             variant (if alias (second alias) :default)
-             mode (resource-mode type variant)
-             key (resource-key mode type variant arguments arguments)]
-         (apply function mode type variant key arguments))))
-    ([type input arguments]
-     (let [normalized (resource-input input)
-           variant (first normalized)
-           input (second normalized)
-           mode (resource-mode type variant)
-           key (resource-key mode type variant input arguments)]
-       (apply function mode type variant key arguments)))
-    ([type variant input arguments]
-     (let [mode (resource-mode type variant)
-           key (resource-key mode type variant input arguments)]
-       (apply function mode type variant key arguments)))
-    ([mode type variant key arguments]
-     (apply function mode type variant key arguments))))
+  (fn [& call-arguments]
+    (let [arity (count call-arguments)]
+      (cond
+        (= arity 2)
+        (let [type (nth call-arguments 0)
+              arguments (nth call-arguments 1)
+              alias (get (deref *resource-aliases*) type)
+              type (if alias (first alias) type)
+              variant (if alias (second alias) :default)
+              mode (resource-mode type variant)
+              key (resource-key mode type variant arguments arguments)]
+          (apply function mode type variant key arguments))
+
+        (= arity 3)
+        (let [type (nth call-arguments 0)
+              input (nth call-arguments 1)
+              arguments (nth call-arguments 2)
+              normalized (resource-input input)
+              variant (first normalized)
+              input (second normalized)
+              mode (resource-mode type variant)
+              key (resource-key mode type variant input arguments)]
+          (apply function mode type variant key arguments))
+
+        (= arity 4)
+        (let [type (nth call-arguments 0)
+              variant (nth call-arguments 1)
+              input (nth call-arguments 2)
+              arguments (nth call-arguments 3)
+              mode (resource-mode type variant)
+              key (resource-key mode type variant input arguments)]
+          (apply function mode type variant key arguments))
+
+        (= arity 5)
+        (apply function call-arguments)
+
+        :else
+        (throw (ex :argument {:arguments call-arguments}
+                   :ex/message "Invalid resource call arity"))))))
 
 (defn resource-api-fn [function extra post default]
   (let [call-function (resource-call-fn function)]

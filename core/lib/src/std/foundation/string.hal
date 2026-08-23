@@ -5,7 +5,7 @@
 ;; identifier case conversion, indexed edits, and escaping remain portable HAL.
 ;; ==========================================================================
 (ns std.foundation.string
-  (:config {:override [repeat reverse]
+  (:config {:override [repeat reverse insert-at]
             :global-alias str}))
 
 (defn string-like?

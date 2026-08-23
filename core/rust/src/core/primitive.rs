@@ -486,12 +486,7 @@ pub(crate) fn apply_binary_numbers(
     left: i64,
     right: i64,
 ) -> Result<Value, String> {
-    let value = apply_binary_numbers_promoting(primitive, left, right)?;
-    if matches!(value, Value::BigInteger(_)) {
-        Err("integer overflow".into())
-    } else {
-        Ok(value)
-    }
+    apply_binary_numbers_promoting(primitive, left, right)
 }
 
 fn apply_binary_numbers_promoting(

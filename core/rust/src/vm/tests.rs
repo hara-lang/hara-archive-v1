@@ -698,7 +698,7 @@ fn disassembler_renders_try_table() {
     let expected = "\
 == program: 1 constants, 1 functions, entry 0 ==
 == fn 0 <anonymous> (arity=0, captures=0, locals=1, max_stack=1) ==
-0000  Constant 0  ; 41
+0000  Constant 0  ; #error[\"failed\" 41]
 0001  Throw
 0002  LoadLocal 0
 0003  Return

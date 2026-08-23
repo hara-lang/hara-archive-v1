@@ -10,6 +10,13 @@ const LIBRARIES: &[(&str, &str, &str)] = &[
     ("pretty", "std.foundation.pretty", "pretty"),
 ];
 
+pub(crate) fn intrinsic_alias(library: &str) -> Option<&'static str> {
+    LIBRARIES
+        .iter()
+        .find(|(name, _, _)| *name == library)
+        .map(|(_, _, alias)| *alias)
+}
+
 #[path = "generated/rewrite.rs"]
 mod rewrite;
 
@@ -60,6 +67,7 @@ pub struct GeneratedNamespaceConfig {
     required_namespaces: Vec<String>,
     used_namespaces: Vec<String>,
     used_exclusions: HashMap<String, HashSet<String>>,
+    excluded_intrinsics: HashSet<String>,
     excluded_foundation: HashSet<String>,
     exposed_foundation: Option<HashSet<String>>,
     native_flavor: Option<String>,
@@ -85,6 +93,7 @@ impl GeneratedNamespaceConfig {
             required_namespaces: Vec::new(),
             used_namespaces: Vec::new(),
             used_exclusions: HashMap::new(),
+            excluded_intrinsics: HashSet::new(),
             excluded_foundation: HashSet::new(),
             exposed_foundation: None,
             native_flavor: None,
@@ -180,6 +189,7 @@ impl GeneratedNamespaceConfig {
         }
 
         let mut config = Self::default();
+        config.excluded_intrinsics = excluded.clone();
         config.excluded_foundation = excluded_foundation;
         config.exposed_foundation = exposed_foundation;
         config.global_alias = global_alias;
@@ -228,6 +238,10 @@ impl GeneratedNamespaceConfig {
 
     pub fn excluded_foundation(&self) -> &HashSet<String> {
         &self.excluded_foundation
+    }
+
+    pub fn excluded_intrinsics(&self) -> &HashSet<String> {
+        &self.excluded_intrinsics
     }
 
     pub fn exposed_foundation(&self) -> Option<&HashSet<String>> {

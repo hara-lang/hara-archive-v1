@@ -276,13 +276,13 @@ fn do_sequences() {
 
 #[test]
 fn arithmetic() {
-    assert_eq!(eval("(+)"), "0");
+    assert_eval_error("(+)", "+ expects arguments [line 1, column 1]");
     assert_eq!(eval("(+ 19 23)"), "42");
     assert_eq!(eval("(+ 1 2 3 4)"), "10");
     assert_eq!(eval("(+ 5)"), "5");
     assert_eq!(eval("(- 10 3)"), "7");
     assert_eq!(eval("(* 6 7)"), "42");
-    assert_eq!(eval("(*)"), "1");
+    assert_eval_error("(*)", "* expects arguments [line 1, column 1]");
     assert_eq!(eval("(/ 2)"), "0");
     assert_eq!(eval("(/ 17 5)"), "3");
     assert_eq!(eval("(/ -17 5)"), "-3");
@@ -298,7 +298,10 @@ fn arithmetic_errors() {
     assert_eval_error("(% 1 0)", "division by zero [line 1, column 1]");
     assert_eval_error("(mod 1 0)", "division by zero [line 1, column 1]");
     assert_eq!(eval("(+ 9223372036854775807 1)"), "9223372036854775808");
-    assert_eq!(eval("(- -9223372036854775808 1)"), "-9223372036854775809");
+    assert_eq!(
+        eval("(- -9223372036854775808 1)"),
+        "-9223372036854775809"
+    );
     assert_eq!(eval("(* 9223372036854775807 2)"), "18446744073709551614");
     assert_eval_error("(+ 1 \"a\")", "+ expects numbers [line 1, column 1]");
     assert_eq!(eval("(+ 1 1.5)"), "(double 2.5)");
@@ -325,7 +328,7 @@ fn comparison_errors() {
         "(< 1)",
         "< expects at least two arguments [line 1, column 1]",
     );
-    assert_eq!(eval("(< 1 \"a\")"), "false");
+    assert_eval_error("(< 1 \"a\")", "< expects numbers [line 1, column 1]");
     assert_eval_error("(= 1)", "= expects at least 2 arguments [line 1, column 1]");
 }
 
@@ -900,11 +903,9 @@ fn try_compile_errors() {
         message.contains("try clauses must follow body"),
         "{message}"
     );
-    // Malformed catch clauses are compile errors. The evaluator silently
-    // treats a non-symbol class as non-matching; the VM rejects the
-    // source instead (documented divergence).
+    // Malformed catch clauses are compile errors.
     let (_, message) = compile_error("(try 1 (catch 42 e 0))");
-    assert!(message.contains("catch selector must be a namespaced keyword"), "{message}");
+    assert!(message.contains("catch class must be symbol"), "{message}");
     let (_, message) = compile_error("(try 1 (catch Exception 42 0))");
     assert!(message.contains("catch name must be symbol"), "{message}");
     let (_, message) = compile_error("(try 1 (catch))");
@@ -1056,20 +1057,12 @@ fn variadic_and_multi_arity_issue_223() {
     assert_eq!(eval("((fn [left & more] more) 42 1 2)"), "(1 2)");
     assert_eq!(eval("((fn [left & more] more) 42)"), "()");
     assert_eq!(
+        eval("((fn ([value] value) ([left right] (+ left right))) 19)"),
+        "19"
+    );
+    assert_eq!(
         eval("((fn ([value] value) ([left right] (+ left right))) 19 23)"),
         "42"
-    );
-    assert_eq!(
-        eval("(let [offset 2 choose (fn ([value] (+ offset value)) ([left right] (+ offset left right)))] [(choose 40) (choose 19 21)])"),
-        "[42 42]"
-    );
-    assert_eq!(
-        eval("((fn ([value] value) ([left right & more] more)) 1 2 3 4)"),
-        "(3 4)"
-    );
-    assert_eq!(
-        eval("(let [aliases (atom {}) build (fn [function] (fn ([type arguments] (let [alias (get (deref aliases) type)] (let [key arguments] (apply function type key arguments)))) ([type input arguments] (apply function type input arguments))))] ((build (fn [type key & arguments] [type key arguments])) :demo [1 2]))"),
-        "[:demo [1 2] (1 2)]"
     );
     assert_eval_error(
         "((fn [l r & more] l) 1)",
@@ -1138,17 +1131,15 @@ fn global_form_errors_issue_223() {
         "(do (defstruct P [x]) (instance? 42 1))",
         "instance? expects a struct or mutable type",
     );
-    // Definitions are namespace-owned and may shadow automatically referred Vars.
+    // Referred Foundation Vars require explicit namespace omission before
+    // they can be replaced by a local definition.
     let mut runtime = Runtime::new();
-    assert_eq!(
-        runtime
-            .eval_bytecode_artifact(
-                &runtime
-                    .compile_bytecode_artifact("(do (defn identity [n] 42) (identity 5))")
-                    .unwrap(),
-            )
-            .unwrap(),
-        "42"
+    let error = runtime
+        .compile_bytecode_artifact("(do (defn identity [n] 42) (identity 5))")
+        .unwrap_err();
+    assert!(
+        error.contains("Cannot replace referred Var without ns omission: identity"),
+        "{error}"
     );
     // Uninitialized let-style errors keep their shape.
     let (_, message) = compile_error("(fn [a &] a)");

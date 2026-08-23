@@ -14,6 +14,7 @@ use std::rc::Rc;
 
 use crate::core::{binding_symbol, definition_metadata, schema_var_reference};
 use crate::kernel::{Form, Span};
+use crate::lang::data::Symbol;
 use crate::lang::data::Metadata;
 use crate::lang::protocol::INamespaced;
 use crate::vm::error::{CompileError, CompileErrorKind};
@@ -22,6 +23,17 @@ use crate::vm::opcode::Instruction;
 use super::{Child, Compiler};
 
 impl Compiler {
+    pub(super) fn excluded_intrinsic_symbol(&self, name: &str) -> bool {
+        let Some((namespace, _)) = name.split_once('/') else {
+            return false;
+        };
+        self.excluded_intrinsics.iter().any(|library| {
+            namespace == format!("std.foundation.{library}")
+                || crate::kernel::generated::intrinsic_alias(library)
+                    .is_some_and(|alias| alias == namespace)
+        })
+    }
+
     pub(super) fn compile_defmacro(
         &mut self,
         children: &[Child<'_>],
@@ -137,9 +149,27 @@ impl Compiler {
 
     pub(super) fn require_owned_global(
         &self,
-        _name: &str,
-        _span: &Span,
+        name: &str,
+        span: &Span,
     ) -> Result<(), CompileError> {
+        if let Ok(registry) = crate::core::namespace_registry() {
+            let namespace = registry
+                .find(&self.namespace)
+                .unwrap_or_else(|| registry.current());
+            if let Some(var) = namespace.resolve(&Symbol::parse(name)) {
+                let owned_by_compilation_namespace = var
+                    .symbol()
+                    .get_namespace()
+                    .is_none_or(|owner| owner == self.namespace.as_str());
+                if !owned_by_compilation_namespace {
+                    return Err(CompileError::new(
+                        CompileErrorKind::UnsupportedForm,
+                        format!("Cannot replace referred Var without ns omission: {name}"),
+                        Some(span.start),
+                    ));
+                }
+            }
+        }
         Ok(())
     }
 
@@ -221,6 +251,9 @@ impl Compiler {
     /// registry (the Runtime path; the free `compile_source` path has
     /// none and only sees program-declared names).
     pub(super) fn visible_global(&self, name: &str) -> bool {
+        if self.excluded_intrinsic_symbol(name) {
+            return false;
+        }
         let declared = name
             .strip_prefix("-/")
             .is_some_and(|local| self.globals.iter().any(|global| global == local))
@@ -255,7 +288,7 @@ impl Compiler {
     /// configuration. Without an active registry (the closed-program helper)
     /// the historical standalone behavior remains available.
     pub(super) fn visible_bytecode_callable(&self, name: &str) -> bool {
-        if !crate::core::is_bytecode_callable(name) {
+        if self.excluded_intrinsic_symbol(name) || !crate::core::is_bytecode_callable(name) {
             return false;
         }
         crate::core::namespace_registry()
@@ -316,7 +349,6 @@ impl Compiler {
                     Some(child.span.start),
                 ));
             };
-            self.require_owned_global(name, child.span)?;
             self.declare_program_global(name);
             let constant = self.name_constant(name, child.span)?;
             self.emit(Instruction::DeclareGlobal(constant), Some(child.span.start));

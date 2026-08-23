@@ -1,5 +1,6 @@
 (ns std.typed.infer
-  (:require [std.typed.schema :as schema]))
+  (:require [std.typed.schema :as schema])
+  (:config {:override [result]}))
 
 (def +unknown-schema+ {:kind :unknown})
 

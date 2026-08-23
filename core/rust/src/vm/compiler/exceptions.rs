@@ -85,7 +85,8 @@ impl Compiler {
                     Some(clause.span.start),
                 ));
             }
-            if matches!(clause_children[1].form, Form::Symbol(name) if name != "Exception" && name != "Throwable")
+            if clause_children.len() == 3
+                && matches!(clause_children[1].form, Form::Symbol(name) if name != "Exception" && name != "Throwable")
             {
                 let Form::Symbol(name) = clause_children[1].form else {
                     return Err(CompileError::new(
@@ -102,9 +103,7 @@ impl Compiler {
                 ));
             } else if clause_children.len() >= 4 {
                 let selector = match clause_children[1].form {
-                    Form::Symbol(class) if class == "Exception" || class == "Throwable" => {
-                        class.clone()
-                    }
+                    Form::Symbol(class) => class.clone(),
                     Form::Keyword(code) if code.contains('/') => format!(":{code}"),
                     Form::Vector(codes)
                         if !codes.is_empty()
@@ -123,7 +122,11 @@ impl Compiler {
                     _ => {
                         return Err(CompileError::new(
                             CompileErrorKind::Arity,
-                            "catch selector must be a namespaced keyword, a non-empty vector of namespaced keywords, or omitted",
+                            if matches!(clause_children[1].form, Form::Symbol(_)) {
+                                "catch selector must be a namespaced keyword, a non-empty vector of namespaced keywords, or omitted"
+                            } else {
+                                "catch class must be symbol"
+                            },
                             Some(clause_children[1].span.start),
                         ))
                     }

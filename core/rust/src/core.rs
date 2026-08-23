@@ -105,7 +105,7 @@ pub(crate) fn exception_located_form(node: &crate::kernel::SpannedForm) -> Form 
     let Some(Form::Symbol(operator)) = values.first() else {
         return Form::List(values);
     };
-    if operator != "throw" {
+    if operator != "throw" || values.len() != 2 {
         return Form::List(values);
     }
     values[0] = Form::Symbol("__throw-at".into());

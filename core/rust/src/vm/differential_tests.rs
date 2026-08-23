@@ -538,6 +538,28 @@ fn core_language_namespace_corpus_cases_match() {
         let Some(crate::kernel::Form::String(source)) = entry(case, "source") else {
             panic!(":{id} must declare string :source")
         };
+        if is_namespace {
+            let Some(crate::kernel::Form::Map(expect)) = entry(case, "expect") else {
+                panic!(":{id} must declare :expect")
+            };
+            let actual = Runtime::new().eval_bytecode_native(source);
+            if let Some(crate::kernel::Form::String(expected)) = entry(expect, "message") {
+                let error = actual.expect_err(&format!(":{id} must fail"));
+                assert!(
+                    error.to_ascii_lowercase().contains(&expected.to_ascii_lowercase()),
+                    ":{id}: {error}"
+                );
+            } else if let Some(expected) = entry(expect, "value") {
+                assert_eq!(
+                    actual.unwrap_or_else(|error| panic!(":{id} failed: {error}")),
+                    expected.to_string(),
+                    ":{id}"
+                );
+            } else {
+                actual.unwrap_or_else(|error| panic!(":{id} failed: {error}"));
+            }
+            continue;
+        }
         runtime_differential(source);
     }
 }

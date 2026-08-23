@@ -957,9 +957,11 @@ pub(crate) fn vm_declare_global(name: &str) -> Result<KernelVar<Value>, String> 
             existing.set_origin(definition_origin());
             return Ok(existing);
         }
-        return Err(format!(
-            "Cannot replace referred Var without ns omission: {name}"
-        ));
+        // An explicit `declare` is the source-level ownership boundary.  It
+        // authorizes the following definition to replace a referred Var in
+        // this namespace; a direct definition still goes through the
+        // compiler's ownership check and remains protected.
+        current.unmap(&local);
     }
     let var = KernelVar::new(format!("{}/{}", current.name().as_str(), name), Value::Nil);
     var.set_origin(definition_origin());

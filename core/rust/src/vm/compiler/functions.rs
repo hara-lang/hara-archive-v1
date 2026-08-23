@@ -102,7 +102,6 @@ impl Compiler {
                 Some(children[1].span.start),
             ));
         }
-
         let mut count = 0usize;
         for clause in &children[1..] {
             let clause_forms = match crate::core::form_without_metadata(clause.form) {
@@ -141,7 +140,7 @@ impl Compiler {
                 return Err(CompileError::new(
                     CompileErrorKind::Limit,
                     "fn supports at most 255 arity clauses",
-                    Some(span.start),
+                    Some(clause.span.start),
                 ));
             }
         }

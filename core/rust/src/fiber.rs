@@ -675,10 +675,7 @@ fn list(v: Vec<Form>, env: Rc<RefCell<HashMap<String, Value>>>, k: Cont) -> Step
                 value.clone(),
                 env,
                 Box::new(move |result| match result {
-                    Ok(value @ Value::ExceptionInfo(_)) => {
-                        k(Err(thrown_error_at(value, site.clone())))
-                    }
-                    Ok(_) => k(Err("throw expects an Exception value created by ex".into())),
+                    Ok(value) => k(Err(thrown_error_at(value, site.clone()))),
                     Err(error) => k(Err(error)),
                 }),
             )
@@ -691,8 +688,7 @@ fn list(v: Vec<Form>, env: Rc<RefCell<HashMap<String, Value>>>, k: Cont) -> Step
                 v[1].clone(),
                 env,
                 Box::new(move |r| match r {
-                    Ok(x @ Value::ExceptionInfo(_)) => k(Err(thrown_error(x))),
-                    Ok(_) => k(Err("throw expects an Exception value created by ex".into())),
+                    Ok(x) => k(Err(thrown_error(x))),
                     Err(x) => k(Err(x)),
                 }),
             )
@@ -1182,12 +1178,10 @@ fn finish_try(
 
 fn parse_catch_clause(parts: &[Form]) -> Result<(Option<String>, usize, usize), String> {
     match parts {
-        [_, Form::Symbol(name), _, ..] if name != "Exception" && name != "Throwable" => {
+        [_, Form::Symbol(name), _] if name != "Exception" && name != "Throwable" => {
             Ok((None, 1, 2))
         }
-        [_, Form::Symbol(class), Form::Symbol(_), _, ..]
-            if class == "Exception" || class == "Throwable" =>
-        {
+        [_, Form::Symbol(class), Form::Symbol(_), _, ..] => {
             Ok((Some(class.clone()), 2, 3))
         }
         [_, Form::Keyword(code), Form::Symbol(_), _, ..] if code.contains('/') => {

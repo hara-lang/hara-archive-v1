@@ -1,7 +1,8 @@
 ;; Portable identity and exact dependency coordinates for named std.typed schemas.
 (ns std.typed.catalog
   (:require [std.typed.registry :as registry]
-            [std.typed.schema :as schema]))
+            [std.typed.schema :as schema])
+  (:config {:override [resolve]}))
 
 (def +catalog-type+ :std.typed.catalog/catalog)
 (def +hash-format+ :std.typed.schema/catalog-v1)

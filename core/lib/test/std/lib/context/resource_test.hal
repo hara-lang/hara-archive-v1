@@ -42,6 +42,12 @@
        :test (fn []
                (resource/resource-active-path
                 :shared :migration/resource :default {:id :hello}))
-       :expected [:shared [:migration/resource :default] :hello]}])))
+       :expected [:shared [:migration/resource :default] :hello]}
+      {:name "resource-call-fn dispatches callback arity without multi-arity fn"
+       :test (fn []
+               (let [call (resource/resource-call-fn
+                           (fn [& arguments] (vec arguments)))]
+                 (call :mode :migration/resource :default :hello [:arguments])))
+       :expected [:mode :migration/resource :default :hello :arguments]}])))
 
 (pr-str results)
