@@ -1,0 +1,20 @@
+(ns std.lib.format.table-test
+  (:use code.test)
+  (:require [std.lib.format.table :as table]))
+
+^{:refer std.lib.format.table/table-lines}
+(fact "renders aligned headers, separators, and rows"
+  (map
+   #(select-keys % [:line/text :line/role])
+   (table/table-lines
+    {:section/columns [{:key :path}
+                       {:key :fun :align :right}
+                       {:key :ins :align :right}]
+     :section/entries [{:path "a.clj" :fun 2 :ins 3}
+                       {:path "b.clj" :fun 1 :ins 0}]}))
+  => [{:line/text "path   fun  ins" :line/role :highlight}
+      {:line/text "-----  ---  ---" :line/role :muted}
+      {:line/text "a.clj    2    3" :line/role :default}
+      {:line/text "b.clj    1    0" :line/role :default}])
+
+(pr-str (run {:namespace "std.lib.format.table-test"}))

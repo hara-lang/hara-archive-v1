@@ -1,0 +1,91 @@
+(ns std.lib.format-test
+  (:use code.test)
+  (:require [std.lib.format :as format]
+            [std.lib.format.common :as common]
+            [std.lib.format.table :as table]
+            [std.lib.format.report :as report]
+            [std.lib.format.terminal :as terminal]))
+
+(def +progress+
+  {:section/id :items
+   :section/title "ITEMS"
+   :section/kind :progress
+   :section/entries
+   [{:item/id :alpha
+     :item/index 0
+     :item/total 1
+     :status :return
+     :item/display "changed"
+     :elapsed 3}]})
+
+^{:refer std.lib.format/line}
+(fact "publishes the common line constructor"
+  (format/line "hello" :success)
+  => {:line/text "hello" :line/role :success})
+
+^{:refer std.lib.format/value-text}
+(fact "publishes portable value rendering"
+  (format/value-text [:alpha 2])
+  => "[:alpha 2]")
+
+^{:refer std.lib.format/truncate}
+(fact "publishes display truncation"
+  (format/truncate "abcdef" 5)
+  => "ab...")
+
+^{:refer std.lib.format/pad}
+(fact "publishes display padding"
+  (format/pad "x" 3 :right)
+  => "  x")
+
+^{:refer std.lib.format/table-lines}
+(fact "publishes table rendering"
+  (map :line/text
+       (format/table-lines
+        {:section/columns [{:key :path}]
+         :section/entries [{:path "a"}]}))
+  => ["path" "----" "a   "])
+
+^{:refer std.lib.format/report-lines}
+(fact "publishes structured report rendering"
+  (map :line/text
+       (format/report-lines {:report/sections [+progress+]}))
+  => ["ITEMS" "1/1  :alpha  ok  changed  3ms"])
+
+^{:refer std.lib.format/report}
+(fact "publishes report rendering with terminal options"
+  (format/report {:report/sections [+progress+]})
+  => "ITEMS\n1/1  :alpha  ok  changed  3ms")
+
+^{:refer std.lib.format/render-lines}
+(fact "publishes structured line rendering"
+  (format/render-lines [{:line/text "ok" :line/role :success}] {:ansi true})
+  => ["\u001b[32mok\u001b[0m"])
+
+^{:refer std.lib.format/render}
+(fact "publishes rendered line joining"
+  (format/render [{:line/text "one"} {:line/text "two"}])
+  => "one\ntwo")
+
+^{:refer std.lib.format/emit-lines}
+(fact "publishes injected line emission"
+  (let [output (atom [])
+        count (format/emit-lines
+               [{:line/text "one"} {:line/text "two"}]
+               {:emit (fn [text] (swap! output conj text))})]
+    [count @output])
+  => [2 ["one" "two"]])
+
+(fact "publishes exactly the curated aggregate surface"
+  (set (keys (ns-publics 'std.lib.format)))
+  => #{'line 'value-text 'truncate 'pad 'table-lines 'report-lines 'report
+       'render-lines 'render 'emit-lines})
+
+(fact "preserves public metadata through publication"
+  [(:public (meta (var std.lib.format/line)))
+   (:public (meta (var std.lib.format/table-lines)))
+   (:public (meta (var std.lib.format/report)))
+   (:public (meta (var std.lib.format/render)))]
+  => [true true true true])
+
+(pr-str (run {:namespace "std.lib.format-test"}))

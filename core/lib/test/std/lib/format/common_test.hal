@@ -1,0 +1,33 @@
+(ns std.lib.format.common-test
+  (:use code.test)
+  (:require [std.lib.format.common :as common]))
+
+^{:refer std.lib.format.common/line}
+(fact "creates structured lines with default and explicit roles"
+  [(common/line "hello")
+   (common/line "warning" :warning)]
+  => [{:line/text "hello" :line/role :default}
+      {:line/text "warning" :line/role :warning}])
+
+^{:refer std.lib.format.common/value-text}
+(fact "renders nil, strings, and data values for display"
+  [(common/value-text nil)
+   (common/value-text "hello")
+   (common/value-text [:alpha 2])]
+  => ["" "hello" "[:alpha 2]"])
+
+^{:refer std.lib.format.common/truncate}
+(fact "keeps short text and applies width-aware ellipses"
+  [(common/truncate "abc" 5)
+   (common/truncate "abcdef" 5)
+   (common/truncate "abcdef" 3)]
+  => ["abc" "ab..." "abc"])
+
+^{:refer std.lib.format.common/pad}
+(fact "pads text on each supported alignment"
+  [(common/pad "x" 3 :left)
+   (common/pad "x" 3 :right)
+   (common/pad "x" 3 :center)]
+  => ["x  " "  x" " x "])
+
+(pr-str (run {:namespace "std.lib.format.common-test"}))

@@ -5,7 +5,7 @@
 (def +up+ "\u001b[1A")
 (def +clearline+ "\u001b[2K")
 
-(defn line
+(defn ^{:public true} line
   "Creates one structured output line with an optional semantic role."
   ([text]
    (line text :default))
@@ -13,7 +13,7 @@
    {:line/text text
     :line/role role}))
 
-(defn value-text
+(defn ^{:public true} value-text
   "Renders a portable value for display in reports and tables."
   [value]
   (cond
@@ -21,7 +21,7 @@
     (string? value) value
     :else (pr-str value)))
 
-(defn truncate
+(defn ^{:public true} truncate
   "Truncates display text to width, using an ellipsis when it fits."
   [text width]
   (let [text (value-text text)]
@@ -32,7 +32,7 @@
         (str/slice text 0 width)
         (str (str/slice text 0 (- width 3)) "...")))))
 
-(defn pad
+(defn ^{:public true} pad
   "Truncates and pads text to width using left, right, or center alignment."
   [text width align]
   (let [text (truncate text width)

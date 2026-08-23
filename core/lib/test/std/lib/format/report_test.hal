@@ -159,4 +159,17 @@
     :report/sections [+progress+]})
   => "REPORT\n\nITEMS\n1/2  :alpha  ok  changed  3ms")
 
+^{:refer std.lib.format.report/render-report}
+(fact "renders report lines through the terminal boundary"
+  (report/render-report
+   {:report/title "REPORT"
+    :report/sections [+progress+]})
+  => "REPORT\n\nITEMS\n1/2  :alpha  ok  changed  3ms")
+
+(fact "marks the supported report operations public"
+  [(:public (meta (get (ns-publics 'std.lib.format.report) 'report-lines)))
+   (:public (meta (get (ns-publics 'std.lib.format.report) 'render-report)))
+   (:public (meta (get (ns-publics 'std.lib.format.report) 'report)))]
+  => [true true nil])
+
 (pr-str (run {:namespace "std.lib.format.report-test"}))

@@ -1,7 +1,8 @@
 (ns std.lib.format.report
   (:config {:role :internal})
   (:require [std.lib.format.common :as common]
-            [std.lib.format.table :as table]))
+            [std.lib.format.table :as table]
+            [std.lib.format.terminal :as terminal]))
 
 (def +default-options+
   {:include-title true
@@ -136,7 +137,7 @@
   [section]
   (let [summary (first (:section/entries section))]
     (vec
-     (map
+    (map
       (fn [field]
         (common/line
          (str (summary-field-label field)
@@ -223,7 +224,7 @@
         [(common/line "")])
       group))))
 
-(defn report-lines
+(defn ^{:public true} report-lines
   "Renders a portable report document into structured lines."
   ([document]
    (report-lines document {}))
@@ -263,7 +264,16 @@
   ([document options]
    (str/join
     "\n"
-    (map
+     (map
      (fn [entry]
        (:line/text entry))
      (report-lines document options)))))
+
+(defn ^{:public true} render-report
+  "Renders a portable report document as plain text or ANSI output."
+  ([document]
+   (render-report document {}))
+  ([document options]
+   (terminal/render
+    (report-lines document options)
+    options)))
