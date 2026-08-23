@@ -6,6 +6,10 @@ const EMBEDDED_FOUNDATION_BYTECODE: &[u8] =
 impl Runtime {
     fn empty() -> Runtime {
         let namespace_registry = core::minimal_namespace_registry();
+        let foundation = namespace_registry.find_or_create("std.foundation");
+        for (name, value) in core::exception_function_values() {
+            foundation.intern_with_origin(name, value, kernel::VarOrigin::RuntimePrimitive);
+        }
         let vm_provider = namespace_registry.find_or_create("tool.vm.provider");
         for (name, value) in core::vm_tool_provider_values() {
             vm_provider.intern_with_origin(name, value, kernel::VarOrigin::RuntimePrimitive);
