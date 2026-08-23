@@ -1244,8 +1244,8 @@ impl Runtime {
             .map_err(|error| JsValue::from_str(&error))
     }
 
-    #[cfg(target_arch = "wasm32")]
-    #[cfg_attr(not(feature = "raw-wasm"), wasm_bindgen(js_name = installDirectWasmImport))]
+    #[cfg(all(target_arch = "wasm32", not(feature = "raw-wasm")))]
+    #[wasm_bindgen(js_name = installDirectWasmImport)]
     pub fn install_direct_wasm_import_js(
         &mut self,
         logical: &str,
@@ -1255,7 +1255,7 @@ impl Runtime {
             .map_err(|error| JsValue::from_str(&error))
     }
 
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(all(target_arch = "wasm32", not(feature = "raw-wasm")))]
     #[wasm_bindgen(js_name = installMemoryWasmBinding)]
     pub fn install_memory_wasm_binding_js(
         &mut self,

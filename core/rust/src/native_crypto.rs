@@ -264,10 +264,18 @@ fn fixed_random<const SIZE: usize>(operation: &str) -> Result<[u8; SIZE], String
 }
 
 fn random(operation: &str, size: usize) -> Result<Vec<u8>, String> {
+    #[cfg(feature = "raw-wasm")]
+    {
+        let _ = size;
+        return Err(error(operation, "secure randomness is unavailable"));
+    }
+    #[cfg(not(feature = "raw-wasm"))]
+    {
     let mut output = vec![0_u8; size];
     getrandom::getrandom(&mut output)
         .map_err(|_| error(operation, "secure randomness is unavailable"))?;
     Ok(output)
+    }
 }
 
 fn bytes(operation: &str, value: &Value) -> Result<Vec<u8>, String> {

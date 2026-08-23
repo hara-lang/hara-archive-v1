@@ -22,7 +22,7 @@ tracing-jit = ["bytecode-vm"]
 hara-runtime = { path = "../runtime", default-features = false, features = ["raw-wasm"] }
 sha2 = "0.10"
 hmac = "0.12"
-getrandom = { version = "0.2", features = ["custom"] }
+getrandom = { version = "0.2", default-features = false, features = ["custom"] }
 ed25519-dalek = "2.1"
 x25519-dalek = { version = "2.0", features = ["static_secrets"] }
 p256 = { version = "0.13", features = ["ecdh", "ecdsa"] }

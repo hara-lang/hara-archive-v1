@@ -142,8 +142,17 @@ mod fiber;
 #[path = "core/native_result.rs"]
 mod native_result;
 pub use native_result::{ResultStatus, ResultValue};
+#[cfg(not(feature = "raw-wasm"))]
 #[path = "native_crypto.rs"]
 mod native_crypto;
+#[cfg(feature = "raw-wasm")]
+mod native_crypto {
+    use super::Value;
+
+    pub(super) fn operation(_operation: &str, _arguments: Vec<Value>) -> Result<Value, String> {
+        Err("std.native.Crypto is unavailable in raw Wasm".into())
+    }
+}
 pub(crate) use fiber::Cont;
 pub use fiber::{EvalFiber, EvalFiberState, Step};
 

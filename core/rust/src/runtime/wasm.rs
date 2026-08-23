@@ -1,4 +1,4 @@
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", not(feature = "raw-wasm")))]
 fn js_error_string(error: JsValue) -> String {
     if let Some(message) = error.as_string() {
         return message;
@@ -9,7 +9,7 @@ fn js_error_string(error: JsValue) -> String {
         .unwrap_or_else(|| format!("{error:?}"))
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", not(feature = "raw-wasm")))]
 fn host_key_to_string(key: &core::Value) -> String {
     match key {
         core::Value::String(text) => text.clone(),
@@ -19,7 +19,7 @@ fn host_key_to_string(key: &core::Value) -> String {
     }
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", not(feature = "raw-wasm")))]
 fn host_seq_to_js<'a>(values: impl Iterator<Item = &'a core::Value>) -> Result<JsValue, String> {
     let array = js_sys::Array::new();
     for value in values {
@@ -28,7 +28,7 @@ fn host_seq_to_js<'a>(values: impl Iterator<Item = &'a core::Value>) -> Result<J
     Ok(array.into())
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", not(feature = "raw-wasm")))]
 fn value_to_js(value: &core::Value) -> Result<JsValue, String> {
     match value {
         core::Value::Nil => Ok(JsValue::NULL),
@@ -82,7 +82,7 @@ fn value_to_js(value: &core::Value) -> Result<JsValue, String> {
     }
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", not(feature = "raw-wasm")))]
 fn js_to_value(value: &JsValue) -> Result<core::Value, String> {
     use crate::lang::data::{OrderedMap as POrderedMap, Vector as PVector};
     use wasm_bindgen::{closure::Closure, JsCast};
@@ -165,7 +165,7 @@ fn js_to_value(value: &JsValue) -> Result<core::Value, String> {
     Err("std.native.Host/call type-not-transportable: unsupported JS result".into())
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", not(feature = "raw-wasm")))]
 fn host_call_bridge(
     handler: js_sys::Function,
 ) -> Rc<dyn Fn(String, String, Vec<core::Value>) -> Result<core::Value, String>> {
@@ -186,7 +186,8 @@ fn host_call_bridge(
     })
 }
 
-#[cfg_attr(not(feature = "raw-wasm"), wasm_bindgen)]
+#[cfg(all(target_arch = "wasm32", not(feature = "raw-wasm")))]
+#[wasm_bindgen]
 pub fn target_profile() -> String {
     if cfg!(target_os = "wasi") {
         "wasi".into()
@@ -197,7 +198,8 @@ pub fn target_profile() -> String {
     }
 }
 
-#[cfg_attr(not(feature = "raw-wasm"), wasm_bindgen)]
+#[cfg(all(target_arch = "wasm32", not(feature = "raw-wasm")))]
+#[wasm_bindgen]
 pub fn version() -> String {
     "hara-wasm/0.1 core-language slice".to_string()
 }

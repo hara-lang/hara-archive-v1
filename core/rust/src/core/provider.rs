@@ -873,7 +873,7 @@ impl SocketProvider for UnsupportedSocketProvider {
     }
 }
 
-pub(crate) fn portable_type_name(value: &Value) -> &str {
+pub fn portable_type_name(value: &Value) -> &str {
     match value {
         Value::Nil => "nil",
         Value::Number(_) => "integer",

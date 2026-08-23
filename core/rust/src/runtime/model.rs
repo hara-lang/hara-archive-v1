@@ -74,6 +74,7 @@ mod embedding_namespace_tests {
     }
 }
 
+#[cfg(not(feature = "raw-wasm"))]
 use wasm_bindgen::prelude::*;
 
 include!(concat!(env!("OUT_DIR"), "/embedded_hal.rs"));
@@ -89,9 +90,10 @@ const EAGER_HAL_RESOURCES: &[&str] = &[
 
 fn ignore_socket_event(_event: core::SocketEvent) {}
 
-#[cfg_attr(not(feature = "raw-wasm"), wasm_bindgen(start))]
+#[cfg(not(feature = "raw-wasm"))]
+#[wasm_bindgen(start)]
 pub fn init_wasm() {
-    #[cfg(all(target_arch = "wasm32", not(feature = "raw-wasm")))]
+    #[cfg(target_arch = "wasm32")]
     console_error_panic_hook::set_once();
 }
 
@@ -100,7 +102,8 @@ pub fn init_wasm() {
 /// The returned report is produced by the runtime-owned instrumentation hub,
 /// not by JavaScript projection logic. Hosts can therefore compare repeated
 /// browser runs with the native Rust and Java reports byte-for-byte.
-#[cfg_attr(not(feature = "raw-wasm"), wasm_bindgen)]
+#[cfg(not(feature = "raw-wasm"))]
+#[wasm_bindgen]
 pub fn instrumentation_conformance(corpus: &str) -> Result<String, JsValue> {
     let corpus: serde_json::Value =
         serde_json::from_str(corpus).map_err(|error| JsValue::from_str(&error.to_string()))?;
