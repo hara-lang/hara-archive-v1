@@ -11,13 +11,8 @@
 
 (defn option-value
   [options string-key keyword-key]
-  (let [options (or options {})
-        kebab-key (str/replace string-key "_" "-")]
-    (or (get options string-key)
-        (get options keyword-key)
-        (get options kebab-key)
-        (get options (keyword string-key))
-        (get options (keyword kebab-key)))))
+  (or (get (or options {}) string-key)
+      (get (or options {}) keyword-key)))
 
 (defn transport-get
   "Gets an attached transport."
