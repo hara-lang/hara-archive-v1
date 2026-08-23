@@ -2296,7 +2296,17 @@ mod tests {
         let mut capability_protocol_count = 0usize;
         let mut capability_method_count = 0usize;
         for (name, methods) in core::FOUNDATION_PROTOCOLS {
-            let in_contract = !capability_contract.contains(&format!(":name {name}"));
+            let in_capability_contract = capability_contract.lines().any(|line| {
+                let line = line.trim_start_matches(|character: char| {
+                    character.is_whitespace() || character == '['
+                });
+                let Some(rest) = line.strip_prefix(&format!("{{:name {name}")) else {
+                    return false;
+                };
+                rest.is_empty()
+                    || matches!(rest.chars().next(), Some(character) if character.is_whitespace())
+            });
+            let in_contract = !in_capability_contract;
             if in_contract {
                 portable_protocol_count += 1;
                 portable_method_count += methods.len();
