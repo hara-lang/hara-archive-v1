@@ -73,7 +73,12 @@ lineage, dynamic-depth checks, cancellation behavior, and managed replay.
 
 The focused compiler corpus compares direct and generated-form execution for
 `step`, `chain`, `all`, `each`, `filter`, `fold`, `choose`, `ensure`, and
-`batch`, in addition to graph construction and `bind`. Collection item
+`batch`, in addition to graph construction and `bind`. It also exercises
+qualified and version/digest-pinned leaf targets, managed bind lineage, and
+managed checkpoint/event and failure/cleanup parity, and managed bind
+resume/replay without duplicating completed source or produced-child effects.
+Bind non-Work and non-pure-continuation boundary failures are compared as
+structured error values as well. Collection item
 identity/order, fold accumulation, batch results, and cleanup result behavior
 are asserted as values, not merely by checking that generated forms evaluate
 successfully. The corpus also compares retry attempts and a `Promise/`-
@@ -92,7 +97,8 @@ The permanent focused proof is:
 The test covers ordinary Work validation, captured closure inspection, versioned
 IR, closure reset/lookup, generated-form reconstruction, direct-vs-form
 `bind` result equivalence, collection/batch results, retry attempts, and
-`Promise/` results. The native `manage scaffold` command described by
+`Promise/` results, portable target profiles, managed checkpoint/event
+lineage, managed failure cleanup, and managed bind replay. The native `manage scaffold` command described by
 `AGENTS.md` is unavailable in the checked-in CLI; the corresponding test path
 was created manually and remains paired with this source namespace.
 

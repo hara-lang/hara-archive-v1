@@ -241,6 +241,289 @@
        :summary 2}])
 
 ^{:refer work.compile.hara/form :added "0.1"}
+(fact "generated ordinary forms preserve qualified and pinned target profiles"
+  (let [registry
+        {:double (fn [input context] (* input 2))
+         [:triple 1 "digest"] (fn [input context] (* input 3))}
+        qualified
+        (work/step
+         {:id :qualified-target
+          :target {:target/type :qualified
+                   :target/name :double}}
+         (fn [input context] input))
+        pinned
+        (work/step
+         {:id :pinned-target
+          :target {:target/type :pinned
+                   :target/name :triple
+                   :target/version 1
+                   :target/digest "digest"}}
+         (fn [input context] input))
+        options {:work/registry registry}
+        rebuilt-qualified (eval (lowering/form qualified))
+        rebuilt-pinned (eval (lowering/form pinned))]
+    [(evaluator/run nil qualified 4 options)
+     (evaluator/run nil rebuilt-qualified 4 options)
+     (evaluator/run nil pinned 4 options)
+     (evaluator/run nil rebuilt-pinned 4 options)])
+  => [8 8 12 12])
+
+^{:refer work.compile.hara/form :added "0.1"}
+(fact "generated ordinary forms preserve managed bind lineage"
+  (lowering/reset-closures)
+  (try
+    (let [definition
+          (work/bind
+           {:id :managed-bind-equivalence :version 1}
+           (work/step :source
+             (fn [input context] (+ input 1)))
+           (work/pure :continuation
+             (fn [value context]
+               (work/step :produced
+                 (fn [produced-input produced-context]
+                   (+ produced-input 10))))))
+          rebuilt (eval (lowering/form definition))
+          direct-runtime
+          (work/durable-runtime {:backend (work/memory-backend)})
+          generated-runtime
+          (work/durable-runtime {:backend (work/memory-backend)})
+          direct-reference
+          (work/start direct-runtime definition 1 {:id "managed-bind-equivalence"})
+          generated-reference
+          (work/start generated-runtime rebuilt 1 {:id "managed-bind-equivalence"})
+          direct-history (work/history direct-runtime direct-reference)
+          generated-history (work/history generated-runtime generated-reference)
+          direct-checkpoints (work/checkpoints direct-runtime direct-reference)
+          generated-checkpoints (work/checkpoints generated-runtime generated-reference)]
+      [(work/status direct-runtime direct-reference)
+       (work/status generated-runtime generated-reference)
+       (work/result direct-runtime direct-reference)
+       (work/result generated-runtime generated-reference)
+       (= direct-history generated-history)
+       (= direct-checkpoints generated-checkpoints)
+       (vec (map (fn [checkpoint]
+                   (:checkpoint/node-path checkpoint))
+                 generated-checkpoints))])
+    (finally
+      (lowering/reset-closures)))
+  => [:completed :completed 12 12 true true
+      [[:bind :source :source]
+       [:bind :produced :produced]]])
+
+^{:refer work.compile.hara/form :added "0.1"}
+(fact "generated ordinary forms preserve bind boundary failures"
+  (lowering/reset-closures)
+  (try
+    (let [invalid
+          (work/bind
+           {:id :compiled-invalid-produced}
+           (work/pure :source
+             (fn [input context] input))
+           (work/pure :continuation
+             (fn [value context] {:not :work})))
+          effectful
+          (work/bind
+           {:id :compiled-effectful-continuation}
+           (work/pure :source
+             (fn [input context] input))
+           (work/step :continuation
+             (fn [value context]
+               (work/pure :produced
+                 (fn [produced-input produced-context]
+                   produced-input)))))
+          rebuilt-invalid (eval (lowering/form invalid))
+          rebuilt-effectful (eval (lowering/form effectful))
+          error-code
+          (fn [definition]
+            (try
+              (evaluator/run nil definition :input)
+              :passed
+              (catch Throwable error
+                (:work/error (ex-data error)))))]
+      [(error-code invalid)
+       (error-code rebuilt-invalid)
+       (error-code effectful)
+       (error-code rebuilt-effectful)])
+    (finally
+      (lowering/reset-closures)))
+  => [:work/bind-not-work
+      :work/bind-not-work
+      :work/bind-continuation-not-pure
+      :work/bind-continuation-not-pure])
+
+^{:refer work.compile.hara/form :added "0.1"}
+(fact "generated ordinary forms preserve managed bind replay"
+  (lowering/reset-closures)
+  (try
+    (let [direct-source-count (atom 0)
+          direct-first-count (atom 0)
+          direct-second-count (atom 0)
+          direct-definition
+          (work/bind
+           {:id :managed-bind-replay :version 1}
+           (work/step :source
+             (fn [input context]
+               (swap! direct-source-count inc)
+               (inc input)))
+           (work/pure :continuation
+             (fn [value context]
+               (work/chain
+                {:id :managed-produced}
+                [(work/step :first
+                   (fn [produced-input produced-context]
+                     (swap! direct-first-count inc)
+                     (+ produced-input 10)))
+                 (work/step :second
+                   (fn [produced-input produced-context]
+                     (let [attempt (swap! direct-second-count inc)]
+                       (if (= attempt 1)
+                         (throw (ex-info "interrupt produced child" {}))
+                         (+ produced-input 100)))))]))))
+          generated-source-count (atom 0)
+          generated-first-count (atom 0)
+          generated-second-count (atom 0)
+          generated-definition
+          (work/bind
+           {:id :managed-bind-replay :version 1}
+           (work/step :source
+             (fn [input context]
+               (swap! generated-source-count inc)
+               (inc input)))
+           (work/pure :continuation
+             (fn [value context]
+               (work/chain
+                {:id :managed-produced}
+                [(work/step :first
+                   (fn [produced-input produced-context]
+                     (swap! generated-first-count inc)
+                     (+ produced-input 10)))
+                 (work/step :second
+                   (fn [produced-input produced-context]
+                     (let [attempt (swap! generated-second-count inc)]
+                       (if (= attempt 1)
+                         (throw (ex-info "interrupt produced child" {}))
+                         (+ produced-input 100)))))]))))
+          rebuilt (eval (lowering/form generated-definition))
+          direct-backend (work/memory-backend)
+          generated-backend (work/memory-backend)
+          direct-before (work/durable-runtime {:backend direct-backend})
+          generated-before (work/durable-runtime {:backend generated-backend})
+          direct-reference
+          (work/start direct-before direct-definition 1 {:id "managed-bind-replay"})
+          generated-reference
+          (work/start generated-before rebuilt 1 {:id "managed-bind-replay"})
+          direct-status-before (work/status direct-before direct-reference)
+          generated-status-before (work/status generated-before generated-reference)
+          direct-after (work/durable-runtime {:backend direct-backend})
+          generated-after (work/durable-runtime {:backend generated-backend})
+          direct-registration (work/register direct-after direct-definition)
+          generated-registration (work/register generated-after rebuilt)
+          direct-resumed (work/resume direct-after direct-reference)
+          generated-resumed (work/resume generated-after generated-reference)
+          direct-history (work/history direct-after direct-resumed)
+          generated-history (work/history generated-after generated-resumed)
+          direct-checkpoints (work/checkpoints direct-after direct-resumed)
+          generated-checkpoints (work/checkpoints generated-after generated-resumed)]
+      [(work/status direct-after direct-resumed)
+       (work/status generated-after generated-resumed)
+       (work/result direct-after direct-resumed)
+       (work/result generated-after generated-resumed)
+       [(deref direct-source-count)
+        (deref direct-first-count)
+        (deref direct-second-count)]
+       [(deref generated-source-count)
+        (deref generated-first-count)
+        (deref generated-second-count)]
+       (= direct-history generated-history)
+       (= direct-checkpoints generated-checkpoints)
+       (count (filter (fn [event]
+                        (= :work/step-replayed (:event event)))
+                      generated-history))])
+    (finally
+      (lowering/reset-closures)))
+  => [:completed :completed 112 112
+      [1 1 2] [1 1 2] true true 2])
+
+^{:refer work.compile.hara/form :added "0.1"}
+(fact "generated ordinary forms preserve managed checkpoints and events"
+  (lowering/reset-closures)
+  (try
+    (let [definition
+          (work/ensure
+           {:id :managed-equivalence :version 1 :return :outcome}
+           (work/step :body
+             (fn [input context]
+               (work/emit context :work/compile-body {:value input})
+               (+ input 2)))
+           (work/step :cleanup
+             (fn [outcome context]
+               {:body/status (:work/body-status outcome)
+                :body/result (:work/body-result outcome)})))
+          rebuilt (eval (lowering/form definition))
+          direct-runtime
+          (work/durable-runtime {:backend (work/memory-backend)})
+          generated-runtime
+          (work/durable-runtime {:backend (work/memory-backend)})
+          direct-reference
+          (work/start direct-runtime definition 3 {:id "managed-equivalence"})
+          generated-reference
+          (work/start generated-runtime rebuilt 3 {:id "managed-equivalence"})
+          direct-history (work/history direct-runtime direct-reference)
+          generated-history (work/history generated-runtime generated-reference)
+          direct-checkpoints (work/checkpoints direct-runtime direct-reference)
+          generated-checkpoints (work/checkpoints generated-runtime generated-reference)]
+      [(work/status direct-runtime direct-reference)
+       (work/status generated-runtime generated-reference)
+       (= (work/result direct-runtime direct-reference)
+          (work/result generated-runtime generated-reference))
+       (= direct-history generated-history)
+       (= direct-checkpoints generated-checkpoints)
+       (count direct-checkpoints)])
+    (finally
+      (lowering/reset-closures)))
+  => [:completed :completed true true true 2])
+
+^{:refer work.compile.hara/form :added "0.1"}
+(fact "generated ordinary forms preserve managed failure and cleanup"
+  (lowering/reset-closures)
+  (try
+    (let [definition
+          (work/ensure
+           {:id :managed-failure :version 1}
+           (work/step :body
+             (fn [input context]
+               (throw (ex-info "body failed" {:input input}))))
+           (work/step :cleanup
+             (fn [outcome context]
+               {:cleanup? true
+                :body/status (:work/body-status outcome)})))
+          rebuilt (eval (lowering/form definition))
+          direct-runtime
+          (work/durable-runtime {:backend (work/memory-backend)})
+          generated-runtime
+          (work/durable-runtime {:backend (work/memory-backend)})
+          direct-reference
+          (work/start direct-runtime definition :input {:id "managed-failure"})
+          generated-reference
+          (work/start generated-runtime rebuilt :input {:id "managed-failure"})
+          direct-history (work/history direct-runtime direct-reference)
+          generated-history (work/history generated-runtime generated-reference)
+          direct-checkpoints (work/checkpoints direct-runtime direct-reference)
+          generated-checkpoints (work/checkpoints generated-runtime generated-reference)]
+      [(work/status direct-runtime direct-reference)
+       (work/status generated-runtime generated-reference)
+       (= (work/error direct-runtime direct-reference)
+          (work/error generated-runtime generated-reference))
+       (= direct-history generated-history)
+       (= direct-checkpoints generated-checkpoints)
+       (count (filter (fn [event]
+                        (= :work/cleanup-completed (:event event)))
+                      direct-history))])
+    (finally
+      (lowering/reset-closures)))
+  => [:failed :failed true true true 1])
+
+^{:refer work.compile.hara/form :added "0.1"}
 (fact "generated ordinary forms preserve Promise and retry behavior"
   (lowering/reset-closures)
   (try
