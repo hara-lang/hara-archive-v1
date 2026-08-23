@@ -92,4 +92,4 @@
 
 (defn run
   [operation input]
-  (work/run (seedgen-work operation) input))
+  (work/run work/default-host (seedgen-work operation) input))

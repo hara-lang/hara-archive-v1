@@ -80,6 +80,14 @@ check_targets() {
   cargo check --locked --manifest-path core/rust/Cargo.toml --target wasm32-unknown-unknown --lib
 }
 
+check_browser_tests() {
+  (
+    cd core/rust/web
+    npm ci
+    npm run test:browser-sdk
+  )
+}
+
 check_source_drift() {
   git diff --exit-code -- \
     .github/workflows/wasm-binding.yml \
@@ -92,6 +100,9 @@ check_source_drift() {
     core/java/src/test/java/hara/truffle/HaraWasmMemoryBindingTest.java \
     core/lib/src/tool/cli/extension.hal \
     core/rust/src \
+    core/rust/web/package-lock.json \
+    core/rust/web/package.json \
+    core/rust/web/packages/browser \
     scripts/runtime/check-wasm-binding
 }
 
@@ -107,6 +118,7 @@ run_phase() {
     jvm-tests) check_jvm_tests ;;
     hara-tests) check_hara_tests ;;
     targets) check_targets ;;
+    browser-tests) check_browser_tests ;;
     drift) check_source_drift ;;
     all)
       check_format_and_layout
@@ -114,10 +126,11 @@ run_phase() {
       check_jvm_tests
       check_hara_tests
       check_targets
+      check_browser_tests
       check_source_drift
       ;;
     *)
-      printf 'usage: %s [all|format|wasm-binding-tests|direct-tests|extension-tests|wasmtime-tests|cli-app-tests|rust-tests|jvm-tests|hara-tests|targets|drift]\n' "$0" >&2
+      printf 'usage: %s [all|format|wasm-binding-tests|direct-tests|extension-tests|wasmtime-tests|cli-app-tests|rust-tests|jvm-tests|hara-tests|targets|browser-tests|drift]\n' "$0" >&2
       return 2
       ;;
   esac

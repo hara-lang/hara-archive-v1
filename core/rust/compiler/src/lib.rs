@@ -4,7 +4,7 @@ pub use hara_runtime::compiled_product::{
     sha256_hex, CompiledProduct, CompiledProductKind, CompiledProductManifest,
     InMemoryProductCache, ProductCacheKey,
 };
-use hara_runtime::vm::{compile_source, encode_program, Program};
+use hara_runtime::vm::{compile_source, encode_program};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CompileTarget {
@@ -62,13 +62,16 @@ pub fn compile_cached(
     target: CompileTarget,
     cache: &mut InMemoryProductCache,
 ) -> Result<CompiledArtifact, String> {
+    let hbc = compile_hbc(source)?;
     let (kind, abi_version) = target.product_identity();
-    let key = ProductCacheKey::new(
+    let module_digests = vec![sha256_hex(&hbc)];
+    let key = ProductCacheKey::with_module_digests(
         kind,
         sha256_hex(source.as_bytes()),
         format!("hara-compiler/{}", env!("CARGO_PKG_VERSION")),
         abi_version,
         b"{}",
+        module_digests,
     );
     if let Some(product) = cache.get(&key) {
         return Ok(CompiledArtifact {
@@ -76,22 +79,34 @@ pub fn compile_cached(
             product: product.clone(),
         });
     }
-    let product = compile_product(source, target)?;
+    let bytes = match target {
+        CompileTarget::HbcModule => hbc.clone(),
+        CompileTarget::WholeWasm => compile_whole_wasm(&hbc)?,
+    };
+    let product = CompiledProduct::new(
+        kind,
+        sha256_hex(source.as_bytes()),
+        vec![sha256_hex(&hbc)],
+        format!("hara-compiler/{}", env!("CARGO_PKG_VERSION")),
+        abi_version,
+        b"{}",
+        bytes,
+    );
     cache.insert(product.clone())?;
     Ok(CompiledArtifact { target, product })
 }
 
 pub fn compile_product(source: &str, target: CompileTarget) -> Result<CompiledProduct, String> {
-    let program = compile_source(source).map_err(|error| error.to_string())?;
+    let hbc = compile_hbc(source)?;
     let (product, abi_version) = target.product_identity();
     let bytes = match target {
-        CompileTarget::HbcModule => encode_program(&program)?,
-        CompileTarget::WholeWasm => compile_whole_wasm(&program)?,
+        CompileTarget::HbcModule => hbc.clone(),
+        CompileTarget::WholeWasm => compile_whole_wasm(&hbc)?,
     };
     Ok(CompiledProduct::new(
         product,
         sha256_hex(source.as_bytes()),
-        vec![sha256_hex(source.as_bytes())],
+        vec![sha256_hex(&hbc)],
         format!("hara-compiler/{}", env!("CARGO_PKG_VERSION")),
         abi_version,
         b"{}",
@@ -99,18 +114,25 @@ pub fn compile_product(source: &str, target: CompileTarget) -> Result<CompiledPr
     ))
 }
 
+fn compile_hbc(source: &str) -> Result<Vec<u8>, String> {
+    let program = compile_source(source).map_err(|error| error.to_string())?;
+    encode_program(&program)
+}
+
 #[cfg(feature = "full-wasm")]
-fn compile_whole_wasm(program: &Program) -> Result<Vec<u8>, String> {
-    hara_runtime::whole_wasm::compile_artifact(program)
+fn compile_whole_wasm(hbc: &[u8]) -> Result<Vec<u8>, String> {
+    hara_runtime::whole_wasm::compile_artifact_from_hbc(hbc)
 }
 
 #[cfg(not(feature = "full-wasm"))]
-fn compile_whole_wasm(_program: &Program) -> Result<Vec<u8>, String> {
+fn compile_whole_wasm(_hbc: &[u8]) -> Result<Vec<u8>, String> {
     Err("whole-wasm compilation requires the hara-compiler/full-wasm feature".into())
 }
 
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "full-wasm")]
+    use super::sha256_hex;
     use super::{compile, CompileTarget, CompiledProductKind, InMemoryProductCache};
 
     #[test]
@@ -165,5 +187,21 @@ mod tests {
         let artifact = compile("(+ 19 23)", CompileTarget::WholeWasm).unwrap();
         assert_eq!(artifact.target(), CompileTarget::WholeWasm);
         assert!(!artifact.bytes().is_empty());
+    }
+
+    #[cfg(feature = "full-wasm")]
+    #[test]
+    fn whole_wasm_target_retains_the_canonical_hbc_input() {
+        let source = "(+ 19 23)";
+        let hbc = compile(source, CompileTarget::HbcModule).unwrap();
+        let whole = compile(source, CompileTarget::WholeWasm).unwrap();
+        let decoded = hara_runtime::whole_wasm::decode_artifact(whole.bytes()).unwrap();
+        let retained = hara_runtime::vm::encode_program(&decoded.program).unwrap();
+
+        assert_eq!(retained, hbc.bytes());
+        assert_eq!(
+            whole.manifest().module_digests,
+            vec![sha256_hex(hbc.bytes())]
+        );
     }
 }

@@ -1,4 +1,4 @@
-{:schema "std.work.template.task-parity/0-alpha"
+{:schema "work.flow.task-parity/0-alpha"
  :reference
  {:repository "zcaudate-xyz/foundation-base"
   :commit "f909a44ad504cc6c9f44248d59ec3148261a48d7"

@@ -9,53 +9,6 @@
             [work.base.execution.batch :as batch]
             [work.base.execution.bind :as bind]))
 
-(defn provider-operations
-  [provider]
-  (or (:provider/operations provider) provider))
-
-(defstruct LegacyExecutor [provider legacy])
-
-(extend-type LegacyExecutor IWorkExecutor
-  (work-execute [executor request]
-    (let [provider (:provider executor)
-          execute (get (provider-operations provider) :execute)
-          compatibility (:work/compatibility request)]
-      (if execute
-        (execute (:runtime compatibility)
-                 (:frame compatibility)
-                 (:work compatibility)
-                 (:work/input request))
-        (throw
-         (ex :not-found {:provider/id (:provider/id provider)} :ex/message "Legacy Work executor is missing :execute"))))))
-
-(defn assert-role
-  [provider]
-  (if (not= :work/executor (:provider/role provider))
-    (throw
-     (ex :generic {:provider/role (:provider/role provider)
-               :provider/id (:provider/id provider)} :ex/message "Work provider does not have the executor role")))
-  provider)
-
-(defn validate-provider
-  [provider]
-  (let [provider (assert-role provider)
-        execute (get (provider-operations provider) :execute)]
-    (if (nil? execute)
-      (throw
-       (ex :not-found {:provider/id (:provider/id provider)} :ex/message "Work executor provider is missing :execute")))
-    (if (:provider/handlers provider)
-      provider
-      (assoc provider :provider/handlers {}))))
-
-(defn legacy-provider
-  [provider]
-  {:provider/role :work/executor
-   :provider/id (or (:provider/id provider) :legacy-executor)
-   :provider/capabilities (or (:provider/capabilities provider) #{})
-   :provider/operations provider
-   :provider/handlers (or (:handlers provider) {})
-   :provider/legacy provider})
-
 (defn normalise-provider
   [provider]
   (cond
@@ -65,43 +18,19 @@
     (satisfies? IWorkExecutor provider)
     provider
 
-    (and (map? provider)
-         (= :work/executor (:provider/role provider)))
-    (work.base.execution/LegacyExecutor (validate-provider provider) true)
-
-    (and (map? provider)
-         (:provider/role provider))
-    (assert-role provider)
-
-    (map? provider)
-    (work.base.execution/LegacyExecutor
-     (validate-provider (legacy-provider provider))
-     true)
-
     :else
     (throw
-     (ex :generic {:provider provider} :ex/message "Work executor must implement IWorkExecutor or be a legacy provider"))))
+     (ex :generic {:provider provider} :ex/message "Work executor must implement IWorkExecutor"))))
 
 (defn executor-descriptor
   [executor]
-  (if (instance? work.base.execution/LegacyExecutor executor)
-    (:provider executor)
-    (or (:descriptor executor) executor)))
+  (or (:descriptor executor) executor))
 
 (defn executor-id
   [executor]
   (or (:provider/id (executor-descriptor executor))
       (:id executor)
       :executor))
-
-(defn call
-  [provider operation & arguments]
-  (let [function (get (provider-operations provider) operation)]
-    (if function
-      (apply function arguments)
-      (throw
-       (ex :generic {:provider/id (:provider/id provider)
-                 :operation operation} :ex/message "Work executor operation is not installed")))))
 
 (declare execute-node)
 

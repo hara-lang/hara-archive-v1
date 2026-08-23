@@ -40,6 +40,14 @@ function createApi(runtime) {
     installDirectWasmImport(logical, bytes) {
       runtime.installDirectWasmImport(String(logical), bytes);
     },
+    installMemoryWasmBinding(manifest, interfaceSource, bindingsSource, bytes) {
+      runtime.installMemoryWasmBinding(
+        String(manifest),
+        String(interfaceSource),
+        String(bindingsSource),
+        bytes
+      );
+    },
     installHostHandler(handler) {
       if (typeof handler !== "function" || typeof runtime.install_host_handler !== "function") {
         throw new Error("host-handler-unavailable");

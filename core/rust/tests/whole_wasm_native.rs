@@ -7,6 +7,7 @@ use hara_wasm::vm::{compile_source, execute_program};
 use hara_wasm::whole_wasm::{
     compile_artifact, compile_artifact_from_hbc, decode_artifact, NativeModule, HNW_ABI_VERSION,
 };
+use sha2::{Digest, Sha256};
 
 fn compile_module(source: &str) -> (hara_wasm::vm::Program, NativeModule, Vec<u8>) {
     let program = compile_source(source).expect("source must compile to HBC0");
@@ -150,6 +151,24 @@ fn native_and_fallback_functions_share_one_hnw0_module() {
     assert_eq!(
         native.call_value(unsupported, &[]),
         Err("thrown: nil [line 1, column 1] (instruction 0001)".into())
+    );
+}
+
+#[test]
+fn hnw0_rejects_noncanonical_capability_metadata() {
+    let program = compile_source("(+ 19 23)").expect("source must compile to HBC0");
+    let artifact = compile_artifact(&program).expect("source must compile to HNW0");
+    let payload_end = 8 + u32::from_be_bytes(artifact[4..8].try_into().unwrap()) as usize;
+    let function_count = usize::from(u16::from_be_bytes(artifact[10..12].try_into().unwrap()));
+    let capability = 12 + function_count * 4;
+    let mut corrupt = artifact;
+    corrupt[capability] = 2;
+    let digest = Sha256::digest(&corrupt[8..payload_end]);
+    corrupt[payload_end..].copy_from_slice(&digest);
+
+    assert_eq!(
+        decode_artifact(&corrupt).unwrap_err(),
+        "native artifact capability table is not canonical"
     );
 }
 

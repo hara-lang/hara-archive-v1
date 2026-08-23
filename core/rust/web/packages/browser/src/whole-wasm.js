@@ -27,11 +27,39 @@ export function decodeHnw0(input) {
   offset += 2;
   if (abiVersion !== 2) throw new Error(`unsupported HNW ABI version ${abiVersion}`);
   const functionCount = view.getUint16(offset, false);
-  offset += 2 + functionCount * 4;
+  offset += 2;
+  const functions = [];
+  for (let index = 0; index < functionCount; index += 1) {
+    if (offset + 4 > payloadEnd) throw new Error("native artifact is truncated");
+    const id = view.getUint16(offset, false);
+    const arity = view.getUint16(offset + 2, false);
+    offset += 4;
+    if (id !== index) throw new Error("native artifact function table is not canonical");
+    functions.push({ id, arity });
+  }
+  if (offset + functionCount > payloadEnd) {
+    throw new Error("native artifact is truncated");
+  }
+  const capabilities = Array.from(bytes.subarray(offset, offset + functionCount), (native) => {
+    if (native !== 0 && native !== 1) {
+      throw new Error("native artifact capability table is not canonical");
+    }
+    return native === 1;
+  });
+  offset += functionCount;
+  if (offset + 4 > payloadEnd) {
+    throw new Error("native artifact contains malformed sections");
+  }
   const hbcLength = readU32(bytes, offset);
   offset += 4;
+  if (hbcLength > payloadEnd - offset) {
+    throw new Error("native artifact contains malformed sections");
+  }
   const hbc = bytes.slice(offset, offset + hbcLength);
   offset += hbcLength;
+  if (offset + 4 > payloadEnd) {
+    throw new Error("native artifact contains malformed sections");
+  }
   const wasmLength = readU32(bytes, offset);
   offset += 4;
   if (offset + wasmLength !== payloadEnd) {
@@ -41,7 +69,7 @@ export function decodeHnw0(input) {
   if (String.fromCharCode(...wasm.subarray(0, 4)) !== "\0asm") {
     throw new Error("native artifact contains invalid Wasm");
   }
-  return { abiVersion, functionCount, hbc, wasm };
+  return { abiVersion, functionCount, functions, capabilities, hbc, wasm };
 }
 
 function hostImports(host) {
@@ -76,7 +104,7 @@ export async function instantiateWholeWasm(product, Host, fallback) {
   const decoded = decodeHnw0(artifact);
   await validateManifest(manifest, decoded, artifact);
   const host = new Host(artifact);
-  const { hbc, wasm } = decoded;
+  const { hbc, wasm, capabilities } = decoded;
   const names = manifestNames(manifest);
   const { instance, module } = await WebAssembly.instantiate(wasm, {
     [names.importModule]: hostImports(host)
@@ -97,7 +125,7 @@ export async function instantiateWholeWasm(product, Host, fallback) {
     call(...arguments_) {
       host.beginCall();
       const entryFunction = this.entryFunction();
-      if (!host.supportsNative(BigInt(entryFunction))) {
+      if (!capabilities[entryFunction]) {
         if (typeof fallback !== "function") {
           throw new Error("whole-Wasm entry requires its validated HBC fallback");
         }
