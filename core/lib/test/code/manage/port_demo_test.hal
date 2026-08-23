@@ -9,7 +9,7 @@
    :target/path "src/demo.hal"})
 
 (defn clj->hal
-  "Placeholder semantic port. The canonical translator is tool.migrate.clojure,
+  "Placeholder semantic port. The canonical translator is tool.migrate.common.clojure,
    but its rule engine currently hits a runtime 'value is not callable' bug in
    the block zipper. This demo shows that transform-code itself is a reliable
    workhorse when driven by work/run."

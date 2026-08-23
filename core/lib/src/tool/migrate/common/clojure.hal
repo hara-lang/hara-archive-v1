@@ -1,0 +1,522 @@
+(ns tool.migrate.common.clojure
+  (:require [code.framework :as framework]
+            [std.block :as block]
+            [code.framework.navigation :as nav]
+            [work.base :as work]
+            [work.flow.task.command-task :as task]
+            [tool.migrate.common.rule :as rule]
+            [tool.migrate.common.rules :as declarations]))
+
+(def task-id :tool.migrate/clojure)
+(def task-version 1)
+
+(defn source-path
+  [unit]
+  (or (:source/path unit)
+      (:path unit)))
+
+(defn item-id
+  [unit]
+  (str (source-path unit)
+       " -> "
+       (or (:target/path unit) (source-path unit))))
+
+(defn source-root
+  [unit]
+  (or (:source/root unit) ""))
+
+(defn source-text
+  [unit]
+  (if (has? unit :source/text)
+    (:source/text unit)
+    (:source unit)))
+
+(defn target-root
+  [unit]
+  (or (:target/root unit) ""))
+
+(defn target-text
+  [unit]
+  (if (has? unit :target/text)
+    (:target/text unit)
+    (:target unit)))
+
+(defn strip-leading-separator
+  [value]
+  (if (and (string? value)
+           (not (empty? value))
+           (= "/" (str/slice value 0 1)))
+    (str/slice value 1 (count value))
+    value))
+
+(defn strip-trailing-separator
+  [value]
+  (if (and (string? value)
+           (not (empty? value))
+           (str/ends-with? value "/"))
+    (str/slice value 0 (dec (count value)))
+    value))
+
+(defn relative-source-path
+  [path root]
+  (let [prefix (strip-trailing-separator root)]
+    (if (and (not (empty? prefix))
+             (or (= path prefix)
+                 (str/starts-with? path (str prefix "/"))))
+      (strip-leading-separator
+       (str/slice path (count prefix) (count path)))
+      path)))
+
+(defn hal-path
+  [path]
+  (if (and (string? path)
+           (str/ends-with? path ".clj"))
+    (str (str/slice path 0 (- (count path) 4)) ".hal")
+    (throw
+     (ex :io {:source/path path} :ex/message "Clojure source path must end in .clj"))))
+
+(defn join-path
+  [root path]
+  (let [root (strip-trailing-separator root)
+        path (strip-leading-separator path)]
+    (if (empty? root)
+      path
+      (str root "/" path))))
+
+(defn target-path
+  [unit]
+  (or (:target/path unit)
+      (join-path
+       (target-root unit)
+       (hal-path
+        (relative-source-path
+         (source-path unit)
+         (source-root unit))))))
+
+(defn translation-options
+  [unit options]
+  (merge
+   (or (:translation/options unit) {})
+   (or options {})))
+
+(defn assert-source-unit
+  [unit]
+  (if (not (map? unit))
+    (throw
+     (ex :argument {:unit unit} :ex/message "Clojure translation source unit must be a map")))
+  (if (not (string? (source-path unit)))
+    (throw
+     (ex :io {:unit unit} :ex/message "Clojure translation source unit requires :source/path")))
+  (if (not (string? (source-text unit)))
+    (throw
+     (ex :io {:source/path (source-path unit)} :ex/message "Clojure translation source unit requires :source/text")))
+  unit)
+
+(defn source-unit
+  "Normalises one host-prepared Clojure source unit without reading or writing
+   the filesystem. Explicit target paths win; otherwise the path is derived
+   from source and target roots and receives the .hal suffix."
+  ([unit]
+   (source-unit unit {}))
+  ([unit options]
+   (let [unit (assert-source-unit unit)]
+     (merge
+      unit
+      {:source/path (source-path unit)
+       :source/root (source-root unit)
+       :source/text (source-text unit)
+       :target/root (target-root unit)
+       :target/path (target-path unit)
+       :target/text (target-text unit)
+       :translation/options (translation-options unit options)}))))
+
+(defn unique-sorted
+  [values]
+  (vec
+   (sort
+    (keys
+     (reduce
+      (fn [output value]
+        (if value (assoc output value true) output))
+      {}
+      values)))))
+
+(defn dependency-clause?
+  [clause]
+  (let [head (nav/form-head clause)]
+    (or (= head ":require")
+        (= head ":use"))))
+
+(defn dependency-entry-name
+  [entry]
+  (let [name
+        (cond
+          (block/token? entry) (block/string entry)
+          (block/container? entry) (nav/form-head entry)
+          :else nil)]
+    (if (and name
+             (not (str/starts-with? name ":")))
+      name
+      nil)))
+
+(defn clause-dependencies
+  [clause]
+  (vec
+   (keep
+    dependency-entry-name
+    (rest (nav/code-children clause)))))
+
+(defn dependencies
+  [input]
+  (unique-sorted
+   (reduce
+    (fn [output clause]
+      (if (dependency-clause? clause)
+        (into output (clause-dependencies clause))
+        output))
+    []
+    (nav/namespace-clauses input))))
+
+(def +non-binding-definitions+
+  #{"defmethod" "defimpl" "defimpl.xt"})
+
+(defn public-definition?
+  [location]
+  (let [head (nav/form-head location)]
+    (and (nav/definition-location? location)
+         (not (str/ends-with? head "-"))
+         (not (has? +non-binding-definitions+ head)))))
+
+(defn public-symbols
+  [input]
+  (unique-sorted
+   (keep
+    nav/definition-name
+    (filter public-definition?
+            (nav/definition-locations input)))))
+
+(defn source-summary
+  [input]
+  (let [root (nav/block-input input)]
+    {:namespace (nav/namespace-name root)
+     :dependencies (dependencies root)
+     :public-symbols (public-symbols root)}))
+
+(defn namespace-shape
+  "Returns the stable namespace, dependency, and public-binding shape for
+   source text, a block tree, or an existing shape map."
+  [input]
+  (let [summary
+        (if (and (map? input)
+                 (has? input :namespace)
+                 (has? input :dependencies)
+                 (has? input :public-symbols))
+          input
+          (source-summary input))]
+    {:namespace (:namespace summary)
+     :dependencies
+     (unique-sorted (or (:dependencies summary) []))
+     :public-symbols
+     (unique-sorted (or (:public-symbols summary) []))}))
+
+(defn value-index
+  [values]
+  (reduce
+   (fn [output value]
+     (assoc output value true))
+   {}
+   values))
+
+(defn values-only-in
+  [left right]
+  (let [right-index (value-index right)]
+    (vec
+     (filter
+      (fn [value]
+        (not (has? right-index value)))
+      left))))
+
+(defn namespace-shape-check
+  "Compares two namespace shapes. A namespace map can express an intentional
+   ownership move; optional extra dependencies or public symbols must be
+   explicitly allowed."
+  ([expected actual]
+   (namespace-shape-check expected actual {}))
+  ([expected actual options]
+   (let [expected (namespace-shape expected)
+         actual (namespace-shape actual)
+         namespace-map (or (:namespace-map options) {})
+         expected-namespace
+         (or (get namespace-map (:namespace expected))
+             (:namespace expected))
+         missing-dependencies
+         (values-only-in (:dependencies expected)
+                         (:dependencies actual))
+         unexpected-dependencies
+         (values-only-in (:dependencies actual)
+                         (:dependencies expected))
+         missing-public-symbols
+         (values-only-in (:public-symbols expected)
+                         (:public-symbols actual))
+         unexpected-public-symbols
+         (values-only-in (:public-symbols actual)
+                         (:public-symbols expected))
+         namespace-match?
+         (= expected-namespace (:namespace actual))
+         dependencies-match?
+         (and
+          (empty? missing-dependencies)
+          (or (:allow-extra-dependencies? options)
+              (empty? unexpected-dependencies)))
+         public-symbols-match?
+         (and
+          (empty? missing-public-symbols)
+          (or (:allow-extra-public-symbols? options)
+              (empty? unexpected-public-symbols)))]
+     {:conformant?
+      (and namespace-match?
+           dependencies-match?
+           public-symbols-match?)
+      :expected expected
+      :actual actual
+      :namespace
+      {:expected expected-namespace
+       :actual (:namespace actual)
+       :match? namespace-match?}
+      :dependencies
+      {:missing missing-dependencies
+       :unexpected unexpected-dependencies
+       :match? dependencies-match?}
+      :public-symbols
+      {:missing missing-public-symbols
+       :unexpected unexpected-public-symbols
+       :match? public-symbols-match?}})))
+
+(defn translated-namespace-shape-check
+  "Translates Clojure source with tool.migrate.common.project and compares its resulting
+   namespace shape to the reviewed Hara target shape."
+  ([source target]
+   (translated-namespace-shape-check source target {}))
+  ([source target options]
+   (let [translation
+         (rule/translate-source
+          source
+          (merge {:mode :review}
+                 (or (:translation/options options) {})))
+         check
+         (namespace-shape-check
+          (:output translation)
+          target
+          (or (:shape/options options) {}))]
+     (assoc
+      check
+      :translation
+      {:output (:output translation)
+       :changed (:changed translation)
+       :rules/matched
+       (vec (map :rule/id (:rules/matched translation)))
+       :rules/applied
+       (vec (map :rule/id (:rules/applied translation)))}))))
+
+(defn catalog-field
+  [value keyword-key string-key]
+  (if (and (map? value) (has? value keyword-key))
+    (get value keyword-key)
+    (if (map? value) (get value string-key) nil)))
+
+(defn catalog-symbol-routes
+  [entry]
+  (vec (or (catalog-field entry :symbol_routes "symbol_routes") [])))
+
+(defn catalog-symbol-route
+  [entry symbol]
+  (first
+   (filter
+    (fn [route]
+      (= symbol
+         (catalog-field route :source_symbol "source_symbol")))
+    (catalog-symbol-routes entry))))
+
+(defn catalog-migration-summary
+  [entry]
+  (or (catalog-field entry :migration "migration") {}))
+
+(defn catalog-target-summary
+  [entry]
+  (let [target (first (or (catalog-field entry :targets "targets") []))]
+    {:namespace (catalog-field target :namespace "namespace")
+     :dependencies []
+     :public-symbols
+     (unique-sorted
+      (keep (fn [route]
+              (catalog-field route :target_symbol "target_symbol"))
+            (catalog-symbol-routes entry)))}))
+
+(defn catalog-route-diagnostic
+  [route]
+  (let [state (keyword (catalog-field route :state "state"))
+        safety (keyword (catalog-field route :safety "safety"))
+        source-symbol (catalog-field route :source_symbol "source_symbol")
+        target-namespace (catalog-field route :target_namespace "target_namespace")
+        target-symbol (catalog-field route :target_symbol "target_symbol")]
+    {:type (cond
+             (= state :implemented) :tool.migrate/migration-implemented
+             (= state :obsolete) :tool.migrate/migration-obsolete
+             (= state :host-only) :tool.migrate/unsupported
+             :else :tool.migrate/migration-pending)
+     :level (cond
+              (= state :implemented) :info
+              (or (= state :obsolete) (= state :host-only)) :warning
+              :else :notice)
+     :safety safety
+     :migration/state state
+     :source/symbol source-symbol
+     :target/namespace target-namespace
+     :target/symbol target-symbol
+     :message (catalog-field route :message "message")}))
+
+(defn catalog-diagnostics
+  [entry]
+  (vec (map catalog-route-diagnostic (catalog-symbol-routes entry))))
+
+(defn provenance
+  [unit translation]
+  {:source/path (:source/path unit)
+   :source/root (:source/root unit)
+   :source/sha256 (:source/sha256 unit)
+   :target/path (:target/path unit)
+   :target/root (:target/root unit)
+   :translation/mode (:mode translation)
+   :ruleset/catalog :hara/code-migration
+   :ruleset/count (count rule/+ruleset+)})
+
+(defn selected-rules
+  [options]
+  (if (:rules options)
+    (:rules options)
+    (if (:catalog options)
+      (declarations/rules options)
+      rule/+ruleset+)))
+
+(defn migration-result
+  "Translates one prepared source unit into a pure edit record. The unit owns
+   source and target bytes; this function owns no discovery, filesystem, or
+   write capability."
+  ([unit]
+   (translate-source-unit unit {}))
+  ([unit options]
+   (let [unit (source-unit unit options)
+         source (:source/text unit)
+         before (:target/text unit)
+         recipe (:translation/recipe unit)
+         recipe-output (:output recipe)
+         recipe-normalized
+         (if (string? recipe-output)
+           (rule/translate-source
+            recipe-output
+            {:mode :review
+             :file (:target/path unit)
+             :rules (selected-rules (:translation/options unit))})
+           nil)
+         result
+         (if (string? recipe-output)
+           {:output (:output recipe-normalized)
+            :changed (not= source (:output recipe-normalized))
+            :mode :recipe
+            :rules/matched (:rules/matched recipe-normalized)
+            :rules/applied (:rules/applied recipe-normalized)
+            :diagnostics (:diagnostics recipe-normalized)}
+           (rule/translate-source
+            source
+            (assoc (:translation/options unit)
+                   :file (:source/path unit)
+                   :rules (selected-rules (:translation/options unit)))))
+         after (:output result)
+         entry (:corpus/entry unit)
+         summary (if (string? recipe-output)
+                   (catalog-target-summary entry)
+                   (source-summary after))
+         migration-routes (catalog-symbol-routes entry)
+         diagnostics
+         (if (string? recipe-output)
+           (vec
+            (concat
+             [{:type :tool.migrate/recipe-applied
+               :level :info
+               :safety :safe
+               :recipe/id (:id recipe)
+               :message "Applied reviewed semantic migration recipe."}]
+             (:diagnostics result)))
+           (vec (concat (:diagnostics result)
+                        (catalog-diagnostics entry))))]
+     {:path (:target/path unit)
+      :source/path (:source/path unit)
+      :source/root (:source/root unit)
+      :source/text source
+      :source/sha256 (:source/sha256 unit)
+      :target/path (:target/path unit)
+      :target/root (:target/root unit)
+      :before before
+      :after after
+      :changed (not= before after)
+      :source/changed (:changed result)
+      :create (nil? before)
+      :write false
+      :mode (:mode result)
+      :namespace (:namespace summary)
+      :dependencies (:dependencies summary)
+      :public-symbols (:public-symbols summary)
+      :rules/matched (:rules/matched result)
+      :rules/applied (:rules/applied result)
+      :diagnostics diagnostics
+      :migration/routes migration-routes
+      :migration/summary (catalog-migration-summary entry)
+      :translation/recipe (if recipe (:id recipe) nil)
+      :provenance (provenance unit result)})))
+
+(defn translate-source-unit
+  "Normalises one migration through the shared code.framework substrate."
+  ([unit]
+   (translate-source-unit unit {}))
+  ([unit options]
+   (let [prepared (source-unit unit options)
+         result (migration-result prepared options)]
+     (framework/transform-code
+      {:source/path (:source/path prepared)
+       :source/text (:source/text prepared)
+       :target/path (:target/path prepared)
+       :target/text (:target/text prepared)}
+      (fn [_] result)))))
+
+
+(def analyze-source-unit translate-source-unit)
+
+(defn lint-source-unit
+  ([unit]
+   (lint-source-unit unit {}))
+  ([unit options]
+   (translate-source-unit
+    unit
+    (assoc (or options {}) :mode :lint))))
+
+(def migrate-source-unit
+  (task/tasklet
+   {:id task-id
+    :version task-version
+    :item-key item-id
+    :run
+    (fn [unit context]
+      {:status :return
+       :data (translate-source-unit unit)})
+    :display
+    (fn [result]
+      (if (map? result)
+        (select-keys result
+                     [:path :namespace :changed :mode])
+        result))}))
+
+(defn run-unit
+  ([unit]
+   (work/run migrate-source-unit unit))
+  ([runtime unit]
+   (work/run runtime migrate-source-unit unit)))

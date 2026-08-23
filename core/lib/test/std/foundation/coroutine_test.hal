@@ -77,8 +77,8 @@
      => [0 1 4 :done :dead])
 
    (fact "await returns settled promise value"
-     (let [c (std.foundation.coroutine/create (fn [] (std.foundation.coroutine/await (promise/delay 50 (fn [] :delayed-value)))))
-                     c-quick (std.foundation.coroutine/create (fn [] (std.foundation.coroutine/await (promise (fn [] 7)))))]
+     (let [c (std.foundation.coroutine/create (fn [] (std.foundation.coroutine/await (Promise/delay 50 (fn [] :delayed-value)))))
+                     c-quick (std.foundation.coroutine/create (fn [] (std.foundation.coroutine/await (Promise/run (fn [] 7)))))]
                  [(std.foundation.coroutine/resume c)
                   (std.foundation.coroutine/status c)
                   (std.foundation.coroutine/resume c-quick)

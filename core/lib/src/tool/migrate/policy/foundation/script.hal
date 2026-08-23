@@ -1,0 +1,1183 @@
+(ns tool.migrate.policy.foundation.script)
+
+(def +foundation-script-source+
+  {:repository "zcaudate-xyz/foundation-base"
+   :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"})
+
+(def +foundation-script-source-units+
+ [
+  {:namespace 'tahto.core.script
+   :path "src/tahto/core/script.clj"
+   :references
+   [
+     'tahto.core.script/install
+     'tahto.core.script/+module-keys+
+     'tahto.core.script/+runtime-keys+
+     'tahto.core.script/script-ns-import
+     'tahto.core.script/script-macro-import
+     'tahto.core.script/script-require-target-id
+     'tahto.core.script/script-specialize-merge-contracts
+     'tahto.core.script/script-specialize-require
+     'tahto.core.script/script-specialize-config
+     'tahto.core.script/resolve-runtime-config
+     'tahto.core.script/script-fn-base
+     'tahto.core.script/script-fn
+     'tahto.core.script/script
+     'tahto.core.script/script-test-prep
+     'tahto.core.script/script-test-mode?
+     'tahto.core.script/script-test
+     'tahto.core.script/script-
+     'tahto.core.script/script-ext
+     'tahto.core.script/script+
+     'tahto.core.script/script-ext-run
+     'tahto.core.script/!
+     'tahto.core.script/annex:start
+     'tahto.core.script/annex:get
+     'tahto.core.script/annex:stop
+     'tahto.core.script/annex:start-all
+     'tahto.core.script/annex:stop-all
+     'tahto.core.script/annex:restart-all
+     'tahto.core.script/annex:list
+   ]}
+  {:namespace 'tahto.core.script-annex
+   :path "src/tahto/core/script_annex.clj"
+   :references
+   [
+     'tahto.core.script-annex/rt-annex?
+     'tahto.core.script-annex/rt-annex:create
+     'tahto.core.script-annex/+init-annex+
+     'tahto.core.script-annex/annex-current
+     'tahto.core.script-annex/annex-reset
+     'tahto.core.script-annex/get-annex
+     'tahto.core.script-annex/clear-annex
+     'tahto.core.script-annex/get-annex-library
+     'tahto.core.script-annex/get-annex-book
+     'tahto.core.script-annex/add-annex-runtime
+     'tahto.core.script-annex/get-annex-runtime
+     'tahto.core.script-annex/remove-annex-runtime
+     'tahto.core.script-annex/register-annex-tag
+     'tahto.core.script-annex/deregister-annex-tag
+     'tahto.core.script-annex/start-runtime
+     'tahto.core.script-annex/same-runtime?
+   ]}
+  {:namespace 'tahto.core.script-control
+   :path "src/tahto/core/script_control.clj"
+   :references
+   [
+     'tahto.core.script-control/+watch-keys+
+     'tahto.core.script-control/script-rt-prep
+     'tahto.core.script-control/script-rt-get
+     'tahto.core.script-control/script-rt-stop
+     'tahto.core.script-control/script-rt-restart
+     'tahto.core.script-control/script-rt-oneshot-eval
+     'tahto.core.script-control/script-rt-oneshot
+   ]}
+  {:namespace 'tahto.core.script-def
+   :path "src/tahto/core/script_def.clj"
+   :references
+   [
+     'tahto.core.script-def/tmpl-entry
+     'tahto.core.script-def/tmpl-macro
+   ]}
+  {:namespace 'tahto.core.script-lint
+   :path "src/tahto/core/script_lint.clj"
+   :references
+   [
+     'tahto.core.script-lint/get-reserved-raw
+     'tahto.core.script-lint/get-reserved
+     'tahto.core.script-lint/collect-vars
+     'tahto.core.script-lint/collect-module-globals
+     'tahto.core.script-lint/collect-sym-vars
+     'tahto.core.script-lint/sym-check-linter
+     'tahto.core.script-lint/+registry+
+     'tahto.core.script-lint/+settings+
+     'tahto.core.script-lint/lint-set
+     'tahto.core.script-lint/lint-clear
+     'tahto.core.script-lint/lint-needed?
+     'tahto.core.script-lint/lint-entry
+   ]}
+  {:namespace 'tahto.core.script-macro
+   :path "src/tahto/core/script_macro.clj"
+   :references
+   [
+     'tahto.core.script-macro/+form-allow+
+     'tahto.core.script-macro/body-arglists
+     'tahto.core.script-macro/intern-in
+     'tahto.core.script-macro/intern-prep
+     'tahto.core.script-macro/intern-def$-fn
+     'tahto.core.script-macro/intern-def$
+     'tahto.core.script-macro/intern-defmacro-fn
+     'tahto.core.script-macro/intern-defmacro
+     'tahto.core.script-macro/call-thunk
+     'tahto.core.script-macro/intern-!-fn
+     'tahto.core.script-macro/intern-!
+     'tahto.core.script-macro/intern-free-fn
+     'tahto.core.script-macro/intern-free
+     'tahto.core.script-macro/hydrate-top-level-entry
+     'tahto.core.script-macro/intern-top-level-fn
+     'tahto.core.script-macro/intern-top-level
+     'tahto.core.script-macro/intern-macros
+     'tahto.core.script-macro/intern-highlights
+     'tahto.core.script-macro/intern-grammar
+     'tahto.core.script-macro/intern-defmacro-rt-fn
+     'tahto.core.script-macro/defmacro.!
+   ]}
+ ])
+
+(def +foundation-script-source-references+
+  (vec
+   (mapcat (fn [unit]
+             (get unit :references))
+           +foundation-script-source-units+)))
+
+(def +foundation-script-target-references+
+ [
+  'lang.core/install-lang
+  'lang.core.script/+module-metadata-keys+
+  'lang.core/runtime-spec
+  'lang.core.script/load-module
+  'lang.core.script/script-ns-import
+  'lang.core.script/script-require-target-id
+  'lang.common.book/module-specialize-bindings
+  'lang.common.book/module-specialize
+  'lang.core/script-import-symbols
+  'lang.core.script/configure-module
+  'lang.core/script-expansion
+  'lang.core/script
+  'lang.core.script/script-test-form
+  'lang.core/script-
+  'lang.core.script-annex/start-tag-in
+  'lang.core/script+
+  'lang.core.script-annex/eval-tag-in
+  'lang.core/!
+  'lang.core/annex:start
+  'lang.core/annex:get
+  'lang.core/annex:stop
+  'lang.core/annex:start-all
+  'lang.core/annex:stop-all
+  'lang.core/annex:restart-all
+  'lang.core/annex:list
+  'lang.core.script-annex/status
+  'lang.core.script-annex/clear-in
+  'lang.core.script-annex/status-in
+  'lang.core.script-annex/add-runtime-in
+  'lang.core.script-annex/runtime-in
+  'lang.core.script-annex/remove-runtime-in
+  'lang.core.script-annex/register-tag-in
+  'lang.core.script-annex/deregister-tag-in
+  'lang.core.script-annex/start-runtime
+  'lang.core.script-annex/same-runtime?
+  'lang.core/rt-create
+  'lang.core/rt-start
+  'lang.core/rt-stop
+  'lang.core.script/restart
+  'lang.core.script/eval-form
+  'lang.core/rt-oneshot
+  'lang.core.script-def/tmpl-entry
+  'lang.core.script-def/tmpl-macro
+  'lang.core.script-lint/get-reserved-raw
+  'lang.core.script-lint/get-reserved
+  'lang.core.script-lint/collect-vars
+  'lang.core.script-lint/collect-module-globals
+  'tool.lint/lint-source
+  'lang.core/script-definition-macro-form
+  'std.foundation/intern-all
+  'lang.core/script-context
+  'lang.core/register-fragment-pointer
+  'lang.core/script-fragment-macro-form
+  'lang.core/register-macro-fragment
+  'lang.core/script-defmacro-macro-form
+  'lang.core/script-eval-macro-form
+  'lang.core/register-code-pointer
+  'lang.core/register-language-code
+  'lang.core/script-macro-forms
+  'lang.core/script-highlight-macro-form
+  'lang.core/sync-language-definitions
+ ])
+
+(def +foundation-script-validation-references+
+ [
+  'lang.core.script-contract-test/run
+  'lang.core.script-port-test/run
+  'tool.lint-test/run
+  'tool.migrate-script-test/run
+ ])
+
+(def +foundation-script-ledger+
+ [
+  {:source/refer 'tahto.core.script/install
+   :target/refer 'lang.core/install-lang
+   :disposition :adapted
+   :stage/from :script
+   :stage/to :language-registration
+   :reason :script-registration-is-owned-by-explicit-language-and-runtime-registries
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script.clj"}
+   :validation 'lang.core.script-contract-test/run}
+  {:source/refer 'tahto.core.script/+module-keys+
+   :target/refer 'lang.core.script/+module-metadata-keys+
+   :disposition :adapted
+   :stage/from :script
+   :stage/to :module-config
+   :reason :script-registration-is-owned-by-explicit-language-and-runtime-registries
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script.clj"}
+   :validation 'lang.core.script-contract-test/run}
+  {:source/refer 'tahto.core.script/+runtime-keys+
+   :target/refer 'lang.core/runtime-spec
+   :disposition :adapted
+   :stage/from :script
+   :stage/to :runtime-config
+   :reason :script-registration-is-owned-by-explicit-language-and-runtime-registries
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script.clj"}
+   :validation 'lang.core.script-contract-test/run}
+  {:source/refer 'tahto.core.script/script-ns-import
+   :target/refer 'lang.core.script/script-ns-import
+   :disposition :adapted
+   :stage/from :script
+   :stage/to :namespace-coordination
+   :reason :ordinary-hara-require-owns-source-resolution
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script.clj"}
+   :validation 'lang.core.script-contract-test/run}
+  {:source/refer 'tahto.core.script/script-macro-import
+   :target/refer 'lang.core/script-import-symbols
+   :disposition :adapted
+   :stage/from :script
+   :stage/to :grammar-publication
+   :reason :script-registration-is-owned-by-explicit-language-and-runtime-registries
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script.clj"}
+   :validation 'lang.core.script-contract-test/run}
+  {:source/refer 'tahto.core.script/script-require-target-id
+   :target/refer 'lang.core.script/script-require-target-id
+   :disposition :adapted
+   :stage/from :script
+   :stage/to :module-specialization
+   :reason :module-specialization-derives-target-identities
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script.clj"}
+   :validation 'lang.core.script-contract-test/run}
+  {:source/refer 'tahto.core.script/script-specialize-merge-contracts
+   :target/refer 'lang.common.book/module-specialize-bindings
+   :disposition :adapted
+   :stage/from :script
+   :stage/to :module-specialization
+   :reason :book-specialization-owns-contract-bindings
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script.clj"}
+   :validation 'lang.core.script-contract-test/run}
+  {:source/refer 'tahto.core.script/script-specialize-require
+   :target/refer 'lang.common.book/module-specialize
+   :disposition :adapted
+   :stage/from :script
+   :stage/to :module-specialization
+   :reason :book-specialization-replaces-runtime-library-snapshot-resolution
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script.clj"}
+   :validation 'lang.core.script-contract-test/run}
+  {:source/refer 'tahto.core.script/script-specialize-config
+   :target/refer 'lang.core.script/configure-module
+   :disposition :adapted
+   :stage/from :script
+   :stage/to :module-config
+   :reason :specialization-is-retained-in-source-owned-module-configuration
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script.clj"}
+   :validation 'lang.core.script-contract-test/run}
+  {:source/refer 'tahto.core.script/resolve-runtime-config
+   :target/refer 'lang.core/runtime-spec
+   :disposition :adapted
+   :stage/from :script
+   :stage/to :runtime-config
+   :reason :script-registration-is-owned-by-explicit-language-and-runtime-registries
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script.clj"}
+   :validation 'lang.core.script-contract-test/run}
+  {:source/refer 'tahto.core.script/script-fn-base
+   :target/refer 'lang.core/script-expansion
+   :disposition :adapted
+   :stage/from :script
+   :stage/to :grammar-publication
+   :reason :script-registration-is-owned-by-explicit-language-and-runtime-registries
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script.clj"}
+   :validation 'lang.core.script-contract-test/run}
+  {:source/refer 'tahto.core.script/script-fn
+   :target/refer 'lang.core/script-expansion
+   :disposition :adapted
+   :stage/from :script
+   :stage/to :grammar-publication
+   :reason :script-registration-is-owned-by-explicit-language-and-runtime-registries
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script.clj"}
+   :validation 'lang.core.script-contract-test/run}
+  {:source/refer 'tahto.core.script/script
+   :target/refer 'lang.core/script
+   :disposition :adapted
+   :stage/from :script
+   :stage/to :grammar-publication
+   :reason :script-registration-is-owned-by-explicit-language-and-runtime-registries
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script.clj"}
+   :validation 'lang.core.script-contract-test/run}
+  {:source/refer 'tahto.core.script/script-test-prep
+   :target/refer 'lang.core.script/script-test-form
+   :disposition :adapted
+   :stage/from :script
+   :stage/to :test-publication
+   :reason :script-registration-is-owned-by-explicit-language-and-runtime-registries
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script.clj"}
+   :validation 'lang.core.script-contract-test/run}
+  {:source/refer 'tahto.core.script/script-test-mode?
+   :disposition :obsolete
+   :stage/from :script
+   :stage/to :test-publication
+   :reason :explicit-script-test-forms-replace-dynamic-test-mode
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script.clj"}}
+  {:source/refer 'tahto.core.script/script-test
+   :target/refer 'lang.core/script-
+   :disposition :adapted
+   :stage/from :script
+   :stage/to :test-publication
+   :reason :script-registration-is-owned-by-explicit-language-and-runtime-registries
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script.clj"}
+   :validation 'lang.core.script-contract-test/run}
+  {:source/refer 'tahto.core.script/script-
+   :target/refer 'lang.core/script-
+   :disposition :adapted
+   :stage/from :script
+   :stage/to :test-publication
+   :reason :script-registration-is-owned-by-explicit-language-and-runtime-registries
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script.clj"}
+   :validation 'lang.core.script-contract-test/run}
+  {:source/refer 'tahto.core.script/script-ext
+   :target/refer 'lang.core.script-annex/start-tag-in
+   :disposition :adapted
+   :stage/from :script
+   :stage/to :runtime-annex
+   :reason :script-registration-is-owned-by-explicit-language-and-runtime-registries
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script.clj"}
+   :validation 'lang.core.script-contract-test/run}
+  {:source/refer 'tahto.core.script/script+
+   :target/refer 'lang.core/script+
+   :disposition :adapted
+   :stage/from :script
+   :stage/to :grammar-publication
+   :reason :script-registration-is-owned-by-explicit-language-and-runtime-registries
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script.clj"}
+   :validation 'lang.core.script-contract-test/run}
+  {:source/refer 'tahto.core.script/script-ext-run
+   :target/refer 'lang.core.script-annex/eval-tag-in
+   :disposition :adapted
+   :stage/from :script
+   :stage/to :target-eval
+   :reason :script-registration-is-owned-by-explicit-language-and-runtime-registries
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script.clj"}
+   :validation 'lang.core.script-contract-test/run}
+  {:source/refer 'tahto.core.script/!
+   :target/refer 'lang.core/!
+   :disposition :adapted
+   :stage/from :script
+   :stage/to :grammar-publication
+   :reason :script-registration-is-owned-by-explicit-language-and-runtime-registries
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script.clj"}
+   :validation 'lang.core.script-contract-test/run}
+  {:source/refer 'tahto.core.script/annex:start
+   :target/refer 'lang.core/annex:start
+   :disposition :adapted
+   :stage/from :script
+   :stage/to :runtime-lifecycle
+   :reason :script-registration-is-owned-by-explicit-language-and-runtime-registries
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script.clj"}
+   :validation 'lang.core.script-contract-test/run}
+  {:source/refer 'tahto.core.script/annex:get
+   :target/refer 'lang.core/annex:get
+   :disposition :adapted
+   :stage/from :script
+   :stage/to :runtime-registry
+   :reason :script-registration-is-owned-by-explicit-language-and-runtime-registries
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script.clj"}
+   :validation 'lang.core.script-contract-test/run}
+  {:source/refer 'tahto.core.script/annex:stop
+   :target/refer 'lang.core/annex:stop
+   :disposition :adapted
+   :stage/from :script
+   :stage/to :runtime-lifecycle
+   :reason :script-registration-is-owned-by-explicit-language-and-runtime-registries
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script.clj"}
+   :validation 'lang.core.script-contract-test/run}
+  {:source/refer 'tahto.core.script/annex:start-all
+   :target/refer 'lang.core/annex:start-all
+   :disposition :adapted
+   :stage/from :script
+   :stage/to :runtime-lifecycle
+   :reason :script-registration-is-owned-by-explicit-language-and-runtime-registries
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script.clj"}
+   :validation 'lang.core.script-contract-test/run}
+  {:source/refer 'tahto.core.script/annex:stop-all
+   :target/refer 'lang.core/annex:stop-all
+   :disposition :adapted
+   :stage/from :script
+   :stage/to :runtime-lifecycle
+   :reason :script-registration-is-owned-by-explicit-language-and-runtime-registries
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script.clj"}
+   :validation 'lang.core.script-contract-test/run}
+  {:source/refer 'tahto.core.script/annex:restart-all
+   :target/refer 'lang.core/annex:restart-all
+   :disposition :adapted
+   :stage/from :script
+   :stage/to :runtime-lifecycle
+   :reason :script-registration-is-owned-by-explicit-language-and-runtime-registries
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script.clj"}
+   :validation 'lang.core.script-contract-test/run}
+  {:source/refer 'tahto.core.script/annex:list
+   :target/refer 'lang.core/annex:list
+   :disposition :adapted
+   :stage/from :script
+   :stage/to :runtime-registry
+   :reason :script-registration-is-owned-by-explicit-language-and-runtime-registries
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script.clj"}
+   :validation 'lang.core.script-contract-test/run}
+  {:source/refer 'tahto.core.script-annex/rt-annex?
+   :disposition :obsolete
+   :stage/from :runtime-annex
+   :stage/to :runtime-registry
+   :reason :cloned-library-annex-identity-is-not-part-of-the-portable-runtime-contract
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_annex.clj"}}
+  {:source/refer 'tahto.core.script-annex/rt-annex:create
+   :disposition :obsolete
+   :stage/from :runtime-annex
+   :stage/to :runtime-registry
+   :reason :cloned-library-annex-identity-is-not-part-of-the-portable-runtime-contract
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_annex.clj"}}
+  {:source/refer 'tahto.core.script-annex/+init-annex+
+   :disposition :obsolete
+   :stage/from :runtime-annex
+   :stage/to :runtime-registry
+   :reason :cloned-library-annex-identity-is-not-part-of-the-portable-runtime-contract
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_annex.clj"}}
+  {:source/refer 'tahto.core.script-annex/annex-current
+   :target/refer 'lang.core.script-annex/status
+   :disposition :adapted
+   :stage/from :runtime-annex
+   :stage/to :runtime-registry
+   :reason :explicit-namespace-tag-runtime-state-replaces-cloned-contextspace-annexes
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_annex.clj"}
+   :validation 'lang.core.script-port-test/run}
+  {:source/refer 'tahto.core.script-annex/annex-reset
+   :target/refer 'lang.core.script-annex/clear-in
+   :disposition :adapted
+   :stage/from :runtime-annex
+   :stage/to :runtime-registry
+   :reason :explicit-namespace-tag-runtime-state-replaces-cloned-contextspace-annexes
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_annex.clj"}
+   :validation 'lang.core.script-port-test/run}
+  {:source/refer 'tahto.core.script-annex/get-annex
+   :target/refer 'lang.core.script-annex/status-in
+   :disposition :adapted
+   :stage/from :runtime-annex
+   :stage/to :runtime-registry
+   :reason :explicit-namespace-tag-runtime-state-replaces-cloned-contextspace-annexes
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_annex.clj"}
+   :validation 'lang.core.script-port-test/run}
+  {:source/refer 'tahto.core.script-annex/clear-annex
+   :target/refer 'lang.core.script-annex/clear-in
+   :disposition :adapted
+   :stage/from :runtime-annex
+   :stage/to :runtime-registry
+   :reason :explicit-namespace-tag-runtime-state-replaces-cloned-contextspace-annexes
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_annex.clj"}
+   :validation 'lang.core.script-port-test/run}
+  {:source/refer 'tahto.core.script-annex/get-annex-library
+   :disposition :obsolete
+   :stage/from :runtime-annex
+   :stage/to :runtime-registry
+   :reason :cloned-library-annex-identity-is-not-part-of-the-portable-runtime-contract
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_annex.clj"}}
+  {:source/refer 'tahto.core.script-annex/get-annex-book
+   :disposition :obsolete
+   :stage/from :runtime-annex
+   :stage/to :runtime-registry
+   :reason :cloned-library-annex-identity-is-not-part-of-the-portable-runtime-contract
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_annex.clj"}}
+  {:source/refer 'tahto.core.script-annex/add-annex-runtime
+   :target/refer 'lang.core.script-annex/add-runtime-in
+   :disposition :adapted
+   :stage/from :runtime-annex
+   :stage/to :runtime-registry
+   :reason :explicit-namespace-tag-runtime-state-replaces-cloned-contextspace-annexes
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_annex.clj"}
+   :validation 'lang.core.script-port-test/run}
+  {:source/refer 'tahto.core.script-annex/get-annex-runtime
+   :target/refer 'lang.core.script-annex/runtime-in
+   :disposition :adapted
+   :stage/from :runtime-annex
+   :stage/to :runtime-registry
+   :reason :explicit-namespace-tag-runtime-state-replaces-cloned-contextspace-annexes
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_annex.clj"}
+   :validation 'lang.core.script-port-test/run}
+  {:source/refer 'tahto.core.script-annex/remove-annex-runtime
+   :target/refer 'lang.core.script-annex/remove-runtime-in
+   :disposition :adapted
+   :stage/from :runtime-annex
+   :stage/to :runtime-registry
+   :reason :explicit-namespace-tag-runtime-state-replaces-cloned-contextspace-annexes
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_annex.clj"}
+   :validation 'lang.core.script-port-test/run}
+  {:source/refer 'tahto.core.script-annex/register-annex-tag
+   :target/refer 'lang.core.script-annex/register-tag-in
+   :disposition :adapted
+   :stage/from :runtime-annex
+   :stage/to :runtime-registry
+   :reason :explicit-namespace-tag-runtime-state-replaces-cloned-contextspace-annexes
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_annex.clj"}
+   :validation 'lang.core.script-port-test/run}
+  {:source/refer 'tahto.core.script-annex/deregister-annex-tag
+   :target/refer 'lang.core.script-annex/deregister-tag-in
+   :disposition :adapted
+   :stage/from :runtime-annex
+   :stage/to :runtime-registry
+   :reason :explicit-namespace-tag-runtime-state-replaces-cloned-contextspace-annexes
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_annex.clj"}
+   :validation 'lang.core.script-port-test/run}
+  {:source/refer 'tahto.core.script-annex/start-runtime
+   :target/refer 'lang.core.script-annex/start-runtime
+   :disposition :adapted
+   :stage/from :runtime-annex
+   :stage/to :runtime-registry
+   :reason :explicit-namespace-tag-runtime-state-replaces-cloned-contextspace-annexes
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_annex.clj"}
+   :validation 'lang.core.script-port-test/run}
+  {:source/refer 'tahto.core.script-annex/same-runtime?
+   :target/refer 'lang.core.script-annex/same-runtime?
+   :disposition :adapted
+   :stage/from :runtime-annex
+   :stage/to :runtime-registry
+   :reason :explicit-namespace-tag-runtime-state-replaces-cloned-contextspace-annexes
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_annex.clj"}
+   :validation 'lang.core.script-port-test/run}
+  {:source/refer 'tahto.core.script-control/+watch-keys+
+   :disposition :obsolete
+   :stage/from :script-control
+   :stage/to :runtime-lifecycle
+   :reason :explicit-runtime-state-replaces-library-watch-key-coordination
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_control.clj"}}
+  {:source/refer 'tahto.core.script-control/script-rt-prep
+   :target/refer 'lang.core/rt-create
+   :disposition :adapted
+   :stage/from :script-control
+   :stage/to :runtime-lifecycle
+   :reason :runtime-lifecycle-is-owned-by-lang-core-runtime-and-script
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_control.clj"}
+   :validation 'lang.core.script-contract-test/run}
+  {:source/refer 'tahto.core.script-control/script-rt-get
+   :target/refer 'lang.core/rt-start
+   :disposition :adapted
+   :stage/from :script-control
+   :stage/to :runtime-lifecycle
+   :reason :runtime-lifecycle-is-owned-by-lang-core-runtime-and-script
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_control.clj"}
+   :validation 'lang.core.script-contract-test/run}
+  {:source/refer 'tahto.core.script-control/script-rt-stop
+   :target/refer 'lang.core/rt-stop
+   :disposition :adapted
+   :stage/from :script-control
+   :stage/to :runtime-lifecycle
+   :reason :runtime-lifecycle-is-owned-by-lang-core-runtime-and-script
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_control.clj"}
+   :validation 'lang.core.script-contract-test/run}
+  {:source/refer 'tahto.core.script-control/script-rt-restart
+   :target/refer 'lang.core.script/restart
+   :disposition :adapted
+   :stage/from :script-control
+   :stage/to :runtime-lifecycle
+   :reason :runtime-lifecycle-is-owned-by-lang-core-runtime-and-script
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_control.clj"}
+   :validation 'lang.core.script-contract-test/run}
+  {:source/refer 'tahto.core.script-control/script-rt-oneshot-eval
+   :target/refer 'lang.core.script/eval-form
+   :disposition :adapted
+   :stage/from :script-control
+   :stage/to :runtime-lifecycle
+   :reason :runtime-lifecycle-is-owned-by-lang-core-runtime-and-script
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_control.clj"}
+   :validation 'lang.core.script-contract-test/run}
+  {:source/refer 'tahto.core.script-control/script-rt-oneshot
+   :target/refer 'lang.core/rt-oneshot
+   :disposition :adapted
+   :stage/from :script-control
+   :stage/to :runtime-lifecycle
+   :reason :runtime-lifecycle-is-owned-by-lang-core-runtime-and-script
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_control.clj"}
+   :validation 'lang.core.script-contract-test/run}
+  {:source/refer 'tahto.core.script-def/tmpl-entry
+   :target/refer 'lang.core.script-def/tmpl-entry
+   :disposition :adapted
+   :stage/from :script-template
+   :stage/to :grammar-publication
+   :reason :portable-template-expansion-preserves-foundation-definition-generation
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_def.clj"}
+   :validation 'lang.core.script-port-test/run}
+  {:source/refer 'tahto.core.script-def/tmpl-macro
+   :target/refer 'lang.core.script-def/tmpl-macro
+   :disposition :adapted
+   :stage/from :script-template
+   :stage/to :grammar-publication
+   :reason :portable-template-expansion-preserves-foundation-macro-generation
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_def.clj"}
+   :validation 'lang.core.script-port-test/run}
+  {:source/refer 'tahto.core.script-lint/get-reserved-raw
+   :target/refer 'lang.core.script-lint/get-reserved-raw
+   :disposition :adapted
+   :stage/from :script-lint
+   :stage/to :compiler-lint
+   :reason :portable-source-analysis-is-explicit-and-free-of-global-lint-state
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_lint.clj"}
+   :validation 'lang.core.script-port-test/run}
+  {:source/refer 'tahto.core.script-lint/get-reserved
+   :target/refer 'lang.core.script-lint/get-reserved
+   :disposition :adapted
+   :stage/from :script-lint
+   :stage/to :compiler-lint
+   :reason :portable-source-analysis-is-explicit-and-free-of-global-lint-state
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_lint.clj"}
+   :validation 'lang.core.script-port-test/run}
+  {:source/refer 'tahto.core.script-lint/collect-vars
+   :target/refer 'lang.core.script-lint/collect-vars
+   :disposition :adapted
+   :stage/from :script-lint
+   :stage/to :compiler-lint
+   :reason :portable-source-analysis-is-explicit-and-free-of-global-lint-state
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_lint.clj"}
+   :validation 'lang.core.script-port-test/run}
+  {:source/refer 'tahto.core.script-lint/collect-module-globals
+   :target/refer 'lang.core.script-lint/collect-module-globals
+   :disposition :adapted
+   :stage/from :script-lint
+   :stage/to :compiler-lint
+   :reason :portable-source-analysis-is-explicit-and-free-of-global-lint-state
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_lint.clj"}
+   :validation 'lang.core.script-port-test/run}
+  {:source/refer 'tahto.core.script-lint/collect-sym-vars
+   :target/refer 'tool.lint/lint-source
+   :disposition :test-vector
+   :stage/from :script-lint
+   :stage/to :compiler-lint
+   :reason :semantic-lint-behavior-is-owned-by-tool-lint
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_lint.clj"}
+   :validation 'tool.lint-test/run}
+  {:source/refer 'tahto.core.script-lint/sym-check-linter
+   :target/refer 'tool.lint/lint-source
+   :disposition :test-vector
+   :stage/from :script-lint
+   :stage/to :compiler-lint
+   :reason :semantic-lint-behavior-is-owned-by-tool-lint
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_lint.clj"}
+   :validation 'tool.lint-test/run}
+  {:source/refer 'tahto.core.script-lint/+registry+
+   :disposition :obsolete
+   :stage/from :script-lint
+   :stage/to :compiler-lint
+   :reason :tool-lint-options-replace-global-mutable-lint-state
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_lint.clj"}}
+  {:source/refer 'tahto.core.script-lint/+settings+
+   :disposition :obsolete
+   :stage/from :script-lint
+   :stage/to :compiler-lint
+   :reason :tool-lint-options-replace-global-mutable-lint-state
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_lint.clj"}}
+  {:source/refer 'tahto.core.script-lint/lint-set
+   :disposition :obsolete
+   :stage/from :script-lint
+   :stage/to :compiler-lint
+   :reason :tool-lint-options-replace-global-mutable-lint-state
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_lint.clj"}}
+  {:source/refer 'tahto.core.script-lint/lint-clear
+   :disposition :obsolete
+   :stage/from :script-lint
+   :stage/to :compiler-lint
+   :reason :tool-lint-options-replace-global-mutable-lint-state
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_lint.clj"}}
+  {:source/refer 'tahto.core.script-lint/lint-needed?
+   :disposition :obsolete
+   :stage/from :script-lint
+   :stage/to :compiler-lint
+   :reason :tool-lint-options-replace-global-mutable-lint-state
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_lint.clj"}}
+  {:source/refer 'tahto.core.script-lint/lint-entry
+   :target/refer 'tool.lint/lint-source
+   :disposition :test-vector
+   :stage/from :script-lint
+   :stage/to :compiler-lint
+   :reason :semantic-lint-behavior-is-owned-by-tool-lint
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_lint.clj"}
+   :validation 'tool.lint-test/run}
+  {:source/refer 'tahto.core.script-macro/+form-allow+
+   :disposition :obsolete
+   :stage/from :script-macro
+   :stage/to :grammar-publication
+   :reason :grammar-entry-metadata-replaces-a-separate-form-allowlist
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_macro.clj"}}
+  {:source/refer 'tahto.core.script-macro/body-arglists
+   :target/refer 'lang.core/script-definition-macro-form
+   :disposition :adapted
+   :stage/from :script-macro
+   :stage/to :grammar-publication
+   :reason :grammar-derived-publication-replaces-imperative-macro-interning
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_macro.clj"}
+   :validation 'lang.core.script-contract-test/run}
+  {:source/refer 'tahto.core.script-macro/intern-in
+   :target/refer 'std.foundation/intern-all
+   :disposition :adapted
+   :stage/from :script-macro
+   :stage/to :grammar-publication
+   :reason :grammar-derived-publication-replaces-imperative-macro-interning
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_macro.clj"}
+   :validation 'tool.migrate-script-test/run}
+  {:source/refer 'tahto.core.script-macro/intern-prep
+   :target/refer 'lang.core/script-context
+   :disposition :adapted
+   :stage/from :script-macro
+   :stage/to :grammar-publication
+   :reason :grammar-derived-publication-replaces-imperative-macro-interning
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_macro.clj"}
+   :validation 'lang.core.script-contract-test/run}
+  {:source/refer 'tahto.core.script-macro/intern-def$-fn
+   :target/refer 'lang.core/register-fragment-pointer
+   :disposition :adapted
+   :stage/from :script-macro
+   :stage/to :grammar-publication
+   :reason :grammar-derived-publication-replaces-imperative-macro-interning
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_macro.clj"}
+   :validation 'lang.core.script-contract-test/run}
+  {:source/refer 'tahto.core.script-macro/intern-def$
+   :target/refer 'lang.core/script-fragment-macro-form
+   :disposition :adapted
+   :stage/from :script-macro
+   :stage/to :grammar-publication
+   :reason :grammar-derived-publication-replaces-imperative-macro-interning
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_macro.clj"}
+   :validation 'lang.core.script-contract-test/run}
+  {:source/refer 'tahto.core.script-macro/intern-defmacro-fn
+   :target/refer 'lang.core/register-macro-fragment
+   :disposition :adapted
+   :stage/from :script-macro
+   :stage/to :grammar-publication
+   :reason :grammar-derived-publication-replaces-imperative-macro-interning
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_macro.clj"}
+   :validation 'lang.core.script-contract-test/run}
+  {:source/refer 'tahto.core.script-macro/intern-defmacro
+   :target/refer 'lang.core/script-defmacro-macro-form
+   :disposition :adapted
+   :stage/from :script-macro
+   :stage/to :grammar-publication
+   :reason :grammar-derived-publication-replaces-imperative-macro-interning
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_macro.clj"}
+   :validation 'lang.core.script-contract-test/run}
+  {:source/refer 'tahto.core.script-macro/call-thunk
+   :target/refer 'lang.core.script/eval-form
+   :disposition :adapted
+   :stage/from :script-macro
+   :stage/to :grammar-publication
+   :reason :grammar-derived-publication-replaces-imperative-macro-interning
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_macro.clj"}
+   :validation 'lang.core.script-contract-test/run}
+  {:source/refer 'tahto.core.script-macro/intern-!-fn
+   :target/refer 'lang.core/script-eval-macro-form
+   :disposition :adapted
+   :stage/from :script-macro
+   :stage/to :grammar-publication
+   :reason :grammar-derived-publication-replaces-imperative-macro-interning
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_macro.clj"}
+   :validation 'lang.core.script-contract-test/run}
+  {:source/refer 'tahto.core.script-macro/intern-!
+   :target/refer 'lang.core/script-eval-macro-form
+   :disposition :adapted
+   :stage/from :script-macro
+   :stage/to :grammar-publication
+   :reason :grammar-derived-publication-replaces-imperative-macro-interning
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_macro.clj"}
+   :validation 'lang.core.script-contract-test/run}
+  {:source/refer 'tahto.core.script-macro/intern-free-fn
+   :target/refer 'lang.core/register-code-pointer
+   :disposition :adapted
+   :stage/from :script-macro
+   :stage/to :grammar-publication
+   :reason :grammar-derived-publication-replaces-imperative-macro-interning
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_macro.clj"}
+   :validation 'lang.core.script-contract-test/run}
+  {:source/refer 'tahto.core.script-macro/intern-free
+   :target/refer 'lang.core/script-definition-macro-form
+   :disposition :adapted
+   :stage/from :script-macro
+   :stage/to :grammar-publication
+   :reason :grammar-derived-publication-replaces-imperative-macro-interning
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_macro.clj"}
+   :validation 'lang.core.script-contract-test/run}
+  {:source/refer 'tahto.core.script-macro/hydrate-top-level-entry
+   :target/refer 'lang.core/register-language-code
+   :disposition :adapted
+   :stage/from :script-macro
+   :stage/to :grammar-publication
+   :reason :grammar-derived-publication-replaces-imperative-macro-interning
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_macro.clj"}
+   :validation 'lang.core.script-contract-test/run}
+  {:source/refer 'tahto.core.script-macro/intern-top-level-fn
+   :target/refer 'lang.core/register-code-pointer
+   :disposition :adapted
+   :stage/from :script-macro
+   :stage/to :grammar-publication
+   :reason :grammar-derived-publication-replaces-imperative-macro-interning
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_macro.clj"}
+   :validation 'lang.core.script-contract-test/run}
+  {:source/refer 'tahto.core.script-macro/intern-top-level
+   :target/refer 'lang.core/script-definition-macro-form
+   :disposition :adapted
+   :stage/from :script-macro
+   :stage/to :grammar-publication
+   :reason :grammar-derived-publication-replaces-imperative-macro-interning
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_macro.clj"}
+   :validation 'lang.core.script-contract-test/run}
+  {:source/refer 'tahto.core.script-macro/intern-macros
+   :target/refer 'lang.core/script-macro-forms
+   :disposition :adapted
+   :stage/from :script-macro
+   :stage/to :grammar-publication
+   :reason :grammar-derived-publication-replaces-imperative-macro-interning
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_macro.clj"}
+   :validation 'lang.core.script-contract-test/run}
+  {:source/refer 'tahto.core.script-macro/intern-highlights
+   :target/refer 'lang.core/script-highlight-macro-form
+   :disposition :adapted
+   :stage/from :script-macro
+   :stage/to :grammar-publication
+   :reason :grammar-derived-publication-replaces-imperative-macro-interning
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_macro.clj"}
+   :validation 'lang.core.script-contract-test/run}
+  {:source/refer 'tahto.core.script-macro/intern-grammar
+   :target/refer 'lang.core/sync-language-definitions
+   :disposition :adapted
+   :stage/from :script-macro
+   :stage/to :grammar-publication
+   :reason :grammar-derived-publication-replaces-imperative-macro-interning
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_macro.clj"}
+   :validation 'lang.core.script-contract-test/run}
+  {:source/refer 'tahto.core.script-macro/intern-defmacro-rt-fn
+   :target/refer 'lang.core/register-macro-fragment
+   :disposition :adapted
+   :stage/from :script-macro
+   :stage/to :grammar-publication
+   :reason :grammar-derived-publication-replaces-imperative-macro-interning
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_macro.clj"}
+   :validation 'lang.core.script-contract-test/run}
+  {:source/refer 'tahto.core.script-macro/defmacro.!
+   :target/refer 'lang.core/script-defmacro-macro-form
+   :disposition :adapted
+   :stage/from :script-macro
+   :stage/to :grammar-publication
+   :reason :grammar-derived-publication-replaces-imperative-macro-interning
+   :provenance
+   {:repository "zcaudate-xyz/foundation-base"
+    :revision "fe54cc866473a888bfbd4ce2d3de6d8011f09f72"
+    :path "src/tahto/core/script_macro.clj"}
+   :validation 'lang.core.script-contract-test/run}
+ ])
+
+(def +foundation-script-compatibility-ledger+
+ [
+  {:surface 'defspec.xt
+   :authority 'lang.core/defspec.xt
+   :compatibility 'lang.core.script/defspec.xt
+   :disposition :retire-copy-after-contract-parity
+   :reason :grammar-derived-lang-core-publication-is-authoritative}
+  {:surface 'defn.xt
+   :authority 'lang.core/defn.xt
+   :compatibility 'lang.core.script/defn.xt
+   :disposition :retire-copy-after-loader-parity
+   :reason :grammar-derived-lang-core-publication-is-authoritative}
+  {:surface 'defmacro.xt
+   :authority 'lang.core/defmacro.xt
+   :compatibility 'lang.core.script/defmacro.xt
+   :disposition :retire-copy-after-loader-parity
+   :reason :grammar-derived-lang-core-publication-is-authoritative}
+  {:surface 'script
+   :authority 'lang.core/script
+   :compatibility 'lang.core.script/script
+   :disposition :retire-copy-after-contract-parity
+   :reason :grammar-derived-lang-core-publication-is-authoritative}
+  {:surface 'script-
+   :authority 'lang.core/script-
+   :compatibility 'lang.core.script/script-
+   :disposition :retire-copy-after-contract-parity
+   :reason :grammar-derived-lang-core-publication-is-authoritative}
+  {:surface '!.js
+   :authority 'lang.core/!.js
+   :compatibility 'lang.core.script/!.js
+   :disposition :retire-copy-after-runtime-parity
+   :reason :grammar-derived-lang-core-publication-is-authoritative}
+  {:surface '!.lua
+   :authority 'lang.core/!.lua
+   :compatibility 'lang.core.script/!.lua
+   :disposition :retire-copy-after-runtime-parity
+   :reason :grammar-derived-lang-core-publication-is-authoritative}
+  {:surface '!.py
+   :authority 'lang.core/!.py
+   :compatibility 'lang.core.script/!.py
+   :disposition :retire-copy-after-runtime-parity
+   :reason :grammar-derived-lang-core-publication-is-authoritative}
+  {:surface '!.pg
+   :authority 'lang.core/!.pg
+   :compatibility 'lang.core.script/!.pg
+   :disposition :retire-copy-after-runtime-parity
+   :reason :grammar-derived-lang-core-publication-is-authoritative}
+ ])
+
+(defn foundation-script-inventory
+  []
+  {:source/references +foundation-script-source-references+
+   :target/references +foundation-script-target-references+
+   :validation/references +foundation-script-validation-references+})

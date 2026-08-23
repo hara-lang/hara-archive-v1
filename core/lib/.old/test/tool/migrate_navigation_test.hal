@@ -1,0 +1,86 @@
+(ns code.framework-navigation-test
+  (:require [std.block :as block]
+            [code.framework.navigation :as nav]))
+
+(def source
+  "(ns demo.core\n  (:config {:override [next]})\n  (:require [std.block :as block]))\n\n(def ^{:doc \"answer\"} answer 42)\n(defn run [value] value)\n")
+
+(def results
+  [(test-check "navigation normalizes source, blocks, and locations"
+               (let [root (nav/block-input source)
+                     loc (nav/location root)]
+                 [(block/tag root)
+                  (nav/path loc)
+                  (nav/render loc)
+                  (nav/location? loc)])
+               [:root [] source true])
+
+   (test-check "namespace forms and clauses are structural"
+               [(nav/namespace-name source)
+                (vec (map nav/form-head (nav/namespace-clauses source)))
+                (nav/path (nav/namespace-clause-location source ":require"))]
+               ["demo.core" [":config" ":require"] [0 10]])
+
+   (test-check "top-level definitions retain metadata and names"
+               (let [locations (nav/definition-locations source)]
+                 [(vec (map nav/form-head locations))
+                  (vec (map nav/definition-name locations))
+                  (vec (map nav/path locations))])
+               [["def" "defn"]
+                ["answer" "run"]
+                [[3] [5]]])
+
+   (test-check "paths resolve nested blocks and expose source evidence"
+               (let [loc (nav/location-at "(alpha [1 2])" [0 2 2])]
+                 [(nav/path loc)
+                  (block/string (nav/current loc))
+                  (select-keys (nav/evidence loc) [:path :tag :source])])
+               [[0 2 2]
+                "2"
+                {:path [0 2 2] :tag :number :source "2"}])
+
+   (test-check "pre-order selection includes nested tokens only once"
+               (vec
+                (map
+                 (fn [loc] (block/string (nav/current loc)))
+                 (nav/select-locations
+                  "(alpha [1 2])"
+                  block/token?)))
+               ["alpha" "1" "2"])
+
+   (test-check "replacement preserves unrelated comments and whitespace"
+               (let [source "(alpha  ; keep\n [1 2])"
+                     edited (nav/replace-at source [0 6 2] "3")]
+                 [(nav/render edited)
+                  (nav/path edited)])
+               ["(alpha  ; keep\n [1 3])" [0 6 2]])
+
+   (test-check "fragment insertion preserves caller-provided spacing"
+               (let [before (nav/insert-before-at "(a b)" [0 2] "x ")
+                     after (nav/insert-after-at "(a b)" [0 0] " x")]
+                 [(nav/render before)
+                  (nav/render after)])
+               ["(a x b)" "(a x b)"])
+
+   (test-check "deletion removes only the selected block"
+               (nav/render (nav/delete-at "(a b)" [0 2]))
+               "(a )")
+
+   (test-check "findings carry stable path and parser ranges"
+               (let [loc (nav/location-at
+                          (block/parse-source "(a b)" {:file "demo.clj"})
+                          [0 2])]
+                 (select-keys
+                  (nav/finding loc :tool.migrate/manual :warning
+                               "Review this form")
+                  [:type :level :message :path :file
+                   :start-offset :end-offset]))
+               {:type :tool.migrate/manual
+                :level :warning
+                :message "Review this form"
+                :path [0 2]
+                :file "demo.clj"
+                :start-offset 3
+                :end-offset 4})])
+
+results

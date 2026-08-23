@@ -1,0 +1,73 @@
+(ns tool.migrate.common.transform
+  (:require [code.framework :as framework]
+            [code.framework.navigation :as nav]
+            [tool.migrate.common.rule :as rule]
+            [tool.migrate.common.rules :as catalog]))
+
+(defn language
+  [unit options]
+  (or (:source/language options)
+      (:source/language unit)
+      (if (and (string? (:source/path unit))
+               (str/ends-with? (:source/path unit) ".clj"))
+        :clojure
+        :hara)))
+
+(defn target-language
+  [unit options]
+  (or (:target/language options)
+      (:target/language unit)
+      :hara))
+
+(defn selected-rules
+  [options source-language]
+  (if (:rules options)
+    (:rules options)
+    (catalog/rules (catalog/catalog options) source-language)))
+
+(defn analyze
+  "Runs a language-aware rule catalog over either Clojure or Hara source."
+  ([source options]
+   (let [source-language (or (:source/language options) :clojure)
+         target-language (or (:target/language options) :hara)
+         rules (selected-rules options source-language)
+         result (rule/analyze-source
+                 source
+                 (merge
+                  {:source/language source-language
+                   :target/language target-language
+                   :rules rules}
+                  options))]
+     ;; Parsing the target is part of the transform contract. It catches a
+     ;; function rule that returned non-Hara text before a writer sees it.
+     (nav/block-input (:output result))
+     (assoc result
+            :source/language source-language
+            :target/language target-language))))
+
+(defn transform-code
+  "Applies the registry-backed transform through code.framework/transform-code."
+  ([unit]
+   (transform-code unit {}))
+  ([unit options]
+   (let [options (or options {})
+         source-language (language unit options)
+         target-language (target-language unit options)
+         result (analyze
+                 (or (:source/text unit) (:source unit))
+                 (merge options
+                        {:source/language source-language
+                         :target/language target-language}))]
+     (framework/transform-code
+      unit
+      (fn [_]
+        {:after (:output result)
+         :rules (:rules/applied result)
+         :rules/matched (:rules/matched result)
+         :diagnostics (:diagnostics result)
+         :provenance {:operation :tool.migrate.common/transform-code
+                      :source/language source-language
+                      :target/language target-language
+                      :catalog (:document/id (catalog/catalog options))}})))))
+
+(def transform-unit transform-code)

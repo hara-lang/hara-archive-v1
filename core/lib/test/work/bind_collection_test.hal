@@ -64,7 +64,7 @@
        (fn [checkpoint]
          (:checkpoint/item-id checkpoint))
        checkpoints))
-     replay-count]
+     replay-count])
   => [:failed
       :completed
       [{:item/id :a :item/value 10}

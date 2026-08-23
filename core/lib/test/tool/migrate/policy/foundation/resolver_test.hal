@@ -1,0 +1,27 @@
+(ns tool.migrate.policy.foundation.resolver-test
+  (:use code.test)
+  (:require [tool.migrate.policy.foundation.resolver :as resolver]
+            [code.framework.navigation :as nav]))
+
+^{:refer tool.migrate.policy.foundation.resolver/host-symbol?}
+(fact "host symbol classification is conservative"
+  [(resolver/host-symbol? ".run")
+   (resolver/host-symbol? "Plain")
+   (resolver/host-symbol? "plain")]
+  => [true true false])
+
+^{:refer tool.migrate.policy.foundation.resolver/match-jvm-interop}
+(fact "the function-rule matcher returns navigable evidence"
+  (let [matches (resolver/match-jvm-interop
+                 (nav/block-input "(ns demo)\n(def Plain 1)\n")
+                 {:rule {:rule/id :demo/host}})]
+    [(count matches) (:rule/id (first matches))]
+    => [1 :demo/host]))
+
+^{:refer tool.migrate.policy.foundation.resolver/rewrite-jvm-interop}
+(fact "host interop rewrites remain review-only and lossless"
+  (let [root (nav/block-input "(ns demo)\n(def Plain 1)\n")]
+    (nav/render (resolver/rewrite-jvm-interop root {} {}))
+    => "(ns demo)\n(def Plain 1)\n"))
+
+(pr-str (run {:namespace "tool.migrate.policy.foundation.resolver-test"}))

@@ -1,0 +1,1360 @@
+(ns tool.migrate.policy.foundation.conformance
+  (:require [tool.migrate.common.corpus :as corpus]
+            [tool.migrate.common.git :as migrate-git]
+            [tool.migrate.policy.foundation.profile :as profile]
+            [std.fs.path :as path]
+            [code.project :as project]
+            [tool.sh :as sh]
+            [work.flow.task.command-task :as task]))
+
+(def +mapping-statuses+
+  #{:retained :renamed :split :consolidated :host-only :retired :manual-review})
+
+(def +evidence-statuses+ #{:emitted :skipped :manual-review})
+
+(def +foundation-revision+
+  "f55f39855d5e9ea1b22f1d116df684c584323f80")
+
+(def +foundation-tree+
+  "3beb10f32e7d57139910ee9c9de1370e966ca935")
+
+(def +hara-revision+
+  "fd382c506348c1e96412e7398ac4cba7029b7885")
+
+(def +baseline+
+  {:foundation/repository "zcaudate-xyz/foundation-base"
+   :foundation/revision +foundation-revision+
+   :foundation/tree +foundation-tree+
+   :hara/repository "hara-lang/hara"
+   :hara/revision +hara-revision+
+   :output/repository "hara-lang/hara-specs-registry"
+   :output/root "../hara-specs-registry/01-lang/005-foundation-annex/draft/conformance/libraries"})
+
+(defn family-descriptor
+  [family-id test-prefixes test-count target-namespace mappings output-path]
+  {:family/id family-id
+   :family/name (name family-id)
+   :source/test-prefixes (vec test-prefixes)
+   :source/test-count test-count
+   :target/namespace target-namespace
+   :target/metadata-path (str (name family-id) "/metadata.edn")
+   :mapping mappings
+   :output/path output-path
+   :review/status :unreviewed})
+
+(def +initial-families+
+  [(family-descriptor
+    :std_lib_zip
+    ["test/std/lib/zip_test.clj"]
+    1
+    "std.lib.zip"
+    [{:source/namespace "std.lib.zip"
+      :target/namespaces ["std.lib.zip"]
+      :status :retained}]
+    "std_lib_zip/conformance.edn")
+   (family-descriptor
+    :code_query
+    ["test/code/query_test.clj" "test/code/query"]
+    9
+    "code.query"
+    [{:source/namespace "code.query"
+      :target/namespaces ["code.query"]
+      :status :retained}
+     {:source/namespace "code.query.match"
+      :target/namespaces ["code.query.match.impl"
+                          "code.query.match.optional"
+                          "code.query.match.pattern"]
+      :status :split}]
+    "code_query/conformance.edn")
+   (family-descriptor
+    :std_lib_context
+    ["test/std/lib/context" "test/std/lib/resource_test.clj"]
+    4
+    "std.lib.context"
+    [{:source/namespace "std.lib.context"
+      :target/namespaces ["std.foundation"
+                          "std.lib.context.definition"
+                          "std.lib.context.registry"
+                          "std.lib.context.space"]
+      :status :split}
+     {:source/namespace "std.lib.resource"
+      :target/namespaces ["std.lib.context.resource"]
+      :status :renamed}]
+    "std_lib_context/conformance.edn")
+   (family-descriptor
+    :std_fs
+    ["test/std/fs_test.clj" "test/std/fs"]
+    8
+    "std.fs"
+    [{:source/namespace "std.fs"
+      :target/namespaces ["std.fs" "std.fs.path" "std.fs.walk"]
+      :status :retained}]
+    "std_fs/conformance.edn")
+   (family-descriptor
+    :std_lib_encode
+    ["test/std/lib/encode_test.clj"]
+    1
+    "std.lib.encode"
+    [{:source/namespace "std.lib.encode"
+      :target/namespaces ["std.lib.encode.base64"
+                          "std.lib.encode.form"
+                          "std.lib.encode.hex"
+                          "std.lib.encode.url"]
+      :status :split}]
+    "std_lib_encode/conformance.edn")
+   (family-descriptor
+    :std_lib_format
+    ["test/std/print/ansi_test.clj"
+     "test/std/string/prose_test.clj"
+     "test/std/string/plural_test.clj"
+     "test/std/print/format/chart_test.clj"
+     "test/std/print/progress_test.clj"
+     "test/std/lib/version_test.clj"
+     "test/std/text/diff_test.clj"]
+    7
+    "std.lib.format"
+    [{:source/namespace "std.print.ansi"
+      :target/namespaces ["std.lib.format.ansi"]
+      :status :renamed}
+     {:source/namespace "std.string.prose"
+      :target/namespaces ["std.lib.format.prose"]
+      :status :renamed}
+     {:source/namespace "std.string.plural"
+      :target/namespaces ["std.lib.format.plural"]
+      :status :renamed}
+     {:source/namespace "std.print.format.chart"
+      :target/namespaces ["std.lib.format.chart"]
+      :status :renamed}
+     {:source/namespace "std.print.progress"
+      :target/namespaces ["std.lib.format.progress"]
+      :status :renamed}
+     {:source/namespace "std.lib.version"
+      :target/namespaces ["std.lib.format.version"]
+      :status :renamed}
+     {:source/namespace "std.text.diff"
+      :target/namespaces ["std.lib.format.diff"]
+      :status :renamed}]
+    "std_lib_format/conformance.edn")
+   (family-descriptor
+    :std_block
+    ["test/std/block"]
+    19
+    "std.block"
+    [{:source/namespace "std.block"
+      :target/namespaces ["std.block"]
+      :status :retained}
+     {:source/namespace "std.protocol.block"
+      :target/namespaces ["std.block.protocol"]
+      :status :renamed}]
+    "std_block/conformance.edn")
+   (family-descriptor
+    :code_test
+    ["test/code/test"]
+    20
+    "code.test"
+    [{:source/namespace "code.test"
+      :target/namespaces ["code.test"]
+      :status :consolidated}]
+    "code_test/conformance.edn")
+   (family-descriptor
+    :lang_common
+    ["test-lang/xt/lang/common_" "test-lang/kmi/lang/common_"]
+    19
+    "lang.common"
+    [{:source/namespace "xt.lang.common"
+      :target/namespaces ["lang.common"]
+      :status :renamed}
+     {:source/namespace "kmi.lang.common"
+      :target/namespaces ["lang.common"]
+      :status :manual-review}]
+    "lang_common/conformance.edn")])
+
+(defn path-selected?
+  [descriptor path]
+  (not
+   (nil?
+    (some
+     (fn [prefix]
+       (or (= path prefix)
+           (str/starts-with? path (str prefix "/"))))
+     (:source/test-prefixes descriptor)))))
+
+(defn mapping-valid?
+  [mapping]
+  (and
+   (map? mapping)
+   (string? (:source/namespace mapping))
+   (vector? (:target/namespaces mapping))
+   (has? +mapping-statuses+ (:status mapping))))
+
+(defn descriptor-errors
+  [descriptor]
+  (vec
+   (concat
+    (if (and
+         (map? descriptor)
+         (keyword? (:family/id descriptor))
+         (string? (:family/name descriptor))
+         (vector? (:source/test-prefixes descriptor))
+         (number? (:source/test-count descriptor))
+         (string? (:target/namespace descriptor))
+         (vector? (:mapping descriptor))
+         (string? (:output/path descriptor))
+         (= :unreviewed (:review/status descriptor)))
+      []
+      [{:type :conformance/invalid-family-descriptor
+        :family/id (:family/id descriptor)}])
+    (map
+     (fn [mapping]
+       {:type :conformance/invalid-namespace-mapping
+        :family/id (:family/id descriptor)
+        :mapping mapping})
+     (filter (fn [mapping] (not (mapping-valid? mapping)))
+             (or (:mapping descriptor) []))))))
+
+(defn plan-errors
+  [baseline families]
+  (vec
+   (concat
+    (if (and (map? baseline)
+             (string? (:foundation/repository baseline))
+             (profile/sha? (:foundation/revision baseline))
+             (profile/sha? (:foundation/tree baseline))
+             (string? (:hara/repository baseline))
+             (profile/sha? (:hara/revision baseline))
+             (string? (:output/repository baseline))
+             (string? (:output/root baseline)))
+      []
+      [{:type :conformance/invalid-baseline}])
+    (mapcat descriptor-errors families)
+    (map
+     (fn [family-id]
+       {:type :conformance/duplicate-family-id
+        :family/id family-id})
+     (corpus/duplicate-values (map :family/id families)))
+    (map
+     (fn [output-path]
+       {:type :conformance/duplicate-output-path
+        :output/path output-path})
+     (corpus/duplicate-values (map :output/path families))))))
+
+^{:public true}
+(defn generation-plan
+  [baseline families]
+  (let [families (vec (sort-by :family/name families))
+        errors (plan-errors baseline families)]
+    {:baseline baseline
+     :families families
+     :errors errors
+     :valid? (empty? errors)}))
+
+^{:public true}
+(defn initial-plan
+  []
+  (generation-plan +baseline+ +initial-families+))
+
+(defn foundation-test-paths
+  "Discovers Foundation test files through the read-only Git object boundary."
+  [runner revision descriptor]
+  (vec
+   (filter
+    (fn [path]
+      (and (str/ends-with? path ".clj")
+           (path-selected? descriptor path)))
+    (migrate-git/list-tree runner revision))))
+
+(defn inventory-family
+  "Attaches the exact discovered source-test inventory to one family."
+  [runner revision descriptor]
+  (let [paths (foundation-test-paths runner revision descriptor)
+        expected (:source/test-count descriptor)]
+    (assoc descriptor
+           :source/discovered-tests paths
+           :source/discovered-count (count paths)
+           :source/inventory-complete? (= expected (count paths)))))
+
+^{:public true}
+(defn baseline-inventory
+  "Builds the reviewable Stage 0 inventory without reading or writing host files."
+  [runner baseline]
+  (let [plan (generation-plan
+              baseline
+              (:families (initial-plan)))
+        revision (:foundation/revision baseline)
+        families
+        (vec
+         (map
+          (fn [descriptor]
+            (inventory-family runner revision descriptor))
+          (:families plan)))]
+    (assoc
+     plan
+     :families families
+     :inventory/complete? (every? :source/inventory-complete? families))))
+
+(defn inventory-errors
+  "Returns deterministic drift findings for a baseline inventory."
+  [inventory]
+  (vec
+   (concat
+    (get-in inventory [:errors])
+    (map
+     (fn [descriptor]
+       {:type :conformance/source-inventory-drift
+        :family/id (:family/id descriptor)
+        :expected (:source/test-count descriptor)
+        :discovered (:source/discovered-count descriptor)
+        :paths (:source/discovered-tests descriptor)})
+     (filter
+      (fn [descriptor]
+        (not (:source/inventory-complete? descriptor)))
+      (:families inventory))))))
+
+^{:public true}
+(defn inventory-report
+  "Returns only deterministic baseline facts suitable for review or CI."
+  [inventory]
+  {:document/type :hara-foundation-inventory
+   :document/version 1
+   :foundation/repository (get-in inventory [:baseline :foundation/repository])
+   :foundation/revision (get-in inventory [:baseline :foundation/revision])
+   :foundation/tree (get-in inventory [:baseline :foundation/tree])
+   :hara/repository (get-in inventory [:baseline :hara/repository])
+   :hara/revision (get-in inventory [:baseline :hara/revision])
+   :output/repository (get-in inventory [:baseline :output/repository])
+   :families
+   (vec
+    (map
+     (fn [descriptor]
+       {:family/id (:family/id descriptor)
+        :family/name (:family/name descriptor)
+        :source/test-count (:source/test-count descriptor)
+        :source/discovered-count (:source/discovered-count descriptor)
+        :source/inventory-complete? (:source/inventory-complete? descriptor)
+        :source/test-paths (:source/discovered-tests descriptor)
+        :output/path (output-path
+                      (get-in inventory [:baseline])
+                      descriptor)})
+     (sort-by :family/name (:families inventory))))
+   :complete? (:inventory/complete? inventory)
+   :errors (inventory-errors inventory)})
+
+(defn inventory-source
+  "Renders the inventory report as deterministic EDN."
+  [report]
+  (str (corpus/render-edn report) "\n"))
+
+(def inventory-task-id :tool.migrate/conformance-family)
+(def inventory-task-version 1)
+
+(def inventory-family-task
+  (task/tasklet
+   {:id inventory-task-id
+    :version inventory-task-version
+    :item-key (fn [descriptor] (:family/id descriptor))
+    :run
+    (fn [descriptor context]
+      (inventory-family
+       (:conformance/runner descriptor)
+       (:foundation/revision descriptor)
+       descriptor))}))
+
+(defn output-path
+  [baseline descriptor]
+  (str (:output/root baseline) "/" (:output/path descriptor)))
+
+(defn host-path
+  "Resolves a registry or checkout path from the Hara process cwd."
+  [root relative]
+  (let [root (if (str/starts-with? root "/")
+               root
+               (path/join (OS/cwd) root))]
+    (path/join root relative)))
+
+(defn host-read
+  "Reads a host file through the explicit process boundary."
+  [file]
+  (:stdout (sh/run-checked ["/bin/cat" file])))
+
+(defn host-read-existing
+  [file]
+  (let [result (sh/run ["/bin/test" "-f" file])]
+    (if (= 0 (:exit result))
+      (host-read file)
+      nil)))
+
+(defn host-write
+  "Writes generated registry documents through the explicit host boundary."
+  [file source]
+  (let [parent (File/parent file)]
+    (if parent
+      (sh/run-checked ["/bin/mkdir" "-p" parent])
+      nil)
+    (sh/run-checked ["/usr/bin/tee" file] {:stdin source})
+    file))
+
+(defn host-metadata-document
+  [registry-root descriptor]
+  (Edn/read
+   (host-read
+    (host-path registry-root (metadata-path descriptor)))))
+
+(defn host-target-test-paths
+  [registry-root descriptor]
+  (let [document (host-metadata-document registry-root descriptor)
+        paths (:target/test-paths document)]
+    (if (and (vector? paths)
+             (every? string? paths))
+      paths
+      (throw
+       (ex :serialization
+           {:family/id (:family/id descriptor)
+            :metadata/path (metadata-path descriptor)}
+           :ex/message "family metadata must contain string :target/test-paths")))))
+
+(defn metadata-path
+  "Returns the registry-relative metadata document for a family."
+  [descriptor]
+  (:target/metadata-path descriptor))
+
+(defn metadata-document
+  "Reads the registry-owned metadata that selects Hara test inputs."
+  [registry-root descriptor]
+  (Edn/read
+   (project/read-text
+    (File/join registry-root (metadata-path descriptor)))))
+
+(defn target-test-paths
+  "Returns the only supported target-test-path selection for a family."
+  [registry-root descriptor]
+  (let [document (metadata-document registry-root descriptor)
+        paths (:target/test-paths document)]
+    (if (and (vector? paths)
+             (every? string? paths))
+      paths
+      (throw
+       (ex :serialization
+           {:family/id (:family/id descriptor)
+            :metadata/path (metadata-path descriptor)}
+           :ex/message "family metadata must contain string :target/test-paths")))))
+
+(defn source-path-for-test-path
+  "Maps a migrated Hara test path to its sibling Hara source path."
+  [test-path]
+  (let [source-root
+        (cond
+          (str/starts-with? test-path "lib/test-lang/") "lib/src-lang/"
+          (str/starts-with? test-path "lib/test/") "lib/src/"
+          :else nil)
+        suffix
+        (cond
+          (str/starts-with? test-path "lib/test-lang/")
+          (str/slice test-path (str/length "lib/test-lang/")
+                     (str/length test-path))
+          (str/starts-with? test-path "lib/test/")
+          (str/slice test-path (str/length "lib/test/")
+                     (str/length test-path))
+          :else nil)
+        suffix
+        (if (and suffix (str/ends-with? suffix "_test.hal"))
+          (str (str/slice suffix 0 (- (str/length suffix) 9)) ".hal")
+          suffix)]
+    (if (and source-root suffix)
+      (str source-root suffix)
+      nil)))
+
+(defn hara-source-test-pairs
+  "Builds exact Hara source/test pairs from registry metadata paths."
+  [registry-root descriptor]
+  (vec
+   (map
+    (fn [test-path]
+      {:source/path (source-path-for-test-path test-path)
+       :test/path test-path})
+    (target-test-paths registry-root descriptor))))
+
+(defn foundation-source-test-pairs
+  "Discovers the exact Foundation source/test pairs from its pinned tree."
+  [runner baseline descriptor]
+  (vec
+   (map
+    (fn [test-path]
+      {:source/path
+       (let [suffix (str/slice test-path 5 (str/length test-path))]
+         (str "src/"
+              (str/slice suffix 0 (- (str/length suffix) 9))
+              ".clj"))
+       :test/path test-path})
+    (filter
+     (fn [path]
+       (and (str/ends-with? path ".clj")
+            (path-selected? descriptor path)))
+     (migrate-git/list-tree runner (:foundation/revision baseline))))))
+
+(defn metadata-pairs
+  "Returns a validated pair list from one metadata document."
+  [metadata key]
+  (let [pairs (get metadata key)]
+    (if (and (vector? pairs)
+             (every?
+              (fn [pair]
+                (and (map? pair)
+                     (string? (:source/path pair))
+                     (string? (:test/path pair))))
+              pairs))
+      pairs
+      (throw
+       (ex :serialization
+           {:metadata/key key}
+           :ex/message "metadata source/test pairs must contain string paths")))))
+
+(defn pair-namespace
+  [function]
+  (let [separator (str/index-of function "/")]
+    (if (< 0 separator)
+      (str/slice function 0 separator)
+      function)))
+
+(defn pair-var
+  [function]
+  (let [separator (str/index-of function "/")]
+    (if (< 0 separator)
+      (str/slice function (inc separator) (str/length function))
+      function)))
+
+(defn sorted-pairs
+  [pairs]
+  (vec
+   (sort-by
+    (fn [pair]
+      [(:pair/namespace pair)
+       (:pair/var pair)
+       (:pair/index pair)])
+    pairs)))
+
+(defn pair-groups
+  "Groups pair records by namespace and var for human and runtime review."
+  [pairs]
+  (let [pairs (sorted-pairs pairs)
+        namespaces (sort (distinct (map :pair/namespace pairs)))]
+    (vec
+     (map
+      (fn [namespace]
+        (let [namespace-pairs
+              (filter
+               (fn [pair] (= namespace (:pair/namespace pair)))
+               pairs)
+              vars (sort (distinct (map :pair/var namespace-pairs)))]
+          {:namespace namespace
+           :vars
+           (vec
+            (map
+             (fn [var]
+               {:var var
+                :pairs
+                (vec
+                 (filter
+                  (fn [pair] (= var (:pair/var pair)))
+                  namespace-pairs))})
+             vars))}))
+      namespaces))))
+
+(defn origin-path
+  "Returns the sibling provenance document for one full-path family."
+  [baseline descriptor]
+  (str (:output/root baseline) "/"
+       (:family/name descriptor) "/origin.edn"))
+
+(defn origin-document
+  "Builds Foundation source provenance without turning it into a Hara contract."
+  [baseline descriptor]
+  {:document/id (keyword "foundation.origin" (:family/name descriptor))
+   :document/type :foundation-library-origin
+   :document/version "alpha"
+   :document/status :draft
+   :origin/generator "tool.migrate.policy.foundation.conformance/2"
+   :origin/family (:family/id descriptor)
+   :origin/source {:repository (:foundation/repository baseline)
+                   :revision (:foundation/revision baseline)
+                   :tree (:foundation/tree baseline)}
+   :origin/target-metadata-path (metadata-path descriptor)
+   :origin/mappings
+   (vec
+    (map
+     (fn [mapping]
+       {:origin/namespace (:source/namespace mapping)
+        :origin/test-paths (:source/test-prefixes descriptor)
+        :origin/target-namespaces (:target/namespaces mapping)
+        :origin/mapping-status (:status mapping)})
+     (:mapping descriptor)))})
+
+(defn contract-document
+  "Builds the reviewed Hara pair contract consumed by every runtime adapter."
+  [baseline descriptor pairs]
+  {:document/id (keyword "foundation.conformance" (:family/name descriptor))
+   :document/type :foundation-library-conformance
+   :document/version "alpha"
+   :document/status :draft
+   :conformance/authority :hara-specs-registry
+   :conformance/family (:family/id descriptor)
+   :conformance/status :pending
+   :contract/status :reviewed
+   :contract/origin (str (:family/name descriptor) "/origin.edn")
+   :target/metadata-path (metadata-path descriptor)
+   :target/namespaces
+   (vec
+    (sort
+     (distinct
+      (mapcat :target/namespaces (:mapping descriptor)))))
+   :conformance/namespaces (pair-groups pairs)
+   :conformance/cases (vec pairs)
+   :runtime/status {:rust :pending :jvm :pending :wasm :pending}
+   :source/revision (:foundation/revision baseline)
+   :source/tree (:foundation/tree baseline)
+   :hara/revision (:hara/revision baseline)})
+
+(defn test-run-form?
+  [form]
+  (and (list? form)
+       (= 'Test/run (first form))))
+
+(defn fact-form?
+  [form]
+  (and (list? form)
+       (= 'fact (first form))
+       (= 5 (count form))
+       (= '=> (nth form 3))))
+
+(defn test-check-form?
+  [form]
+  (and (list? form)
+       (= 'test-check (first form))
+       (= 4 (count form))))
+
+(defn qualified-symbol?
+  [value]
+  (and (symbol? value)
+       (< 0 (or (str/index-of (str value) "/") -1))))
+
+(defn qualified-symbols
+  [form]
+  (cond
+    (qualified-symbol? form) [form]
+    (list? form) (vec (mapcat qualified-symbols form))
+    (vector? form) (vec (mapcat qualified-symbols form))
+    (set? form) (vec (mapcat qualified-symbols form))
+    (map? form) (vec (mapcat qualified-symbols (concat (keys form) (vals form))))
+    :else []))
+
+(defn namespace-aliases
+  [form]
+  (if (and (list? form) (= 'ns (first form)))
+    (reduce
+     (fn [output clause]
+       (if (and (list? clause) (= :require (first clause)))
+         (reduce
+          (fn [output spec]
+            (if (and (vector? spec)
+                     (<= 3 (count spec))
+                     (= :as (nth spec 1)))
+              (assoc output (str (nth spec 2)) (str (first spec)))
+              output))
+          output
+          (rest clause))
+         output))
+     {}
+     (rest (rest form)))
+    {}))
+
+(defn refer-from-symbol
+  [descriptor aliases symbol]
+  (let [text (str symbol)
+        separator (str/index-of text "/")
+        alias (str/slice text 0 separator)
+        var (str/slice text (inc separator) (str/length text))
+        namespace (or (get aliases alias) alias)
+        targets (set (mapcat :target/namespaces (:mapping descriptor)))]
+    (if (has? targets namespace)
+      (str namespace "/" var)
+      nil)))
+
+(defn inferred-refer
+  [descriptor aliases form]
+  (first
+   (keep
+    (fn [symbol]
+      (refer-from-symbol descriptor aliases symbol))
+    (qualified-symbols form))))
+
+(defn function-body
+  [test-form]
+  (if (and (list? test-form)
+           (= 'fn (first test-form)))
+    (let [body (vec (drop 2 test-form))]
+      (if (= 1 (count body))
+        (first body)
+        (cons 'do body)))
+    test-form))
+
+(defn expected-value
+  [expected]
+  (if (and (list? expected)
+           (= 'quote (first expected)))
+    (second expected)
+    expected))
+
+(defn pair-output
+  [expected]
+  (let [quoted? (and (list? expected)
+                     (= 'quote (first expected)))
+        value (expected-value expected)]
+    (if (or quoted? (portable-value? value))
+      {:kind :value
+       :value value}
+      {:kind :expression
+       :expression (pr-str value)})))
+
+(defn pair-record
+  [descriptor source-path refer index test-case]
+  (let [input (function-body (:test test-case))
+        expected (:expected test-case)
+        namespace (pair-namespace refer)]
+    {:pair/id (str (:family/name descriptor) "/"
+                   refer "#" index)
+     :pair/namespace namespace
+     :pair/function refer
+     :pair/var (pair-var refer)
+     :pair/index index
+     :pair/name (:name test-case)
+     :input {:expression (pr-str input)}
+     :output (pair-output expected)
+     :origin/test-paths (:source/test-prefixes descriptor)
+     :hara/source-test {:source/path (source-path-for-test-path source-path)
+                        :test/path source-path}
+     :pair/status :emitted}))
+
+(defn extract-form-pairs
+  [descriptor source-path inherited-refer aliases form]
+  (let [test-input (if (or (fact-form? form) (test-check-form? form))
+                     (nth form 2)
+                     nil)
+        fact-infer? (and (fact-form? form)
+                         (or (vector? test-input)
+                             (and (list? test-input)
+                                  (qualified-symbol? (first test-input)))))
+        refer (or (get (meta form) :refer)
+                  inherited-refer
+                  (if (or (test-check-form? form) fact-infer?)
+                    (inferred-refer descriptor aliases test-input)
+                    nil))]
+    (if (fact-form? form)
+      (if refer
+        [(pair-record descriptor
+                      source-path
+                      (str refer)
+                      0
+                      {:name (nth form 1)
+                       :test (nth form 2)
+                       :expected (nth form 4)})]
+        [])
+      (if (test-check-form? form)
+        (let [inputs (nth form 2)
+              expected (nth form 3)
+              inputs (if (vector? inputs) inputs [inputs])
+              expected (if (vector? expected) expected [expected])]
+          (if refer
+            (vec
+             (map-indexed
+              (fn [index input]
+                (pair-record descriptor
+                             source-path
+                             (str refer)
+                             index
+                             {:name (nth form 1)
+                              :test input
+                              :expected (nth expected index)}))
+              (take (min (count inputs) (count expected)) inputs)))
+            []))
+        (if (test-run-form? form)
+          (let [cases (first (rest form))]
+            (if (vector? cases)
+              (vec
+               (mapcat
+                (fn [indexed]
+                  (let [index (first indexed)
+                        test-case (second indexed)
+                        case-refer (or refer
+                                       (inferred-refer descriptor
+                                                      aliases
+                                                      (:test test-case)))]
+                    (if case-refer
+                      [(pair-record descriptor
+                                    source-path
+                                    (str case-refer)
+                                    index
+                                    test-case)]
+                      [])))
+                (map-indexed (fn [index value] [index value]) cases)))
+              []))
+        (cond
+          (list? form)
+          (vec
+           (mapcat
+            (fn [child]
+              (extract-form-pairs descriptor source-path refer aliases child))
+            form))
+
+          (vector? form)
+          (vec
+           (mapcat
+            (fn [child]
+              (extract-form-pairs descriptor source-path refer aliases child))
+            form))
+
+          :else []))))))
+
+(defn read-test-forms
+  [root path]
+  (read-string
+   (str "[" (project/read-text (File/join root path)) "]")))
+
+(defn extract-pairs-from-paths
+  [descriptor root paths]
+  (vec
+   (mapcat
+    (fn [path]
+      (let [forms (read-test-forms root path)
+            aliases (namespace-aliases (first forms))]
+        (mapcat
+         (fn [form]
+           (extract-form-pairs descriptor path nil aliases form))
+         forms)))
+    paths)))
+
+(defn extract-pairs
+  "Extracts real input/output pair records from migrated Hara test forms.
+
+   The source-test path and refer metadata remain attached to every pair, so
+   the generated artifact is grouped by namespace/function without losing the
+   Foundation-origin boundary. Predicate and throwing expectations remain
+   expression outputs instead of being silently coerced into values."
+  ([descriptor root registry-root]
+   (extract-pairs-from-paths
+    descriptor
+    root
+    (target-test-paths registry-root descriptor))))
+
+(defn generated-origin-document
+  [baseline descriptor pairs]
+  (let [pairs (sorted-pairs pairs)]
+    (assoc (origin-document baseline descriptor)
+         :origin/namespaces (pair-groups pairs)
+         :origin/cases pairs
+         :origin/accounting (accounting (map (fn [pair]
+                                               {:status (:pair/status pair)})
+                                             pairs)))))
+
+(defn generated-contract-document
+  [baseline descriptor pairs]
+  (contract-document baseline descriptor pairs))
+
+(defn contract-from-origin
+  "Copies the immutable origin pair corpus into a reviewable contract."
+  [baseline descriptor origin]
+  (assoc origin
+         :document/id (keyword "foundation.conformance" (:family/name descriptor))
+         :document/type :foundation-library-conformance
+         :conformance/authority :hara-specs-registry
+         :conformance/family (:family/id descriptor)
+         :conformance/status :pending
+         :contract/status :reviewed
+         :contract/origin (str (:family/name descriptor) "/origin.edn")
+         :conformance/namespaces (:origin/namespaces origin)
+         :conformance/cases (:origin/cases origin)
+         :runtime/status {:rust :pending :jvm :pending :wasm :pending}
+         :target/namespaces
+         (vec
+          (sort
+           (distinct
+            (mapcat :target/namespaces (:mapping descriptor)))))))
+
+(defn document-source
+  [document]
+  (str (corpus/render-edn document) "\n"))
+
+(defn document-digest
+  [document]
+  (str "sha256:" (Crypto/sha256
+                   (str/encode-utf8 (document-source document)))))
+
+(defn origin-write-state
+  "Returns the safe write decision for an immutable origin document."
+  [existing-source generated-source]
+  (let [generated? (and existing-source
+                        (str/includes?
+                         existing-source
+                         ":origin/generator \"tool.migrate.policy.foundation.conformance/2\""))]
+    (cond
+      (nil? existing-source) :create
+      (= existing-source generated-source) :unchanged
+      (not generated?) :replace-legacy
+      :else :immutable-conflict)))
+
+(defn conformance-write-state
+  "Returns the safe write decision for a reviewable contract document."
+  [existing-source generated-source]
+  (let [generated? (and existing-source
+                        (str/includes?
+                         existing-source
+                         ":origin/generator \"tool.migrate.policy.foundation.conformance/2\""))]
+    (cond
+      (nil? existing-source) :create
+      (= existing-source generated-source) :unchanged
+      (not generated?) :replace-legacy
+      :else :preserve-reviewed)))
+
+(defn generated-metadata-document
+  [baseline descriptor metadata foundation-pairs hara-pairs origin]
+  (assoc metadata
+         :foundation/source {:repository (:foundation/repository baseline)
+                             :revision (:foundation/revision baseline)
+                             :tree (:foundation/tree baseline)}
+         :foundation/source-test-pairs (vec foundation-pairs)
+         :hara/source {:repository (:hara/repository baseline)
+                       :revision (:hara/revision baseline)}
+         :hara/source-test-pairs (vec hara-pairs)
+         :generated/origin {:path (str (:family/name descriptor) "/origin.edn")
+                            :sha256 (document-digest origin)
+                            :pair-count (count (:origin/cases origin))}))
+
+(defn conformance-artifacts
+  "Builds metadata, immutable origin, and initial contract sources together."
+  [baseline descriptor metadata foundation-pairs hara-pairs pairs]
+  (let [origin (generated-origin-document baseline descriptor pairs)
+        contract (contract-from-origin baseline descriptor origin)
+        metadata (generated-metadata-document
+                  baseline descriptor metadata foundation-pairs hara-pairs origin)]
+    {:metadata metadata
+     :origin origin
+     :contract contract
+     :metadata/source (document-source metadata)
+     :origin/source (document-source origin)
+     :contract/source (document-source contract)
+     :origin/digest (document-digest origin)
+     :report {:family/id (:family/id descriptor)
+              :family/name (:family/name descriptor)
+              :foundation/revision (:foundation/revision baseline)
+              :hara/revision (:hara/revision baseline)
+              :source-test-count (count foundation-pairs)
+              :hara-source-test-count (count hara-pairs)
+              :pair-count (count pairs)
+              :origin/path (str (:family/name descriptor) "/origin.edn")
+              :contract/path (:output/path descriptor)}}))
+
+(defn foundation-runner
+  "Builds the read-only Foundation Git runner used by tool.migrate."
+  [foundation-root]
+  (fn [argv input]
+    (sh/run
+     (vec (concat ["git" "-C" (host-path foundation-root "")] argv))
+     (merge {}
+            (if (nil? input) {} {:stdin input})))))
+
+(defn hara-source-test-pairs-host
+  [registry-root descriptor]
+  (vec
+   (map
+    (fn [test-path]
+      {:source/path (source-path-for-test-path test-path)
+       :test/path test-path})
+    (host-target-test-paths registry-root descriptor))))
+
+(defn generate-family-artifacts
+  "Generates one complete family from Foundation Git and Hara test sources.
+
+   The registry root is a host path because the specs repository is a sibling
+   checkout, while Hara test sources are always read from the current Hara
+   project. No alternate handwritten corpus path is accepted."
+  [baseline descriptor foundation-root registry-root]
+  (let [runner (foundation-runner foundation-root)
+        metadata (host-metadata-document registry-root descriptor)
+        foundation-pairs (foundation-source-test-pairs
+                          runner baseline descriptor)
+        hara-pairs (hara-source-test-pairs-host registry-root descriptor)
+        pairs (extract-pairs-from-paths
+               descriptor
+               "."
+               (host-target-test-paths registry-root descriptor))]
+    (conformance-artifacts
+     baseline
+     descriptor
+     metadata
+     foundation-pairs
+     hara-pairs
+     pairs)))
+
+(defn family-artifact-path
+  [registry-root descriptor file]
+  (host-path registry-root (str (:family/name descriptor) "/" file)))
+
+(defn write-family-artifacts
+  "Writes metadata, immutable origin, and reviewable conformance sources.
+
+   `origin.edn` is write-once: a changed generated origin fails closed. A
+   reviewed `conformance.edn` is never overwritten by regeneration."
+  [baseline descriptor foundation-root registry-root]
+  (let [artifacts (generate-family-artifacts
+                   baseline descriptor foundation-root registry-root)
+        metadata-path (family-artifact-path registry-root descriptor "metadata.edn")
+        origin-path (family-artifact-path registry-root descriptor "origin.edn")
+        contract-path (family-artifact-path registry-root descriptor "conformance.edn")
+        existing-origin (host-read-existing origin-path)
+        existing-contract (host-read-existing contract-path)
+        origin-state (origin-write-state existing-origin (:origin/source artifacts))
+        contract-state (conformance-write-state existing-contract
+                                                 (:contract/source artifacts))]
+    (if (= :immutable-conflict origin-state)
+      (throw
+       (ex :tool.migrate/origin-immutable-conflict
+           {:family/id (:family/id descriptor)
+            :path origin-path}
+           :ex/message "Generated origin.edn differs from the immutable registry origin")))
+    (host-write metadata-path (:metadata/source artifacts))
+    (if (has? #{:create :replace-legacy} origin-state)
+      (host-write origin-path (:origin/source artifacts))
+      nil)
+    (if (has? #{:create :replace-legacy} contract-state)
+      (host-write contract-path (:contract/source artifacts))
+      nil)
+    (assoc (:report artifacts)
+           :paths {:metadata metadata-path
+                   :origin origin-path
+                   :contract contract-path}
+           :write/state {:metadata :written
+                         :origin origin-state
+                         :contract contract-state})))
+
+(defn validate-contract-document
+  "Rejects contracts that omit the registry authority or runtime test surface."
+  [document]
+  (vec
+   (concat
+    (if (and (map? document)
+             (= :foundation-library-conformance (:document/type document))
+             (= :hara-specs-registry (:conformance/authority document))
+             (= :reviewed (:contract/status document))
+             (= :pending (:conformance/status document))
+             (keyword? (:conformance/family document))
+             (vector? (:target/namespaces document))
+             (string? (:target/metadata-path document))
+             (vector? (:conformance/cases document))
+             (map? (:runtime/status document)))
+      []
+      [{:type :conformance/invalid-contract-document}])
+    (if (and (map? (:runtime/status document))
+             (= #{:rust :jvm :wasm}
+                (set (keys (:runtime/status document)))))
+      []
+      [{:type :conformance/missing-runtime-contracts}]))))
+
+(declare portable-value? accounting)
+
+(defn registry-entry
+  "Returns the only family locator shape allowed in the registry index."
+  [descriptor]
+  {:family/id (:family/id descriptor)
+   :family/path (:family/name descriptor)
+   :family/origin (str (:family/name descriptor) "/origin.edn")
+   :family/metadata (metadata-path descriptor)
+   :family/contract (:output/path descriptor)})
+
+(defn registry-document
+  "Builds the registry index consumed by the Work task and runtime adapters."
+  [baseline families]
+  {:document/id :hara/foundation-library-conformance
+   :document/type :foundation-library-conformance-index
+   :document/version "alpha"
+   :document/status :draft
+   :conformance/authority :hara-specs-registry
+   :conformance/origin-root (:output/root baseline)
+   :conformance/runtimes
+   {:rust {:runtime/id :rust
+           :runtime/adapter :registry-hara-test
+           :runtime/report-path "core/target/conformance/libraries/rust.edn"
+           :runtime/command ["scripts/runtime/run-lib-tests"]}
+    :jvm {:runtime/id :jvm
+          :runtime/adapter :registry-jvm-hara-test
+          :runtime/report-path "core/target/conformance/libraries/jvm.edn"
+          :runtime/command ["mvn" "-q" "-f" "core/java/pom.xml" "-Ptruffle"
+                            "-Dtest=LibraryConformanceTest" "test"]}
+    :wasm {:runtime/id :wasm
+           :runtime/adapter :registry-wasm-hara-test
+           :runtime/report-path "core/target/conformance/libraries/wasm.edn"
+           :runtime/command ["npm" "--prefix" "core/rust/web"
+                             "run" "test:library-conformance"]}}
+   :conformance/families
+   (vec (map registry-entry (sort-by :family/name families)))})
+
+(defn write-registry-index
+  "Writes the single registry index for the generated family set."
+  [baseline registry-root families]
+  (let [path (host-path registry-root "index.edn")
+        source (document-source (registry-document baseline families))]
+    (host-write path source)
+    {:path path
+     :family-count (count families)}))
+
+(defn portable-value?
+  [value]
+  (cond
+    (nil? value) true
+    (or (boolean? value)
+        (number? value)
+        (string? value)
+        (keyword? value)
+        (symbol? value)) true
+    (map? value)
+    (and (every? portable-value? (keys value))
+         (every? portable-value? (vals value)))
+    (vector? value) (every? portable-value? value)
+    (set? value) (every? portable-value? value)
+    :else false))
+
+(defn normalize-value
+  [observation]
+  (if (not (has? observation :foundation/expected))
+    {:status :manual-review
+     :expected nil
+     :reason :missing-expectation}
+    (let [expected (:foundation/expected observation)]
+      (if (portable-value? expected)
+        {:status :emitted
+         :expected expected}
+        {:status :manual-review
+         :expected nil
+         :reason :non-portable-value}))))
+
+(defn classify-form
+  "Classifies host-prepared Foundation test-form evidence before extraction."
+  [form]
+  (cond
+    (= :fact (:form/type form)) :portable
+    (= :test-run (:form/type form)) :manual-review
+    (= :host-only (:form/type form)) :skipped
+    (has? form :foundation/expected) :portable
+    :else :manual-review))
+
+(defn extraction-observation
+  "Converts one classified source form into the shared observation boundary."
+  [form]
+  (case (classify-form form)
+    :portable (assoc form :status :emitted)
+    :skipped (assoc form
+                    :status :skipped
+                    :reason (or (:reason form) :host-only))
+    (assoc form
+           :status :manual-review
+           :reason (or (:reason form) :runner-boundary))))
+
+(defn stable-id
+  [descriptor observation]
+  (str (:family/name descriptor)
+       "/"
+       (:source/path observation)
+       "#"
+       (or (:source/form-index observation) 0)))
+
+(defn fixture
+  [baseline descriptor observation]
+  (let [normalized
+        (if (= :manual-review (:status observation))
+          {:status :manual-review
+           :expected nil
+           :reason (or (:reason observation) :manual-review)}
+          (normalize-value observation))
+        review-status
+        (if (= :manual-review (:status observation))
+          :manual-review
+          :unreviewed)]
+    {:id (stable-id descriptor observation)
+     :source
+     {:repository (:foundation/repository baseline)
+      :revision (:foundation/revision baseline)
+      :tree (:foundation/tree baseline)
+      :path (:source/path observation)
+      :namespace (:source/namespace observation)
+      :location (or (:source/location observation)
+                    {:form-index (or (:source/form-index observation) 0)})}
+     :target
+     {:namespace (or (:target/namespace observation)
+                     (:target/namespace descriptor))
+      :expression (:target/expression observation)}
+     :foundation
+     {:expected (:expected normalized)
+      :expected/present (has? observation :foundation/expected)
+      :status (:status normalized)
+      :reason (:reason normalized)
+      :source-expression (:foundation/expression observation)}
+     :review {:status review-status}}))
+
+(defn observation-result
+  [baseline descriptor observation]
+  (if (= :skipped (:status observation))
+    {:status :skipped
+     :source/path (:source/path observation)
+     :reason (:reason observation)}
+    (let [case (fixture baseline descriptor observation)]
+      {:status (get-in case [:foundation :status])
+       :source/path (:source/path observation)
+       :reason (get-in case [:foundation :reason])
+       :fixture case})))
+
+(defn accounting
+  [records]
+  (let [counts
+        (reduce
+         (fn [output record]
+           (let [status (:status record)]
+             (assoc output status (inc (or (get output status) 0)))))
+         {:emitted 0 :skipped 0 :manual-review 0}
+         records)
+        discovered (count records)
+        emitted (:emitted counts)
+        skipped (:skipped counts)
+        manual-review (:manual-review counts)]
+    {:discovered discovered
+     :emitted emitted
+     :skipped skipped
+     :manual-review manual-review
+     :complete? (= discovered (+ emitted skipped manual-review))}))
+
+(defn validate-fixture
+  [fixture-value]
+  (vec
+   (concat
+    (if (and (map? fixture-value)
+             (string? (:id fixture-value))
+             (not (empty? (:id fixture-value))))
+      []
+      [{:type :conformance/missing-id}])
+    (if (and
+         (map? (:source fixture-value))
+         (string? (get-in fixture-value [:source :repository]))
+         (profile/sha? (get-in fixture-value [:source :revision]))
+         (profile/sha? (get-in fixture-value [:source :tree]))
+         (string? (get-in fixture-value [:source :path]))
+         (string? (get-in fixture-value [:source :namespace])))
+      []
+      [{:type :conformance/missing-source-provenance
+        :id (:id fixture-value)}])
+    (if (and
+         (map? (:target fixture-value))
+         (string? (get-in fixture-value [:target :namespace]))
+         (string? (get-in fixture-value [:target :expression])))
+      []
+      [{:type :conformance/missing-target-expression
+        :id (:id fixture-value)}])
+    (if (and
+         (map? (:foundation fixture-value))
+         (has? (:foundation fixture-value) :expected)
+         (has? (:foundation fixture-value) :expected/present)
+         (has? +evidence-statuses+
+               (get-in fixture-value [:foundation :status])))
+      []
+      [{:type :conformance/invalid-foundation-evidence
+        :id (:id fixture-value)}])
+    (if (= :unreviewed (get-in fixture-value [:review :status]))
+      []
+      [{:type :conformance/invalid-review-status
+        :id (:id fixture-value)}]))))
+
+(defn validate-document
+  [document]
+  (let [cases (or (:cases document) [])
+        accounting-value (:accounting document)
+        ids (map :id cases)]
+    (vec
+     (concat
+      (if (and
+           (map? document)
+           (= :hara-foundation-conformance (:document/type document))
+           (= 1 (:document/version document))
+           (= :unreviewed-source-evidence (:corpus/status document))
+           (profile/sha? (:foundation/revision document))
+           (profile/sha? (:foundation/tree document))
+           (profile/sha? (:hara/revision document))
+           (not (has? document :contract)))
+        []
+        [{:type :conformance/invalid-document-header}])
+      (if (and
+           (vector? cases)
+           (= cases (vec (sort-by :id cases)))
+           (empty? (corpus/duplicate-values ids)))
+        []
+        [{:type :conformance/unstable-cases}])
+      (mapcat validate-fixture cases)
+      (if (and
+           (map? accounting-value)
+           (:complete? accounting-value)
+           (= (:discovered accounting-value)
+              (+ (:emitted accounting-value)
+                 (:skipped accounting-value)
+                 (:manual-review accounting-value))))
+        []
+        [{:type :conformance/incomplete-accounting}])))))
+
+(defn corpus-document
+  [baseline descriptor observations]
+  (let [records (vec (map (fn [observation]
+                            (observation-result baseline descriptor observation))
+                          observations))
+        cases (vec
+               (sort-by
+                :id
+                (keep :fixture records)))
+        document
+        {:document/type :hara-foundation-conformance
+         :document/version 1
+         :corpus/status :unreviewed-source-evidence
+         :family/id (:family/id descriptor)
+         :family/name (:family/name descriptor)
+         :foundation/repository (:foundation/repository baseline)
+         :foundation/revision (:foundation/revision baseline)
+         :foundation/tree (:foundation/tree baseline)
+         :hara/repository (:hara/repository baseline)
+         :hara/revision (:hara/revision baseline)
+         :output/repository (:output/repository baseline)
+         :output/path (:output/path descriptor)
+         :accounting (accounting records)
+         :cases cases}]
+    (assoc document :validation/errors (validate-document document))))
+
+(defn corpus-source
+  [document]
+  (str (corpus/render-edn (dissoc document :validation/errors)) "\n"))
+
+(defn generation-report
+  [baseline descriptor observations document]
+  {:family/id (:family/id descriptor)
+   :family/name (:family/name descriptor)
+   :source/repository (:foundation/repository baseline)
+   :source/revision (:foundation/revision baseline)
+   :source/tree (:foundation/tree baseline)
+   :hara/repository (:hara/repository baseline)
+   :hara/revision (:hara/revision baseline)
+   :output/repository (:output/repository baseline)
+   :output/path (output-path baseline descriptor)
+   :accounting (:accounting document)
+   :fixture-ids (mapv :id (:cases document))
+   :observation-count (count observations)
+   :errors (:validation/errors document)})
+
+^{:public true}
+(defn generate
+  [baseline descriptor observations]
+  (let [document (corpus-document baseline descriptor observations)]
+    {:path (output-path baseline descriptor)
+     :document document
+     :source (corpus-source document)
+     :report (generation-report baseline descriptor observations document)
+     :valid? (empty? (:validation/errors document))}))
