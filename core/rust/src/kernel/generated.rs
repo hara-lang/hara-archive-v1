@@ -722,7 +722,7 @@ pub(crate) fn normalize_namespace(value: &str) -> &str {
         value => value,
     }
 }
-fn known_namespace(value: &str) -> bool {
+pub(crate) fn known_namespace(value: &str) -> bool {
     let value = normalize_namespace(value);
     value == "std.foundation"
         || value == "std.foundation.coroutine"
