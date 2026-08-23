@@ -555,7 +555,7 @@
 
 (defn validate-generated
   [generated-root options]
-  (sh/run [(:hara-test options)
+  (sh/run-record [(:hara-test options)
            "--root"
            (:project-root options)
            generated-root]

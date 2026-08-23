@@ -73,7 +73,7 @@
     (try
       (oneshot-result
        runtime
-       (sh/run argv (process-options runtime)))
+       (sh/run-record argv (process-options runtime)))
       (catch Throwable error
         (throw
          (ex :host {:phase :eval

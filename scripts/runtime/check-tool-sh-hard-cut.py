@@ -33,7 +33,7 @@ DOMAIN_RUNNER_OWNERS = {
 }
 
 ONE_SHOT_OWNERS = (
-    ROOT / "core/lib/src/code/deploy/runtime.hal",
+    ROOT / "core/lib/src/code/project/deploy/runtime.hal",
     ROOT / "core/lib/src/lang/runtime/basic/type_oneshot.hal",
     ROOT / "core/lib/src/lang/runtime/basic/type_verify.hal",
     ROOT / "core/lib/src/tool/cli/identity.hal",
@@ -85,7 +85,7 @@ def main() -> None:
     for token in ("(defn run!", "(def run!", "execute-checked", ":trim", ":tool.sh/runner"):
         if token in core:
             fail(f"retired core tool.sh token remains: {token}")
-    if "#{:cwd :env :stdin}" not in core:
+    if "#{:cwd :env :stdin :timeout}" not in core:
         fail("tool.sh does not declare the closed process option set")
     for delegate in ("stdout", "stderr", "wait", "write", "close-input", "alive?", "kill"):
         if f"(defn {delegate}" not in core:

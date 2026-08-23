@@ -77,8 +77,8 @@
 (defn run-foundation
   "Invokes the Foundation Clojure runner and returns an EDN result map."
   [fixture-path foundation-root]
-  (let [result (sh/run (vec (concat +foundation-runner+ [fixture-path]))
-                       {:cwd foundation-root})]
+  (let [result (sh/run-record (vec (concat +foundation-runner+ [fixture-path]))
+                              {:cwd foundation-root})]
     (if (not= 0 (:exit result))
       (throw (ex :dependency result :ex/message "Foundation conformance runner failed")))
     (Edn/read (:stdout result))))

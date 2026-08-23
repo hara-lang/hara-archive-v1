@@ -18,7 +18,7 @@
            {:ex/message "The command adapter does not write Foundation objects"
             :argv argv})))
     (let [result
-          (sh/run
+          (sh/run-record
            (vec
             (concat
              ["git" "--git-dir" git-dir]

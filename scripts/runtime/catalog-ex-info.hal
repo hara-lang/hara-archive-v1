@@ -26,7 +26,7 @@
            (lines output))))))
 
 (defn repository-id [root logical-path]
-  (let [result (sh/run ["git" "-C" root "remote" "get-url" "origin"])
+  (let [result (sh/run-record ["git" "-C" root "remote" "get-url" "origin"])
         url (if (= 0 (:exit result)) (:stdout result) logical-path)
         cleaned (str/replace
                  (str/replace url "git@github.com:" "")
@@ -36,7 +36,7 @@
       cleaned)))
 
 (defn tracked-hal-paths [root]
-  (let [result (sh/run ["git" "-C" root "grep" "-l" "ex-info" "HEAD" "--" "*.hal"])]
+  (let [result (sh/run-record ["git" "-C" root "grep" "-l" "ex-info" "HEAD" "--" "*.hal"])]
     (if (= 0 (:exit result))
       (mapv (fn [line]
               (str/slice line (inc (str/index-of line ":"))))
@@ -44,7 +44,7 @@
       [])))
 
 (defn host-read [file]
-  (let [result (sh/run ["/bin/cat" file] {:trim false})]
+  (let [result (sh/run-record ["/bin/cat" file] {:trim false})]
     (if (= 0 (:exit result)) (:stdout result) nil)))
 
 (defn host-write [file text]
@@ -75,7 +75,7 @@
     site))
 
 (defn scan-repository [workspace logical-path root review]
-  (let [probe (sh/run ["git" "-C" root "rev-parse" "--git-dir"])]
+  (let [probe (sh/run-record ["git" "-C" root "rev-parse" "--git-dir"])]
   (if (= 0 (:exit probe))
     (let [repository (repository-id root logical-path)
           revision (git root ["rev-parse" "HEAD"])

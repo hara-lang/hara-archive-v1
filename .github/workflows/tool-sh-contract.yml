@@ -9,12 +9,12 @@ on:
       - core/lib/src/tool/runtime.hal
       - core/lib/src/tool/cli/identity.hal
       - core/lib/src/tool/cli/extension.hal
-      - core/lib/src/code/deploy/runtime.hal
+      - core/lib/src/code/project/deploy/runtime.hal
       - core/lib/src/lang/runtime/basic/type_oneshot.hal
       - core/lib/src/lang/runtime/basic/type_verify.hal
       - core/lib/src/db/postgres.hal
       - core/lib/test/tool/**
-      - core/lib/test/code/deploy/runtime_test.hal
+      - core/lib/test/code/project/deploy/runtime_test.hal
       - core/lib/test-lang/lang/runtime/basic/type_oneshot_test.hal
       - core/lib/test-lang/lang/runtime/basic/type_verify_test.hal
       - core/rust/standard-library.namespaces
@@ -30,12 +30,12 @@ on:
       - core/lib/src/tool/runtime.hal
       - core/lib/src/tool/cli/identity.hal
       - core/lib/src/tool/cli/extension.hal
-      - core/lib/src/code/deploy/runtime.hal
+      - core/lib/src/code/project/deploy/runtime.hal
       - core/lib/src/lang/runtime/basic/type_oneshot.hal
       - core/lib/src/lang/runtime/basic/type_verify.hal
       - core/lib/src/db/postgres.hal
       - core/lib/test/tool/**
-      - core/lib/test/code/deploy/runtime_test.hal
+      - core/lib/test/code/project/deploy/runtime_test.hal
       - core/lib/test-lang/lang/runtime/basic/type_oneshot_test.hal
       - core/lib/test-lang/lang/runtime/basic/type_verify_test.hal
       - core/rust/standard-library.namespaces
@@ -113,10 +113,10 @@ jobs:
                          ["sh" "-c"
                           "printf ' out\n'; printf ' err\n' >&2; exit 7"])
                 async-result (deref pending)
-                input-result (sh/run ["cat"] {:stdin "hello\n"})
-                cwd-result (sh/run ["pwd"] {:cwd "/tmp"})
-                env-result (sh/run ["printenv" "HARA_TOOL_SH_TEST"]
-                                   {:env {"HARA_TOOL_SH_TEST" "present"}})
+                input-result (sh/run-record ["cat"] {:stdin "hello\n"})
+                cwd-result (sh/run-record ["pwd"] {:cwd "/tmp"})
+                env-result (sh/run-record ["printenv" "HARA_TOOL_SH_TEST"]
+                                          {:env {"HARA_TOOL_SH_TEST" "present"}})
                 failed (try
                          (sh/run-checked
                           ["sh" "-c" "printf out; printf err >&2; exit 9"])

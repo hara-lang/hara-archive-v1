@@ -10,7 +10,7 @@
 
 (defn- execution-runner
   [value]
-  (or (:tool.sh/runner (or value {})) sh/run))
+  (or (:tool.sh/runner (or value {})) sh/run-record))
 
 (defn- command-result
   [argv value]

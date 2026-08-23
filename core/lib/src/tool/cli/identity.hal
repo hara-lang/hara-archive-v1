@@ -50,7 +50,7 @@
 
 (defn run-process [argv input]
   (let [options (if (nil? input) {} {:stdin input})
-        result (sh/run argv options)
+        result (sh/run-record argv options)
         public (select-keys result [:stdout :stderr :exit])]
     (if (= 0 (:exit public))
       public

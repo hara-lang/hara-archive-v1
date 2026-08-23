@@ -45,7 +45,7 @@
     (try
       (checker-result
        runtime
-       (sh/run argv (process-options runtime source)))
+       (sh/run-record argv (process-options runtime source)))
       (catch Throwable error
         (throw
          (ex :host {:phase :verify

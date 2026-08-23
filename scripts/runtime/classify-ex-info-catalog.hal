@@ -101,7 +101,7 @@
                        :class/namespace "hodos.class"}})
 
 (defn host-read [file]
-  (let [result (sh/run ["/bin/cat" file] {:trim false})]
+  (let [result (sh/run-record ["/bin/cat" file] {:trim false})]
     (if (= 0 (:exit result))
       (:stdout result)
       (throw (ex :tool.migrate/catalog-read

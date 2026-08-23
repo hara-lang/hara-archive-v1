@@ -99,7 +99,7 @@
       (let [_ (fs/create-directory directory {:parents? true :exists-ok? true})
             temporary (str directory "/.README.org")
             _ (write-text temporary (make-readme-raw (read-text source)))
-            result (sh/run ["pandoc" "-f" "org" "-t" "gfm"
+            result (sh/run-record ["pandoc" "-f" "org" "-t" "gfm"
                             "-o" output temporary]
                            {:cwd directory})]
         result))))
