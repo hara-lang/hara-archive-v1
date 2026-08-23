@@ -91,7 +91,7 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
             libraryInstance.hasMember("exports")
                 ? libraryInstance.getMember("exports")
                 : libraryInstance;
-        importObject = ProxyObject.fromMap(Map.of("hara/library", libraryMembers));
+        importObject = libraryImportObject(libraryMembers);
       }
       Value instance;
       Value module = opened.eval(source);
@@ -164,6 +164,19 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
           "extension/malformed: module " + module + " has no export " + name);
     }
     return function;
+  }
+
+  private static ProxyObject libraryImportObject(Value libraryMembers) {
+    if (!libraryMembers.hasMembers()) {
+      throw new HaraException("extension/library-malformed: exports are not a member object");
+    }
+    LinkedHashMap<String, Object> exports = new LinkedHashMap<>();
+    for (String name : libraryMembers.getMemberKeys()) {
+      Value value = libraryMembers.getMember(name);
+      if (value != null) exports.put(name, value);
+    }
+    return ProxyObject.fromMap(
+        Map.of("hara/library", ProxyObject.fromMap(exports)));
   }
 
   boolean isHta() {
@@ -304,7 +317,10 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
         else if (command instanceof Delivery) deliver((Delivery) command);
         else if (command instanceof Cancel) cancel((Cancel) command);
         else if (command instanceof Release) releaseNow((Release) command);
-        else running = false;
+        else {
+          stopTasks();
+          running = false;
+        }
         if (running) drainEvents();
       }
     } catch (InterruptedException error) {
@@ -324,7 +340,7 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
     if (task <= 0) throw new HaraException("hta/start-failed: " + manifest.namespace());
     command.result.task = task;
     tasks.put(task, command.result.future);
-    if (command.result.future.isCancelled()) htaCancel.execute(task);
+    if (command.result.future.isCancelled()) cancelTask(task);
   }
 
   private void deliver(Delivery command) {
@@ -501,7 +517,21 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
   }
 
   private void cancel(Cancel command) {
-    if (command.result.task > 0) htaCancel.execute(command.result.task);
+    if (command.result.task > 0) cancelTask(command.result.task);
+  }
+
+  private void cancelTask(long task) {
+    if (!tasks.containsKey(task)) return;
+    int cancelStatus = htaCancel.execute(task).asInt();
+    int dropStatus = htaDropTask.execute(task).asInt();
+    tasks.remove(task);
+    if (cancelStatus != 0) throw new HaraException("hta/cancel-failed: " + cancelStatus);
+    if (dropStatus != 0) throw new HaraException("hta/drop-task-failed: " + dropStatus);
+  }
+
+  private void stopTasks() {
+    for (long task : List.copyOf(tasks.keySet())) cancelTask(task);
+    rejectAll(new HaraException("hta/context-closed"));
   }
 
   private void rejectAll(HaraException error) {

@@ -315,7 +315,7 @@ export class HtaContext {
   }
   call(target, args=[]) { let id=null,cancelled=false;
     return this.promiseProvider.create((resolve,reject,onCancel)=>{
-      onCancel(()=>{cancelled=true;if(id!==null)this.worker.postMessage({type:"cancel",id});});
+      onCancel(()=>{cancelled=true;if(id!==null){this.pending.delete(id);this.worker.postMessage({type:"cancel",id});id=null;}});
       this.ready.then(()=>{if(cancelled)return;if(this.closed)throw new Error("hta/context-closed");if(this.allowedExports && !this.allowedExports.has(target))throw new Error(`hta/export-denied: ${target}`);validateHandles(args,this);id=this.next++;this.pending.set(id,{resolve,reject});this.worker.postMessage({type:"call",id,frame:encodeHta([target,args])});}).catch(reject);
     });
   }
@@ -334,11 +334,13 @@ export class HtaContext {
   session(name="ROOT"){let session=this.sessions.get(name);if(!session){session=new HtaSession(this,name);this.sessions.set(name,session);}return session;}
   listSessions(){return this.call("session/list",[]);}
   async message(message) {
-    if(message.type==="ready"){this.readyResolve();return;}if(message.type==="fatal"){this.fail(new Error(message.error?.message??"HTA worker failed"));return;}
-    if(message.type==="result"){const pending=this.pending.get(message.id);if(!pending)return;this.pending.delete(message.id);const value=bindHandles(decodeHta(message.frame),this);message.ok?pending.resolve(value):pending.reject(errorFrom(value));return;}
-    if(message.type==="host-call"){const key=`${message.service}/${message.method}`,handler=this.hostCalls[key],sessionId=message.session??"ROOT";try{if(this.allowedHostCalls && !this.allowedHostCalls.has(key))throw new Error(`hta/host-call-denied: ${key}`);if(!handler)throw new Error(`hta/host-call-denied: ${key}`);const value=await handler.call({context:this.session(sessionId),kernelContext:this,kernelId:this.kernelId??null,sessionId,mountId:message.mount??null,task:message.task},...decodeHta(message.frame));this.worker.postMessage({type:"delivery",call:message.call,ok:true,frame:encodeHta(value)});}catch(error){this.worker.postMessage({type:"delivery",call:message.call,ok:false,frame:encodeHta(errorValue(error))});}}
+    try {
+      if(message.type==="ready"){this.readyResolve();return;}if(message.type==="fatal"){this.fail(new Error(message.error?.message??"HTA worker failed"));return;}
+      if(message.type==="result"){const pending=this.pending.get(message.id);if(!pending)return;this.pending.delete(message.id);const value=bindHandles(decodeHta(message.frame),this);message.ok?pending.resolve(value):pending.reject(errorFrom(value));return;}
+      if(message.type==="host-call"){const key=`${message.service}/${message.method}`,handler=this.hostCalls[key],sessionId=message.session??"ROOT";try{if(this.allowedHostCalls && !this.allowedHostCalls.has(key))throw new Error(`hta/host-call-denied: ${key}`);if(!handler)throw new Error(`hta/host-call-denied: ${key}`);const value=await handler.call({context:this.session(sessionId),kernelContext:this,kernelId:this.kernelId??null,sessionId,mountId:message.mount??null,task:message.task},...decodeHta(message.frame));this.worker.postMessage({type:"delivery",call:message.call,ok:true,frame:encodeHta(value)});}catch(error){this.worker.postMessage({type:"delivery",call:message.call,ok:false,frame:encodeHta(errorValue(error))});}}
+    } catch(error) { this.fail(error); }
   }
-  fail(error){if(this.closed)return;this.closed=true;this.readyReject(error);for(const pending of this.pending.values())pending.reject(error);this.pending.clear();}
+  fail(error){if(this.closed)return;this.closed=true;this.readyReject(error);for(const pending of this.pending.values())pending.reject(error);this.pending.clear();this.worker.terminate?.();}
   close(){if(!this.closed){this.closed=true;const error=new Error("hta/context-closed");this.readyReject(error);for(const pending of this.pending.values())pending.reject(error);this.pending.clear();}const closes=[...this.mounts].map(mountId=>this.filesystemHost?.close(this,mountId).catch(()=>{}));this.mounts.clear();this.worker.postMessage({type:"close"});this.worker.terminate();return Promise.all(closes);}
 }
 
