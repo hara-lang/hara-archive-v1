@@ -76,7 +76,7 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
                   manifest.namespace() + "/" + manifest.module())
               .build();
       opened = Context.newBuilder("wasm").allowAllAccess(false).build();
-      Value importObject = null;
+      ProxyObject importObject = null;
       if (libraryBytes != null) {
         Source librarySource =
             Source.newBuilder(
