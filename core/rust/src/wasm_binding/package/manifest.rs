@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use crate::kernel::Form;
+use crate::wasm_binding::CancellationPolicy;
 
 use super::{
     digest, document, keyword_form, string_form, BindingTarget, WasmInterface, ADAPTER_FILE,
@@ -79,7 +80,7 @@ pub(super) fn package_document(
             Form::Bool(
                 interface.exports.iter().any(|export| {
                     export.cancellation.is_some_and(|policy| {
-                        !matches!(policy, super::CancellationPolicy::Ignore)
+                        !matches!(policy, CancellationPolicy::Ignore)
                     })
                 }),
             ),
