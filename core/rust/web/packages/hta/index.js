@@ -179,9 +179,17 @@ export async function loadHtaExtension({worker,descriptor,descriptorUrl,packageU
   const manifest = parseHtaManifest(descriptor);
   const base = packageUrl ?? descriptorUrl;
   let moduleUrl;
+  let libraryUrl;
   if (manifest.provider === "wasm" && moduleBytes === undefined) {
     if (!base) throw new Error("hta/manifest-missing: packageUrl is required with inline descriptors");
     moduleUrl = new URL(manifest.module,base).toString();
+  }
+  if (manifest.provider === "wasm") {
+    const library = manifest.assets.find(asset => asset.endsWith(".wasm") && asset !== manifest.module);
+    if (library) {
+      if (!base) throw new Error("hta/manifest-missing: packageUrl is required with inline descriptors");
+      libraryUrl = new URL(library,base).toString();
+    }
   }
   if (manifest.provider === "hta" && !worker) {
     if (!base) throw new Error("hta/manifest-missing: packageUrl is required with inline descriptors");
@@ -189,7 +197,7 @@ export async function loadHtaExtension({worker,descriptor,descriptorUrl,packageU
   }
   if (!worker) throw new Error("hta/worker-missing: worker is required for WASM providers");
   const context = new HtaContext({
-    worker,moduleUrl,moduleBytes,hostCalls,handleTags:manifest.handleTags,
+    worker,moduleUrl,moduleBytes,libraryUrl,hostCalls,handleTags:manifest.handleTags,
     manifest
   });
   return context;
@@ -297,13 +305,13 @@ class Reader {
 }
 
 export class HtaContext {
-  constructor({ worker, moduleUrl, moduleBytes, hostCalls = {}, filesystemHost = hostCalls.filesystemHost ?? null, handleTags = {}, promiseProvider = new BrowserPromiseProvider(), kernelId = null, manifest = null }) {
+  constructor({ worker, moduleUrl, moduleBytes, libraryUrl, libraryBytes, hostCalls = {}, filesystemHost = hostCalls.filesystemHost ?? null, handleTags = {}, promiseProvider = new BrowserPromiseProvider(), kernelId = null, manifest = null }) {
     this.worker=worker;this.hostCalls=hostCalls;this.filesystemHost=filesystemHost;this.handleTags=handleTags;this.promiseProvider=promiseProvider;this.kernelId=kernelId;this.manifest=manifest;this.allowedExports=manifest ? new Set(manifest.exports) : null;this.allowedHostCalls=manifest ? new Set(Object.entries(manifest.hostCalls).flatMap(([service,methods])=>methods.map(method=>`${service}/${method}`))) : null;this.next=1;this.pending=new Map();this.sessions=new Map();this.mounts=new Set();this.closed=false;
     this.ready=new Promise((resolve,reject)=>{this.readyResolve=resolve;this.readyReject=reject;});
     this.ready.catch(()=>{});
     worker.addEventListener("message", event=>this.message(event.data));
     worker.addEventListener("error", error=>this.fail(error));
-    worker.postMessage({type:"init",moduleUrl,moduleBytes});
+    worker.postMessage({type:"init",moduleUrl,moduleBytes,libraryUrl,libraryBytes});
   }
   call(target, args=[]) { let id=null,cancelled=false;
     return this.promiseProvider.create((resolve,reject,onCancel)=>{

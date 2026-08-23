@@ -17,6 +17,7 @@ import org.graalvm.polyglot.Context;
 import org.graalvm.polyglot.Source;
 import org.graalvm.polyglot.Value;
 import org.graalvm.polyglot.io.ByteSequence;
+import org.graalvm.polyglot.proxy.ProxyObject;
 
 /** Generic, import-free Wasm extension instance. */
 final class HaraWasmExtension implements HaraExtensionRuntime {
@@ -65,6 +66,7 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
     Context opened = null;
     try {
       byte[] bytes = extensionPackage.moduleBytes();
+      byte[] libraryBytes = extensionPackage.wrappedLibraryBytes();
       HaraWasmMemoryBinding memoryBinding =
           "memory.v1".equals(manifest.abi()) ? extensionPackage.memoryBinding() : null;
       Source source =
@@ -74,8 +76,29 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
                   manifest.namespace() + "/" + manifest.module())
               .build();
       opened = Context.newBuilder("wasm").allowAllAccess(false).build();
+      ProxyObject importObject = null;
+      if (libraryBytes != null) {
+        Source librarySource =
+            Source.newBuilder(
+                    "wasm",
+                    ByteSequence.create(libraryBytes),
+                    "hara/library")
+                .build();
+        Value libraryModule = opened.eval(librarySource);
+        Value libraryInstance =
+            libraryModule.canInstantiate() ? libraryModule.newInstance() : libraryModule;
+        Value libraryMembers =
+            libraryInstance.hasMember("exports")
+                ? libraryInstance.getMember("exports")
+                : libraryInstance;
+        importObject = ProxyObject.fromMap(Map.of("hara/library", libraryMembers));
+      }
+      Value instance;
       Value module = opened.eval(source);
-      Value instance = module.canInstantiate() ? module.newInstance() : module;
+      instance =
+          module.canInstantiate()
+              ? importObject == null ? module.newInstance() : module.newInstance(importObject)
+              : module;
       Value members = instance.hasMember("exports") ? instance.getMember("exports") : instance;
       Value memoryValue = members.hasMember("memory") ? members.getMember("memory") : null;
       Value allocatorValue = members.hasMember("alloc") ? members.getMember("alloc") : null;

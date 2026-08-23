@@ -139,15 +139,27 @@ pub fn load_hta_require_package(
             "package/manifest-mismatch: selected exports are not declared by extension".into(),
         );
     }
-    if !extension_manifest.exports.iter().any(|(name, specification)| {
-        name == &variant.artifact.entry_point
-            || specification.raw_name(name) == variant.artifact.entry_point
-    }) {
-        return Err("package/entry-point-mismatch: selected entry point is not exported".into());
-    }
-
-    let provider =
-        WasmtimeExtensionProvider::compile_hta_with_host_handler(&bytes, host_handler)?;
+    let artifact_path = variant.artifact.path.to_string_lossy();
+    let library_path = extension_manifest
+        .assets
+        .iter()
+        .find(|path| path.ends_with(".wasm") && path.as_str() != artifact_path)
+        .cloned();
+    let provider = if let Some(library_path) = library_path {
+        let library_bytes = fs::read(package_root.join(&library_path)).map_err(|error| {
+            format!(
+                "package/missing-library: cannot read {}: {error}",
+                library_path
+            )
+        })?;
+        WasmtimeExtensionProvider::compile_hta_with_library(
+            &bytes,
+            &library_bytes,
+            host_handler,
+        )?
+    } else {
+        WasmtimeExtensionProvider::compile_hta_with_host_handler(&bytes, host_handler)?
+    };
     let extension = WasmExtension::new(extension_manifest, provider)?;
     Ok(LoadedPackageHta {
         identity: manifest.identity.clone(),

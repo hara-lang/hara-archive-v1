@@ -452,15 +452,6 @@ fn parse_errors(form: &Form, origin: &str, export: &str) -> Result<ErrorContract
 fn validate_alpha(interface: &WasmInterface, origin: &str) -> Result<(), String> {
     let mut uses_memory = false;
     for export in &interface.exports {
-        if export.asynchronous {
-            return Err(unsupported(
-                origin,
-                format!(
-                    "export {} is asynchronous; async bindings require HTA",
-                    export.name
-                ),
-            ));
-        }
         for argument in &export.arguments {
             uses_memory |= validate_parameter(argument, origin, &export.name)?;
         }

@@ -32,7 +32,10 @@ pub use crate::direct_wasm::{
     DirectWasmMemory,
 };
 #[cfg(not(target_arch = "wasm32"))]
-pub use adapter::{generate_adapter, AdapterArtifact, ADAPTER_MANIFEST_SCHEMA};
+pub use adapter::{
+    generate_adapter, generate_hta_adapter, verify_hta_scalar, AdapterArtifact,
+    ADAPTER_MANIFEST_SCHEMA,
+};
 pub use direct::{
     direct_inspection_source, direct_interface_skeleton, inspect_direct,
     DIRECT_WASM_INSPECTION_SCHEMA,
