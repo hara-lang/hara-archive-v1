@@ -439,6 +439,33 @@ public class HaraGeneratedLibrariesTest {
   }
 
   @Test
+  public void requireAccessAcceptsOnlyLiteralTrue() {
+    try (Context context = context()) {
+      assertEquals(
+          ":internal",
+          context
+              .eval(
+                  HaraLanguage.ID,
+                  "(ns access.internal (:config {:role :internal})) "
+                      + "(ns access.consumer (:require [access.internal :access true])) "
+                      + "(get (Runtime/namespace 'access.internal) :namespace/role)")
+              .toString());
+      assertErrorContains(
+          context,
+          "(ns access.false (:require [access.internal :access false]))",
+          ":require :access expects true");
+      assertErrorContains(
+          context,
+          "(ns access.number (:require [access.internal :access 1]))",
+          ":require :access expects true");
+      assertErrorContains(
+          context,
+          "(ns access.keyword (:require [access.internal :access :true]))",
+          ":require :access expects true");
+    }
+  }
+
+  @Test
   public void conflictingGlobalAliasRegistrationRollsBack() {
     try (Context context = context()) {
       context.eval(

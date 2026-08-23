@@ -67,6 +67,7 @@ pub struct GeneratedNamespaceConfig {
     required_namespaces: Vec<String>,
     used_namespaces: Vec<String>,
     used_exclusions: HashMap<String, HashSet<String>>,
+    internal_access: HashSet<String>,
     excluded_intrinsics: HashSet<String>,
     excluded_foundation: HashSet<String>,
     exposed_foundation: Option<HashSet<String>>,
@@ -93,6 +94,7 @@ impl GeneratedNamespaceConfig {
             required_namespaces: Vec::new(),
             used_namespaces: Vec::new(),
             used_exclusions: HashMap::new(),
+            internal_access: HashSet::new(),
             excluded_intrinsics: HashSet::new(),
             excluded_foundation: HashSet::new(),
             exposed_foundation: None,
@@ -234,6 +236,10 @@ impl GeneratedNamespaceConfig {
         self.used_exclusions
             .get(namespace)
             .is_some_and(|excluded| excluded.contains(symbol))
+    }
+
+    pub fn internal_access(&self) -> &HashSet<String> {
+        &self.internal_access
     }
 
     pub fn excluded_foundation(&self) -> &HashSet<String> {
@@ -420,6 +426,12 @@ impl GeneratedNamespaceConfig {
                     if !matches!(&option[1], Form::Bool(true)) {
                         return Err(":require :reload expects true".into());
                     }
+                }
+                "access" => {
+                    if !matches!(&option[1], Form::Bool(true)) {
+                        return Err(":require :access expects true".into());
+                    }
+                    self.internal_access.insert(target.into());
                 }
                 "exclude" => {
                     let names =

@@ -64,6 +64,27 @@ fn config_role_defaults_validates_and_is_retained() {
 }
 
 #[test]
+fn require_access_accepts_only_literal_true() {
+    let config = GeneratedNamespaceConfig::configure(
+        &parse_forms("(:require [std.foundation.string :access true])").unwrap(),
+    )
+    .unwrap();
+    assert!(config
+        .internal_access()
+        .contains("std.foundation.string"));
+    for value in ["false", "1", ":true", "nil"] {
+        let error = GeneratedNamespaceConfig::configure(
+            &parse_forms(&format!(
+                "(:require [std.foundation.string :access {value}])"
+            ))
+            .unwrap(),
+        )
+        .unwrap_err();
+        assert!(error.contains(":require :access expects true"), "{error}");
+    }
+}
+
+#[test]
 fn separates_wasm_imports_from_host_flavor_imports() {
     let config = GeneratedNamespaceConfig::configure(
         &parse_forms(
