@@ -148,4 +148,48 @@
         (work/run rebuilt {:value 3}))])
   => [true 'work.base/definition true])
 
+^{:refer work.compile.hara/form :added "0.1"}
+(fact "generated ordinary forms preserve canonical structural operations"
+  (lowering/reset-closures)
+  (try
+    (let [step (work/step :double (fn [input context] (* input 2)))
+          chain (work/chain
+                 [(work/pure :increment (fn [input context] (+ input 1)))
+                  (work/pure :double (fn [input context] (* input 2)))])
+          all (work/all
+               [(work/pure :increment (fn [input context] (+ input 1)))
+                (work/pure :double (fn [input context] (* input 2)))])
+          each (work/each (work/pure :increment (fn [input context] (+ input 1))))
+          choose (work/choose
+                  (work/pure :select (fn [input context] :double))
+                  {:double (work/pure :double (fn [input context] (* input 2)))})
+          ensure (work/ensure
+                  (work/pure :body (fn [input context] (+ input 1)))
+                  (work/pure :cleanup (fn [outcome context] :clean)))
+          rebuilt-step (eval (lowering/form step))
+          rebuilt-chain (eval (lowering/form chain))
+          rebuilt-all (eval (lowering/form all))
+          rebuilt-each (eval (lowering/form each))
+          rebuilt-choose (eval (lowering/form choose))
+          rebuilt-ensure (eval (lowering/form ensure))]
+      [(work/run step 6) (work/run rebuilt-step 6)
+       (work/run chain 3) (work/run rebuilt-chain 3)
+       (work/run all 3) (work/run rebuilt-all 3)
+       (work/run each [1 2 3]) (work/run rebuilt-each [1 2 3])
+       (work/run choose 4) (work/run rebuilt-choose 4)
+       (work/run ensure 4) (work/run rebuilt-ensure 4)])
+    (finally
+      (lowering/reset-closures)))
+  => [12 12
+      8 8
+      [4 6] [4 6]
+      [{:item/id 0 :item/value 2}
+       {:item/id 1 :item/value 3}
+       {:item/id 2 :item/value 4}]
+      [{:item/id 0 :item/value 2}
+       {:item/id 1 :item/value 3}
+       {:item/id 2 :item/value 4}]
+      8 8
+      5 5])
+
 (pr-str (run '[work.compile.hara-test]))
