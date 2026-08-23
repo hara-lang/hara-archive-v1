@@ -13,7 +13,7 @@
      (create duplex codec-or-options {})
      (create duplex nil codec-or-options)))
   ([duplex codec options]
-   (if (not (satisfies? IStreamDuplex duplex))
+   (if (not (satisfies? std.protocol.istreamduplex.IStreamDuplex duplex))
      (throw (ex :io {:error/type :relay/invalid-transport
                       :value duplex} :ex/message "Relay requires an IStreamDuplex transport")))
    (if (and codec (not (satisfies? frame/IFrameCodec codec)))
@@ -117,7 +117,7 @@
               (reject-entry (:serial-active current) error)
               (channel/abort (:jobs relay) error)
               (channel/abort (:events relay) error)
-              (try (IClose/close (:duplex relay))
+              (try (std.protocol.iclose.IClose/close (:duplex relay))
                    (catch Throwable ignored nil))
               relay)
             (recur)))))))
@@ -177,7 +177,7 @@
 
 (defn reader-step [relay codec-state]
   (promise/then
-   (IStream/next (:duplex relay))
+   (std.protocol.istream.IStream/next (:duplex relay))
    (fn [chunk]
      (if (nil? chunk)
        (if (:codec relay)
@@ -201,7 +201,7 @@
    (fn [error] (fail relay error))))
 
 (defn send-bytes [relay bytes]
-  (IStreamWrite/write (:duplex relay) bytes))
+  (std.protocol.istreamwrite.IStreamWrite/write (:duplex relay) bytes))
 
 (defn process-send [relay job]
   (try
@@ -388,29 +388,29 @@
               (reject-entry (:serial-active current) error)
               (channel/abort (:jobs relay) error)
               (channel/close (:events relay))
-              (IClose/close (:duplex relay))
+              (std.protocol.iclose.IClose/close (:duplex relay))
               relay)
             (recur)))))))
 
-(extend-type Relay IClose
+(extend-type Relay std.protocol.iclose.IClose
   (close [relay] (std.stream.relay/close relay)))
 
-(extend-type Relay IStream
+(extend-type Relay std.protocol.istream.IStream
   (next [relay] (std.stream.relay/receive relay)))
 
-(extend-type Relay IStreamWrite
+(extend-type Relay std.protocol.istreamwrite.IStreamWrite
   (write [relay value]
     (if (:codec relay)
       (std.stream.relay/send relay value)
       (std.stream.relay/send-raw relay value))))
 
-(extend-type Relay IAbort
+(extend-type Relay std.protocol.iabort.IAbort
   (abort [relay error] (std.stream.relay/fail relay error)))
 
-(extend-type Relay IClosed
+(extend-type Relay std.protocol.iclosed.IClosed
   (closed? [relay] (std.stream.relay/closed? relay)))
 
-(extend-type Relay IFlush
+(extend-type Relay std.protocol.iflush.IFlush
   (flush [relay] (std.stream.relay/flush relay)))
 
 (defn raw-bytes [values]

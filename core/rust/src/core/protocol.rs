@@ -2094,7 +2094,10 @@ impl Value {
 }
 
 fn native_protocol_supports(protocol: &str, value: &Value) -> bool {
-    let name = protocol.rsplit('/').next().unwrap_or(protocol);
+    let name = protocol
+        .rsplit(|character| character == '/' || character == '.')
+        .next()
+        .unwrap_or(protocol);
     match name {
         "IColl" => Value::supports_native_icoll(value),
         "IConj" => Value::supports_native_iconj(value),

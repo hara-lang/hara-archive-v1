@@ -291,26 +291,26 @@
                 true)
               (recur))))))))
 
-(extend-type Channel IStream
+(extend-type Channel std.protocol.istream.IStream
   (next [channel] (std.stream.channel/take channel)))
 
-(extend-type Channel IStreamWrite
+(extend-type Channel std.protocol.istreamwrite.IStreamWrite
   (write [channel value] (std.stream.channel/put channel value)))
 
-(extend-type Channel IClose
+(extend-type Channel std.protocol.iclose.IClose
   (close [channel] (std.stream.channel/close channel)))
 
-(extend-type Channel IAbort
+(extend-type Channel std.protocol.iabort.IAbort
   (abort [channel error] (std.stream.channel/abort channel error)))
 
-(extend-type Channel IStreamPoll
+(extend-type Channel std.protocol.istreampoll.IStreamPoll
   (poll [channel] (std.stream.channel/poll channel)))
 
-(extend-type Channel IStreamOffer
+(extend-type Channel std.protocol.istreamoffer.IStreamOffer
   (offer [channel value] (std.stream.channel/offer channel value)))
 
-(extend-type Channel IClosed
+(extend-type Channel std.protocol.iclosed.IClosed
   (closed? [channel] (std.stream.channel/closed? channel)))
 
-(extend-type Channel IFlush
+(extend-type Channel std.protocol.iflush.IFlush
   (flush [channel] (std.stream.channel/flush channel)))
