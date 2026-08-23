@@ -1,6 +1,7 @@
 (ns tool.cli.test-test
   (:use code.test)
-  (:require [tool.cli.test :as test]))
+  (:require [tool.cli.test :as test]
+            [work.base :as work]))
 
 (def current-project
   {:project/id 'hara.lang
@@ -40,4 +41,18 @@
 ^{:refer tool.cli.test/handler}
 (test-check "public test handler is callable by the registry"
             (fn? test/handler)
+            true)
+
+^{:refer tool.cli.test/handler}
+(test-check "test handler executes through the default host value"
+            (:result/outcome
+             (test/handler
+              {:request/project current-project
+               :request/arguments ["--only" "missing.namespace"]
+               :request/cwd "."}))
+            :tool.cli.outcome/resolution-error)
+
+^{:refer work.base/default-host}
+(test-check "the CLI default host is an installed host value"
+            (satisfies? IWorkHost work/default-host)
             true)]

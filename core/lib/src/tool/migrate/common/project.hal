@@ -422,7 +422,7 @@
 
 (defn run
   ([input]
-   (work/run migration-work input))
+   (work/run work/default-host migration-work input))
   ([runtime input]
    (work/run runtime migration-work input)))
 
