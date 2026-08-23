@@ -14,7 +14,7 @@ const EXTENSION: &str = r#"
  :identity "hara:example/provider"
  :version "1.0.0"
  :provider :wasm
- :module "provider.hta"
+ :module "provider.wasm"
  :abi :hta.v1
  :exports {"eval" {:args [:value] :returns :value :async true}}
  :capabilities []}
@@ -36,10 +36,10 @@ fn manifest(bytes: &[u8], artifact_type: &str) -> PackageManifest {
            :version "1.0.0"
            :provenance {{:repository "https://github.com/example/provider"
                          :commit "0123456789abcdef0123456789abcdef01234567"}}}}
- :files {{"artifacts/provider.hta" {{:sha256 "{digest}" :size {}}}}}
+ :files {{"artifacts/provider.wasm" {{:sha256 "{digest}" :size {}}}}}
  :wasm-imports {{:provider {{:variant/artifact
    {{:artifact/type :{artifact_type}
-    :artifact/path "artifacts/provider.hta"
+    :artifact/path "artifacts/provider.wasm"
     :artifact/sha256 "{digest}"
     :artifact/target "wasm32-wasi-preview1"
     :artifact/abi "hta.v1"
@@ -61,7 +61,7 @@ fn root(name: &str, bytes: &[u8]) -> PathBuf {
         fs::remove_dir_all(&root).unwrap();
     }
     fs::create_dir_all(root.join("artifacts")).unwrap();
-    fs::write(root.join("artifacts/provider.hta"), bytes).unwrap();
+    fs::write(root.join("artifacts/provider.wasm"), bytes).unwrap();
     root
 }
 

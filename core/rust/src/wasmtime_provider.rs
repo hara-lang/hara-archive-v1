@@ -564,6 +564,9 @@ impl HtaProviderState {
         if packed == 0 {
             return Ok(None);
         }
+        if packed < 0 {
+            return Err("hta/event-pointer-invalid".into());
+        }
         let packed = packed as u64;
         let pointer = (packed >> 32) as usize;
         let size = (packed & u64::from(u32::MAX)) as usize;
@@ -739,14 +742,20 @@ impl HtaProviderState {
     }
 
     fn cancel(&self, task: u64) -> Result<(), String> {
-        let pending = self
-            .session
-            .borrow_mut()
-            .as_mut()
-            .and_then(|session| session.pending.remove(&task));
-        if pending.is_none() {
+        if !self.is_pending(task) {
             return Ok(());
         }
+        self.cancel_task(task)?;
+        self.session
+            .borrow_mut()
+            .as_mut()
+            .ok_or_else(|| "hta/session-closed".to_owned())?
+            .pending
+            .remove(&task);
+        Ok(())
+    }
+
+    fn cancel_task(&self, task: u64) -> Result<(), String> {
         let mut session_ref = self.session.borrow_mut();
         let session = session_ref
             .as_mut()
@@ -809,15 +818,17 @@ impl HtaProviderState {
     }
 
     fn timeout(&self, task: u64) {
-        let pending = self
-            .session
-            .borrow_mut()
-            .as_mut()
-            .and_then(|session| session.pending.remove(&task));
-        if let Some(pending) = pending {
-            let _ = self.cancel(task);
-            pending.promise.notify_cancel();
-            pending.promise.reject("hta/timeout");
+        if self.is_pending(task) {
+            let _ = self.cancel_task(task);
+            let pending = self
+                .session
+                .borrow_mut()
+                .as_mut()
+                .and_then(|session| session.pending.remove(&task));
+            if let Some(pending) = pending {
+                pending.promise.notify_cancel();
+                pending.promise.reject("hta/timeout");
+            }
         }
     }
 

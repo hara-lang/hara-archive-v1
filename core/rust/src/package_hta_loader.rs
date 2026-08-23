@@ -139,6 +139,12 @@ pub fn load_hta_require_package(
             "package/manifest-mismatch: selected exports are not declared by extension".into(),
         );
     }
+    if !extension_manifest.exports.iter().any(|(name, specification)| {
+        name == &variant.artifact.entry_point
+            || specification.raw_name(name) == variant.artifact.entry_point
+    }) {
+        return Err("package/entry-point-mismatch: selected entry point is not exported".into());
+    }
 
     let provider =
         WasmtimeExtensionProvider::compile_hta_with_host_handler(&bytes, host_handler)?;

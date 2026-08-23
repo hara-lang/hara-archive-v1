@@ -160,16 +160,8 @@ fn main() {
     let resources = resolve_resources(&inventory);
     let cli_resources = resolve_resources(&cli_only_inventory);
 
-    // Snapshot and bytecode artifacts use the pure HTA value codec in browser
-    // builds too. Native builds keep the ordinary crate-root module; the
-    // generated declaration supplies the same source only where lib.rs gates it.
-    let hta_path = hta_path
-        .canonicalize()
-        .unwrap_or_else(|error| panic!("cannot resolve {}: {error}", hta_path.display()));
-    let mut generated = format!(
-        "#[cfg(target_arch = \"wasm32\")]\n#[path = {:?}]\npub mod hta;\n\npub(crate) static EMBEDDED_HAL_RESOURCES: &[(&str, &str, &str)] = &[\n",
-        hta_path.to_string_lossy()
-    );
+    let mut generated =
+        "pub(crate) static EMBEDDED_HAL_RESOURCES: &[(&str, &str, &str)] = &[\n".to_owned();
     for (namespace, path, relative) in resources {
         let path = path
             .canonicalize()
