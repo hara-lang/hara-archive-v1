@@ -22,7 +22,10 @@ def report(authority: str, path: str, runtime: str, phase: str, **values: str) -
         f"phase={phase}",
         f"authority={authority}",
     ]
-    fields.extend(f"{key}={json.dumps(value, sort_keys=True)}" for key, value in values.items())
+    fields.extend(
+        f"{key}={json.dumps(value, separators=(',', ':'), sort_keys=True)}"
+        for key, value in values.items()
+    )
     print(" ".join(fields))
 
 

@@ -6,6 +6,7 @@ on:
       - "core/lib/examples/**"
       - "GETTING_STARTED.md"
       - "scripts/check_examples_catalog.py"
+      - "scripts/run_examples_catalog.py"
       - ".github/workflows/example-conformance.yml"
   push:
     branches: [main]
@@ -13,6 +14,7 @@ on:
       - "core/lib/examples/**"
       - "GETTING_STARTED.md"
       - "scripts/check_examples_catalog.py"
+      - "scripts/run_examples_catalog.py"
       - ".github/workflows/example-conformance.yml"
   workflow_dispatch:
 
@@ -29,18 +31,27 @@ jobs:
           python-version: "3.12"
       - name: Validate closed example inventory and authority
         run: python scripts/check_examples_catalog.py
+      - name: Test catalog validator
+        run: python scripts/test_check_examples_catalog.py
 
   native-smoke:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: Build native CLI
-        run: cargo build --manifest-path core/rust/Cargo.toml --bin hara
-      - name: Validate deterministic hello example
+      - name: Build hara-lite evaluator
+        run: cargo build --manifest-path core/rust/Cargo.toml --bin hara-lite
+      - name: Validate deterministic catalog (first run)
         shell: bash
         run: |
           set -euo pipefail
-          actual="$(HARA_RUNTIME=rust HARA_NATIVE="$PWD/core/rust/target/debug/hara" ./core/hara run core/lib/examples/hello.hal)"
-          printf 'hello.hal stdout: %s\n' "$actual"
-          test "$actual" = '"hello, Ada"'
+          python scripts/run_examples_catalog.py \
+            --native "$PWD/core/rust/target/debug/hara-lite" \
+            --runtime rust
+      - name: Validate deterministic catalog (repeat run)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/run_examples_catalog.py \
+            --native "$PWD/core/rust/target/debug/hara-lite" \
+            --runtime rust

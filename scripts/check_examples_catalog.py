@@ -107,9 +107,10 @@ def validate_document(document: dict, examples: Path = EXAMPLES) -> None:
 
 
 def main() -> int:
-    validate_document(load_catalog())
+    document = load_catalog()
+    validate_document(document)
     print(
-        f"validated {len(load_catalog()['entries'])} recursive example entries against "
+        f"validated {len(document['entries'])} recursive example entries against "
         f"hara-specs-registry@{EXPECTED_REGISTRY}"
     )
     return 0
