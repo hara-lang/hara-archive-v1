@@ -5420,7 +5420,7 @@ public final class HaraContext {
         new UnaryBuiltin(
             "promise-reject",
             value -> {
-              future.completeExceptionally(new HaraException(String.valueOf(value)));
+              future.completeExceptionally(new HaraPromiseRejection(value));
               return value;
             });
     try {
@@ -5490,7 +5490,7 @@ public final class HaraContext {
                                       invokeCallable(
                                           values[1],
                                           new Object[] {
-                                            error.getCause() == null ? error : error.getCause()
+                                            promiseRejectionValue(error)
                                           }))))
               .thenCompose(Function.identity());
     } else {
@@ -5504,6 +5504,11 @@ public final class HaraContext {
               .thenCompose(Function.identity());
     }
     return new HaraPromise(result, () -> promise.cancel());
+  }
+
+  private Object promiseRejectionValue(Throwable error) {
+    Throwable cause = error.getCause() == null ? error : error.getCause();
+    return cause instanceof HaraPromiseRejection rejection ? rejection.value : cause;
   }
 
   private Object promiseFinally(Object[] values) {
@@ -8563,6 +8568,15 @@ public final class HaraContext {
     @Override
     public String toString() {
       return future.isDone() ? "#<promise realized>" : "#<promise pending>";
+    }
+  }
+
+  private static final class HaraPromiseRejection extends RuntimeException {
+    private final Object value;
+
+    private HaraPromiseRejection(Object value) {
+      super(String.valueOf(value));
+      this.value = value;
     }
   }
 

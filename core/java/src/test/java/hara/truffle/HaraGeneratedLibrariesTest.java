@@ -314,6 +314,22 @@ public class HaraGeneratedLibrariesTest {
   }
 
   @Test
+  public void promiseCatchPreservesStructuredRejectionValues() {
+    try (Context context = context()) {
+      assertEquals(
+          ":response",
+          context
+              .eval(
+                  HaraLanguage.ID,
+                  "(deref (std.foundation.promise/catch "
+                      + "(std.foundation.promise/new "
+                      + "(fn [resolve reject] (reject {:kind :response}))) "
+                      + "(fn [error] (:kind error))))")
+              .toString());
+    }
+  }
+
+  @Test
   public void nativeTestRunAcceptsAFunctionAwareChecker() {
     try (Context context = context()) {
       String checked = context.eval(HaraLanguage.ID,
