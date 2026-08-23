@@ -1,8 +1,8 @@
 (ns std.lib.format.terminal)
 
-(def ^:private +ansi-reset+ "\u001b[0m")
+(def +ansi-reset+ "\u001b[0m")
 
-(def ^:private +ansi-codes+
+(def +ansi-codes+
   {:default nil
    :muted "\u001b[2m"
    :index "\u001b[2m"
@@ -12,11 +12,11 @@
    :critical "\u001b[1;31m"
    :highlight "\u001b[1;36m"})
 
-(def ^:private +default-options+
+(def +default-options+
   {:ansi false
    :emit println})
 
-(defn- render-line
+(defn render-line
   [entry options]
   (let [text (:line/text entry)
         role (or (:line/role entry) :default)
@@ -27,7 +27,7 @@
       (str code text +ansi-reset+)
       text)))
 
-(defn render-lines
+(defn ^{:public true} render-lines
   "Renders structured lines as plain or ANSI-styled strings."
   ([entries]
    (render-lines entries {}))
@@ -39,14 +39,14 @@
          (render-line entry options))
        entries)))))
 
-(defn render
+(defn ^{:public true} render
   "Joins rendered structured lines with newline separators."
   ([entries]
    (render entries {}))
   ([entries options]
    (str/join "\n" (render-lines entries options))))
 
-(defn emit-lines
+(defn ^{:public true} emit-lines
   "Renders structured lines through an injected sink and returns the count."
   ([entries]
    (emit-lines entries {}))
