@@ -1,6 +1,7 @@
 import init, * as wasmBindings from "./wasm/hara_wasm.js";
 import { instantiateWholeWasm } from "./whole-wasm.js";
 import { parseJson } from "../../../host/services.js";
+import { disposeBrowserPackageProviders } from "./packages.js";
 export {
   disposeBrowserPackageProviders,
   installLockedPackages,
@@ -38,6 +39,14 @@ function createApi(runtime) {
     },
     installDirectWasmImport(logical, bytes) {
       runtime.installDirectWasmImport(String(logical), bytes);
+    },
+    installMemoryWasmBinding(manifest, interfaceSource, bindingsSource, bytes) {
+      runtime.installMemoryWasmBinding(
+        String(manifest),
+        String(interfaceSource),
+        String(bindingsSource),
+        bytes
+      );
     },
     installHostHandler(handler) {
       if (typeof handler !== "function" || typeof runtime.install_host_handler !== "function") {

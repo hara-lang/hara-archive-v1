@@ -59,6 +59,15 @@ await installLockedPackages(hara, lock);
 hara.require("my.world");
 ```
 
+Memory-backed Wasm packages use the explicit `memory.v1` binding route. The
+manifest, canonical interface, and canonical `bindings.edn` plan are verified
+before the module is instantiated:
+
+```js
+hara.installMemoryWasmBinding(manifest, interfaceSource, bindingsSource, wasmBytes);
+hara.require("my.wasm.package");
+```
+
 Only format-2 locks are accepted. The loader verifies the HARP archive digest,
 optional archive size, every file declared by `package.edn`, safe archive paths,
 and unique HAL namespaces. Resources are registered only after the complete

@@ -1,5 +1,6 @@
 #![cfg(target_arch = "wasm32")]
 
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::BTreeSet;
 use wasm_bindgen::{JsCast, JsValue};
@@ -303,9 +304,10 @@ fn invoke_memory_inner(
             )?);
             continue;
         }
-        let bytes: &[u8] = match (&argument_plan.hara_type, value) {
-            (HaraValueType::Bytes, Value::Bytes(bytes)) => bytes,
-            (HaraValueType::String, Value::String(value)) => value.as_bytes(),
+        let bytes: Cow<'_, [u8]> = match (&argument_plan.hara_type, value) {
+            (HaraValueType::Bytes, Value::Bytes(bytes)) => Cow::Borrowed(bytes),
+            (HaraValueType::Bytes, Value::ByteBuffer(bytes)) => Cow::Owned(bytes.borrow().clone()),
+            (HaraValueType::String, Value::String(value)) => Cow::Borrowed(value.as_bytes()),
             _ => {
                 return Err(format!(
                     "native/type-error: {} expects :{}",
@@ -356,7 +358,7 @@ fn invoke_memory_inner(
             let start = checked_range(&session.memory, pointer, length, &function_plan.name)?;
             check_memory_limit(&session.memory)?;
             let target = js_sys::Uint8Array::new(&session.memory.buffer());
-            target.set(&js_sys::Uint8Array::from(bytes), start as u32);
+            target.set(&js_sys::Uint8Array::from(bytes.as_ref()), start as u32);
             (pointer, length)
         };
         total_copy_bytes = total_copy_bytes
