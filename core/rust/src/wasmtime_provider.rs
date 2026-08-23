@@ -270,7 +270,6 @@ struct HtaPending {
 
 struct HtaSession {
     store: Store<StoreLimits>,
-    instance: Instance,
     memory: Memory,
     allocator: Func,
     deallocator: Func,
@@ -382,8 +381,6 @@ impl HtaProviderState {
         let deliver = require_export(&instance, &mut store, "hta_deliver")?;
         let cancel = require_export(&instance, &mut store, "hta_cancel")?;
         let drop_task = require_export(&instance, &mut store, "hta_drop_task")?;
-        let _release = require_export(&instance, &mut store, "hta_release")?;
-
         expect_signature(
             &mut store,
             &allocator,
@@ -440,13 +437,20 @@ impl HtaProviderState {
             &[ValType::I32],
             "hta_drop_task",
         )?;
+        let release = require_export(&instance, &mut store, "hta_release")?;
+        expect_signature(
+            &mut store,
+            &release,
+            &[ValType::I32, ValType::I32],
+            &[ValType::I32],
+            "hta_release",
+        )?;
         let version = call_i32(&mut store, &abi_version, &[], "hta_abi_version")?;
         if !(1..=4).contains(&version) {
             return Err(format!("extension/abi-version-unsupported: {}", manifest.namespace));
         }
         *self.session.borrow_mut() = Some(HtaSession {
             store,
-            instance,
             memory,
             allocator,
             deallocator,
