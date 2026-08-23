@@ -73,6 +73,20 @@
      ((:fn (work/work-spec produced)) 0 {})])
   => [:work :work :closure 7])
 
+^{:refer work.compile.hara/ir-value :added "0.1"}
+(fact "Work IR makes graph inputs, nodes, and dependencies explicit"
+  (let [graph
+        (work/graph
+         {:value (work/input :value)
+          :node (work/node [:value] (fn [value] value))})
+        representation (lowering/ir-value graph)]
+    (sort
+     [(get-in representation [:ir/value :dependencies :ir/kind])
+      (get-in representation [:ir/value :dependencies :ir/entries :value :ir/kind])
+      (get-in representation [:ir/value :dependencies :ir/entries :node :ir/kind])
+      (get-in representation [:ir/value :dependencies :ir/entries :node :ir/dependencies 0])]))
+  => [:graph-deps :graph-input :graph-node :value])
+
 ^{:refer work.compile.hara/ir :added "0.1"}
 (fact "Work IR carries a version and preserves bind structure"
   (let [definition
@@ -119,5 +133,19 @@
      (work/run definition 3)
      (work/run rebuilt 3)])
   => [true 'work.base/definition :bind 11 11])
+
+^{:refer work.compile.hara/form :added "0.1"}
+(fact "generated ordinary forms reconstruct graph definitions"
+  (let [graph
+        (work/graph
+         {:value (work/input :value)
+          :node (work/node [:value] (fn [value] value))})
+        generated (lowering/form graph)
+        rebuilt (eval generated)]
+    [(form? generated)
+     (first generated)
+     (= (work/run graph {:value 3})
+        (work/run rebuilt {:value 3}))])
+  => [true 'work.base/definition true])
 
 (pr-str (run '[work.compile.hara-test]))

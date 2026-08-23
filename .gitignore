@@ -78,7 +78,7 @@ core/rust/web/dist/
 core/lib/bench
 .tahto/
 **/.tahto/
-core/framework-cache--0000000000000001
+core/framework-cache--*
 core/private/tmp
 /core/project-heal--*
 /core/test-*.clj

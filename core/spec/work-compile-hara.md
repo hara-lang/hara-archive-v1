@@ -25,12 +25,20 @@ values are represented explicitly as `{:ir/kind :closure :ir/value closure}`.
 Map traversal is ordered by the string form of its keys so repeated lowering
 within one process assigns closure references in a stable order.
 
+Set traversal uses the same ordering rule. Source-owned `GraphInput`,
+`GraphNode`, and `GraphDeps` values have explicit `:graph-input`, `:graph-node`,
+and `:graph-deps` IR nodes, so graph structure is inspectable rather than an
+opaque host object.
+
 `form` returns an ordinary Hara list whose head is
 `work.base/definition`. Nested Work values are nested forms and closure values
 are source-owned `work.compile.hara/resolve-closure` references. The form does
 not contain provider handles, executor/store objects, or a second evaluator.
 Evaluating it reconstructs the original Work specification; execution still
 enters the canonical evaluator.
+
+Graph values are reconstructed with the source-owned `work.base/GraphInput`,
+`work.base/GraphNode`, and `work.base/GraphDeps` constructors.
 
 ## Closure boundary
 

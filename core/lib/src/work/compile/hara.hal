@@ -41,7 +41,20 @@
     (vec (map ir-value value))
 
     (set? value)
-    (set (map ir-value value))
+    (set (map ir-value (sort-by str value)))
+
+    (instance? work/GraphInput value)
+    {:ir/kind :graph-input
+     :ir/key (:key value)}
+
+    (instance? work/GraphNode value)
+    {:ir/kind :graph-node
+     :ir/dependencies (vec (map ir-value (sort-by str (:dependencies value))))
+     :ir/function (ir-value (:function value))}
+
+    (instance? work/GraphDeps value)
+    {:ir/kind :graph-deps
+     :ir/entries (ir-value (:entries value))}
 
     (list? value)
     (apply list (map ir-value value))
@@ -111,7 +124,18 @@
     (vec (map form-value value))
 
     (set? value)
-    (set (map form-value value))
+    (set (map form-value (sort-by str value)))
+
+    (instance? work/GraphInput value)
+    (list 'work.base/GraphInput (:key value))
+
+    (instance? work/GraphNode value)
+    (list 'work.base/GraphNode
+          (vec (map form-value (:dependencies value)))
+          (form-value (:function value)))
+
+    (instance? work/GraphDeps value)
+    (list 'work.base/GraphDeps (form-value (:entries value)))
 
     (list? value)
     (apply list (map form-value value))
