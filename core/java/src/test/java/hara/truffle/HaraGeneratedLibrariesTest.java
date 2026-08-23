@@ -388,6 +388,78 @@ public class HaraGeneratedLibrariesTest {
   }
 
   @Test
+  public void sourceOwnedGlobalAliasesSurviveNamespaceSelection() {
+    try (Context context = context()) {
+      assertEquals(
+          "[42 demo.global]",
+          context
+              .eval(
+                  HaraLanguage.ID,
+                  "(ns demo.global (:config {:global-alias global})) "
+                      + "(defn value [] 42) "
+                      + "(ns demo.consumer) "
+                      + "[(global/value) (get (ns-alias-state 'global) :target)]")
+              .toString());
+    }
+  }
+
+  @Test
+  public void localRequiresOverrideGlobalAliases() {
+    try (Context context = context()) {
+      assertEquals(
+          "[7 demo.other]",
+          context
+              .eval(
+                  HaraLanguage.ID,
+                  "(ns demo.global (:config {:global-alias global})) "
+                      + "(defn value [] 42) "
+                      + "(ns demo.other) (defn value [] 7) "
+                      + "(ns demo.consumer (:require [demo.other :as global])) "
+                      + "[(global/value) (get (ns-alias-state 'global) :target)]")
+              .toString());
+    }
+  }
+
+  @Test
+  public void globalAliasValidationMatchesRustContract() {
+    try (Context context = context()) {
+      assertErrorContains(
+          context,
+          "(ns invalid.vector (:config {:global-alias [value]}))",
+          ":config :global-alias expects an unqualified symbol");
+      assertErrorContains(
+          context,
+          "(ns invalid.qualified (:config {:global-alias other/value}))",
+          ":config :global-alias expects an unqualified symbol");
+      assertErrorContains(
+          context,
+          "(ns invalid.reserved (:config {:global-alias -}))",
+          ":config :global-alias is reserved: -");
+    }
+  }
+
+  @Test
+  public void conflictingGlobalAliasRegistrationRollsBack() {
+    try (Context context = context()) {
+      context.eval(
+          HaraLanguage.ID,
+          "(ns demo.stable (:config {:global-alias shared})) (defn value [] 42)");
+      assertErrorContains(
+          context,
+          "(ns demo.conflict (:config {:global-alias shared}))",
+          "Global namespace alias already refers to demo.stable: shared");
+      assertEquals(
+          "[42 demo.stable]",
+          context
+              .eval(
+                  HaraLanguage.ID,
+                  "(ns demo.consumer) "
+                      + "[(shared/value) (get (ns-alias-state 'shared) :target)]")
+              .toString());
+    }
+  }
+
+  @Test
   public void generatedLibrariesAlsoSupportRequireAsAndRefer() {
     try (Context context = context()) {
       assertEquals(

@@ -25,6 +25,7 @@ final class HaraNamespaceDeclaration {
   final Set<String> excludedIntrinsics;
   final Map<String, String> intrinsicAliases;
   final String role;
+  final String globalAlias;
   final Object[] structuralClauses;
 
   private HaraNamespaceDeclaration(
@@ -36,6 +37,7 @@ final class HaraNamespaceDeclaration {
       Set<String> excludedIntrinsics,
       Map<String, String> intrinsicAliases,
       String role,
+      String globalAlias,
       Object[] structuralClauses) {
     this.name = name;
     this.blank = blank;
@@ -45,6 +47,7 @@ final class HaraNamespaceDeclaration {
     this.excludedIntrinsics = Set.copyOf(excludedIntrinsics);
     this.intrinsicAliases = Map.copyOf(intrinsicAliases);
     this.role = role;
+    this.globalAlias = globalAlias;
     this.structuralClauses = structuralClauses.clone();
   }
 
@@ -63,6 +66,7 @@ final class HaraNamespaceDeclaration {
     LinkedHashSet<String> excluded = new LinkedHashSet<>();
     LinkedHashMap<String, String> aliases = new LinkedHashMap<>();
     ArrayList<Object> structural = new ArrayList<>();
+    String globalAlias = null;
 
     for (Object clauseValue : clauses) {
       if (!(clauseValue instanceof List<?> clause) || clause.count() == 0) {
@@ -85,7 +89,7 @@ final class HaraNamespaceDeclaration {
           if (!(entry.getKey() instanceof Keyword option) || option.getNamespace() != null) {
             throw new HaraException(":config keys must be unqualified keywords");
           }
-          if (!Set.of("blank", "intrinsics", "override", "expose", "role")
+          if (!Set.of("blank", "intrinsics", "override", "expose", "role", "global-alias")
               .contains(option.getName())) {
             throw new HaraException("Unsupported :config option: :" + option.getName());
           }
@@ -118,6 +122,18 @@ final class HaraNamespaceDeclaration {
                 ":config :role expects :standard, :internal, or :facade");
           }
           role = roleKeyword.getName();
+        }
+        Object globalAliasValue = options.lookup(Keyword.create("global-alias"));
+        if (globalAliasValue != null) {
+          if (!(globalAliasValue instanceof Symbol alias)
+              || alias.getNamespace() != null) {
+            throw new HaraException(
+                ":config :global-alias expects an unqualified symbol");
+          }
+          if ("-".equals(alias.getName())) {
+            throw new HaraException(":config :global-alias is reserved: -");
+          }
+          globalAlias = alias.getName();
         }
       } else if ("require".equals(clauseName)
           || "use".equals(clauseName)
@@ -154,6 +170,7 @@ final class HaraNamespaceDeclaration {
         excluded,
         aliases,
         role,
+        globalAlias,
         structural.toArray());
   }
 
