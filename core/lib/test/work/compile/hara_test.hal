@@ -1,6 +1,7 @@
 (ns work.compile.hara-test
   (:use code.test)
   (:require [work.base :as work]
+            [work.eval :as evaluator]
             [work.compile.hara :as lowering]))
 
 (def captured-continuation
@@ -238,5 +239,42 @@
        :results [{:item/id 0 :item/value 2}
                  {:item/id 1 :item/value 4}]
        :summary 2}])
+
+^{:refer work.compile.hara/form :added "0.1"}
+(fact "generated ordinary forms preserve Promise and retry behavior"
+  (lowering/reset-closures)
+  (try
+    (let [direct-retries (atom 0)
+          generated-retries (atom 0)
+          direct-retry
+          (work/step
+           {:id :direct-retry :retry {:maximum 2}}
+           (fn [input context]
+             (if (= 1 (swap! direct-retries inc))
+               (throw (ex-info "retry" {:work/error :temporary}))
+               (+ input 1))))
+          generated-retry
+          (work/step
+           {:id :generated-retry :retry {:maximum 2}}
+           (fn [input context]
+             (if (= 1 (swap! generated-retries inc))
+               (throw (ex-info "retry" {:work/error :temporary}))
+               (+ input 1))))
+          promise-work
+          (work/step
+           :promise
+           (fn [input context]
+             (Promise/run (fn [] (+ input 1)))))
+          rebuilt-retry (eval (lowering/form generated-retry))
+          rebuilt-promise (eval (lowering/form promise-work))]
+      [(evaluator/run direct-retry 8)
+       (evaluator/run rebuilt-retry 8)
+       (deref direct-retries)
+       (deref generated-retries)
+       (deref (evaluator/run promise-work 8))
+       (deref (evaluator/run rebuilt-promise 8))])
+    (finally
+      (lowering/reset-closures)))
+  => [9 9 2 2 9 9])
 
 (pr-str (run '[work.compile.hara-test]))

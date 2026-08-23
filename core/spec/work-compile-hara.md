@@ -76,7 +76,9 @@ The focused compiler corpus compares direct and generated-form execution for
 `batch`, in addition to graph construction and `bind`. Collection item
 identity/order, fold accumulation, batch results, and cleanup result behavior
 are asserted as values, not merely by checking that generated forms evaluate
-successfully.
+successfully. The corpus also compares retry attempts and a `Promise/`-
+returning step, so lowering is checked at the boundary where ordinary Hara
+forms meet evaluator scheduling.
 
 ## Evidence
 
@@ -88,8 +90,9 @@ The permanent focused proof is:
 ```
 
 The test covers ordinary Work validation, captured closure inspection, versioned
-IR, closure reset/lookup, generated-form reconstruction, and direct-vs-form
-`bind` result equivalence. The native `manage scaffold` command described by
+IR, closure reset/lookup, generated-form reconstruction, direct-vs-form
+`bind` result equivalence, collection/batch results, retry attempts, and
+`Promise/` results. The native `manage scaffold` command described by
 `AGENTS.md` is unavailable in the checked-in CLI; the corresponding test path
 was created manually and remains paired with this source namespace.
 
