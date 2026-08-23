@@ -408,7 +408,7 @@ fn package_descriptor_coordinate(descriptor: &Value) -> Option<String> {
     }
 }
 
-pub(crate) const NATIVE_TYPES: &[(&str, &[&str])] = &[
+pub const NATIVE_TYPES: &[(&str, &[&str])] = &[
     (
         "Maths",
         &[
@@ -831,7 +831,7 @@ pub(crate) const NATIVE_TYPES: &[(&str, &[&str])] = &[
     ),
 ];
 
-pub(crate) fn native_type_values() -> Vec<(String, Value)> {
+pub fn native_type_values() -> Vec<(String, Value)> {
     NATIVE_TYPES
         .iter()
         .map(|(name, methods)| {
@@ -1005,7 +1005,7 @@ pub(crate) const FOUNDATION_PROTOCOLS: &[(&str, &[(&str, usize)])] = &[
     ),
 ];
 
-pub(crate) fn builtin_protocol_namespace(protocol: &str) -> String {
+pub fn builtin_protocol_namespace(protocol: &str) -> String {
     format!("std.protocol.{}", protocol.to_ascii_lowercase())
 }
 
@@ -1047,7 +1047,7 @@ fn canonical_protocol_name(protocol: &str) -> String {
     }
 }
 
-pub(crate) fn foundation_protocol_values() -> Vec<(String, Value)> {
+pub fn foundation_protocol_values() -> Vec<(String, Value)> {
     FOUNDATION_PROTOCOLS
         .iter()
         .map(|(name, methods)| {
@@ -1066,7 +1066,7 @@ pub(crate) fn foundation_protocol_values() -> Vec<(String, Value)> {
         .collect()
 }
 
-pub(crate) fn builtin_protocol_method_values() -> Vec<(String, String, Value)> {
+pub fn builtin_protocol_method_values() -> Vec<(String, String, Value)> {
     FOUNDATION_PROTOCOLS
         .iter()
         .flat_map(|(protocol, methods)| {

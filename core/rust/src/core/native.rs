@@ -2111,7 +2111,7 @@ pub fn with_host_calls<R>(
 }
 
 /// Runs an evaluation with a source provider used to satisfy `require` loads.
-pub(crate) fn with_namespace_source<R>(
+pub fn with_namespace_source<R>(
     provider: Rc<dyn Fn(&str) -> Option<NamespaceResource>>,
     action: impl FnOnce() -> R,
 ) -> R {

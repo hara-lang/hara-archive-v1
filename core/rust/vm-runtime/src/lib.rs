@@ -3,8 +3,8 @@
 //! This crate intentionally exposes artifact verification, preparation and
 //! execution, but no source or HALC compiler entry points.
 
-pub use hara_wasm::core::Value;
-pub use hara_wasm::vm::{
+pub use hara_runtime::core::Value;
+pub use hara_runtime::vm::{
     decode_program, disassemble, execute_program, execute_program_with_globals, prepare_call,
     validate, FunctionId, FunctionPrototype, Instruction, Machine, PreparedCall, Program,
     ValidationError, VmError, VmFiber, VmFiberState, VmOutcome,

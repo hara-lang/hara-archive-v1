@@ -1,32 +1,9 @@
-#[path = "../../src/clock.rs"]
-mod clock;
-#[path = "../../src/core.rs"]
-mod core;
-#[path = "../../src/file.rs"]
-pub mod file;
-#[path = "../../src/hta.rs"]
-mod hta;
-mod instrumentation;
+use hara_runtime::{core, hta, json, kernel, lang};
+pub use hara_runtime::file;
 #[cfg(feature = "evaluation-journal")]
-#[path = "../../src/journal.rs"]
-mod journal;
-#[path = "../../src/json.rs"]
-mod json;
-#[path = "../../src/kernel.rs"]
-mod kernel;
-#[path = "../../src/lang.rs"]
-mod lang;
-#[cfg(not(target_arch = "wasm32"))]
-#[path = "../../src/native_process.rs"]
-mod native_process;
-#[path = "../../src/numeric.rs"]
-mod numeric;
-#[path = "../../src/snapshot.rs"]
-mod snapshot;
-#[path = "../../src/task.rs"]
-mod task;
+use hara_runtime::journal;
 #[cfg(feature = "bytecode-vm")]
-mod vm;
+use hara_runtime::vm;
 
 use core::{EvalFiber, EvalFiberState, Promise, PromiseRejection, PromiseState, Value};
 use std::cell::RefCell;
@@ -54,8 +31,16 @@ mod wasm_random {
 
 const FOUNDATION_RESOURCES: &[(&str, &str)] = &[
     (
+        "std.foundation",
+        include_str!("../../../lib/src/std/foundation.hal"),
+    ),
+    (
         "std.foundation.promise",
         include_str!("../../../lib/src/std/foundation/promise.hal"),
+    ),
+    (
+        "std.foundation.string",
+        include_str!("../../../lib/src/std/foundation/string.hal"),
     ),
     (
         "std.foundation.bytes",
@@ -95,6 +80,10 @@ const SUBSTRATE_RESOURCES: &[(&str, &str)] = &[
     (
         "std.substrate.request",
         include_str!("../../../lib/src/std/substrate/request.hal"),
+    ),
+    (
+        "std.substrate.result",
+        include_str!("../../../lib/src/std/substrate/result.hal"),
     ),
     (
         "std.substrate.router",
@@ -218,9 +207,15 @@ impl EvaluationRequest {
 }
 impl Session {
     fn new() -> Self {
+        let resources = Rc::new(RefCell::new(
+            FOUNDATION_RESOURCES
+                .iter()
+                .map(|(name, source)| ((*name).into(), (*source).into()))
+                .collect(),
+        ));
         Self::shared(
             "ROOT",
-            Rc::new(RefCell::new(HashMap::new())),
+            resources,
             Rc::new(RefCell::new(VecDeque::new())),
         )
     }
@@ -353,12 +348,38 @@ impl Session {
                 env.insert(format!("{namespace_name}/{method}"), function);
             }
         }
+        let provider_resources = resources.clone();
+        let provider = Rc::new(move |name: &str| {
+            provider_resources
+                .borrow()
+                .get(name)
+                .cloned()
+                .map(core::NamespaceResource::Source)
+        });
+        namespaces.set_load_state(
+            "std.foundation",
+            kernel::NamespaceLoadState::Unloaded,
+        );
+        let protocols = core::ProtocolRegistry::core();
+        let macros = Rc::new(RefCell::new(HashMap::new()));
+        core::with_macros(macros.clone(), || {
+            core::with_protocols(&protocols, || {
+                core::with_namespace_registry(&namespaces, || {
+                    core::with_namespace_source(provider, || {
+                        core::require_namespace(&namespaces, &mut env, "std.foundation")
+                    })
+                })
+            })
+        })
+        .expect("raw runtime foundation resource must load");
+        core::refer_startup_defaults(&namespaces, "user");
+        core::select_namespace_environment(&namespaces, &mut env, "user");
         Self {
             name: name.into(),
             env,
             namespaces,
-            protocols: core::ProtocolRegistry::core(),
-            macros: Rc::new(RefCell::new(HashMap::new())),
+            protocols,
+            macros,
             generated_configs: HashMap::from([(
                 "user".into(),
                 kernel::GeneratedNamespaceConfig::defaults(),
@@ -709,12 +730,13 @@ impl Session {
             .map(core::exception_located_form)
             .collect::<Vec<_>>();
         let forms = self.prepare_forms(forms)?;
+        let initial_provider = provider.clone();
         let fiber = core::with_capability_providers(file_provider, None, false, None, || {
             core::with_macros(macros, || {
                 core::with_namespace_registry(&namespaces, || {
-                    core::with_namespace_source(provider, || {
+                    core::with_namespace_source(initial_provider, || {
                         core::with_protocols(&protocols, || {
-                            core::with_host_calls(handler, || {
+                            core::with_host_calls(handler.clone(), || {
                                 EvalFiber::start_forms(forms, environment)
                             })
                         })
@@ -722,8 +744,38 @@ impl Session {
                 })
             })
         })?;
-        self.collect_calls(task, pending, next);
-        self.drive(task, fiber);
+        let drive_provider = provider.clone();
+        let drive_macros = self.macros.clone();
+        let drive_namespaces = self.namespaces.clone();
+        let drive_protocols = self.protocols.clone();
+        let drive_file_provider = self.mount_id.map(|_| {
+            Rc::new(HostFileProvider {
+                handler: handler.clone(),
+            }) as Rc<dyn core::FileProvider>
+        });
+        let drive_handler = handler.clone();
+        core::with_capability_providers(
+            drive_file_provider,
+            None,
+            false,
+            None,
+            || {
+                core::with_promise_provider(Rc::new(core::LocalPromiseProvider), || {
+                    core::with_macros(drive_macros, || {
+                        core::with_namespace_registry(&drive_namespaces, || {
+                            core::with_namespace_source(drive_provider, || {
+                                core::with_protocols(&drive_protocols, || {
+                                    core::with_host_calls(drive_handler, || {
+                                        self.collect_calls(task, pending, next);
+                                        self.drive(task, fiber);
+                                    })
+                                })
+                            })
+                        })
+                    })
+                })
+            },
+        );
         Ok(())
     }
     fn start_halc_fiber(&mut self, task: u64, bytes: &[u8]) -> Result<(), String> {
@@ -2296,9 +2348,9 @@ pub extern "C" fn eval_error_code(source_ptr: *const u8, source_len: usize) -> i
 #[cfg(test)]
 mod tests {
     use super::{dispatch, emit_settlement, eval_error_code, evaluate, Session, SessionKernel};
-    use crate::core::{PromiseRejection, PromiseState, Value};
-    use crate::lang::data::Symbol;
-    use crate::lang::protocol::IDeref;
+    use hara_runtime::core::{PromiseRejection, PromiseState, Value};
+    use hara_runtime::lang::data::Symbol;
+    use hara_runtime::lang::protocol::IDeref;
     use std::cell::RefCell;
     use std::collections::VecDeque;
     use std::rc::Rc;
@@ -2310,7 +2362,7 @@ mod tests {
             .borrow_mut()
             .pop_front()
             .expect("result event");
-        match crate::hta::decode(&bytes).expect("valid HTA event") {
+        match hara_runtime::hta::decode(&bytes).expect("valid HTA event") {
             Value::Vector(values) => values.iter().cloned().collect(),
             value => panic!("expected result vector, got {}", value.display()),
         }
@@ -2662,22 +2714,22 @@ mod tests {
         );
     }
 
-    fn completion_value(runtime: &mut Session, task: u64) -> crate::core::Value {
+    fn completion_value(runtime: &mut Session, task: u64) -> hara_runtime::core::Value {
         let frame = runtime
             .events
             .borrow_mut()
             .pop_front()
             .expect("completion event");
         match super::hta::decode(&frame).unwrap() {
-            crate::core::Value::Vector(values) => {
+            hara_runtime::core::Value::Vector(values) => {
                 assert_eq!(
                     values[0],
-                    crate::core::Value::Number(0),
+                    hara_runtime::core::Value::Number(0),
                     "eval failed for task {}: {}",
                     values[1].display(),
                     values[2].display()
                 );
-                assert_eq!(values[1], crate::core::Value::Number(task as i64));
+                assert_eq!(values[1], hara_runtime::core::Value::Number(task as i64));
                 values[2].clone()
             }
             other => panic!("unexpected event: {other:?}"),
@@ -2696,7 +2748,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             completion_value(&mut runtime, 1),
-            crate::core::Value::Number(42)
+            hara_runtime::core::Value::Number(42)
         );
     }
 
@@ -2711,7 +2763,7 @@ mod tests {
             "co/create",
             "edn/read",
             "json/read",
-            "set/union",
+            "algo/deque",
             "pretty/render",
             "host/call",
             "kernel/session-list",
@@ -2788,12 +2840,12 @@ mod tests {
             .unwrap();
         assert_eq!(
             completion_value(&mut runtime, 2),
-            crate::core::Value::Number(7)
+            hara_runtime::core::Value::Number(7)
         );
         runtime.start_fiber(3, "(acme.tools/seven)").unwrap();
         assert_eq!(
             completion_value(&mut runtime, 3),
-            crate::core::Value::Number(7)
+            hara_runtime::core::Value::Number(7)
         );
     }
 
@@ -2864,13 +2916,13 @@ mod tests {
 
     #[test]
     fn raw_kernels_expose_the_foundation_data_namespaces() {
-        assert_eq!(crate::core::NATIVE_TYPES.len(), 25);
+        assert_eq!(hara_runtime::core::NATIVE_TYPES.len(), 33);
         assert_eq!(
-            crate::core::NATIVE_TYPES
+            hara_runtime::core::NATIVE_TYPES
                 .iter()
                 .map(|(_, methods)| methods.len())
                 .sum::<usize>(),
-            206
+            372
         );
         let mut runtime = Session::new();
         assert!(runtime.env.contains_key("Edn/write"));
@@ -2896,7 +2948,7 @@ mod tests {
             "Edn",
             "Json",
             "Host",
-            "Regex",
+            "RegExp",
             "UUID",
             "Error",
             "Base",
@@ -3008,31 +3060,38 @@ mod tests {
 
     #[test]
     fn raw_kernels_run_atom_backed_substrate_request_stream_and_cancellation_lifecycle() {
-        let mut runtime = Session::new();
-        runtime.resources.borrow_mut().extend(
-            super::SUBSTRATE_RESOURCES
-                .iter()
-                .map(|(name, source)| ((*name).into(), (*source).into())),
-        );
-        runtime
-            .start_fiber(
-                1,
-                include_str!(
-                    "../../../lib/test-fixtures/std/substrate/node_lifecycle_conformance.hal"
-                ),
-            )
+        std::thread::Builder::new()
+            .stack_size(64 * 1024 * 1024)
+            .spawn(|| {
+                let mut runtime = Session::new();
+                runtime.resources.borrow_mut().extend(
+                    super::SUBSTRATE_RESOURCES
+                        .iter()
+                        .map(|(name, source)| ((*name).into(), (*source).into())),
+                );
+                runtime
+                    .start_fiber(
+                        1,
+                        include_str!(
+                            "../../../lib/test-fixtures/std/substrate/node_lifecycle_conformance.hal"
+                        ),
+                    )
+                    .unwrap();
+                assert_eq!(
+                    completion_value(&mut runtime, 1),
+                    Value::Vector(
+                        vec![
+                            Value::Number(84),
+                            Value::Number(42),
+                            Value::Keyword("rejected".into()),
+                        ]
+                        .into()
+                    ),
+                );
+            })
+            .unwrap()
+            .join()
             .unwrap();
-        assert_eq!(
-            completion_value(&mut runtime, 1),
-            Value::Vector(
-                vec![
-                    Value::Number(84),
-                    Value::Number(42),
-                    Value::Keyword("rejected".into()),
-                ]
-                .into()
-            ),
-        );
     }
 
     #[test]
@@ -3045,8 +3104,8 @@ mod tests {
             .pop_front()
             .expect("error event");
         match super::hta::decode(&frame).unwrap() {
-            crate::core::Value::Vector(values) => {
-                assert_eq!(values[0], crate::core::Value::Number(1), "expected failure");
+            hara_runtime::core::Value::Vector(values) => {
+                assert_eq!(values[0], hara_runtime::core::Value::Number(1), "expected failure");
             }
             other => panic!("unexpected event: {other:?}"),
         }
@@ -3075,7 +3134,7 @@ mod tests {
             PromiseState::Rejected(PromiseRejection::Value(rejection.clone())),
         );
         let frame = events.borrow_mut().pop_front().expect("rejection event");
-        let Value::Vector(values) = crate::hta::decode(&frame).expect("valid HTA event") else {
+        let Value::Vector(values) = hara_runtime::hta::decode(&frame).expect("valid HTA event") else {
             panic!("expected rejection vector")
         };
         assert_eq!(values[0], Value::Number(1));

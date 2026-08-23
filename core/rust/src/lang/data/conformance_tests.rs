@@ -34,7 +34,7 @@ const SKIP: &[(&str, &str, &str)] = &[];
 // ---------------------------------------------------------------------------
 
 fn corpus_path(relative: &str) -> Option<std::path::PathBuf> {
-    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+    std::path::Path::new(env!("HARA_SOURCE_ROOT"))
         .ancestors()
         .map(|root| root.join("hara-specs-registry").join(relative))
         .find(|candidate| candidate.is_file())
@@ -860,7 +860,7 @@ fn collections_conformance_corpus() {
     else {
         eprintln!(
             "skipping collections corpus: specs checkout not found from {}",
-            env!("CARGO_MANIFEST_DIR")
+            env!("HARA_SOURCE_ROOT")
         );
         return;
     };

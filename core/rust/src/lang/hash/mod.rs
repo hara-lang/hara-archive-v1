@@ -429,7 +429,7 @@ mod tests {
     /// Locates a repo-relative file from the crate manifest dir (mirrors the
     /// corpus runners in kernel::parser_tests and vm::conformance_tests).
     fn corpus_path(relative: &str) -> Option<std::path::PathBuf> {
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        std::path::Path::new(env!("HARA_SOURCE_ROOT"))
             .ancestors()
             .map(|root| root.join("hara-specs-registry").join(relative))
             .find(|candidate| candidate.is_file())
@@ -597,7 +597,7 @@ mod tests {
         else {
             eprintln!(
                 "skipping hash-parity corpus: specs checkout not found from {}",
-                env!("CARGO_MANIFEST_DIR")
+                env!("HARA_SOURCE_ROOT")
             );
             return;
         };

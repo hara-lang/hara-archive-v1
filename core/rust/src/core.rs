@@ -62,7 +62,7 @@ pub(crate) fn exception_site_at(line: usize, column: usize) -> Option<ExceptionS
     ))
 }
 
-pub(crate) fn exception_located_form(node: &crate::kernel::SpannedForm) -> Form {
+pub fn exception_located_form(node: &crate::kernel::SpannedForm) -> Form {
     let rebuilt = match &node.form {
         Form::List(values) if node.children.len() == values.len() => {
             Form::List(node.children.iter().map(exception_located_form).collect())

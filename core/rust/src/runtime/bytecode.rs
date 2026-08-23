@@ -8,6 +8,32 @@
 /// program with their executing machines; `Rc::clone` is the cheap way to
 /// pass one around.
 #[cfg(feature = "bytecode-vm")]
+pub fn bytecode_namespace_registry() -> kernel::NamespaceRegistry<core::Value> {
+    let namespaces = kernel::NamespaceRegistry::new("user");
+    let foundation = namespaces.find_or_create("std.foundation");
+    for (name, value) in core::exception_function_values() {
+        foundation.intern(name, value);
+    }
+    for (name, protocol) in core::foundation_protocol_values() {
+        foundation.intern(&name, protocol.clone());
+        namespaces
+            .find_or_create(core::builtin_protocol_namespace(&name))
+            .intern(name, protocol);
+    }
+    for (namespace, name, method) in core::builtin_protocol_method_values() {
+        namespaces.find_or_create(namespace).intern(name, method);
+    }
+    for (name, descriptor) in core::native_type_values() {
+        let canonical_name = format!("std.native.{name}");
+        let var = foundation.intern(&canonical_name, descriptor);
+        foundation.map_var(lang::data::Symbol::parse(&name), var);
+        namespaces.find_or_create(canonical_name);
+    }
+    core::refer_startup_defaults(&namespaces, "user");
+    namespaces
+}
+
+#[cfg(feature = "bytecode-vm")]
 pub fn compile_bytecode(source: &str) -> Result<std::rc::Rc<vm::Program>, String> {
     vm::compile_source(source)
         .map(std::rc::Rc::new)

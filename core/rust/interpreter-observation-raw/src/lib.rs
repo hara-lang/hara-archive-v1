@@ -1,4 +1,4 @@
-use hara_wasm::interpreter_observation::{invoke_json, ABI_VERSION};
+use hara_runtime::interpreter_observation::{invoke_json, ABI_VERSION};
 
 #[no_mangle]
 pub extern "C" fn interpreter_observation_abi_version() -> i32 {

@@ -10,7 +10,7 @@ homepage = "https://www.hara-lang.org"
 publish = false
 
 # Keep the C ABI outside the ordinary runtime workspace. The implementation
-# and session ownership live in hara-wasm so this facade cannot drift from the
+# and session ownership live in hara-runtime so this facade cannot drift from the
 # production evaluator or duplicate its module graph.
 [workspace]
 
@@ -27,7 +27,7 @@ panic = "abort"
 strip = "symbols"
 
 [dependencies]
-hara-wasm = { path = "..", default-features = false, features = ["bytecode-vm"] }
+hara-runtime = { path = "../runtime", default-features = false, features = ["bytecode-vm"] }
 
 [patch."https://github.com/hara-lang/hara.git"]
 hara-abi = { path = "../abi" }

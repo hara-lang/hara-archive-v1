@@ -1258,8 +1258,8 @@ version = "0.1.6"
 name = "hara-compiler"
 version = "0.1.6"
 dependencies = [
+ "hara-runtime",
  "hara-vm",
- "hara-wasm",
 ]
 
 [[package]]
@@ -1288,10 +1288,42 @@ dependencies = [
 ]
 
 [[package]]
+name = "hara-runtime"
+version = "0.1.6"
+dependencies = [
+ "console_error_panic_hook",
+ "ed25519-dalek 2.2.0",
+ "getrandom 0.2.17",
+ "hara-abi",
+ "hara-db-postgres",
+ "hmac 0.12.1",
+ "home",
+ "js-sys",
+ "num-bigint",
+ "num-integer",
+ "num-traits",
+ "p256 0.13.2",
+ "rand",
+ "regex",
+ "russh",
+ "russh-sftp",
+ "rustyline",
+ "semver",
+ "serde_json",
+ "sha2 0.10.9",
+ "tokio",
+ "wasm-bindgen",
+ "wasm-encoder",
+ "wasmtime",
+ "x25519-dalek",
+ "zip",
+]
+
+[[package]]
 name = "hara-vm"
 version = "0.1.6"
 dependencies = [
- "hara-wasm",
+ "hara-runtime",
 ]
 
 [[package]]
@@ -1304,6 +1336,7 @@ dependencies = [
  "hara-abi",
  "hara-db-postgres",
  "hara-hta",
+ "hara-runtime",
  "hmac 0.12.1",
  "home",
  "js-sys",
@@ -1333,6 +1366,7 @@ version = "0.1.6"
 dependencies = [
  "ed25519-dalek 2.2.0",
  "getrandom 0.2.17",
+ "hara-runtime",
  "hmac 0.12.1",
  "num-bigint",
  "num-integer",

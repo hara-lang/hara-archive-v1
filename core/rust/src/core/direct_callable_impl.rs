@@ -39,7 +39,7 @@ pub(crate) fn validate_direct_callable_catalog() -> Result<(), String> {
     ))
 }
 
-pub(crate) fn direct_callable_values() -> Result<Vec<(&'static str, Value)>, String> {
+pub fn direct_callable_values() -> Result<Vec<(&'static str, Value)>, String> {
     validate_direct_callable_catalog()?;
     DIRECT_CALLABLE_CATALOG
         .iter()

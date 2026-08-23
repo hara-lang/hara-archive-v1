@@ -9,7 +9,7 @@ const FORGED_COMPONENT: &str =
     "sha256:0932e3b99be0a918adc4adc939bef7c0966c77a0007b86afd9a47fe732d7f01d";
 
 fn fixture_path() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+    PathBuf::from(env!("HARA_SOURCE_ROOT"))
         .join("../../..")
         .join("hara-specs-registry")
         .join(FIXTURE_PATH)

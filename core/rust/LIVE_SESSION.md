@@ -127,9 +127,10 @@ now uses these names:
 | extension-wasm | extension module loaded through the runtime extension ABI |
 
 Only `hbc-module` and `whole-wasm` are source compiler targets today.
-`hara-compiler` exposes them through `CompileTarget` and a single
-`compile(source, target)` entry point. The compatibility functions
-`compile_bytecode` and `compile_wasm` delegate to that target API.
+`hara-compiler` exposes them through `CompileTarget` and the single
+`compile(source, target)` entry point. Target identity and ABI version are
+defined by `CompileTarget::product_identity`, so callers do not need to infer
+the product from an artifact filename or a legacy helper name.
 
 HBX remains a packaging concern rather than a second source compiler. Runtime
 host Wasm and extension Wasm remain build-system products rather than Hara
@@ -153,8 +154,8 @@ must not recreate parsing, namespace reachability, tree shaking, or package
 selection. It consumes the validated HBC product produced by the shared front
 end.
 
-The explicit target API introduced here is the first seam. It does not rename
-the existing HBC or whole-Wasm file formats and does not claim an HNW format
+The explicit target API is the source/compiler seam. It does not rename the
+existing HBC or whole-Wasm file formats and does not claim an HNW format
 migration. Format versioning and build-product manifests remain separate,
 reviewable changes.
 

@@ -120,11 +120,12 @@ impl InterpreterLiveSession {
     }
 
     fn dispose(&mut self) -> Result<JsonValue, LiveSessionError> {
-        let Some(handle) = self.handle.take() else {
+        let Some(handle) = self.handle else {
             self.status = LiveSessionStatus::Disposed;
             return Ok(JsonValue::Bool(false));
         };
         let payload = invoke_legacy(json!({"op": "dispose", "handle": handle}))?;
+        self.handle = None;
         self.status = LiveSessionStatus::Disposed;
         self.pending_source = None;
         Ok(payload)
@@ -223,6 +224,15 @@ impl LiveSession for InterpreterLiveSession {
     }
 }
 
+impl Drop for InterpreterLiveSession {
+    fn drop(&mut self) {
+        if let Some(handle) = self.handle {
+            let _ = invoke_legacy(json!({"op": "dispose", "handle": handle}));
+            self.handle = None;
+        }
+    }
+}
+
 fn start_backend(
     session_id: &str,
     source: &LiveSource,
@@ -304,5 +314,30 @@ fn parse_status(status: &str) -> Result<LiveSessionStatus, LiveSessionError> {
         other => Err(LiveSessionError::backend(format!(
             "unknown interpreter live-session status: {other}"
         ))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{invoke_legacy, InterpreterLiveSession};
+    use crate::live_session::LiveSource;
+    use serde_json::json;
+
+    #[test]
+    fn dropping_an_interpreter_adapter_releases_its_backend_handle() {
+        let handle = {
+            let session = InterpreterLiveSession::start(
+                "fixture/live-interpreter-drop",
+                LiveSource::new("drop.hal", "sha256:drop", "(+ 1 2)").unwrap(),
+            )
+            .unwrap();
+            session.handle.expect("started session must own a handle")
+        };
+
+        let error = invoke_legacy(json!({"op": "info", "handle": handle})).unwrap_err();
+        assert_eq!(
+            error.code(),
+            "live-session/backend/interpreter-observation/no-session"
+        );
     }
 }

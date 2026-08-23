@@ -1,6 +1,6 @@
 #[cfg(feature = "bytecode-vm")]
 const EMBEDDED_FOUNDATION_BYTECODE: &[u8] =
-    include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/std.foundation.hbx"));
+    include_bytes!(concat!(env!("HARA_SOURCE_ROOT"), "/assets/std.foundation.hbx"));
 
 #[wasm_bindgen]
 impl Runtime {

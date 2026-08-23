@@ -33,18 +33,20 @@ fn namespace_path(namespace: &str) -> PathBuf {
 }
 
 fn source_roots(manifest: &Path) -> Vec<(PathBuf, PathBuf)> {
-    let canonical = manifest.join("../lib");
-    let canonical_roots = [canonical.join("src"), canonical.join("src-lang")];
-    if canonical_roots.iter().all(|root| root.is_dir()) {
-        return vec![
-            (canonical_roots[0].clone(), PathBuf::from("lib/src")),
-            (canonical_roots[1].clone(), PathBuf::from("lib/src")),
-        ];
+    for canonical in [manifest.join("../lib"), manifest.join("../../lib")] {
+        let canonical_roots = [canonical.join("src"), canonical.join("src-lang")];
+        if canonical_roots.iter().all(|root| root.is_dir()) {
+            return vec![
+                (canonical_roots[0].clone(), PathBuf::from("lib/src")),
+                (canonical_roots[1].clone(), PathBuf::from("lib/src")),
+            ];
+        }
     }
 
-    let packaged = manifest.join("hal-src");
-    if packaged.is_dir() {
-        return vec![(packaged, PathBuf::from("lib/src"))];
+    for packaged in [manifest.join("hal-src"), manifest.join("../hal-src")] {
+        if packaged.is_dir() {
+            return vec![(packaged, PathBuf::from("lib/src"))];
+        }
     }
 
     panic!(
@@ -55,14 +57,41 @@ fn source_roots(manifest: &Path) -> Vec<(PathBuf, PathBuf)> {
 
 fn main() {
     let manifest = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
+    let source_root = if manifest.join("../src/runtime_lib.rs").is_file() {
+        manifest
+            .join("..")
+            .canonicalize()
+            .unwrap_or_else(|error| panic!("cannot resolve runtime source root: {error}"))
+    } else {
+        manifest.clone()
+    };
+    println!(
+        "cargo:rustc-env=HARA_SOURCE_ROOT={}",
+        source_root.display()
+    );
     // The runtime artifact contains the explicit Foundation bootstrap and the
     // small portable library catalog required by the native runtime. Repository
     // builds resolve it from canonical core/lib source; published Cargo archives
     // carry the same inventory beneath the crate-local hal-src.
     let source_roots = source_roots(&manifest);
-    let inventory_path = manifest.join("bootstrap.namespaces");
-    let cli_inventory_path = manifest.join("cli-bootstrap.namespaces");
-    let hta_path = manifest.join("src/hta.rs");
+    let inventory_path = [
+        manifest.join("bootstrap.namespaces"),
+        manifest.join("../bootstrap.namespaces"),
+    ]
+    .into_iter()
+    .find(|path| path.is_file())
+    .unwrap_or_else(|| manifest.join("bootstrap.namespaces"));
+    let cli_inventory_path = [
+        manifest.join("cli-bootstrap.namespaces"),
+        manifest.join("../cli-bootstrap.namespaces"),
+    ]
+    .into_iter()
+    .find(|path| path.is_file())
+    .unwrap_or_else(|| manifest.join("cli-bootstrap.namespaces"));
+    let hta_path = [manifest.join("src/hta.rs"), manifest.join("../src/hta.rs")]
+        .into_iter()
+        .find(|path| path.is_file())
+        .unwrap_or_else(|| manifest.join("src/hta.rs"));
     println!("cargo:rerun-if-changed={}", inventory_path.display());
     println!("cargo:rerun-if-changed={}", cli_inventory_path.display());
     println!("cargo:rerun-if-changed={}", hta_path.display());

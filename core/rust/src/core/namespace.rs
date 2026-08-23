@@ -169,7 +169,7 @@ fn top_level_definition_name(form: &Form) -> Option<&str> {
     }
 }
 
-pub(crate) fn require_namespace(
+pub fn require_namespace(
     registry: &NamespaceRegistry<Value>,
     env: &mut HashMap<String, Value>,
     name: &str,
@@ -473,6 +473,8 @@ fn eval_namespace_form(fs: &[Form], env: &mut HashMap<String, Value>) -> Result<
     }
     if !config.blank() {
         refer_startup_defaults(&registry, &name);
+    } else {
+        crate::core::refer_native_aliases(&registry, &name);
     }
     select_namespace_environment(&registry, env, &name);
     let destination = registry.current();

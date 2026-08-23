@@ -54,7 +54,7 @@ fn shared_runtime_corpus_path() -> PathBuf {
         return PathBuf::from(root)
             .join("01-lang/001-language/draft/conformance/parity/jvm-truffle.edn");
     }
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+    PathBuf::from(env!("HARA_SOURCE_ROOT"))
         .join("../../hara-specs-registry")
         .join("01-lang/001-language/draft/conformance/parity/jvm-truffle.edn")
 }
@@ -325,7 +325,7 @@ fn recur_tail_tightening_is_a_documented_divergence() {
 #[test]
 fn shared_benchmark_workloads_match() {
     let path = concat!(
-        env!("CARGO_MANIFEST_DIR"),
+        env!("HARA_SOURCE_ROOT"),
         "/../../../../website/hara-benchmarks/runtime/hara/runtime/workloads.json"
     );
     let text = std::fs::read_to_string(path).expect("workloads.json must exist");

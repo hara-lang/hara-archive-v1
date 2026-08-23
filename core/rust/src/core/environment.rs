@@ -720,7 +720,7 @@ pub(crate) fn restore_multimethods(snapshot: HashMap<String, MultiMethod>) {
 }
 
 #[derive(Clone)]
-pub(crate) enum NamespaceResource {
+pub enum NamespaceResource {
     Source(String),
     #[cfg(feature = "bytecode-vm")]
     Bytecode {
@@ -1196,7 +1196,7 @@ pub fn select_namespace_environment(
     refresh_namespace_environment(registry, env);
 }
 
-pub(crate) fn refer_startup_defaults(registry: &NamespaceRegistry<Value>, namespace: &str) {
+pub fn refer_startup_defaults(registry: &NamespaceRegistry<Value>, namespace: &str) {
     let target = registry.find_or_create(namespace);
     if namespace != "std.foundation" {
         if let Some(foundation) = registry.find("std.foundation") {
@@ -1213,11 +1213,7 @@ pub(crate) fn refer_startup_defaults(registry: &NamespaceRegistry<Value>, namesp
             target.alias(protocol, source);
         }
     }
-    for (native_type, _) in NATIVE_TYPES {
-        if let Some(source) = registry.find(&format!("std.native.{native_type}")) {
-            target.alias(*native_type, source);
-        }
-    }
+    refer_native_aliases(registry, namespace);
     for (alias, library) in registry.global_aliases() {
         if target.name() == &library {
             continue;
@@ -1226,6 +1222,31 @@ pub(crate) fn refer_startup_defaults(registry: &NamespaceRegistry<Value>, namesp
             target.alias(alias.as_str(), source);
         } else {
             target.lazy_alias(alias.as_str(), library.as_str());
+        }
+    }
+    for (alias, library) in [
+        ("str", "std.foundation.string"),
+        ("promise", "std.foundation.promise"),
+        ("bytes", "std.foundation.bytes"),
+        ("co", "std.foundation.coroutine"),
+        ("pretty", "std.foundation.pretty"),
+    ] {
+        target.lazy_alias(alias, library);
+    }
+}
+
+pub(crate) fn refer_native_aliases(registry: &NamespaceRegistry<Value>, namespace: &str) {
+    let target = registry.find_or_create(namespace);
+    for (protocol, _) in FOUNDATION_PROTOCOLS {
+        let protocol_namespace = builtin_protocol_namespace(protocol);
+        if let Some(source) = registry.find(&protocol_namespace) {
+            target.alias(protocol, source);
+        }
+    }
+    for (native_type, _) in NATIVE_TYPES {
+        if let Some(source) = registry.find(&format!("std.native.{native_type}")) {
+            target.alias(*native_type, source.clone());
+            target.alias(native_type.to_ascii_lowercase(), source);
         }
     }
 }

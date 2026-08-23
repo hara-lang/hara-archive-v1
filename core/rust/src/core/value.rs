@@ -882,7 +882,7 @@ pub(crate) fn direct_function_value(name: &str) -> Option<Value> {
 /// not resolve their public HAL facade name and re-enter `eval`, because doing
 /// so makes alias precedence part of native invocation and permits facade →
 /// native → facade recursion.
-pub(crate) fn native_type_function_value(native_type: &str, method: &str) -> Result<Value, String> {
+pub fn native_type_function_value(native_type: &str, method: &str) -> Result<Value, String> {
     let display_name = format!("std.native.{native_type}/{method}");
     let value = match native_type {
         "Base" => {

@@ -67,6 +67,7 @@ std.typed.infer
 std.typed.registry
 std.typed.schema
 tool.cli.asset
+tool.cli.context
 tool.cli.deploy-manifest
 tool.cli.dispatch
 tool.cli.extension

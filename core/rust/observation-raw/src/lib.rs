@@ -1,20 +1,5 @@
-#[path = "../../src/core.rs"]
-mod core;
-#[path = "../../src/hta.rs"]
-mod hta;
-#[path = "../../src/json.rs"]
-mod json;
-#[path = "../../src/kernel.rs"]
-mod kernel;
-#[path = "../../src/lang.rs"]
-mod lang;
-#[path = "../../src/snapshot.rs"]
-mod snapshot;
-#[path = "../../src/task.rs"]
-mod task;
-mod vm;
-
-use core::Value;
+use hara_runtime::core::Value;
+use hara_runtime::{bytecode_namespace_registry, json, kernel, task, vm};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use task::{PromiseRejection, PromiseState};
@@ -22,28 +7,7 @@ use vm::machine::observation::ObservationLimits;
 use vm::session::{BytecodeObservationSession, BytecodeSessionError, SessionRetentionLimits};
 
 pub fn embedding_namespace_registry() -> kernel::NamespaceRegistry<Value> {
-    let namespaces = kernel::NamespaceRegistry::new("user");
-    let foundation = namespaces.find_or_create("std.foundation");
-    for (name, value) in core::exception_function_values() {
-        foundation.intern(name, value);
-    }
-    for (name, protocol) in core::foundation_protocol_values() {
-        foundation.intern(&name, protocol.clone());
-        namespaces
-            .find_or_create(core::builtin_protocol_namespace(&name))
-            .intern(name, protocol);
-    }
-    for (namespace, name, method) in core::builtin_protocol_method_values() {
-        namespaces.find_or_create(namespace).intern(name, method);
-    }
-    for (name, descriptor) in core::native_type_values() {
-        let canonical_name = format!("std.native.{name}");
-        let var = foundation.intern(&canonical_name, descriptor);
-        foundation.map_var(lang::data::Symbol::parse(&name), var);
-        namespaces.find_or_create(canonical_name);
-    }
-    core::refer_startup_defaults(&namespaces, "user");
-    namespaces
+    bytecode_namespace_registry()
 }
 
 const ABI_VERSION: i32 = 1;
@@ -402,7 +366,7 @@ fn bounded_usize(request: &Value, name: &str, maximum: usize) -> Result<usize, S
 }
 
 fn field(value: &Value, name: &str) -> Option<Value> {
-    core::map_entries(value)?
+    hara_runtime::core::map_entries(value)?
         .iter()
         .find_map(|(key, value)| match key {
             Value::String(key) if key == name => Some(value.clone()),
@@ -449,8 +413,8 @@ fn pack_response(bytes: Vec<u8>) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::{field, invoke_json};
-    use crate::core::Value;
-    use crate::json;
+    use hara_runtime::core::Value;
+    use hara_runtime::json;
 
     fn invoke(request: &str) -> Value {
         let bytes = invoke_json(request);

@@ -129,7 +129,7 @@ fn specs_owned_direct_callable_bootstrap_fixture_runs_before_foundation_source_l
     let registry = std::env::var_os("HARA_SPECS_REGISTRY")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| {
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            std::path::Path::new(env!("HARA_SOURCE_ROOT"))
                 .join("..")
                 .join("..")
                 .join("..")

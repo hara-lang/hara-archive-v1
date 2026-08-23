@@ -321,7 +321,7 @@ fn shared_reader_corpus_matches_canonical_forms_and_errors() {
         .map(|root| root.join(relative))
         .filter(|candidate| candidate.is_file())
         .or_else(|| {
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            std::path::Path::new(env!("HARA_SOURCE_ROOT"))
                 .ancestors()
                 .map(|root| root.join("hara-specs-registry").join(relative))
                 .find(|candidate| candidate.is_file())

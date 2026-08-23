@@ -7,9 +7,13 @@ continue to work.
 
 ## Compatibility facades
 
-`src/core.rs` and `src/lib.rs` are stable entry points. They declare the
-runtime's dependencies and include responsibility-focused implementation
-fragments:
+`src/core.rs` remains the core facade. The target-neutral runtime source graph
+is owned by the `hara-runtime` crate through `src/runtime_lib.rs`; `src/lib.rs`
+is now the thin `hara-wasm` delivery facade. This keeps one implementation
+graph while giving lower layers a dependency that does not point back through
+the browser package.
+
+The runtime declares the responsibility-focused implementation fragments:
 
 - `src/core/` contains values, environment and protocol state, native
   operations and providers, asynchronous values, primitives, forms, namespace
@@ -18,15 +22,23 @@ fragments:
   bytecode integration, native evaluation, WebAssembly bridges, and runtime
   tests.
 
-The fragments use `include!` deliberately. They are compiled in their
-facade's module rather than as nested Rust modules, preserving visibility,
-symbol paths, macro scope, and the direct inclusion of `core.rs` by the raw
-runtime crates. This makes the reorganization structural rather than
-behavioral.
+The fragments use `include!` deliberately. They are compiled once in the
+runtime owner's module rather than reassembled by delivery crates, preserving
+visibility, symbol paths, and macro scope. The raw Wasm, observation, VM, and
+compiler crates now consume that owner through explicit interfaces. This makes
+the reorganization structural rather than behavioral.
 
 Dependencies point inward: embedding and runtime code may use core facilities;
-core facilities do not depend on the embedding facade. Experimental bytecode
-and WebAssembly adapters stay at the runtime boundary.
+core facilities do not depend on the delivery facade. `hara-vm` and
+`hara-compiler` consume `hara-runtime` directly; `hara-wasm` only re-exports
+the runtime for browser/native delivery. The local `hara-runtime` package is
+intentionally an internal workspace boundary while its source root remains
+shared with the distribution package. Experimental bytecode and WebAssembly
+adapters stay at the runtime boundary. Its library target is not independently
+publishable: the source graph intentionally lives outside that manifest and
+the root distribution package remains the test and publication owner. Keep
+path-sensitive runtime tests on the root package until that source root is
+physically packageable.
 
 ## Live execution and compiler products
 

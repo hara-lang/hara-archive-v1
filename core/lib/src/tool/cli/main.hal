@@ -1,5 +1,6 @@
 (ns tool.cli.main
-  (:require [tool.cli.deploy-manifest :as deploy-manifest]
+  (:require [tool.cli.context :as cli-context]
+            [tool.cli.deploy-manifest :as deploy-manifest]
             [tool.cli.dispatch :as dispatch]
             [tool.cli.model :as model]
             [tool.cli.options :as options]
@@ -10,7 +11,8 @@
   "Pure authoritative CLI entry point. Host launchers supply the embedded
    manifest, raw argv, runtime context, and closed handler registry."
   [embedded-manifest argv context handlers]
-  (let [manifest (deploy-manifest/extend embedded-manifest)
+  (let [context (cli-context/normalize context)
+        manifest (deploy-manifest/extend embedded-manifest)
         findings (verify/verify manifest)]
     (if (not (empty? findings))
       (model/failure

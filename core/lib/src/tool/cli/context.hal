@@ -1,0 +1,32 @@
+(ns tool.cli.context
+  (:config {:role :internal})
+  (:require [code.project :as project]))
+
+(defn project-path
+  [cwd value]
+  (File/resolve (or cwd (os/cwd)) value))
+
+(defn normalize-project
+  [value cwd]
+  (cond
+    (nil? value)
+    nil
+
+    (map? value)
+    value
+
+    (string? value)
+    (project/discover (project-path cwd value))
+
+    :else
+    (throw
+     (ex :argument {:project value}
+         :ex/message "CLI runtime project must be a project map or path string"))))
+
+(defn normalize
+  [context]
+  (let [project (normalize-project (:runtime/project context)
+                                   (:runtime/cwd context))]
+    (if (nil? project)
+      context
+      (assoc context :runtime/project project))))

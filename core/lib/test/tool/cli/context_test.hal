@@ -1,0 +1,29 @@
+(ns tool.cli.context-test
+  (:use code.test)
+  (:require [tool.cli.context :as context]))
+
+(def current-project
+  {:project/id 'hara.lang
+   :project/root "/"
+   :project/source-paths ["lib/src" "lib/src-lang"]
+   :project/test-paths ["lib/test" "lib/test-lang"]})
+
+[
+^{:refer tool.cli.context/normalize-project}
+(test-check "normalize-project preserves an already discovered project"
+            (context/normalize-project current-project ".")
+            current-project)
+
+^{:refer tool.cli.context/normalize}
+(test-check "normalize preserves nil project context"
+            (context/normalize {:runtime/cwd "." :runtime/project nil})
+            {:runtime/cwd "." :runtime/project nil})
+
+^{:refer tool.cli.context/normalize-project}
+(test-check "normalize-project rejects unsupported project values"
+            (try
+              (context/normalize-project 42 ".")
+              :no-error
+              (catch Throwable error
+                (:ex/message (ex-data error))))
+            "CLI runtime project must be a project map or path string")]

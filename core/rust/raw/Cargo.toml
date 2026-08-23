@@ -19,6 +19,7 @@ bytecode-vm = []
 tracing-jit = ["bytecode-vm"]
 
 [dependencies]
+hara-runtime = { path = "../runtime", default-features = false, features = ["raw-wasm"] }
 sha2 = "0.10"
 hmac = "0.12"
 getrandom = { version = "0.2", features = ["custom"] }

@@ -6,7 +6,7 @@ use super::{
 use crate::kernel::parse;
 
 fn repo_text(relative: &str) -> Option<String> {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+    let path = std::path::Path::new(env!("HARA_SOURCE_ROOT"))
         .join("..")
         .join("..")
         .join("..")

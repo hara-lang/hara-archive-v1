@@ -40,3 +40,7 @@ raw-wasm = []
 
 [dependencies]
 sha2 = "0.10"
+hara-runtime = { path = "../runtime", default-features = false, features = ["bytecode-observation"] }
+
+[patch."https://github.com/hara-lang/hara.git"]
+hara-abi = { path = "../abi" }

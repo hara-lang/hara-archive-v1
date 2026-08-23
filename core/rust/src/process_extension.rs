@@ -521,7 +521,7 @@ mod tests {
         let id = NEXT_TEMP.fetch_add(1, Ordering::Relaxed);
         let module =
             std::env::temp_dir().join(format!("hara-hta-fake-{}-{id}.mjs", std::process::id()));
-        let hta = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        let hta = std::path::Path::new(env!("HARA_SOURCE_ROOT"))
             .join("web/hta.js")
             .canonicalize()
             .unwrap();

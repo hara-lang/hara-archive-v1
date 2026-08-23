@@ -28,7 +28,7 @@ include = [
 ]
 
 [workspace]
-members = [".", "abi", "compiler", "hta-codec", "raw", "vm-runtime"]
+members = [".", "abi", "compiler", "hta-codec", "raw", "runtime", "vm-runtime"]
 default-members = ["."]
 resolver = "2"
 
@@ -43,33 +43,33 @@ crate-type = ["cdylib", "rlib"]
 # also compiles the copy-only HBC probe seam; ordinary Machine::run still takes
 # the unchanged no-probe path and performs no event or projection work.
 default = ["bytecode-vm", "bytecode-instrumentation"]
+evaluation-journal = ["hara-runtime/evaluation-journal"]
+dev-trace = ["hara-runtime/dev-trace"]
+halc-encoder = ["hara-runtime/halc-encoder"]
+hir-encoder = ["hara-runtime/hir-encoder"]
+bytecode-vm = ["hara-runtime/bytecode-vm"]
+bytecode-instrumentation = ["hara-runtime/bytecode-instrumentation"]
+bytecode-observation = ["hara-runtime/bytecode-observation"]
+code-vm-conformance = ["hara-runtime/code-vm-conformance"]
+raw-wasm = ["hara-runtime/raw-wasm"]
+tracing-jit = ["hara-runtime/tracing-jit"]
+native-jit = ["hara-runtime/native-jit"]
+whole-wasm = ["hara-runtime/whole-wasm"]
 # Structured Evaluation Journal. Keep this opt-in so embedded and production
 # builds do not carry collectors or journal storage.
-evaluation-journal = []
-dev-trace = ["evaluation-journal"]
 # Existing optional encoder gate (declared here so Cargo can validate it).
-halc-encoder = []
-hir-encoder = ["halc-encoder"]
 # The staged bytecode VM is enabled by the main crate's default feature set.
 # Entry points remain gated so compiler-free and feature-minimal crates can
 # consume the shared VM substrate without enabling the compiler surface.
-bytecode-vm = []
 # Compact counters, events and one-boundary scalar probes. Ordinary
 # Machine::run remains unchanged and no portable projection is materialized
 # until the shared hub matches a registration.
-bytecode-instrumentation = ["bytecode-vm"]
 # Opt-in bounded snapshots and compatibility one-boundary stepping for
 # Hodos/code.vm. New instrumentation probes do not depend on these eager
 # before/after snapshots.
-bytecode-observation = ["bytecode-vm"]
 # Production-generated interpreter/HALC/bytecode corpus and report.
-code-vm-conformance = ["bytecode-observation", "halc-encoder", "evaluation-journal"]
 # Shared VM source can be compiled into a plain-C Wasm facade without the
 # browser-only wasm-bindgen session wrapper. Normal hara-wasm builds keep it.
-raw-wasm = []
-tracing-jit = ["bytecode-vm"]
-native-jit = ["tracing-jit"]
-whole-wasm = ["bytecode-vm"]
 
 [profile.browser-release]
 inherits = "release"
@@ -80,6 +80,7 @@ panic = "abort"
 strip = "symbols"
 
 [dependencies]
+hara-runtime = { version = "0.1.6", path = "runtime", default-features = false }
 wasm-bindgen = "0.2"
 sha2 = "0.10"
 hmac = "0.12"

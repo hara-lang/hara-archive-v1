@@ -13,8 +13,10 @@ categories = ["compilers", "wasm"]
 
 [features]
 default = []
-full-wasm = ["hara-wasm/whole-wasm"]
+full-wasm = ["hara-runtime/whole-wasm"]
 
 [dependencies]
+hara-runtime = { version = "0.1.6", path = "../runtime", default-features = false, features = ["bytecode-vm", "halc-encoder"] }
+
+[dev-dependencies]
 hara-vm = { version = "0.1.6", path = "../vm-runtime" }
-hara-wasm = { version = "0.1.6", path = "..", default-features = false, features = ["bytecode-vm", "halc-encoder"] }

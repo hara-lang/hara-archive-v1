@@ -577,7 +577,7 @@ mod tests {
         let registry = std::env::var_os("HARA_SPECS_REGISTRY")
             .map(std::path::PathBuf::from)
             .unwrap_or_else(|| {
-                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                std::path::Path::new(env!("HARA_SOURCE_ROOT"))
                     .join("..")
                     .join("..")
                     .join("..")
@@ -671,7 +671,7 @@ mod tests {
         let root = std::env::var_os("HARA_CONFORMANCE_REPORT_DIR")
             .map(std::path::PathBuf::from)
             .unwrap_or_else(|| {
-                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                std::path::Path::new(env!("HARA_SOURCE_ROOT"))
                     .join("..")
                     .join("target")
                     .join("conformance")
@@ -766,7 +766,7 @@ mod tests {
         let root = std::env::var_os("HARA_CONFORMANCE_REPORT_DIR")
             .map(std::path::PathBuf::from)
             .unwrap_or_else(|| {
-                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                std::path::Path::new(env!("HARA_SOURCE_ROOT"))
                     .join("..")
                     .join("target")
                     .join("conformance")
@@ -790,7 +790,7 @@ mod tests {
         let corpus = repo_text(
             "01-lang/004-foundation/draft/conformance/fixtures/foundation_behavioral.hal",
         )?;
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        let root = std::path::Path::new(env!("HARA_SOURCE_ROOT"))
             .join("..")
             .join("lib")
             .join("src")
@@ -873,7 +873,7 @@ mod tests {
 
     fn development_runtime() -> Runtime {
         let mut runtime = Runtime::new();
-        let lib = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        let lib = std::path::Path::new(env!("HARA_SOURCE_ROOT"))
             .join("..")
             .join("lib");
         for source_root in [lib.join("src"), lib.join("src-lang")] {
@@ -2462,7 +2462,7 @@ mod tests {
         let (surface_namespaces, surface_symbols) =
             foundation_surface().expect("the specs-owned Foundation surface must be available");
         let inventory = std::fs::read_to_string(
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("bootstrap.namespaces"),
+            std::path::Path::new(env!("HARA_SOURCE_ROOT")).join("bootstrap.namespaces"),
         )
         .expect("read Foundation bootstrap inventory");
         let registered_namespaces = inventory
@@ -3174,7 +3174,7 @@ mod tests {
             {
                 return source.to_owned();
             }
-            let local = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            let local = std::path::Path::new(env!("HARA_SOURCE_ROOT"))
                 .join("..")
                 .join(path);
             std::fs::read_to_string(&local)
@@ -7684,7 +7684,7 @@ mod tests {
 
     #[test]
     fn tool_cli_handlers_treat_default_host_as_a_value() {
-        let cli_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../lib/src/tool/cli");
+        let cli_root = std::path::Path::new(env!("HARA_SOURCE_ROOT")).join("../lib/src/tool/cli");
         for file in [
             "asset.hal",
             "extension.hal",
@@ -7941,7 +7941,7 @@ mod tests {
         }
         // tool.migrate.project.* and its std.block/std.lib.zip dependencies are not
         // embedded bootstrap namespaces; register them from repository sources.
-        let lib_src = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        let lib_src = std::path::Path::new(env!("HARA_SOURCE_ROOT"))
             .join("..")
             .join("lib")
             .join("src");
