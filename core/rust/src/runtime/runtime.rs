@@ -127,6 +127,8 @@ impl Runtime {
                 foundation.intern_with_origin(name, value, kernel::VarOrigin::RuntimePrimitive);
             }
         }
+        let current = self.namespace_registry.current().name().as_str().to_owned();
+        self.refer_foundation_into(&current);
     }
 
     fn refer_foundation_into(&mut self, namespace: &str) {

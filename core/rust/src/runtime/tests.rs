@@ -2287,16 +2287,16 @@ mod tests {
             .namespace_registry
             .find("std.foundation")
             .expect("std.foundation namespace");
-        let portable_contract = contract
-            .split(":capability-protocols")
-            .next()
-            .expect("portable protocol contract");
+        let capability_contract = contract
+            .split_once(":capability-protocols")
+            .map(|(_, contract)| contract)
+            .expect("capability protocol contract");
         let mut portable_protocol_count = 0usize;
         let mut portable_method_count = 0usize;
         let mut capability_protocol_count = 0usize;
         let mut capability_method_count = 0usize;
         for (name, methods) in core::FOUNDATION_PROTOCOLS {
-            let in_contract = portable_contract.contains(&format!(":name {name}"));
+            let in_contract = !capability_contract.contains(&format!(":name {name}"));
             if in_contract {
                 portable_protocol_count += 1;
                 portable_method_count += methods.len();
@@ -2340,9 +2340,11 @@ mod tests {
                     .deref_value();
                 assert_eq!(aliased_method, canonical_method);
                 if in_contract {
+                    let fixture_namespace =
+                        namespace_name.strip_suffix(&format!(".{name}")).unwrap_or(&namespace_name);
                     assert!(
-                        fixture.contains(&format!("({namespace_name}/{method} fixture")),
-                        "shared fixture does not directly call {namespace_name}/{method}"
+                        fixture.contains(&format!("({fixture_namespace}/{method} fixture")),
+                        "shared fixture does not directly call {fixture_namespace}/{method}"
                     );
                 }
             }

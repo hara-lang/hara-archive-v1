@@ -30,12 +30,26 @@ pub fn minimal_namespace_registry() -> NamespaceRegistry<Value> {
         let namespace_name = builtin_protocol_namespace(&name);
         let namespace = namespaces.find_or_create(&namespace_name);
         let var = namespace.intern_with_origin(&name, protocol, VarOrigin::RuntimePrimitive);
+        foundation.map_var(Symbol::parse(&name), var.clone());
         foundation.map_var(Symbol::parse(&namespace_name), var);
+        foundation.alias(&name, namespace.clone());
+        namespaces
+            .register_global_alias(&name, &namespace_name)
+            .unwrap_or_else(|error| panic!("{error}"));
     }
     for (namespace, name, method) in builtin_protocol_method_values() {
+        let protocol = namespace
+            .rsplit('.')
+            .next()
+            .expect("builtin protocol namespace must have a protocol name")
+            .to_owned();
         namespaces
-            .find_or_create(namespace)
-            .intern_with_origin(name, method, VarOrigin::RuntimePrimitive);
+            .find_or_create(&namespace)
+            .intern_with_origin(&name, method.clone(), VarOrigin::RuntimePrimitive);
+        let short_namespace = format!("std.protocol.{}", protocol.to_ascii_lowercase());
+        namespaces
+            .find_or_create(&short_namespace)
+            .intern_with_origin(&name, method, VarOrigin::RuntimePrimitive);
     }
 
     namespaces
