@@ -1,0 +1,29 @@
+;; Public kernel facade. Capability and lifecycle implementations remain
+;; owned by code.vm.kernel; this namespace is the supported std.lib surface.
+(ns std.lib.kernel
+  (:config {:role :facade})
+  (:require [code.vm.kernel :as kernel]))
+
+(intern-in
+ [sandbox-open kernel/sandbox-open]
+ [sandbox-eval kernel/sandbox-eval]
+ [sandbox-call kernel/sandbox-call]
+ [sandbox-cancel kernel/sandbox-cancel]
+ [sandbox-status kernel/sandbox-status]
+ [sandbox-close kernel/sandbox-close]
+ [session-create kernel/session-create]
+ [session-close kernel/session-close]
+ [session-list kernel/session-list]
+ [session-info kernel/session-info]
+ [session-eval kernel/session-eval]
+ [session-namespace kernel/session-namespace]
+ [session-complete kernel/session-complete]
+ [resource-register kernel/resource-register]
+ [resource-remove kernel/resource-remove]
+ [resource-list kernel/resource-list]
+ [filesystem-create kernel/filesystem-create]
+ [filesystem-attach kernel/filesystem-attach]
+ [filesystem-detach kernel/filesystem-detach]
+ [filesystem-info kernel/filesystem-info]
+ [filesystem-close kernel/filesystem-close]
+ [capabilities kernel/capabilities])

@@ -854,10 +854,16 @@ mod tests {
 
     fn register_lib_tree(runtime: &mut Runtime, root: &std::path::Path, dir: &std::path::Path) {
         for entry in std::fs::read_dir(dir).unwrap() {
-            let path = entry.unwrap().path();
-            if path.is_dir() {
+            let entry = entry.unwrap();
+            let path = entry.path();
+            let file_name = path.file_name().and_then(|name| name.to_str());
+            if file_name.is_some_and(|name| name.starts_with('.')) {
+                continue;
+            }
+            let file_type = entry.file_type().unwrap();
+            if file_type.is_dir() {
                 register_lib_tree(runtime, root, &path);
-            } else if path.extension().is_some_and(|ext| ext == "hal") {
+            } else if file_type.is_file() && path.extension().is_some_and(|ext| ext == "hal") {
                 let relative = path.strip_prefix(root).unwrap().with_extension("");
                 let namespace = relative
                     .components()
@@ -1377,6 +1383,8 @@ mod tests {
             runtime.eval_text("(path/parent \"/a/b\")").unwrap(),
             "\"/a\""
         );
+        assert_eq!(runtime.eval_text("(File/parent \"/a/b\")").unwrap(), "\"/a\"");
+        assert_eq!(runtime.eval_text("(File/parent \"/\")").unwrap(), "nil");
         assert_eq!(
             runtime.eval_text("(path/join \"/a\" \"b\")").unwrap(),
             "\"/a/b\""
@@ -3168,17 +3176,30 @@ mod tests {
             }
         }
         fn wrapper_source(path: &str) -> String {
-            if let Some(source) = EMBEDDED_HAL_RESOURCES
-                .iter()
-                .find_map(|(_, resource_path, source)| (*resource_path == path).then_some(*source))
-            {
-                return source.to_owned();
+            // The native contract still names the retired std.sandbox wrapper.
+            // Its implementation now lives in code.vm.kernel and is published
+            // through std.lib.kernel, so resolve that manifest alias here.
+            let candidates = match path {
+                "lib/src/std/sandbox.hal" => vec!["lib/src/code/vm/kernel.hal", path],
+                "lib/src/std/lib/package.hal" => {
+                    vec!["lib/src/code/project/package.hal", path]
+                }
+                _ => vec![path],
+            };
+            for candidate in candidates {
+                if let Some(source) = EMBEDDED_HAL_RESOURCES.iter().find_map(
+                    |(_, resource_path, source)| (*resource_path == candidate).then_some(*source),
+                ) {
+                    return source.to_owned();
+                }
+                let local = std::path::Path::new(env!("HARA_SOURCE_ROOT"))
+                    .join("..")
+                    .join(candidate);
+                if let Ok(source) = std::fs::read_to_string(&local) {
+                    return source;
+                }
             }
-            let local = std::path::Path::new(env!("HARA_SOURCE_ROOT"))
-                .join("..")
-                .join(path);
-            std::fs::read_to_string(&local)
-                .unwrap_or_else(|_| panic!("unknown wrapper source: {path}"))
+            panic!("unknown wrapper source: {path}")
         }
 
         let Some(contract_source) = repo_text("01-lang/001-language/draft/conformance/native.edn")
@@ -3721,6 +3742,31 @@ mod tests {
             runtime.eval_text("(get #{[1 2]} '(1 2) :missing)").unwrap(),
             "[1 2]"
         );
+    }
+
+    #[test]
+    fn std_lib_kernel_is_the_canonical_sandbox_surface() {
+        let mut runtime = development_runtime();
+        assert_eq!(
+            runtime
+                .eval_text(
+                    "(ns std-lib-kernel-rust-probe \
+                       (:require [std.lib.kernel :as kernel])) \
+                     [(fn? kernel/sandbox-open) \
+                      (fn? kernel/sandbox-eval) \
+                      (fn? kernel/sandbox-call) \
+                      (fn? kernel/sandbox-cancel) \
+                      (fn? kernel/sandbox-status) \
+                      (fn? kernel/sandbox-close) \
+                      (fn? kernel/capabilities)]"
+                )
+                .unwrap(),
+            "[true true true true true true true]"
+        );
+        assert!(runtime
+            .eval_text("(require [std.sandbox :as sandbox])")
+            .unwrap_err()
+            .contains("missing"));
     }
 
     #[test]
@@ -4437,6 +4483,16 @@ mod tests {
 
     #[test]
     fn foundation_code_test_compatibility_namespaces_are_embedded() {
+        std::thread::Builder::new()
+            .name("foundation-code-test-compatibility".into())
+            .stack_size(64 * 1024 * 1024)
+            .spawn(foundation_code_test_compatibility_namespaces_are_embedded_body)
+            .unwrap()
+            .join()
+            .unwrap();
+    }
+
+    fn foundation_code_test_compatibility_namespaces_are_embedded_body() {
         let mut runtime = development_runtime();
         assert_eq!(
             runtime

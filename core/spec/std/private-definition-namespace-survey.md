@@ -44,7 +44,7 @@ The migration classes are normative and are defined in
 
 `code.project.deploy`, `code.framework`, `code.manage`, `tool.migrate.project`, `tool.migrate.clojure`
 `std.foundation.pretty`, `std.foundation.string`, `std.fs.path`, `std.fs.walk`
-`std.sandbox`, `std.substrate`, `tool.inrepl`, `tool.package`, `tool.project`, `tool.runtime`
+`std.lib.kernel`, `std.substrate`, `tool.inrepl`, `tool.package`, `tool.project`, `tool.runtime`
 `tool.sh`, `tool.sh.docker`, `tool.sh.git`, `tool.sh.tmux`, `tool.vm`
 
 ## Internal owner; promote in place (`:promote-in-place`, 114)

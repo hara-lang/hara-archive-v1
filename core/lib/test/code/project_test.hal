@@ -237,6 +237,17 @@
    (project/project-code-path? "/project/src/demo/.#core.hal")]
   [true false])
 
+ (test-check "project file discovery excludes editor lock symlinks before suffix filtering"
+  (let [files ["/project/src/demo/core.hal"
+               "/project/src/demo/.#core.hal"
+               "/project/src/demo/notes.txt"]]
+    (vec
+     (filter (fn [path]
+               (and (str/ends-with? path ".hal")
+                    (project/project-code-path? path)))
+             files)))
+  ["/project/src/demo/core.hal"])
+
  (test-check "file record indexes reject duplicate declared namespaces"
   (try
     (do

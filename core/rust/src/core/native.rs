@@ -1087,6 +1087,17 @@ fn file_values(operation: &str, values: Vec<Value>) -> Result<Value, String> {
                 .map(Value::String)
                 .map_err(|error| file_error(operation, error))
         }
+        "file/parent" => {
+            if values.len() != 1 {
+                return Err(format!("{operation} expects a path"));
+            }
+            let Value::String(path) = &values[0] else {
+                return Err(format!("{operation} expects a path"));
+            };
+            crate::file::logical_parent(path)
+                .map(|parent| parent.map_or(Value::Nil, Value::String))
+                .map_err(|error| file_error(operation, error))
+        }
         "file/read" | "file/exists?" | "file/stat" | "file/entries" | "file/list" | "file/walk" => {
             if values.len() != 1 {
                 return Err(format!("{operation} expects a path"));

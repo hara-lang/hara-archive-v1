@@ -276,6 +276,7 @@ std.lib.format.report
 std.lib.format.table
 std.lib.format.terminal
 std.lib.format.version
+std.lib.kernel
 std.lib.time
 std.lib.zip
 std.logic.datalog

@@ -1,0 +1,45 @@
+(ns std.lib.kernel-test
+  (:use code.test)
+  (:require [std.lib.kernel :as kernel]))
+
+(def results
+  [(fact "std.lib.kernel publishes the sandbox lifecycle"
+     [(fn? kernel/sandbox-open)
+      (fn? kernel/sandbox-eval)
+      (fn? kernel/sandbox-call)
+      (fn? kernel/sandbox-cancel)
+      (fn? kernel/sandbox-status)
+      (fn? kernel/sandbox-close)]
+     => [true true true true true true])
+
+   (fact "std.lib.kernel publishes sessions resources filesystems and capabilities"
+     [(fn? kernel/session-create)
+      (fn? kernel/session-close)
+      (fn? kernel/session-list)
+      (fn? kernel/session-info)
+      (fn? kernel/session-eval)
+      (fn? kernel/session-namespace)
+      (fn? kernel/session-complete)
+      (fn? kernel/resource-register)
+      (fn? kernel/resource-remove)
+      (fn? kernel/resource-list)
+      (fn? kernel/filesystem-create)
+      (fn? kernel/filesystem-attach)
+      (fn? kernel/filesystem-detach)
+      (fn? kernel/filesystem-info)
+      (fn? kernel/filesystem-close)
+      (fn? kernel/capabilities)]
+     => [true true true true true true true true
+         true true true true true true true true])
+
+   ^{:refer std.lib.kernel/sandbox-open}
+   (fact "sandbox-open remains the canonical prefixed operation"
+     (fn? kernel/sandbox-open)
+     => true)
+
+   ^{:refer std.lib.kernel/capabilities}
+   (fact "capabilities remains the canonical kernel inspection operation"
+     (fn? kernel/capabilities)
+     => true)])
+
+(pr-str (run '[std.lib.kernel-test]))

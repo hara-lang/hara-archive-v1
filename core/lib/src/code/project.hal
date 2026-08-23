@@ -437,7 +437,11 @@
          files (reduce (fn [output path]
                          (into output (walk-files (File/join root path))))
                        []
-                       roots)]
+                       roots)
+         files (vec
+                (filter (fn [path]
+                          (not (str/includes? (normalized-path path) "/.#")))
+                        files))]
      (if suffix
        (reduce (fn [output path]
                  (if (str/ends-with? path suffix)
