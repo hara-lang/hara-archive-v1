@@ -37,7 +37,7 @@ hara --project core/lib check
 cargo +stable test --locked --manifest-path core/rust/Cargo.toml --workspace
 cargo +stable test --locked --manifest-path core/rust/raw/Cargo.toml --workspace
 mvn -o -B -f core/java/pom.xml -Ptruffle test
-npm test --prefix core/rust/web
+npm --prefix core/rust/web run test:hta
 npm run build --prefix website/hara-www
 ```
 
