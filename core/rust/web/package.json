@@ -12,6 +12,7 @@
     "build:sqlite-browser": "vite build --config vite.sqlite-browser.config.js",
     "test:browser-sdk": "npm run build:browser:wasm && node --test packages/browser/test.mjs packages/browser/packages.test.mjs",
     "test:browser-packages": "node --test packages/browser/packages.test.mjs",
+    "test:pglite-provider": "node --test packages/db-pglite/provider.test.mjs",
     "test:sqlite-provider": "node --test packages/db-sqlite/opfs-lock.test.mjs",
     "test:hta": "node --test hta.test.js hta.test.mjs hta-sandbox.test.mjs",
     "test:exceptions": "node --test exception-conformance.test.mjs",
@@ -23,6 +24,7 @@
     "test:browser": "playwright test"
   },
   "dependencies": {
+    "@electric-sql/pglite": "0.5.4",
     "@hara-lang/hta": "0.1.0",
     "@sqlite.org/sqlite-wasm": "3.50.4-build1"
   },

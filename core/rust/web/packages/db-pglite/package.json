@@ -1,0 +1,11 @@
+{
+  "name": "@hara-lang/db-pglite",
+  "version": "0.1.0",
+  "description": "PGlite WASM provider core for Hara db.postgres",
+  "license": "Apache-2.0",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": "./index.mjs"
+  }
+}

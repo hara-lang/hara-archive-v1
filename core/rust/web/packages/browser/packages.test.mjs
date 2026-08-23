@@ -42,7 +42,7 @@ async function fixture() {
   return { archive, lock, registry, registryCommit, archiveDigest };
 }
 
-async function htaFixture(capabilities = "[]") {
+async function htaFixture(capabilities = "[]", namespace = "db.sqlite.wasm.hta") {
   const source = encoder.encode("(ns demo.world) (def world {:title \"Demo\"})");
   const worker = encoder.encode('import "./assets/chunk.js"; export const sqlite = true;');
   const asset = encoder.encode("export const asset = true;");
@@ -54,7 +54,7 @@ async function htaFixture(capabilities = "[]") {
       + `"provider/browser/worker.mjs" {:size ${worker.byteLength} :sha256 "${workerDigest}"} `
       + `"provider/browser/assets/chunk.js" {:size ${asset.byteLength} :sha256 "${assetDigest}"}} `
       + `:resources {"demo.world" "src/demo/world.hal"} `
-      + `:extensions {db.sqlite.wasm.hta {:root "provider" :provider :hta :abi :hta.v1 `
+      + `:extensions {${namespace} {:root "provider" :provider :hta :abi :hta.v1 `
       + `:targets {:browser {:module "browser/worker.mjs" :runtime :web-worker} `
       + `:node {:module "node/worker.mjs" :runtime :process}} `
       + `:assets ["browser/assets/chunk.js"] :exports {"version" {:args []} "open" {:args [:value]}} `
@@ -232,6 +232,42 @@ test("installation activates only the browser HTA target and publishes a Hara br
   await disposeBrowserPackageProviders(runtime);
   assert.equal(worker.terminated, true);
   assert.deepEqual(revoked, ["blob:sqlite-2", "blob:sqlite-1"]);
+});
+
+test("PostgreSQL :require activates only its generated browser HTA provider", async () => {
+  const { archive, lock, registry } = await htaFixture("[]", "db.postgres.wasm.hta");
+  const registered = [];
+  const workers = [];
+  const runtime = {
+    registerResource(namespace, source) {
+      registered.push([namespace, source]);
+    },
+    raw: {
+      registerPackageLock() {},
+      install_host_handler() {}
+    }
+  };
+  const names = await installLockedPackages(runtime, lock, {
+    origin: "https://packages.example",
+    fetch: async (url) => new Response(url.includes("/v1/registry") ? registry : archive),
+    workerFactory(url, options) {
+      const worker = new FakeWorker();
+      workers.push({ worker, url, options });
+      return worker;
+    },
+    createObjectURL: (_blob) => `blob:postgres-${workers.length}`,
+    revokeObjectURL() {}
+  });
+
+  assert.deepEqual(names, ["demo.world", "db.postgres.wasm.hta"]);
+  assert.equal(workers.length, 1);
+  assert.equal(workers[0].options.type, "module");
+  assert.match(workers[0].url, /^blob:postgres-/);
+  const bridge = registered.find(([namespace]) => namespace === "db.postgres.wasm.hta")[1];
+  assert.match(bridge, /\(ns db\.postgres\.wasm\.hta\)/);
+  assert.match(bridge, /Host\/call "db\.postgres\.wasm\.hta" "version"/);
+  await disposeBrowserPackageProviders(runtime);
+  assert.equal(workers[0].worker.terminated, true);
 });
 
 test("unsupported HTA capabilities fail before a browser worker is created", async () => {
