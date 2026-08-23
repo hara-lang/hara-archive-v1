@@ -122,6 +122,30 @@
       "signal" nil
       "cause" nil})
 
+(fact "translates kebab-case keyword fields to snake-case wire fields"
+  (substrate-json/frame-create
+   :response "response-keyword"
+   {:space "room/a"
+    :reply-to "request-keyword"
+    :status :ok
+    :meta {:trace-id :local}
+    :data {:event-name :changed}})
+  => {"version" "substrate.v1"
+      "kind" "response"
+      "id" "response-keyword"
+      "source" nil
+      "target" nil
+      "space" "room/a"
+      "meta" {"trace_id" "local"}
+      "action" nil
+      "args" nil
+      "reply_to" "request-keyword"
+      "status" "ok"
+      "data" {"event_name" "changed"}
+      "error" nil
+      "signal" nil
+      "cause" nil})
+
 (fact "encodes and decodes validated frames"
   (let [encoded
         (substrate-json/encode-frame
