@@ -6,7 +6,7 @@
             [code.manage.unit.import :as unit-import]))
 
 (def structural-source
-  "(ns demo.structural)\n\n(defn ^{:schema [:fn [:str] :str] :owner :runtime}\n  render\n  \"A multiline\\ndocstring with \\\"quotes\\\".\"\n  [value]\n  value)\n\n(defmacro\n  expose\n  \"Expose a form.\"\n  [form]\n  form)\n\n(defonce ^:private hidden 1)\n\n(defonce cache 7)\n\n(def undocumented 42)\n")
+  "(ns demo.structural)\n\n(defn ^{:public true :schema [:fn [:str] :str] :owner :runtime}\n  render\n  \"A multiline\\ndocstring with \\\"quotes\\\".\"\n  [value]\n  value)\n\n(defmacro\n  expose\n  \"Expose a form.\"\n  [form]\n  form)\n\n(defonce ^:private hidden 1)\n\n(defonce cache 7)\n\n(def undocumented 42)\n")
 
 (fact "structural analysis handles metadata, multiline declarations, escaped docs, and privacy"
   (let [analysis (framework/analyse-source structural-source)
@@ -16,8 +16,11 @@
      (:docstring (nth definitions 0))
      (:schema (:meta (nth definitions 0)))
      (:public (nth definitions 2))
+     (:reachable (nth definitions 2))
      (:docstring (nth definitions 4))
      (unit/public-definition-names
+      {:path "src/demo/structural.hal" :source structural-source})
+     (unit/reachable-definition-names
       {:path "src/demo/structural.hal" :source structural-source})
      (> (:line (nth definitions 1)) 1)])
   => ["demo.structural"
@@ -25,9 +28,30 @@
       "A multiline\ndocstring with \"quotes\"."
       [:fn [:str] :str]
       false
+      false
       nil
+      ["render"]
       ["render" "expose" "cache" "undocumented"]
       true])
+
+^{:refer code.manage.unit/reachable-definitions}
+(fact "reachable definitions retain ordinary helpers while excluding private Vars"
+  (map (fn [entry] (:name entry))
+       (unit/reachable-definitions
+        {:path "src/demo/structural.hal" :source structural-source}))
+  => ["render" "expose" "cache" "undocumented"])
+
+^{:refer code.manage.unit/public-definition-names}
+(fact "public definition names select only explicit API metadata"
+  (unit/public-definition-names
+   {:path "src/demo/structural.hal" :source structural-source})
+  => ["render"])
+
+^{:refer code.manage.unit/reachable-definition-names}
+(fact "reachable definition names expose the independent introspection surface"
+  (unit/reachable-definition-names
+   {:path "src/demo/structural.hal" :source structural-source})
+  => ["render" "expose" "cache" "undocumented"])
 
 (fact "unit analysis exposes Test/run lifecycle structure"
   (select-keys
@@ -76,7 +100,7 @@
   {:path "src/demo/imports.hal"
    :test-path "test/demo/imports_test.hal"
    :source
-   "(ns demo.imports)\n\n(defn ^{:schema [:fn [] :int] :owner :api}\n  answer\n  \"Old title.\"\n  []\n  42)\n\n(defmacro expose\n  [form]\n  form)\n"
+   "(ns demo.imports)\n\n(defn ^{:public true :schema [:fn [] :int] :owner :api}\n  answer\n  \"Old title.\"\n  []\n  42)\n\n(defmacro ^{:public true} expose\n  [form]\n  form)\n"
    :test-source
    "(ns demo.imports-test (:use code.test))\n\n^{:refer demo.imports/answer :added \"2.1\"}\n(fact \"Earlier title\")\n\n^{:refer demo.imports/answer :added \"3.7\"}\n(fact \"Canonical title\")\n\n^{:refer demo.imports/expose :added \"3.7\"}\n(fact \"Expose a form\")\n"})
 

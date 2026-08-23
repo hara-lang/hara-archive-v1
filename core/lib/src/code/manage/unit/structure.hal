@@ -9,6 +9,14 @@
   (or (has? +fact-heads+ head)
       (str/ends-with? head "/fact")))
 
+(defn reachable-definitions
+  [analysis]
+  (vec
+   (filter
+    (fn [definition]
+      (:reachable definition))
+    (:definitions analysis))))
+
 (defn public-definitions
   [analysis]
   (vec
@@ -261,7 +269,7 @@
              :refer refer
              :message (str "missing fact for " refer)}
             nil)))
-      (public-definitions analysis)))))
+      (reachable-definitions analysis)))))
 
 (defn todo-findings
   [facts]
