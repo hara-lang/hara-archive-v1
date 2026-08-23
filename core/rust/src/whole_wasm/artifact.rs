@@ -54,6 +54,9 @@ pub fn compile_artifact(program: &Program) -> Result<Vec<u8>, String> {
         put_u16(&mut payload, id as u16);
         put_u16(&mut payload, function.arity);
     }
+    for native in &capabilities {
+        payload.push(u8::from(*native));
+    }
     put_bytes(&mut payload, &hbc)?;
     put_bytes(&mut payload, &wasm)?;
     let digest = Sha256::digest(&payload);
@@ -103,6 +106,15 @@ pub fn decode_artifact(bytes: &[u8]) -> Result<NativeArtifact, String> {
         }
         functions.push((id, arity));
     }
+    let capabilities = reader
+        .take(count)?
+        .iter()
+        .map(|native| match native {
+            0 => Ok(false),
+            1 => Ok(true),
+            _ => Err("native artifact capability table is not canonical".into()),
+        })
+        .collect::<Result<Vec<_>, String>>()?;
     let program = decode_program(reader.bytes()?)?;
     let wasm = reader.bytes()?.to_vec();
     reader.finish()?;
@@ -118,7 +130,6 @@ pub fn decode_artifact(bytes: &[u8]) -> Result<NativeArtifact, String> {
     {
         return Err("native artifact function metadata mismatch".into());
     }
-    let capabilities = native_function_capabilities(&program);
     Ok(NativeArtifact {
         abi_version,
         program,
