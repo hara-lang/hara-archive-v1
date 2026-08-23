@@ -76,6 +76,17 @@ fn dynamic_values_round_trip_through_a_compiled_hara_function() {
 }
 
 #[test]
+fn arbitrary_integers_round_trip_through_dynamic_whole_wasm_calls() {
+    let mut native = module("(defn echo [value] value)\n0");
+    let input = eval_source("9223372036854775808").unwrap();
+    let function = function(&native, "echo");
+    let output = native
+        .call_value(function, &[input.clone()])
+        .expect("dynamic Hara integer call");
+    assert_eq!(output, input);
+}
+
+#[test]
 fn dynamic_values_are_transformed_inside_whole_wasm() {
     let mut native = module("(defn annotate [value] (assoc value :answer 42))\n0");
     let input = eval_source("{:nested [1 2 3]}").unwrap();

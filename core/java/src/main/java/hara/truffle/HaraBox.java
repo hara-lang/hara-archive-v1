@@ -14,6 +14,7 @@ import com.oracle.truffle.api.library.ExportMessage;
 import hara.lang.data.types.ILinearType;
 import hara.lang.data.types.ISetType;
 import hara.lang.base.Eq;
+import hara.lang.base.NumUtils;
 import hara.lang.base.primitive.Cast;
 import hara.lang.protocol.ICount;
 import hara.lang.protocol.IFind;
@@ -36,13 +37,16 @@ public final class HaraBox implements TruffleObject, IEquality {
   private final String display;
 
   public HaraBox(Object value) {
-    this.value = value;
-    this.display = display(value);
+    this.value = canonicalValue(value);
+    this.display = display(this.value);
   }
 
   public static Object unwrap(Object value) {
     if (value instanceof HaraBox) {
       return ((HaraBox) value).value;
+    }
+    if (value instanceof HaraBigInteger) {
+      return ((HaraBigInteger) value).value();
     }
     return value;
   }
@@ -62,11 +66,13 @@ public final class HaraBox implements TruffleObject, IEquality {
     if (value instanceof BigInteger) {
       return exportBigInteger((BigInteger) value);
     }
-    if (value instanceof Long
-        || value instanceof Integer
+    if (value instanceof Byte
         || value instanceof Short
-        || value instanceof Byte
-        || value instanceof Double
+        || value instanceof Integer
+        || value instanceof Long) {
+      return Long.valueOf(((Number) value).longValue());
+    }
+    if (value instanceof Double
         || value instanceof Float
         || value instanceof Boolean
         || value instanceof String
@@ -93,7 +99,23 @@ public final class HaraBox implements TruffleObject, IEquality {
 
   @TruffleBoundary
   private static Object exportBigInteger(BigInteger value) {
-    return new HaraBigInteger(value);
+    return NumUtils.normalizeInteger(value) instanceof Long normalized
+        ? normalized
+        : new HaraBigInteger(value);
+  }
+
+  private static Object canonicalValue(Object value) {
+    if (value instanceof Byte
+        || value instanceof Short
+        || value instanceof Integer
+        || value instanceof Long
+        || value instanceof BigInteger) {
+      return NumUtils.normalizeInteger(NumUtils.toBigInteger(value));
+    }
+    if (value instanceof HaraBigInteger) {
+      return ((HaraBigInteger) value).value();
+    }
+    return value;
   }
 
   @ExportMessage

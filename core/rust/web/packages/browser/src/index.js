@@ -1,5 +1,6 @@
 import init, * as wasmBindings from "./wasm/hara_wasm.js";
 import { instantiateWholeWasm } from "./whole-wasm.js";
+import { parseJson } from "../../../host/services.js";
 export { installLockedPackages, installPackageProvider, loadLockedPackageResources } from "./packages.js";
 
 const { Runtime } = wasmBindings;
@@ -45,7 +46,7 @@ function createApi(runtime) {
       const value = String(source);
       return Object.freeze({
         artifact: runtime.compileBytecodeArtifact(value),
-        manifest: JSON.parse(runtime.compileBytecodeManifest(value)),
+        manifest: parseJson(runtime.compileBytecodeManifest(value)),
       });
     },
     evalBytecode(artifact) {
@@ -69,7 +70,7 @@ function createApi(runtime) {
       const artifact = runtime.compileWholeWasmArtifact(value);
       return Object.freeze({
         artifact,
-        manifest: JSON.parse(runtime.compileWholeWasmManifest(value)),
+        manifest: parseJson(runtime.compileWholeWasmManifest(value)),
       });
     },
     raw: runtime,

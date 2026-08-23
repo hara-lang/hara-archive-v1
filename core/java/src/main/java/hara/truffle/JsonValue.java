@@ -77,6 +77,28 @@ abstract class JsonValue {
     }
   }
 
+  public static final class BigIntegerValue extends JsonValue {
+    private final BigInteger value;
+
+    public BigIntegerValue(BigInteger value) {
+      this.value = value;
+    }
+
+    public BigInteger value() {
+      return value;
+    }
+
+    @Override
+    public boolean equals(java.lang.Object other) {
+      return other instanceof BigIntegerValue && value.equals(((BigIntegerValue) other).value);
+    }
+
+    @Override
+    public int hashCode() {
+      return value.hashCode();
+    }
+  }
+
   public static final class String extends JsonValue {
     private final java.lang.String value;
 
@@ -149,6 +171,7 @@ abstract class JsonValue {
   }
 
   public static JsonValue fromHara(java.lang.Object value, boolean normalizeKeywords) {
+    value = HaraBox.unwrap(value);
     if (value == null) return Null.INSTANCE;
     if (value instanceof Boolean) return new Bool((Boolean) value);
     if (value instanceof Byte
@@ -158,10 +181,11 @@ abstract class JsonValue {
       return new Integer(((Number) value).longValue());
     }
     if (value instanceof BigInteger) {
+      BigInteger integer = (BigInteger) value;
       try {
-        return new Integer(((BigInteger) value).longValueExact());
+        return new Integer(integer.longValueExact());
       } catch (ArithmeticException e) {
-        throw new IllegalArgumentException("JSON integers must fit in a signed 64-bit value.", e);
+        return new BigIntegerValue(integer);
       }
     }
     if (value instanceof java.lang.String) return new String((java.lang.String) value);
@@ -204,6 +228,7 @@ abstract class JsonValue {
     if (this instanceof Null) return null;
     if (this instanceof Bool) return ((Bool) this).value();
     if (this instanceof Integer) return ((Integer) this).value();
+    if (this instanceof BigIntegerValue) return ((BigIntegerValue) this).value();
     if (this instanceof String) return ((String) this).value();
     if (this instanceof Array) {
       var values = new ArrayList<java.lang.Object>();

@@ -241,6 +241,13 @@ test("json/parse decodes JSON text into maps, arrays, and scalars", async () => 
   assert.deepEqual(value.get("files"), [new Map([["path", "/a.hal"]])]);
 });
 
+test("json/parse preserves integers beyond JavaScript's safe range", async () => {
+  const host = createHostServices({ dbName: "test-json-bigint" });
+  const value = await host["json/parse"]('{"small":9223372036854775807,"large":9223372036854775808}');
+  assert.equal(value.get("small"), 9223372036854775807n);
+  assert.equal(value.get("large"), 9223372036854775808n);
+});
+
 test("json/parse rejects invalid JSON", async () => {
   const host = createHostServices({ dbName: "test-json-bad" });
   await assert.rejects(host["json/parse"]("{nope"));

@@ -551,7 +551,7 @@ fn manage_json_value(value: &Form) -> JsonValue {
         Form::Float(value) => JsonNumber::from_f64(*value)
             .map(JsonValue::Number)
             .unwrap_or_else(|| JsonValue::String(value.to_string())),
-        Form::BigInteger(value) => JsonValue::String(value.clone()),
+        Form::BigInteger(value) => JsonValue::String(value.to_string()),
         Form::Character(value) => JsonValue::String(value.to_string()),
         Form::Regex(value) => JsonValue::String(value.clone()),
         Form::Tagged(tag, value) => JsonValue::String(format!("#{tag}{}", value)),

@@ -133,7 +133,7 @@ fn exception_provenance_value(exception: &ExceptionInfo) -> Value {
 pub enum Value {
     Number(i64),
     Float(f64),
-    BigInteger(String),
+    BigInteger(BigInt),
     Character(char),
     Regex(String),
     Tagged(Box<PTaggedLiteral<Value>>),
@@ -2899,7 +2899,7 @@ impl crate::lang::hash::JavaHash for Value {
             Self::String(v) => jh::java_string_hash(v) as i64,
             Self::Number(value) => jh::hash_long(*value) as i64,
             Self::Float(value) => jh::hash_double(*value) as i64,
-            Self::BigInteger(value) => jh::canonical_decimal_str_hash(value) as i64,
+            Self::BigInteger(value) => jh::canonical_decimal_str_hash(&value.to_string()) as i64,
             // Java hashes java.util.regex.Pattern by identity; hash the
             // pattern string instead (deterministic deviation).
             Self::Regex(v) => jh::java_string_hash(v) as i64,
@@ -2987,7 +2987,7 @@ impl Value {
             Self::Float(v) if *v == f64::INFINITY => "##Inf".into(),
             Self::Float(v) if *v == f64::NEG_INFINITY => "##-Inf".into(),
             Self::Float(v) => format!("(double {v})"),
-            Self::BigInteger(v) => numeric::canonical_big_integer(v).unwrap_or_else(|_| v.clone()),
+            Self::BigInteger(v) => v.to_string(),
             Self::Character('\n') => "\\newline".into(),
             Self::Character(' ') => "\\space".into(),
             Self::Character('\t') => "\\tab".into(),

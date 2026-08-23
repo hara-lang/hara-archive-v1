@@ -2,6 +2,7 @@ package hara.truffle;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.math.BigInteger;
 
 /** A dependency-free parser for the strict, proof-friendly JSON v1 profile. */
 final class StrictJson {
@@ -70,12 +71,17 @@ final class StrictJson {
         while (!end() && isDigit(source.charAt(offset))) offset++;
       }
       if (!end() && (peek('.') || peek('e') || peek('E'))) {
-        fail("Provable JSON v1 only supports signed 64-bit integers");
+        fail("Provable JSON v1 only supports integers");
       }
       try {
-        return new JsonValue.Integer(Long.parseLong(source.substring(start, offset)));
+        BigInteger value = new BigInteger(source.substring(start, offset));
+        try {
+          return new JsonValue.Integer(value.longValueExact());
+        } catch (ArithmeticException ignored) {
+          return new JsonValue.BigIntegerValue(value);
+        }
       } catch (NumberFormatException e) {
-        fail("JSON integer is outside the signed 64-bit range");
+        fail("Invalid JSON integer");
         throw new AssertionError();
       }
     }

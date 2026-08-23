@@ -2,6 +2,7 @@ package hara.kernel.base;
 
 import hara.lang.base.Ex;
 import hara.lang.base.G;
+import hara.lang.base.NumUtils;
 import hara.lang.base.primitive.Array;
 import hara.lang.base.primitive.Num;
 import hara.kernel.builtin.BuiltinStruct;
@@ -367,7 +368,7 @@ public interface Parser {
             && value.compareTo(BigInteger.valueOf(Long.MAX_VALUE)) <= 0) {
           return Num.num(value.longValue());
         }
-        throw new NumberFormatException("Invalid number: " + s);
+        return NumUtils.normalizeInteger(value);
       }
       m = floatPat.matcher(s);
       if (m.matches() && (s.indexOf('.') >= 0 || s.indexOf('e') >= 0 || s.indexOf('E') >= 0)) {

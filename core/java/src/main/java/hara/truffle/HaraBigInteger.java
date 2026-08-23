@@ -24,6 +24,10 @@ public final class HaraBigInteger implements TruffleObject {
   private final BigInteger value;
 
   public HaraBigInteger(BigInteger value) {
+    if (value == null) throw new NullPointerException("value");
+    if (value.compareTo(LONG_MIN) >= 0 && value.compareTo(LONG_MAX) <= 0) {
+      throw new IllegalArgumentException("HaraBigInteger requires a value outside signed 64-bit range");
+    }
     this.value = value;
   }
 

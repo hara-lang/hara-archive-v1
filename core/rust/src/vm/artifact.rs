@@ -3,6 +3,8 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
+use num_bigint::BigInt;
+use num_traits::ToPrimitive;
 use sha2::{Digest, Sha256};
 
 use super::opcode::Instruction;
@@ -561,7 +563,7 @@ fn write_metadata_value(out: &mut Writer, value: &MetadataValue) -> Result<(), S
         }
         BigInteger(v) => {
             out.byte(4);
-            out.string(v)?;
+            out.string(&v.to_string())?;
         }
         Character(v) => {
             out.byte(6);
@@ -626,7 +628,14 @@ fn read_metadata_value(reader: &mut Reader<'_>) -> Result<MetadataValue, String>
         1 => MetadataValue::Boolean(reader.boolean()?),
         2 => MetadataValue::Number(reader.i64()?),
         3 => MetadataValue::Float(f64::from_bits(reader.u64()?)),
-        4 => MetadataValue::BigInteger(reader.string()?),
+        4 => {
+            let value = BigInt::parse_bytes(reader.string()?.as_bytes(), 10)
+                .ok_or("invalid metadata big integer")?;
+            value
+                .to_i64()
+                .map(MetadataValue::Number)
+                .unwrap_or(MetadataValue::BigInteger(value))
+        }
         5 => return Err("unsupported metadata tag: decimal".into()),
         6 => MetadataValue::Character(
             char::from_u32(reader.u32()?).ok_or("invalid metadata character")?,

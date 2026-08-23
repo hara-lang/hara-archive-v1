@@ -1,4 +1,6 @@
 use super::Form;
+use num_bigint::BigInt;
+use num_traits::ToPrimitive;
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 
@@ -230,7 +232,15 @@ impl<'a> ByteReader<'a> {
             TRUE => Ok(Form::Bool(true)),
             LONG => Ok(Form::Number(self.read_i64()?)),
             DOUBLE => Ok(Form::Float(self.read_f64()?)),
-            BIG_INTEGER => Ok(Form::BigInteger(self.read_string()?)),
+            BIG_INTEGER => {
+                let text = self.read_string()?;
+                let value = BigInt::parse_bytes(text.as_bytes(), 10)
+                    .ok_or_else(|| "invalid big integer".to_string())?;
+                Ok(match value.to_i64() {
+                    Some(value) => Form::Number(value),
+                    None => Form::BigInteger(value),
+                })
+            }
             DECIMAL => {
                 let value = self.read_string()?;
                 // Early shared goldens used opcode 6 for strings before the
