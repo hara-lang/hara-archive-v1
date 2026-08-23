@@ -811,6 +811,7 @@ fn deref_binding_value(name: &str, value: Value) -> Value {
     match value {
         Value::Var(var)
             if name.starts_with("std.native.")
+                || name.starts_with("std.protocol.")
                 || var.symbol().get_name() == Symbol::parse(name).get_name() =>
         {
             var.deref_value()
