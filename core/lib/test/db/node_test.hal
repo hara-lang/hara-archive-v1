@@ -60,4 +60,11 @@
    (nth db/ACTIONS 15)]
   => [16 "@xt.db/kernel-init" "@xt.db/dataview-attach-model"])
 
+(fact "database node options keep snake_case at the transport boundary"
+  [(db/option-transport-id {:transport-id "peer-kebab"})
+   (db/option-transport-id {"transport-id" "peer-string"})
+   (db/option-transport-id {:transport_id "peer-snake"})
+   (db/option-transport-id {"transport_id" "peer-wire"})]
+  => ["peer-kebab" "peer-string" nil nil])
+
 (pr-str (run '[db.node-test]))

@@ -225,6 +225,24 @@
          [(:kind (get connected :runtime))
           (get connected :transport-attached)
           (get (get connected :init) :status)]))
-     => [:node-worker true :setup])])
+     => [:node-worker true :setup])
+
+    (fact "database runtime options keep snake_case at the transport boundary"
+     (let [node (substrate/node-create "runtime-options")
+           output (deref
+                   (runtime/adapter-boot
+                    :test
+                    node
+                    {:boot (fn [current transport-id worker-id ready]
+                             {:transport transport-id
+                              :worker worker-id})}
+                    {:transport_id "legacy-transport"
+                     :worker_id "legacy-worker"}))]
+       [(get output :transport)
+        (get output :ready)])
+     => [runtime/DEFAULT-TRANSPORT
+         {"signal" "ready"
+          "transport" runtime/DEFAULT-TRANSPORT
+          "worker" runtime/DEFAULT-WORKER})])
 
 (pr-str (run '[db.node.runtime-test]))

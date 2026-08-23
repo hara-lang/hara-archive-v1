@@ -76,12 +76,13 @@
        "meta" {"transport_id" "peer-b"}}])
 
 (fact "accepts kebab-case transport metadata keys"
-  [(util/transport-request-target
-    (substrate/node-create "node/target-kebab")
-    {:transport-id "peer-b"})
-   (util/context-transport-id {:transport-id "peer-b"})
-   (util/context-transport-id {"transport_id" "peer-c"})]
-  => ["peer-b" "peer-b" "peer-c"])
+  (let [node (substrate/node-create "node/target-kebab")]
+    [(util/transport-request-target node {:transport-id "peer-b"})
+     (util/context-transport-id {:transport-id "peer-b"})
+     (util/context-transport-id {"transport_id" "peer-c"})
+     (util/transport-request-target node {"transport-id" "legacy-string"})
+     (util/transport-request-target node {:transport_id "legacy-keyword"})])
+  => ["peer-b" "peer-b" "peer-c" nil nil])
 
 (fact "constructs and forwards response frames"
   (let [node (substrate/node-create "node/response")

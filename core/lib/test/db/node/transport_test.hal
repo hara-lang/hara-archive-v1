@@ -107,6 +107,18 @@
          "@xt.db/query"
          ["db/primary" "select 1" [{:mode :fast}]]])
 
+   (fact "transport frame decoding accepts wire snake_case fields"
+     (let [decoded
+           (transport/wire->frame
+            {"kind" "response"
+             "id" "res-1"
+             "space" "main"
+             "reply_to" "req-1"
+             "status" "ok"})]
+       [(substrate/frame-kind decoded)
+        (get decoded "reply_to")])
+     => ["response" "req-1"])
+
    (fact "ready messages are separated from substrate frames"
      [(transport/ready-message?
        {"signal" "ready"
