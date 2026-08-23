@@ -5,13 +5,13 @@
 
 (def +alphabet+ "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/")
 
-(defn- input-bytes
+(defn input-bytes
   [value]
   (if (Bytes/instance? value)
     value
     (throw (ex :serialization {:value value} :ex/message "Base64 encode expects Bytes"))))
 
-(defn encode
+(defn ^{:public true} encode
   [value]
   (let [value (input-bytes value)
         length (bytes/count value)]
@@ -40,14 +40,14 @@
                         (str/char-at +alphabet+ fourth)
                         "="))))))))
 
-(defn- value-of
+(defn value-of
   [character index]
   (let [value (str/index-of +alphabet+ character)]
     (if (neg? value)
       (throw (ex :serialization {:character character :index index} :ex/message "Invalid Base64 character"))
       value)))
 
-(defn decode
+(defn ^{:public true} decode
   [source]
   (if (not (string? source))
     (throw (ex :serialization {:value source} :ex/message "Base64 decode expects a string")))
