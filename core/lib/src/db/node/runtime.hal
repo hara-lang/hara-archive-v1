@@ -88,7 +88,7 @@
 
 (defn- forward-frame
   [source target transport-id frame]
-  (substrate/receive-frame target frame {:transport-id transport-id}))
+  (substrate/receive-frame target frame {:transport_id transport-id}))
 
 (defn connect-nodes
   "Attaches a bidirectional in-memory transport between two Substrate nodes."
@@ -104,7 +104,7 @@
                                (fn [frame]
                                  (forward-frame server-node client-node transport-id frame)))
    (proxy-util/set-default-transport client-node transport-id)
-   {:transport-id transport-id
+   {:transport_id transport-id
     :client client-node
     :server server-node}))
 
@@ -113,7 +113,7 @@
   [client-node server-node transport-id]
   (substrate/detach-transport client-node transport-id)
   (substrate/detach-transport server-node transport-id)
-  {:transport-id transport-id
+  {:transport_id transport-id
    :detached true})
 
 (defn local-connect
@@ -121,7 +121,7 @@
   ([client-node server-node config schema lookup]
    (local-connect client-node server-node config schema lookup {}))
   ([client-node server-node config schema lookup options]
-   (let [transport-id (or (compatible-get options :transport-id) DEFAULT-TRANSPORT)
+   (let [transport-id (or (compatible-get options :transport_id) DEFAULT-TRANSPORT)
          worker-id (or (compatible-get options :worker-id) DEFAULT-WORKER)
          drivers (compatible-get options :drivers)]
      (install-drivers server-node drivers)
@@ -130,7 +130,7 @@
      (connect-nodes client-node server-node transport-id)
      (promise/catch
       (promise/then
-       (client/kernel-init client-node config schema lookup {:transport-id transport-id})
+       (client/kernel-init client-node config schema lookup {:transport_id transport-id})
        (fn [status]
          {:runtime (db.node.runtime/DatabaseRuntime
                     :local client-node server-node transport-id worker-id nil)
@@ -158,7 +158,7 @@
    adapter requires :boot, called with node, transport-id, worker-id and the
    ready signal. The adapter must attach its inbound/outbound transport to node."
   [kind node adapter options]
-  (let [transport-id (or (compatible-get options :transport-id) DEFAULT-TRANSPORT)
+  (let [transport-id (or (compatible-get options :transport_id) DEFAULT-TRANSPORT)
         worker-id (or (compatible-get options :worker-id) DEFAULT-WORKER)
         drivers (compatible-get options :drivers)
         boot-function (compatible-get adapter :boot)
@@ -209,7 +209,7 @@
    adapter requires :connect, called with client-node and transport-id. The
    function must attach a Substrate transport and may return a value or promise."
   [kind client-node config schema lookup adapter options]
-  (let [transport-id (or (compatible-get options :transport-id) DEFAULT-TRANSPORT)
+  (let [transport-id (or (compatible-get options :transport_id) DEFAULT-TRANSPORT)
         worker-id (or (compatible-get options :worker-id) DEFAULT-WORKER)
         connect-function (compatible-get adapter :connect)]
     (if (nil? connect-function)
@@ -222,7 +222,7 @@
           (fn [_]
             (proxy-util/set-default-transport client-node transport-id)
             (promise/then
-             (client/kernel-init client-node config schema lookup {:transport-id transport-id})
+             (client/kernel-init client-node config schema lookup {:transport_id transport-id})
              (fn [status]
                {:runtime (db.node.runtime/DatabaseRuntime
                           kind client-node nil transport-id worker-id adapter)
@@ -292,9 +292,9 @@
      (fn [_]
        (db-kernel/kernel-teardown-main server-node config)))
     (promise/then
-     (client/service-close-all client-node {:transport-id transport-id})
+     (client/service-close-all client-node {:transport_id transport-id})
      (fn [_]
-       (client/kernel-teardown client-node config {:transport-id transport-id})))))
+       (client/kernel-teardown client-node config {:transport_id transport-id})))))
 
 (defn close-runtime
   "Closes dynamic and configured services, then detaches the runtime transport."

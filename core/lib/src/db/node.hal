@@ -58,9 +58,7 @@
 
 (defn option-transport-id
   [options]
-  (or (get (or options {}) :transport-id)
-      (get (or options {}) :transport_id)
-      (get (or options {}) "transport-id")
+  (or (get (or options {}) :transport_id)
       (get (or options {}) "transport_id")))
 
 (defn get-transport-id
@@ -73,7 +71,7 @@
   [node options]
   (let [transport-id (get-transport-id node options)]
     (if transport-id
-      {:transport-id transport-id}
+      {:transport_id transport-id}
       {})))
 
 (defn request-client
@@ -109,7 +107,7 @@
   [action transport-id]
   (fn [space args request node]
     (substrate/request node nil action args
-                       {:transport-id transport-id})))
+                       {:transport_id transport-id})))
 
 (defn install-proxy-handlers
   [node actions transport-id]
@@ -120,7 +118,7 @@
         (let [action (nth actions index)]
           (do (substrate/register-handler
                node action (proxy-handler action transport-id)
-               {:proxy true :transport-id transport-id})
+               {:proxy true :transport_id transport-id})
               (recur (inc index))))))))
 
 (defn init-server

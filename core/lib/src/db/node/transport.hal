@@ -182,8 +182,7 @@
    (or (db.node.transport/wire->value (compatible-get message :meta)) {})
    (compatible-get message :action)
    (or (db.node.transport/wire->value (compatible-get message :args)) [])
-   (or (compatible-get message :reply-to)
-       (compatible-get message :reply_to))
+   (compatible-get message :reply_to)
    (wire-keyword (compatible-get message :status))
    (db.node.transport/wire->value (compatible-get message :data))
    (db.node.transport/wire->value (compatible-get message :error))
@@ -197,7 +196,7 @@
 
 (defn- receive-endpoint-frame
   [node transport-id frame]
-  (substrate/receive-frame node frame {:transport-id transport-id}))
+  (substrate/receive-frame node frame {:transport_id transport-id}))
 
 (defn attach-endpoint
   "Attaches an endpoint as a Substrate transport.
@@ -224,7 +223,7 @@
          (when control-listener
            (control-listener message)))))
     {:node node
-     :transport-id transport-id
+     :transport_id transport-id
      :endpoint endpoint}))
 
 (defn message-adapter

@@ -33,15 +33,15 @@
     (promise/value
      (substrate/attach-transport
       client "server"
-      {:send-fn
+      {:send_fn
        (fn [frame]
-         (substrate/receive-frame server frame {:transport-id "client"}))}))
+         (substrate/receive-frame server frame {:transport_id "client"}))}))
     (promise/value
      (substrate/attach-transport
       server "client"
-      {:send-fn
+      {:send_fn
        (fn [frame]
-         (substrate/receive-frame client frame {:transport-id "server"}))}))
+         (substrate/receive-frame client frame {:transport_id "server"}))}))
     (db/init-server-proxy client "server")
     (promise/value
      (db/kernel-init client {:primary {:type "memory"}}

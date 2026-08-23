@@ -225,9 +225,7 @@
 (defn context-transport-id
   [context]
   (or (get (or context {}) "transport_id")
-      (get (or context {}) :transport_id)
-      (get (or context {}) "transport-id")
-      (get (or context {}) :transport-id)))
+      (get (or context {}) :transport_id)))
 
 (defn receive-subscribe
   "Processes an inbound subscribe control frame."

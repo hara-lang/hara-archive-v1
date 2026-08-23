@@ -96,12 +96,9 @@
      "id" transport-id
      "listener" nil
      "meta" (or (option-value implementation "meta" :meta) {})
-     "send_fn" (or (option-value implementation "send_fn" :send_fn)
-                    (option-value implementation "send-fn" :send-fn))
-     "start_fn" (or (option-value implementation "start_fn" :start_fn)
-                     (option-value implementation "start-fn" :start-fn))
-     "stop_fn" (or (option-value implementation "stop_fn" :stop_fn)
-                    (option-value implementation "stop-fn" :stop-fn))}))
+     "send_fn" (option-value implementation "send_fn" :send_fn)
+     "start_fn" (option-value implementation "start_fn" :start_fn)
+     "stop_fn" (option-value implementation "stop_fn" :stop_fn)}))
 
 (defn get-services
   [node]
