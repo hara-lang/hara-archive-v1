@@ -228,6 +228,7 @@ std.block.navigate
 std.block.parse
 std.block.protocol
 std.block.reader
+std.block.source
 std.block.template
 std.block.type
 std.block.value

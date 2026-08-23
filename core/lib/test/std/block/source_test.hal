@@ -1,0 +1,17 @@
+(ns std.block.source-test
+  (:require [std.block.source :as source]))
+
+^{:refer std.block.source/namespace-name}
+(def namespace-name-result
+  (test-check "finds the declared namespace"
+              (source/namespace-name "(ns demo.core)\n(def value 1)")
+              "demo.core"))
+
+^{:refer std.block.source/grep-source}
+(def grep-source-result
+  (test-check "finds matching source lines"
+              (source/grep-source "alpha\nbeta alpha" "alpha")
+              [{:line 1 :column 1 :text "alpha"}
+               {:line 2 :column 1 :text "beta alpha"}]))
+
+[namespace-name-result grep-source-result]

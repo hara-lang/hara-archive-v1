@@ -4631,6 +4631,7 @@ mod tests {
                     .eval_text(
                         "(ns std-block-rust-probe \
                          (:require [std.block :as block] [std.block.grid :as grid] \
+                                   [std.block.navigate :as navigate] \
                                    [std.block.reader :as reader]))",
                     )
                     .unwrap();
@@ -4642,7 +4643,7 @@ mod tests {
                     ("(block/string (block/layout '(if ready [1 2] [3 4]) {:width 10}))", "\"(if ready [1 2] [3 4])\""),
                     ("(block/string (grid/grid (block/parse-first \"(if\\nready\\ndone)\") 0 {:rules {'if {:indent 1}}}))", "\"(if\\n  ready\\n  done)\""),
                     ("(let [b (block/parse-first \"[1 #_2 3]\")] [(block/value b) (block/child-values b)])", "[[1 3] [1 3]]"),
-                    ("(let [original (block/block [1 2]) location (std.lib.zip/step-right (std.lib.zip/step-right (std.lib.zip/step-inside (block/block-zip original)))) edited (std.lib.zip/root-element (std.lib.zip/replace-right location (block/block 3)))] [(block/string original) (block/string edited)])", "[\"[1 2]\" \"[1 3]\"]"),
+                    ("(let [original (block/block [1 2]) location (std.lib.zip/step-right (std.lib.zip/step-right (std.lib.zip/step-inside (navigate/navigator original)))) edited (std.lib.zip/root-element (std.lib.zip/replace-right location (block/block 3)))] [(block/string original) (block/string edited)])", "[\"[1 2]\" \"[1 3]\"]"),
                     ("(let [input (reader/create \"ab\\ncd\") first-two (reader/read-times input reader/read-char 2) newline (reader/read-char input)] [first-two (reader/reader-position input) (reader/read-to-boundary input)])", "[[\"a\" \"b\"] [2 1] \"cd\"]"),
                     ("(block/value (block/parse-string \"[4 5]\"))", "[4 5]"),
                 ];

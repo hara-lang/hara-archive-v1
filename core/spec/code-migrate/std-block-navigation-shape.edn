@@ -1,6 +1,6 @@
 {:namespace "std.block.navigation"
  :target/namespace "code.framework.navigation"
- :dependencies ["std.block" "std.block.zip" "std.foundation" "std.lib.zip"]
+ :dependencies ["std.block" "std.block.navigate" "std.foundation" "std.lib.zip"]
  :public-symbols
  ["anchor-children"
   "block-input"
