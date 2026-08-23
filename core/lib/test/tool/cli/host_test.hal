@@ -8,4 +8,11 @@
                 {:request/route :tool.cli.route/remote
                  :request/arguments ["127.0.0.1:1311"]}))
               {:host/action :remote
+               :host/arguments ["127.0.0.1:1311"]})
+  (test-check "interactive handlers execute through the default host value"
+              (:result/data
+               (host/handler
+                {:request/route :tool.cli.route/remote
+                 :request/arguments ["127.0.0.1:1311"]}))
+              {:host/action :remote
                :host/arguments ["127.0.0.1:1311"]})]

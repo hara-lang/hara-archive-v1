@@ -126,12 +126,16 @@
         twice (deploy-manifest/extend once)]
     [[(get-in once [:cli/apps 0 :app/id])
       (get-in once [:cli/routes 0 :route/id])
-      (get-in once [:cli/options 0 :option/id])
+      (map (fn [option] (:option/id option)) (:cli/options once))
       (get-in once [:cli/handlers 0 :handler/id])]
      (= once twice)])
   => [[:tool.cli/deployment
        :tool.cli.route/deploy
-       :tool.cli.option/config
+       [:tool.cli.option/project
+        :tool.cli.option/config
+        :tool.cli.option/tap
+        :tool.cli.option/dry-run
+        :tool.cli.option/format]
        :tool.cli.handler/deploy]
       true])
 
