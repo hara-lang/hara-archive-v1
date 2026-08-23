@@ -77,7 +77,7 @@ pub struct CompiledProductManifest {
 
 impl CompiledProductManifest {
     pub fn to_json(&self) -> serde_json::Value {
-        serde_json::json!({
+        let mut manifest = serde_json::json!({
             "schema": self.schema,
             "product": self.product.as_str(),
             "format": self.format,
@@ -88,7 +88,14 @@ impl CompiledProductManifest {
             "options-digest": self.options_digest,
             "artifact-digest": self.artifact_digest,
             "artifact-bytes": self.artifact_bytes,
-        })
+        });
+        if self.product == CompiledProductKind::WholeWasm {
+            manifest["entrypoint"] = serde_json::json!("hara_entry");
+            manifest["error-global"] = serde_json::json!("hara_error");
+            manifest["heap-global"] = serde_json::json!("hara_heap");
+            manifest["import-module"] = serde_json::json!("hara");
+        }
+        manifest
     }
 
     pub fn cache_key(&self) -> ProductCacheKey {

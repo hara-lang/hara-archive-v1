@@ -16,6 +16,10 @@ export interface HaraRuntime {
   compileBytecode(source: string): Uint8Array;
   evalBytecode(artifact: Uint8Array): string;
   compileWholeWasm(source: string): Promise<WholeWasmModule>;
+  compileWholeWasmProduct(source: string): WholeWasmProduct;
+  loadWholeWasm(
+    product: WholeWasmProduct | Uint8Array | ArrayBuffer
+  ): Promise<WholeWasmModule>;
   installHostHandler(handler: Function): void;
   dispose(): Promise<void>;
   readonly raw: unknown;
@@ -23,8 +27,15 @@ export interface HaraRuntime {
 
 export interface WholeWasmModule {
   call(...arguments: Array<number | bigint>): bigint;
+  callFunction(functionId: number, ...arguments: Array<number | bigint>): bigint;
+  readonly manifest: Readonly<Record<string, unknown>> | null;
   readonly module: WebAssembly.Module;
   readonly instance: WebAssembly.Instance;
+}
+
+export interface WholeWasmProduct {
+  readonly artifact: Uint8Array;
+  readonly manifest: Readonly<Record<string, unknown>>;
 }
 
 export interface LockedPackageOptions {

@@ -67,38 +67,136 @@ function hostImports(host) {
 }
 
 /** Instantiates and calls a whole-function Hara WebAssembly artifact. */
-export async function instantiateWholeWasm(artifact, Host, fallback) {
+export async function instantiateWholeWasm(product, Host, fallback) {
   if (typeof Host !== "function") {
     throw new Error("whole-Wasm compilation requires @hara-lang/browser/full");
   }
+  const { artifact: inputArtifact, manifest } = wholeWasmProduct(product);
+  const artifact = normalizeArtifactBytes(inputArtifact);
+  const decoded = decodeHnw0(artifact);
+  await validateManifest(manifest, decoded, artifact);
   const host = new Host(artifact);
-  const { hbc, wasm } = decodeHnw0(artifact);
+  const { hbc, wasm } = decoded;
+  const names = manifestNames(manifest);
   const { instance, module } = await WebAssembly.instantiate(wasm, {
-    hara: hostImports(host)
+    [names.importModule]: hostImports(host)
   });
-  if (typeof instance.exports.hara_entry !== "function") {
-    throw new Error("whole-Wasm module has no hara_entry function");
+  if (typeof instance.exports[names.entrypoint] !== "function") {
+    throw new Error(`whole-Wasm module has no ${names.entrypoint} function`);
   }
   return Object.freeze({
     host,
     module,
     instance,
+    manifest,
+    entryFunction() {
+      return typeof host.entryFunction === "function"
+        ? host.entryFunction()
+        : 0;
+    },
     call(...arguments_) {
       host.beginCall();
-      if (!host.supportsNative(0n)) {
+      const entryFunction = this.entryFunction();
+      if (!host.supportsNative(BigInt(entryFunction))) {
         if (typeof fallback !== "function") {
           throw new Error("whole-Wasm entry requires its validated HBC fallback");
         }
         return fallback(hbc);
       }
-      instance.exports.hara_error.value = 0;
-      instance.exports.hara_heap.value = 0;
+      instance.exports[names.errorGlobal].value = 0;
+      instance.exports[names.heapGlobal].value = 0;
       try {
-        return instance.exports.hara_entry(...arguments_.map(BigInt));
+        return instance.exports[names.entrypoint](...arguments_.map(BigInt));
       } catch (error) {
-        const message = ERRORS.get(instance.exports.hara_error.value);
+        const message = ERRORS.get(instance.exports[names.errorGlobal].value);
         throw new Error(message ?? `whole-Wasm trap: ${error.message}`);
       }
+    },
+    callFunction(functionId, ...arguments_) {
+      const id = Number(functionId);
+      if (!Number.isSafeInteger(id) || id < 0) {
+        throw new TypeError("whole-Wasm function id must be a non-negative integer");
+      }
+      if (id !== this.entryFunction()) {
+        throw new Error(`whole-Wasm function ${id} has no prepared export`);
+      }
+      return this.call(...arguments_);
     }
   });
+}
+
+function wholeWasmProduct(value) {
+  if (value instanceof Uint8Array || value instanceof ArrayBuffer ||
+      ArrayBuffer.isView(value)) {
+    return { artifact: value, manifest: null };
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value) ||
+      value.artifact == null) {
+    throw new TypeError("whole-Wasm product requires artifact bytes");
+  }
+  return { artifact: value.artifact, manifest: value.manifest ?? null };
+}
+
+async function validateManifest(manifest, decoded, artifact) {
+  if (manifest == null) return;
+  if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) {
+    throw new TypeError("whole-Wasm product manifest must be an object");
+  }
+  if (manifest.product !== "whole-wasm" || manifest.format !== "HNW0") {
+    throw new Error("whole-Wasm product manifest does not describe HNW0");
+  }
+  if (manifest["abi-version"] !== `hnw0/${decoded.abiVersion}`) {
+    throw new Error(
+      `whole-Wasm product manifest ABI does not match HNW0/${decoded.abiVersion}`,
+    );
+  }
+  if (manifest["artifact-bytes"] != null &&
+      manifest["artifact-bytes"] !== artifact.byteLength) {
+    throw new Error("whole-Wasm product manifest byte length does not match HNW0");
+  }
+  if (manifest["artifact-digest"] != null) {
+    const subtle = globalThis.crypto?.subtle;
+    if (!subtle) {
+      throw new Error("whole-Wasm product manifest digest cannot be verified");
+    }
+    const bytes = new Uint8Array(
+      await subtle.digest("SHA-256", artifact),
+    );
+    const digest = [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+    if (digest !== manifest["artifact-digest"]) {
+      throw new Error("whole-Wasm product manifest digest does not match artifact");
+    }
+  }
+}
+
+function normalizeArtifactBytes(value) {
+  if (value instanceof Uint8Array) return value;
+  if (value instanceof ArrayBuffer) return new Uint8Array(value);
+  if (ArrayBuffer.isView(value)) {
+    return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+  }
+  throw new TypeError("whole-Wasm artifact must be binary data");
+}
+
+function manifestNames(manifest) {
+  if (manifest == null) {
+    return {
+      entrypoint: "hara_entry",
+      errorGlobal: "hara_error",
+      heapGlobal: "hara_heap",
+      importModule: "hara",
+    };
+  }
+  const name = (key) => {
+    if (typeof manifest[key] !== "string" || manifest[key].length === 0) {
+      throw new Error(`whole-Wasm product manifest is missing ${key}`);
+    }
+    return manifest[key];
+  };
+  return {
+    entrypoint: name("entrypoint"),
+    errorGlobal: name("error-global"),
+    heapGlobal: name("heap-global"),
+    importModule: name("import-module"),
+  };
 }

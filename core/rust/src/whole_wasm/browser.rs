@@ -12,6 +12,7 @@ use super::handles::{Handle, HandleScope};
 pub struct WholeWasmHost {
     constants: Vec<Value>,
     capabilities: Vec<bool>,
+    entry_function: u16,
     handles: HandleScope,
 }
 
@@ -21,6 +22,7 @@ impl WholeWasmHost {
     pub fn new(bytes: &[u8]) -> Result<WholeWasmHost, JsValue> {
         let artifact = decode_artifact(bytes).map_err(js_error)?;
         Ok(Self {
+            entry_function: artifact.program.entry,
             constants: artifact.program.constants,
             capabilities: artifact.capabilities,
             handles: HandleScope::default(),
@@ -39,6 +41,11 @@ impl WholeWasmHost {
             .and_then(|index| self.capabilities.get(index))
             .copied()
             .unwrap_or(false)
+    }
+
+    #[wasm_bindgen(js_name = entryFunction)]
+    pub fn entry_function(&self) -> i64 {
+        i64::from(self.entry_function)
     }
 
     #[wasm_bindgen(js_name = constantHandle)]

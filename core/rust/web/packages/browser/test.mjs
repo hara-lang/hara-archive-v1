@@ -49,6 +49,17 @@ test("browser SDK compiles and executes whole-function WebAssembly", async () =>
   );
   assert.equal(compiled.call(), 12_497_500n);
 
+  const product = hara.compileWholeWasmProduct("(+ 19 23)");
+  const loaded = await hara.loadWholeWasm(product);
+  assert.equal(loaded.call(), 42n);
+  await assert.rejects(
+    () => hara.loadWholeWasm({
+      artifact: product.artifact,
+      manifest: { ...product.manifest, "artifact-digest": "00".repeat(32) }
+    }),
+    /manifest digest does not match artifact/
+  );
+
   const division = await hara.compileWholeWasm("(/ 1 0)");
   assert.throws(() => division.call(), /division by zero/);
   hara.dispose();

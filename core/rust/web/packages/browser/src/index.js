@@ -1,6 +1,7 @@
 import init, * as wasmBindings from "./wasm/hara_wasm.js";
 import { instantiateWholeWasm } from "./whole-wasm.js";
 import { parseJson } from "../../../host/services.js";
+import { disposeBrowserPackageProviders } from "./packages.js";
 export {
   disposeBrowserPackageProviders,
   installLockedPackages,
