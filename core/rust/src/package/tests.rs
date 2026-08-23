@@ -261,7 +261,7 @@ fn selects_verified_runtime_archive_before_and_after_installation() {
     let root = fixture();
     let archive = runtime_archive(&root, b"wasm", b"wasm", false);
     let verified =
-        PackageManifest::select_wasm_import_archive(&archive, "provider", &wasm_requirements())
+        PackageManifest::select_hta_require_archive(&archive, "provider", &wasm_requirements())
             .unwrap();
     let PackageSelection::Variant(variant) = &verified.selection else {
         panic!("expected Wasm import");
@@ -273,17 +273,20 @@ fn selects_verified_runtime_archive_before_and_after_installation() {
     let installed = install_archive_at(&archive, &dist).unwrap();
     let installed_manifest = PackageManifest::read(&installed.join("package.edn")).unwrap();
     let installed_selection = installed_manifest
-        .select_wasm_import("provider", &wasm_requirements())
+        .select_hta_require("provider", &wasm_requirements())
         .unwrap();
     assert_eq!(installed_selection, verified.selection);
     assert!(dist
         .join("packages/hara/example/provider/1.0.0.edn")
         .is_file());
 
-    let portable =
-        PackageManifest::select_archive(&archive, PackageRuntime::Jvm, &PackageRuntimeRequirements::default())
-            .unwrap();
-    assert_eq!(portable.selection, PackageSelection::Portable);
+    let error = PackageManifest::select_archive(
+        &archive,
+        PackageRuntime::Jvm,
+        &PackageRuntimeRequirements::default(),
+    )
+    .unwrap_err();
+    assert_eq!(error.code, "package/missing-flavor");
     fs::remove_dir_all(root).unwrap();
 }
 
