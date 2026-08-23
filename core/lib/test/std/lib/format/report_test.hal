@@ -1,0 +1,162 @@
+(ns std.lib.format.report-test
+  (:use code.test)
+  (:require [std.lib.format.common :as common]
+            [std.lib.format.report :as report]))
+
+(def +summary+
+  {:items 2
+   :results 2
+   :warnings 1
+   :errors 0
+   :cumulative 7
+   :elapsed 8})
+
+(def +progress+
+  {:section/id :items
+   :section/title "ITEMS"
+   :section/kind :progress
+   :section/entries
+   [{:item/id :alpha
+     :item/index 0
+     :item/total 2
+     :status :return
+     :item/display "changed"
+     :elapsed 3}]})
+
+^{:refer std.lib.format.report/contains-value?}
+(fact "checks membership without requiring a collection"
+  [(report/contains-value? [:a :b] :a)
+   (report/contains-value? nil :a)]
+  => [true false])
+
+^{:refer std.lib.format.report/distinct-values}
+(fact "preserves first-seen order while removing duplicates"
+  (report/distinct-values [:a :b :a :c :b])
+  => [:a :b :c])
+
+^{:refer std.lib.format.report/record-role}
+(fact "maps task statuses to line roles"
+  [(report/record-role {:status :return})
+   (report/record-role {:status :warn})
+   (report/record-role {:status :error})
+   (report/record-role {:status :critical})
+   (report/record-role {:status :other})]
+  => [:success :warning :error :critical :default])
+
+^{:refer std.lib.format.report/status-text}
+(fact "maps task statuses to stable display text"
+  [(report/status-text :return)
+   (report/status-text :warn)
+   (report/status-text :error)
+   (report/status-text :critical)
+   (report/status-text :other)]
+  => ["ok" "warn" "error" "critical" "other"])
+
+^{:refer std.lib.format.report/time-text}
+(fact "renders optional elapsed values with units"
+  [(report/time-text nil)
+   (report/time-text 8)]
+  => ["" "8ms"])
+
+^{:refer std.lib.format.report/progress-line}
+(fact "renders progress entries with role and elapsed details"
+  (select-keys
+   (report/progress-line
+    {:item/id :alpha
+     :item/index 0
+     :item/total 2
+     :status :return
+     :item/display "changed"
+     :elapsed 3})
+   [:line/text :line/role])
+  => {:line/text "1/2  :alpha  ok  changed  3ms"
+      :line/role :success})
+
+^{:refer std.lib.format.report/diagnostic-line}
+(fact "renders diagnostic entries using data or error values"
+  (select-keys
+   (report/diagnostic-line {:item/id :beta :status :warn :data "review"})
+   [:line/text :line/role])
+  => {:line/text ":beta  warn  review"
+      :line/role :warning})
+
+^{:refer std.lib.format.report/summary-field-label}
+(fact "labels standard and extension summary fields"
+  [(report/summary-field-label :items)
+   (report/summary-field-label :custom)]
+  => ["Items" "custom"])
+
+^{:refer std.lib.format.report/summary-value-text}
+(fact "formats summary values and elapsed fields"
+  [(report/summary-value-text :items 2)
+   (report/summary-value-text :elapsed 8)]
+  => ["2" "8ms"])
+
+^{:refer std.lib.format.report/summary-fields}
+(fact "uses configured fields and sorted summary extensions"
+  [(report/summary-fields {:section/fields []} +summary+)
+   (report/summary-fields {:section/fields [:errors]} +summary+)]
+  => [[:items :results :warnings :errors :cumulative :elapsed]
+      [:errors :cumulative :elapsed :items :results :warnings]])
+
+^{:refer std.lib.format.report/summary-lines}
+(fact "renders summary entries as structured lines"
+  (map :line/text (report/summary-lines {:section/entries [+summary+]}))
+  => ["Items: 2" "Results: 2" "Warnings: 1" "Errors: 0"
+      "Cumulative: 7ms" "Elapsed: 8ms"])
+
+^{:refer std.lib.format.report/section-role}
+(fact "assigns semantic roles to section ids"
+  [(report/section-role {:section/id :warnings})
+   (report/section-role {:section/id :summary})
+   (report/section-role {:section/id :other})]
+  => [:warning :highlight :highlight])
+
+^{:refer std.lib.format.report/section-content-lines}
+(fact "dispatches section content by kind"
+  [(map :line/text (report/section-content-lines +progress+))
+   (map :line/text
+        (report/section-content-lines
+         {:section/kind :text :section/entries ["hello"]}))]
+  => [["1/2  :alpha  ok  changed  3ms"] ["hello"]])
+
+^{:refer std.lib.format.report/section-selected?}
+(fact "applies include and exclude section filters"
+  [(report/section-selected? {:section/id :items} {})
+   (report/section-selected? {:section/id :items} {:include-sections [:items]})
+   (report/section-selected? {:section/id :items} {:exclude-sections [:items]})]
+  => [true true false])
+
+^{:refer std.lib.format.report/section-lines}
+(fact "adds optional section titles and omits empty sections"
+  [(map :line/text (report/section-lines +progress+ {:include-section-titles true}))
+   (report/section-lines
+    {:section/id :empty :section/entries []}
+    {:include-section-titles true})]
+  => [["ITEMS" "1/2  :alpha  ok  changed  3ms"] []])
+
+^{:refer std.lib.format.report/add-group}
+(fact "joins non-empty line groups with one separator"
+  (map :line/text
+       (report/add-group
+        [(common/line "one")]
+        [(common/line "two")]))
+  => ["one" "" "two"])
+
+^{:refer std.lib.format.report/report-lines}
+(fact "renders report documents into grouped structured lines"
+  (map :line/text
+       (report/report-lines
+        {:report/title "REPORT"
+         :report/sections [+progress+]
+         :report/annotations ["Done"]}))
+  => ["REPORT" "" "ITEMS" "1/2  :alpha  ok  changed  3ms" "" "Done"])
+
+^{:refer std.lib.format.report/report}
+(fact "renders report lines as plain text"
+  (report/report
+   {:report/title "REPORT"
+    :report/sections [+progress+]})
+  => "REPORT\n\nITEMS\n1/2  :alpha  ok  changed  3ms")
+
+(pr-str (run {:namespace "std.lib.format.report-test"}))

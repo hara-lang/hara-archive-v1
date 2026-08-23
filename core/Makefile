@@ -25,7 +25,7 @@ HARA_BENCH_SCRIPTS := ../../../website/hara-benchmarks/scripts/hara-runtime
         rust rust-offline rust-headless rust-build rust-build-release rust-release \
         rust-test rust-test-main rust-test-library rust-test-cli \
         rust-test-integration rust-test-examples rust-test-doc rust-test-ignored rust-test-crates \
-        rust-test-abi rust-test-hta rust-test-vm rust-test-compiler \
+        rust-test-abi rust-test-hta rust-test-vm rust-test-compiler rust-test-conformance-groups \
         rust-raw-test rust-layout lib-test \
         native-image native-image-run native-image-offline \
         wasm wasm-build wasm-build-all wasm-web wasm-web-build wasm-browser-build \
@@ -61,6 +61,8 @@ help: ## Show the available runtime targets
 	@echo '  make rust-test-main             Run main crate library, CLI, integration, example, and doc slices'
 	@echo '  make rust-test-crates           Run ABI, HTA codec, VM, and compiler crate slices'
 	@echo '  make rust-test-ignored          Run artifact-dependent ignored Rust tests'
+	@echo '  make rust-test-conformance-groups ARGS="vm whole-wasm"'
+	@echo '                                  Run issue #1047 Rust failure groups'
 	@echo '  make rust-test-<slice>          Run one Rust slice (see README for names)'
 	@echo '  make wasm-test                  Run every raw, Node, SDK, and browser WASM test slice'
 	@echo '  make wasm-test-raw              Run raw WASM unit and integration slices'
@@ -161,6 +163,9 @@ rust-test-vm: ## Run the VM-only runtime crate tests
 
 rust-test-compiler: ## Run the compiler facade crate tests
 	$(CARGO) test --manifest-path $(RUST_MANIFEST) -p hara-compiler
+
+rust-test-conformance-groups: ## Run issue #1047 Rust failure groups
+	../scripts/runtime/run-rust-conformance-groups $(if $(strip $(ARGS)),$(ARGS),all)
 
 rust-raw-test: wasm-test-raw ## Compatibility alias for raw WASM crate tests
 

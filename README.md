@@ -437,6 +437,7 @@ omitted.
 | `rust-test-compiler` | `hara-compiler` facade crate |
 | `rust-test-crates` | All four supporting workspace crates |
 | `rust-test-ignored` | Opt-in tests requiring external artifacts; excluded from `rust-test` |
+| `rust-test-conformance-groups` | Issue #1047 runtime-owner groups for targeting Rust failures |
 
 For example:
 
@@ -444,6 +445,7 @@ For example:
 make -C core rust-test-library
 make -C core rust-test-integration
 make -C core rust-test-crates
+make -C core rust-test-conformance-groups ARGS="vm whole-wasm"
 ```
 
 ### Wasm slices

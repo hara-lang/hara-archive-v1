@@ -1,18 +1,19 @@
 (ns std.lib.format.report
+  (:config {:role :internal})
   (:require [std.lib.format.common :as common]
             [std.lib.format.table :as table]))
 
-(def ^:private +default-options+
+(def +default-options+
   {:include-title true
    :include-section-titles true
    :include-annotations true
    :include-empty false
    :exclude-sections []})
 
-(def ^:private +default-summary-fields+
+(def +default-summary-fields+
   [:items :results :warnings :errors :cumulative :elapsed])
 
-(defn- contains-value?
+(defn contains-value?
   [values value]
   (reduce
    (fn [found candidate]
@@ -20,7 +21,7 @@
    false
    (or values [])))
 
-(defn- distinct-values
+(defn distinct-values
   [values]
   (reduce
    (fn [output value]
@@ -30,7 +31,7 @@
    []
    (or values [])))
 
-(defn- record-role
+(defn record-role
   [record]
   (case (:status record)
     :return :success
@@ -39,7 +40,7 @@
     :critical :critical
     :default))
 
-(defn- status-text
+(defn status-text
   [status]
   (case status
     :return "ok"
@@ -48,13 +49,13 @@
     :critical "critical"
     (name (or status :return))))
 
-(defn- time-text
+(defn time-text
   [value]
   (if (nil? value)
     ""
     (str value "ms")))
 
-(defn- progress-line
+(defn progress-line
   [record]
   (let [index (or (:item/index record) 0)
         total (or (:item/total record) "?")
@@ -81,7 +82,7 @@
           elapsed)
      (record-role record))))
 
-(defn- diagnostic-line
+(defn diagnostic-line
   [record]
   (let [id (common/value-text (:item/id record))
         status (status-text (:status record))
@@ -96,7 +97,7 @@
             (str "  " (common/value-text value))))
      (record-role record))))
 
-(defn- summary-field-label
+(defn summary-field-label
   [field]
   (case field
     :items "Items"
@@ -107,14 +108,14 @@
     :elapsed "Elapsed"
     (name field)))
 
-(defn- summary-value-text
+(defn summary-value-text
   [field value]
   (if (or (= :cumulative field)
           (= :elapsed field))
     (time-text value)
     (common/value-text value)))
 
-(defn- summary-fields
+(defn summary-fields
   [section summary]
   (let [configured (:section/fields section)
         base
@@ -131,7 +132,7 @@
           (keys summary)))]
     (distinct-values (concat base extras))))
 
-(defn- summary-lines
+(defn summary-lines
   [section]
   (let [summary (first (:section/entries section))]
     (vec
@@ -145,7 +146,7 @@
                (get summary field)))))
       (summary-fields section summary)))))
 
-(defn- section-role
+(defn section-role
   [section]
   (case (:section/id section)
     :warnings :warning
@@ -155,7 +156,7 @@
     :items :highlight
     :highlight))
 
-(defn- section-content-lines
+(defn section-content-lines
   [section]
   (case (:section/kind section)
     :progress
@@ -181,7 +182,7 @@
 
     []))
 
-(defn- section-selected?
+(defn section-selected?
   [section options]
   (let [id (:section/id section)
         include (:include-sections options)
@@ -191,7 +192,7 @@
          (contains-value? include id))
      (not (contains-value? exclude id)))))
 
-(defn- section-lines
+(defn section-lines
   [section options]
   (let [content (section-content-lines section)
         entries (:section/entries section)
@@ -210,7 +211,7 @@
           content))
         content))))
 
-(defn- add-group
+(defn add-group
   [output group]
   (if (empty? group)
     output
