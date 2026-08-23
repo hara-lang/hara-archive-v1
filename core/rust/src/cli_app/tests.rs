@@ -1,7 +1,8 @@
 use super::manifest::merge_sources;
 use super::{
     merged_manifest_source, BASE_MANIFEST_SOURCE, EXTENSION_BIND_MANIFEST_SOURCE,
-    EXTENSION_INSPECT_MANIFEST_SOURCE, PROJECT_BUILD_MANIFEST_SOURCE,
+    EXTENSION_INSPECT_MANIFEST_SOURCE, EXTENSION_WIT_IMPORT_MANIFEST_SOURCE,
+    EXTENSION_WIT_PROJECT_MANIFEST_SOURCE, PROJECT_BUILD_MANIFEST_SOURCE,
 };
 use crate::kernel::parse;
 
@@ -30,6 +31,8 @@ fn embedded_manifest_extensions_are_valid_and_idempotent() {
         PROJECT_BUILD_MANIFEST_SOURCE,
         EXTENSION_INSPECT_MANIFEST_SOURCE,
         EXTENSION_BIND_MANIFEST_SOURCE,
+        EXTENSION_WIT_IMPORT_MANIFEST_SOURCE,
+        EXTENSION_WIT_PROJECT_MANIFEST_SOURCE,
         merged_manifest_source(),
     ] {
         parse(source).expect("embedded CLI manifest source must be valid EDN");
@@ -38,6 +41,8 @@ fn embedded_manifest_extensions_are_valid_and_idempotent() {
         PROJECT_BUILD_MANIFEST_SOURCE,
         EXTENSION_INSPECT_MANIFEST_SOURCE,
         EXTENSION_BIND_MANIFEST_SOURCE,
+        EXTENSION_WIT_IMPORT_MANIFEST_SOURCE,
+        EXTENSION_WIT_PROJECT_MANIFEST_SOURCE,
     ] {
         assert_eq!(
             merge_sources(merged_manifest_source(), source).unwrap(),
@@ -48,6 +53,8 @@ fn embedded_manifest_extensions_are_valid_and_idempotent() {
         ":tool.cli.route/project-build",
         ":tool.cli.route/extension-inspect",
         ":tool.cli.route/extension-bind",
+        ":tool.cli.route/extension-wit-import",
+        ":tool.cli.route/extension-wit-project",
     ] {
         assert!(merged_manifest_source().contains(route));
     }

@@ -17,6 +17,10 @@ pub const EXTENSION_INSPECT_MANIFEST_SOURCE: &str =
     include_str!("../resources/hara-cli-extension-inspect.edn");
 pub const EXTENSION_BIND_MANIFEST_SOURCE: &str =
     include_str!("../resources/hara-cli-extension-bind.edn");
+pub const EXTENSION_WIT_IMPORT_MANIFEST_SOURCE: &str =
+    include_str!("../resources/hara-cli-extension-wit-import.edn");
+pub const EXTENSION_WIT_PROJECT_MANIFEST_SOURCE: &str =
+    include_str!("../resources/hara-cli-extension-wit-project.edn");
 
 #[derive(Clone, Copy)]
 pub struct ManifestSource;
@@ -39,8 +43,12 @@ pub fn merged_manifest_source() -> &'static str {
                     .expect("embedded project-build CLI manifest extension must be valid");
             let inspect = manifest::merge_sources(&project, EXTENSION_INSPECT_MANIFEST_SOURCE)
                 .expect("embedded extension-inspect CLI manifest extension must be valid");
-            manifest::merge_sources(&inspect, EXTENSION_BIND_MANIFEST_SOURCE)
-                .expect("embedded extension-bind CLI manifest extension must be valid")
+            let bind = manifest::merge_sources(&inspect, EXTENSION_BIND_MANIFEST_SOURCE)
+                .expect("embedded extension-bind CLI manifest extension must be valid");
+            let wit_import = manifest::merge_sources(&bind, EXTENSION_WIT_IMPORT_MANIFEST_SOURCE)
+                .expect("embedded WIT import CLI manifest extension must be valid");
+            manifest::merge_sources(&wit_import, EXTENSION_WIT_PROJECT_MANIFEST_SOURCE)
+                .expect("embedded WIT projection CLI manifest extension must be valid")
         })
         .as_str()
 }

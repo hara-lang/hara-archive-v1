@@ -50,6 +50,9 @@
                 {:request/route :tool.cli.route/extension-install
                  :request/arguments ["package"]})
                (extension/operation-request
+                {:request/route :tool.cli.route/extension-wit-import
+                 :request/arguments ["api.wit" "--out" "api.hal"]})
+               (extension/operation-request
                 {:request/route :tool.cli.route/extension-inspect
                  :request/arguments ["math.wasm" "--out" "math.hal"]})
                (extension/operation-request
@@ -57,6 +60,8 @@
                  :request/arguments ["math.hal" "--module" "math.wasm"
                                      "--out" "dist"]})]
               [{:operation :install :arguments ["package"]}
+               {:operation :wit-import
+                :arguments ["api.wit" "--out" "api.hal"]}
                {:operation :inspect
                 :arguments ["math.wasm" "--out" "math.hal"]}
                {:operation :bind
@@ -76,4 +81,26 @@
                 ["math.interface.hal" "--out=dist"
                  "--module" "math.wasm"]))
               {:host/action :extension-bind
-               :host/arguments ["math.interface.hal" "math.wasm" "dist"]})]
+               :host/arguments ["math.interface.hal" "math.wasm" "dist"]})
+  (test-check "WIT import preserves explicit options and strict mode"
+              (:result/data
+               (extension/wit-import-command
+                ["api.wit" "--out" "api.hal" "--module=api.wasm"
+                 "--namespace" "demo.api" "--world" "api-world"
+                 "--strict"]))
+              {:host/action :extension-wit-import
+               :host/arguments ["api.wit" "api.hal"
+                                "--module" "api.wasm"
+                                "--namespace" "demo.api"
+                                "--world" "api-world"
+                                "--strict"]})
+  (test-check "WIT projection uses the explicit Hara interface route"
+              (:result/data
+               (extension/wit-project-command
+                ["api.hal" "--out=api.wit" "--package" "demo:api"
+                 "--interface" "api" "--world" "api-world"]))
+              {:host/action :extension-wit-project
+               :host/arguments ["api.hal" "api.wit"
+                                "--package" "demo:api"
+                                "--interface" "api"
+                                "--world" "api-world"]})]

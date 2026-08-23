@@ -1,0 +1,22 @@
+{:extension/id :tool.cli.extension/wit-project
+ :extension/version "0.1.0"
+ :app/id :tool.cli/extension
+ :app/summary "Project exact Hara interfaces to WIT."
+ :route
+ {:route/id :tool.cli.route/extension-wit-project
+  :route/path ["extension" "wit-project"]
+  :route/aliases []
+  :route/handler :tool.cli.handler/extension
+  :route/execution :finite
+  :route/tier :public
+  :route/summary "Project the exact subset of a Hara interface to WIT."
+  :route/arguments [{:argument/id :tool.cli.argument/extension-wit-project-command
+                     :argument/cardinality :one-or-more
+                     :argument/type :string}]
+  :route/options []
+  :route/formats [:text :edn]}
+ :handler
+ {:handler/id :tool.cli.handler/extension
+  :handler/input :tool.cli.schema/request
+  :handler/output :tool.cli.schema/result
+  :handler/registry :closed}}

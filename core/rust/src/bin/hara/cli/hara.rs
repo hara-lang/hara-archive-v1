@@ -9,6 +9,7 @@ use hara_wasm::wasm_binding;
 use hara_wasm::Runtime;
 use std::io::{self, Read};
 use std::path::{Component, Path, PathBuf};
+use std::{collections::BTreeMap, fs};
 
 pub(super) fn run(options: &Options, argv: &[String]) -> Result<(), String> {
     run_hara(options, argv)
@@ -205,6 +206,8 @@ fn execute_host_action(
                 .ok_or_else(|| "remote requires HOST:PORT".to_owned())?,
         ),
         "extension-inspect" => execute_extension_inspect(options, arguments),
+        "extension-wit-import" => execute_extension_wit_import(options, arguments),
+        "extension-wit-project" => execute_extension_wit_project(options, arguments),
         "extension-bind" => execute_extension_bind(options, arguments),
         "compile-halc" => {
             #[cfg(feature = "halc-encoder")]
@@ -268,6 +271,161 @@ fn execute_extension_bind(options: &Options, arguments: &[String]) -> Result<(),
     println!("module: {}", package.module_digest);
     println!("interface: {}", package.interface_digest);
     println!("bindings: {}", package.binding_digest);
+    Ok(())
+}
+
+fn execute_extension_wit_import(options: &Options, arguments: &[String]) -> Result<(), String> {
+    if arguments.len() < 2 {
+        return Err("extension wit-import host action requires SOURCE OUTPUT [OPTIONS]".into());
+    }
+    let source_path = authoring_path(options, &arguments[0], "WIT source")?;
+    let output_path = authoring_path(options, &arguments[1], "output")?;
+    let flags = wit_flags(
+        &arguments[2..],
+        &["module", "namespace", "world", "interface", "ir"],
+    )?;
+    let source = fs::read_to_string(&source_path).map_err(|error| {
+        format!(
+            "wasm-wit/input-unavailable: {} ({error})",
+            source_path.display()
+        )
+    })?;
+    let artifact = wasm_binding::import_wit(
+        &source,
+        &source_path.display().to_string(),
+        &wasm_binding::WitImportOptions {
+            module: flags.get("module").cloned(),
+            namespace: flags.get("namespace").cloned(),
+            world: flags.get("world").cloned(),
+            interface: flags.get("interface").cloned(),
+            strict: flags.contains_key("strict"),
+        },
+    )?;
+    write_generated_file(&output_path, artifact.interface_source.as_bytes())?;
+    if let Some(ir) = flags.get("ir") {
+        let path = authoring_path(options, ir, "IR output")?;
+        write_generated_file(&path, artifact.normalized_ir.as_bytes())?;
+    }
+    println!(
+        "Imported WIT {} as {} ({}) to {}",
+        artifact.interface,
+        artifact.namespace,
+        artifact.route.as_keyword(),
+        output_path.display()
+    );
+    for diagnostic in &artifact.diagnostics {
+        println!("diagnostic: {diagnostic}");
+    }
+    Ok(())
+}
+
+fn execute_extension_wit_project(options: &Options, arguments: &[String]) -> Result<(), String> {
+    if arguments.len() < 2 {
+        return Err("extension wit-project host action requires INTERFACE OUTPUT [OPTIONS]".into());
+    }
+    let interface_path = authoring_path(options, &arguments[0], "interface")?;
+    let output_path = authoring_path(options, &arguments[1], "output")?;
+    let flags = wit_flags(&arguments[2..], &["package", "interface", "world"])?;
+    let source = fs::read_to_string(&interface_path).map_err(|error| {
+        format!(
+            "wasm-wit/input-unavailable: {} ({error})",
+            interface_path.display()
+        )
+    })?;
+    let interface =
+        wasm_binding::WasmInterface::parse(&source, &interface_path.display().to_string())?;
+    let artifact = wasm_binding::project_wit(
+        &interface,
+        &wasm_binding::WitProjectionOptions {
+            package: flags.get("package").cloned(),
+            interface: flags.get("interface").cloned(),
+            world: flags.get("world").cloned(),
+            strict: flags.contains_key("strict"),
+        },
+    )?;
+    write_generated_file(&output_path, artifact.source.as_bytes())?;
+    println!(
+        "Projected {} to {}",
+        interface.namespace,
+        output_path.display()
+    );
+    for diagnostic in &artifact.diagnostics {
+        println!("diagnostic: {diagnostic}");
+    }
+    Ok(())
+}
+
+fn wit_flags(arguments: &[String], allowed: &[&str]) -> Result<BTreeMap<String, String>, String> {
+    let mut flags = BTreeMap::new();
+    let mut index = 0;
+    while index < arguments.len() {
+        let argument = &arguments[index];
+        if argument == "--strict" {
+            if !flags.insert("strict".into(), String::new()).is_none() {
+                return Err("duplicate --strict".into());
+            }
+            index += 1;
+            continue;
+        }
+        let (name, inline) = argument
+            .strip_prefix("--")
+            .and_then(|value| value.split_once('='))
+            .map_or_else(
+                || (argument.strip_prefix("--").unwrap_or_default(), None),
+                |(name, value)| (name, Some(value)),
+            );
+        if !allowed.contains(&name) {
+            return Err(format!("unknown WIT option --{name}"));
+        }
+        let value = match inline {
+            Some(value) if !value.is_empty() => value.to_owned(),
+            Some(_) => return Err(format!("--{name} requires a value")),
+            None => {
+                index += 1;
+                arguments
+                    .get(index)
+                    .filter(|value| !value.starts_with("--"))
+                    .cloned()
+                    .ok_or_else(|| format!("--{name} requires a value"))?
+            }
+        };
+        if flags.insert(name.to_owned(), value).is_some() {
+            return Err(format!("duplicate --{name}"));
+        }
+        index += 1;
+    }
+    Ok(flags)
+}
+
+fn write_generated_file(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    if path.exists() {
+        return Err(format!("wasm-wit/output-exists: {}", path.display()));
+    }
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("wasm-wit/output-unavailable: {parent:?} ({error})"))?;
+    }
+    let temporary = path.with_extension(format!(
+        "hara-wit-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|error| format!("wasm-wit/output-unavailable: {error}"))?
+            .as_nanos()
+    ));
+    fs::write(&temporary, bytes).map_err(|error| {
+        format!(
+            "wasm-wit/output-unavailable: {} ({error})",
+            temporary.display()
+        )
+    })?;
+    if let Err(error) = fs::rename(&temporary, path) {
+        let _ = fs::remove_file(&temporary);
+        return Err(format!(
+            "wasm-wit/output-unavailable: {} ({error})",
+            path.display()
+        ));
+    }
     Ok(())
 }
 

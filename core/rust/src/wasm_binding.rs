@@ -14,6 +14,9 @@ mod parser;
 #[cfg(not(target_arch = "wasm32"))]
 mod runtime;
 mod syntax;
+pub mod wit;
+mod wit_format;
+mod wit_parser;
 
 #[cfg(test)]
 mod tests;
@@ -46,6 +49,11 @@ pub use package::{
 };
 #[cfg(not(target_arch = "wasm32"))]
 pub use runtime::WasmtimeMemoryExecutor;
+pub use wit::{
+    import_wit, project_wit, WitDiagnostic, WitDiagnosticSeverity, WitImportArtifact,
+    WitImportOptions, WitProjectionArtifact, WitProjectionOptions, WitRoute, WIT_IR_SCHEMA,
+    WIT_MANIFEST_SCHEMA,
+};
 
 pub const WASM_INTERFACE_SCHEMA: &str = "hara.wasm-interface/0-alpha";
 
