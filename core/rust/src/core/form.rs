@@ -1061,7 +1061,7 @@ pub(crate) fn call_function(function: &Function, arguments: Vec<Value>) -> Resul
 /// Runs one evaluator operation with a bounded evaluation journal. This is
 /// intentionally separate from the legacy stack-trace flag above.
 #[cfg(feature = "evaluation-journal")]
-pub(crate) fn with_evaluation_journal<T>(
+pub fn with_evaluation_journal<T>(
     journal_id: crate::journal::JournalId,
     limits: crate::journal::JournalLimits,
     evaluate: impl FnOnce() -> Result<T, String>,
