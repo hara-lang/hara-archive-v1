@@ -8506,28 +8506,32 @@ mod tests {
     }
 
     #[test]
-    fn integer_arithmetic_rejects_machine_integer_overflow() {
+    fn integer_arithmetic_promotes_machine_integer_overflow() {
         let mut runtime = Runtime::new();
         assert_eq!(
             runtime
                 .eval_text("(inc 9223372036854775807)")
-                .unwrap_err(),
-            "integer overflow"
+                .unwrap(),
+            "9223372036854775808"
         );
         assert_eq!(
             runtime
                 .eval_text("(dec -9223372036854775808)")
-                .unwrap_err(),
-            "integer overflow"
+                .unwrap(),
+            "-9223372036854775809"
         );
         assert_eq!(
             runtime
-                .eval_text("(* 9223372036854775808 9223372036854775808)")
+                .eval_text("(* 9223372036854775807 2)")
                 .unwrap(),
-            "85070591730234615865843651857942052864"
+            "18446744073709551614"
         );
         assert_eq!(
-            runtime.eval_text("(integer? 9223372036854775808)").unwrap(),
+            runtime.eval_text("(+ 9223372036854775808 -9223372036854775807)").unwrap(),
+            "1"
+        );
+        assert_eq!(
+            runtime.eval_text("(integer? (inc 9223372036854775807))").unwrap(),
             "true"
         );
     }

@@ -55,6 +55,32 @@ fn direct_reduce_operation(
     }
 }
 
+fn direct_coroutine_create_operation(
+    _specification: &DirectCallableSpec,
+    arguments: Vec<Value>,
+) -> Result<Value, String> {
+    let Some(Value::Function(function)) = arguments.first() else {
+        return Err("coroutine/create expects a function".into());
+    };
+    Ok(Value::Coroutine(Rc::new(Coroutine::new(Value::Function(
+        function.clone(),
+    )))))
+}
+
+fn direct_coroutine_resume_operation(
+    _specification: &DirectCallableSpec,
+    arguments: Vec<Value>,
+) -> Result<Value, String> {
+    if let Value::Coroutine(coroutine) = &arguments[0] {
+        return fiber::coroutine::resume_sync(coroutine.clone(), arguments[1..].to_vec());
+    }
+    protocol_call(
+        "std.protocol.icoroutine/ICoroutine",
+        "resume",
+        &arguments,
+    )
+}
+
 fn direct_predicate_operation(
     specification: &DirectCallableSpec,
     arguments: Vec<Value>,

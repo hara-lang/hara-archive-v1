@@ -93,7 +93,13 @@ pub(crate) fn error_category(message: &str) -> &'static str {
         (&["require name/value pairs"], "binding pairs"),
         (&["function expects"], "function arity"),
         (&["value is not callable"], "not callable"),
-        (&["function parameters must be a vector"], "fn params shape"),
+        (
+            &[
+                "function parameters must be a vector",
+                "defn arity must contain parameters and a body",
+            ],
+            "fn params shape",
+        ),
         (&["conj expects a collection"], "conj receiver"),
         (&["throw expects one value"], "throw arity"),
         (&["thrown: "], "thrown"),
@@ -137,6 +143,7 @@ pub use bundle::{
 };
 pub use compiler::{
     compile_halc_module, compile_source, compile_source_with, compile_source_with_config,
+    source_namespace_config,
 };
 pub use disassemble::disassemble;
 pub use error::{CompileError, CompileErrorKind, ValidationError, VmError};

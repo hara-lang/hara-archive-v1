@@ -122,11 +122,22 @@ impl Runtime {
     /// is validated but not executed; globals intern only at execution.
     pub fn compile_bytecode(&self, source: &str) -> Result<std::rc::Rc<vm::Program>, String> {
         core::with_macros(self.macros.clone(), || {
-            let config = self
-                .generated_configs
-                .get(&self.current_namespace())
-                .cloned()
-                .unwrap_or_else(kernel::GeneratedNamespaceConfig::defaults);
+            let forms = kernel::read_forms(source).map_err(|error| error.to_string())?;
+            let has_namespace_form = forms.iter().any(|form| {
+                matches!(
+                    crate::core::form_without_metadata(&form.form),
+                    crate::kernel::Form::List(items)
+                        if matches!(items.first(), Some(crate::kernel::Form::Symbol(operator)) if operator == "ns" || operator == "ns+")
+                )
+            });
+            let config = if has_namespace_form {
+                vm::source_namespace_config(&forms).map_err(|error| error.to_string())?
+            } else {
+                self.generated_configs
+                    .get(&self.current_namespace())
+                    .cloned()
+                    .unwrap_or_else(kernel::GeneratedNamespaceConfig::defaults)
+            };
             vm::compile_source_with_config(source, &self.namespace_registry, config)
                 .map(|mut program| {
                     program.namespace =

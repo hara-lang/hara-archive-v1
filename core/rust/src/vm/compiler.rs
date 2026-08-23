@@ -22,7 +22,7 @@
 use crate::core::{Primitive, Value};
 use crate::kernel::{Form, Position, Span, SpannedForm};
 use crate::lang::data::List as PList;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use super::error::{CompileError, CompileErrorKind};
 use super::opcode::Instruction;
@@ -73,13 +73,14 @@ pub fn compile_source(source: &str) -> Result<Program, CompileError> {
 
 fn compile_spanned_forms(forms: &[SpannedForm]) -> Result<Program, CompileError> {
     prepare_top_level_namespaces(forms)?;
-    compile_spanned_forms_without_namespace_preparation(forms)
+    compile_spanned_forms_without_namespace_preparation(forms, HashSet::new())
 }
 
 fn compile_spanned_forms_without_namespace_preparation(
     forms: &[SpannedForm],
+    excluded_intrinsics: HashSet<String>,
 ) -> Result<Program, CompileError> {
-    let mut compiler = Compiler::new();
+    let mut compiler = Compiler::new(excluded_intrinsics);
     compiler.predeclare_top_level(forms);
     let children = compiler.children(forms);
     compiler.compile_sequence(&children, true)?;
@@ -155,13 +156,17 @@ fn compile_spanned_forms_with_config(
             .iter()
             .map(|form| rewrite_spanned_form(form, &config))
             .collect::<Vec<_>>();
-        compile_spanned_forms_without_namespace_preparation(&rewritten)
+        compile_spanned_forms_without_namespace_preparation(
+            &rewritten,
+            config.excluded_intrinsics().clone(),
+        )
     })
 }
 
-fn source_namespace_config(
+pub fn source_namespace_config(
     forms: &[SpannedForm],
 ) -> Result<crate::kernel::GeneratedNamespaceConfig, CompileError> {
+    let mut selected = None;
     for form in forms {
         let crate::kernel::Form::List(items) = crate::core::form_without_metadata(&form.form)
         else {
@@ -182,37 +187,62 @@ fn source_namespace_config(
                 Some(form.span.start),
             ));
         }
-        return crate::kernel::GeneratedNamespaceConfig::configure_with(
-            &items[clause_start..],
-            |_| true,
-        )
-        .map_err(|message| {
-            CompileError::new(
-                CompileErrorKind::UnsupportedForm,
-                message,
-                Some(form.span.start),
-            )
-        });
+        if operator == "ns" || items.len() > clause_start {
+            selected = Some(
+                crate::kernel::GeneratedNamespaceConfig::configure_with(
+                    &items[clause_start..],
+                    |_| true,
+                )
+                .map_err(|message| {
+                    CompileError::new(
+                        CompileErrorKind::UnsupportedForm,
+                        message,
+                        Some(form.span.start),
+                    )
+                })?,
+            );
+        }
     }
-    Ok(crate::kernel::GeneratedNamespaceConfig::defaults())
+    Ok(selected.unwrap_or_else(crate::kernel::GeneratedNamespaceConfig::defaults))
 }
 
 fn sync_registry_global_aliases(
     config: &mut crate::kernel::GeneratedNamespaceConfig,
     registry: &crate::kernel::NamespaceRegistry<crate::core::Value>,
 ) {
-    let excluded = config.excluded_foundation().clone();
+    let excluded_intrinsics = config.excluded_intrinsics().clone();
+    let excluded_foundation = config.excluded_foundation().clone();
+    let current = registry.current();
+    for library in &excluded_intrinsics {
+        if let Some(alias) = crate::kernel::generated::intrinsic_alias(library) {
+            current.unalias(alias);
+        }
+    }
+    for (alias, target) in current.aliases() {
+        let library = target.name().as_str().strip_prefix("std.foundation.");
+        if library.is_some_and(|library| excluded_intrinsics.contains(library)) {
+            current.unalias(alias.as_str());
+        }
+    }
+    for (alias, target) in current.lazy_aliases() {
+        let library = target.as_str().strip_prefix("std.foundation.");
+        if library.is_some_and(|library| excluded_intrinsics.contains(library)) {
+            current.unalias(alias.as_str());
+        }
+    }
     config.set_global_aliases(
         registry
             .global_aliases()
             .into_iter()
             .filter(|(_, namespace)| {
-                !excluded.contains(
-                    namespace
+                {
+                    let library = namespace
                         .as_str()
                         .strip_prefix("std.foundation.")
-                        .unwrap_or_default(),
-                )
+                        .unwrap_or_default();
+                    !excluded_intrinsics.contains(library)
+                        && !excluded_foundation.contains(library)
+                }
             })
             .map(|(alias, namespace)| {
                 (alias.as_str().to_owned(), namespace.as_str().to_owned())
@@ -394,6 +424,10 @@ struct Compiler {
     /// visible to global references compiled after their defining form
     /// (issue #223 two-phase visibility).
     globals: Vec<String>,
+    /// Intrinsic libraries explicitly removed by the source namespace config.
+    /// This is checked before the process-wide global alias registry so an
+    /// excluded `str/` (or equivalent) cannot be resurrected by lookup.
+    excluded_intrinsics: HashSet<String>,
     /// Source-level forwarding shims opted into call-site lowering with
     /// `^{:inline target/name}`.
     inline_globals: HashMap<String, String>,
@@ -477,7 +511,7 @@ impl Compiler {
         }
     }
 
-    fn new() -> Compiler {
+    fn new(excluded_intrinsics: HashSet<String>) -> Compiler {
         let mut scopes = ScopeStack::new();
         scopes.push_scope();
         Compiler {
@@ -504,6 +538,7 @@ impl Compiler {
                 fallthrough: true,
             }],
             globals: Vec::new(),
+            excluded_intrinsics,
             inline_globals: HashMap::new(),
             var_metadata: Vec::new(),
             top_level: true,

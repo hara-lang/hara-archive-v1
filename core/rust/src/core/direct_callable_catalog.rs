@@ -600,6 +600,24 @@ pub(crate) const DIRECT_CALLABLE_CATALOG: &[DirectCallableSpec] = &[
         Basic
     ),
     direct!(
+        "Coroutine/create",
+        DirectCallableArity::Exact(1),
+        RuntimePrimitive,
+        Operation(direct_coroutine_create_operation)
+    ),
+    direct!(
+        "Coroutine/resume",
+        DirectCallableArity::AtLeast(1),
+        RuntimePrimitive,
+        Operation(direct_coroutine_resume_operation)
+    ),
+    direct!(
+        "std.protocol.icoroutine/resume",
+        DirectCallableArity::AtLeast(1),
+        RuntimePrimitive,
+        Operation(direct_coroutine_resume_operation)
+    ),
+    direct!(
         "name",
         DirectCallableArity::Exact(1),
         RuntimePrimitive,

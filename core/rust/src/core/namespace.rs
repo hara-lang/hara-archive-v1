@@ -527,6 +527,29 @@ fn eval_namespace_form(fs: &[Form], env: &mut HashMap<String, Value>) -> Result<
             }
         });
     }
+    for (alias, target) in destination.aliases() {
+        let excluded = config
+            .excluded_intrinsics()
+            .iter()
+            .any(|library| target.name().as_str() == format!("std.foundation.{library}"));
+        if excluded {
+            destination.unalias(alias.as_str());
+        }
+    }
+    for (alias, target) in destination.lazy_aliases() {
+        let excluded = config
+            .excluded_intrinsics()
+            .iter()
+            .any(|library| target.as_str() == format!("std.foundation.{library}"));
+        if excluded {
+            destination.unalias(alias.as_str());
+        }
+    }
+    for library in config.excluded_intrinsics() {
+        if let Some(alias) = crate::kernel::generated::intrinsic_alias(library) {
+            destination.unalias(alias);
+        }
+    }
     for clause in clauses {
         match clause {
             Form::List(clause_forms) if matches!(clause_forms.first(), Some(Form::Keyword(k)) if k == "require") =>

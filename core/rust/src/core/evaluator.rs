@@ -739,9 +739,6 @@ pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, Stri
                         return Err("internal throw location marker is malformed".into());
                     };
                     let value = eval(value, env)?;
-                    if !matches!(value, Value::ExceptionInfo(_)) {
-                        return Err("throw expects an Exception value created by ex".into());
-                    }
                     Err(thrown_error_at(
                         value,
                         exception_site_at(*line as usize, *column as usize),
@@ -752,9 +749,6 @@ pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, Stri
                         return Err("throw expects one value".into());
                     }
                     let value = eval(&fs[1], env)?;
-                    if !matches!(value, Value::ExceptionInfo(_)) {
-                        return Err("throw expects an Exception value created by ex".into());
-                    }
                     Err(thrown_error(value))
                 }
                 Form::Symbol(n) if n == "try" => {
@@ -798,14 +792,12 @@ pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, Stri
                                 return Err("catch expects a selector, name, and body".into());
                             }
                             let (selector, binding_index, body_index) = match parts.as_slice() {
-                                [_, Form::Symbol(name), ..]
+                                [_, Form::Symbol(name), _]
                                     if name != "Exception" && name != "Throwable" =>
                                 {
                                     ("Exception".to_owned(), 1, 2)
                                 }
-                                [_, Form::Symbol(class), Form::Symbol(_), ..]
-                                    if class == "Exception" || class == "Throwable" =>
-                                {
+                                [_, Form::Symbol(class), Form::Symbol(_), ..] => {
                                     (class.clone(), 2, 3)
                                 }
                                 [_, Form::Keyword(code), Form::Symbol(_), ..]
