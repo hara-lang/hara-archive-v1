@@ -36,8 +36,7 @@ final class HbxBundleLibrary {
           "std.work.command.selector",
           "std.work.command.task",
           "std.work.recipe",
-          "std.work.report",
-          "std.work.template.task");
+          "std.work.report");
 
   record Module(String namespace, HbxBundleCodec.Module descriptor, HbcProgram program) {}
 
@@ -83,7 +82,9 @@ final class HbxBundleLibrary {
       }
       LinkedHashMap<String, Module> indexed = new LinkedHashMap<>();
       for (HbxBundleCodec.Module descriptor : descriptors) {
-        if (REMOVED_MODULES.contains(descriptor.resource())) continue;
+        if (REMOVED_MODULES.contains(descriptor.resource())
+            || descriptor.resource().equals("std.work")
+            || descriptor.resource().startsWith("std.work.")) continue;
         // Hara deliberately has no :refer-clojure mode. Legacy generated
         // modules and explicitly source-owned overlays are resolved from the
         // current HAL resources until the tracked bundle can be regenerated.
