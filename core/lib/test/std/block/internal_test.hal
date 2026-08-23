@@ -1,0 +1,11 @@
+(ns std.block.internal-test
+  (:require [std.block.internal :as block]))
+
+(def results
+  [(test-check "internal block owner remains directly testable"
+               [(get (Runtime/namespace 'std.block.internal) :namespace/role)
+                (block/string (block/block [1 2]))
+                (block/parse-string "[3]")]
+               [:internal "[1 2]" "[3]"])])
+
+results

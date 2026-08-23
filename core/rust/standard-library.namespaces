@@ -220,6 +220,7 @@ std.block.heal.edit
 std.block.heal.indent
 std.block.heal.parse
 std.block.heal.print
+std.block.internal
 std.block.layout
 std.block.layout.common
 std.block.layout.estimate
