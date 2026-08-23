@@ -18,6 +18,7 @@ pub(crate) struct Interface {
 pub(crate) struct World {
     pub exports: Vec<String>,
     pub imports: Vec<String>,
+    pub functions: Vec<Function>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -153,7 +154,10 @@ fn lex(source: &str) -> Result<Vec<Token>, String> {
         } else {
             let mut value = String::from(character);
             while let Some(&next) = chars.peek() {
-                if next.is_whitespace() || "{}()<>:;,=>/\"".contains(next) {
+                if next.is_whitespace() || "{}()<>:;,=>\"".contains(next) {
+                    break;
+                }
+                if next == '/' && matches!(chars.clone().nth(1), Some('/') | Some('*')) {
                     break;
                 }
                 value.push(next);
@@ -198,6 +202,19 @@ impl Parser {
         }
         if interfaces.is_empty() && worlds.is_empty() {
             return Err("WIT document contains no interface or world".into());
+        }
+        for (name, world) in &mut worlds {
+            if !world.functions.is_empty() && world.exports.is_empty() {
+                interfaces.insert(
+                    name.clone(),
+                    Interface {
+                        types: BTreeMap::new(),
+                        functions: world.functions.clone(),
+                        resources: Vec::new(),
+                    },
+                );
+                world.exports.push(name.clone());
+            }
         }
         Ok(Document {
             package,
@@ -279,6 +296,7 @@ impl Parser {
         self.open_brace()?;
         let mut exports = Vec::new();
         let mut imports = Vec::new();
+        let mut functions = Vec::new();
         while !self.take_punct('}') {
             let declaration = self.required_word("world declaration")?;
             if declaration.starts_with('@') {
@@ -289,11 +307,28 @@ impl Parser {
                 "export" | "import" => {
                     let name = self.required_word("world interface name")?;
                     let target = if self.take_punct(':') {
-                        let kind = self.required_word("world interface kind")?;
+                        let mut kind = self.required_word("world interface kind")?;
+                        if kind == "func" || kind == "async" {
+                            if kind == "async" {
+                                self.expect_word("func")?;
+                            }
+                            let function =
+                                self.function_signature(name.clone(), kind == "async")?;
+                            if declaration == "export" {
+                                functions.push(function);
+                            } else {
+                                imports.push(name);
+                            }
+                            continue;
+                        }
+                        while self.take_punct(':') {
+                            kind.push(':');
+                            kind.push_str(&self.required_word("world interface reference")?);
+                        }
                         if kind == "interface" {
                             name.clone()
                         } else {
-                            kind
+                            format!("{name}:{kind}")
                         }
                     } else {
                         name.clone()
@@ -313,17 +348,32 @@ impl Parser {
         exports.dedup();
         imports.sort();
         imports.dedup();
-        Ok(World { exports, imports })
+        functions.sort_by(|left, right| left.name.cmp(&right.name));
+        Ok(World {
+            exports,
+            imports,
+            functions,
+        })
     }
 
     fn function(&mut self, async_: bool) -> Result<Function, String> {
-        let name = self.required_word("function name")?;
+        let first = self.required_word("function name")?;
+        let name = if first == "func" {
+            self.required_word("function name")?
+        } else {
+            first
+        };
         self.expect_punct(':')?;
         self.function_after_name(name, async_)
     }
 
     fn function_after_name(&mut self, name: String, async_: bool) -> Result<Function, String> {
+        let async_ = async_ || self.take_word("async");
         self.expect_word("func")?;
+        self.function_signature(name, async_)
+    }
+
+    fn function_signature(&mut self, name: String, async_: bool) -> Result<Function, String> {
         self.expect_punct('(')?;
         let mut arguments = Vec::new();
         while !self.take_punct(')') {
@@ -381,7 +431,7 @@ impl Parser {
     }
 
     fn type_expr(&mut self) -> Result<Type, String> {
-        let name = self.required_word("type")?;
+        let name = self.qualified_word()?;
         match name.as_str() {
             "list" => {
                 self.expect_punct('<')?;
@@ -535,6 +585,24 @@ impl Parser {
 
     fn required_word(&mut self, label: &str) -> Result<String, String> {
         self.word().ok_or_else(|| format!("expected {label}"))
+    }
+
+    fn qualified_word(&mut self) -> Result<String, String> {
+        let mut value = self.required_word("type")?;
+        while self.take_punct(':') {
+            value.push(':');
+            value.push_str(&self.required_word("qualified type")?);
+        }
+        Ok(value)
+    }
+
+    fn take_word(&mut self, expected: &str) -> bool {
+        if self.tokens.get(self.index) == Some(&Token::Word(expected.into())) {
+            self.index += 1;
+            true
+        } else {
+            false
+        }
     }
 
     fn expect_word(&mut self, expected: &str) -> Result<(), String> {

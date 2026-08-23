@@ -62,3 +62,57 @@ world rich-world {
     assert!(error.contains("option"));
     assert!(error.contains("world-import"));
 }
+
+#[test]
+fn imports_interface_exports_and_direct_world_functions() {
+    let interface_export = r#"
+package demo:calculator@1.2.3;
+interface calculator {
+  add: func(left: s32, right: s32) -> s32;
+}
+world calculator-world {
+  export calculator: interface;
+}
+"#;
+    let imported = import_wit(
+        interface_export,
+        "interface-export.wit",
+        &WitImportOptions {
+            strict: true,
+            ..WitImportOptions::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(imported.route, WitRoute::DirectImport);
+    assert_eq!(
+        WasmInterface::parse(&imported.interface_source, "interface-export.hal")
+            .unwrap()
+            .exports[0]
+            .name,
+        "add"
+    );
+
+    let world_function = r#"
+package demo:calculator;
+world calculator-world {
+  export add: func(left: s32, right: s32) -> s32;
+}
+"#;
+    let imported = import_wit(
+        world_function,
+        "world-function.wit",
+        &WitImportOptions {
+            strict: true,
+            ..WitImportOptions::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(imported.route, WitRoute::DirectImport);
+    assert_eq!(
+        WasmInterface::parse(&imported.interface_source, "world-function.hal")
+            .unwrap()
+            .exports[0]
+            .name,
+        "add"
+    );
+}
