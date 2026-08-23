@@ -228,7 +228,7 @@ impl Runtime {
         self.install_direct_wasm_provider(logical, exports, compiled.provider())
     }
 
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(all(target_arch = "wasm32", not(feature = "raw-wasm")))]
     fn install_direct_wasm_import_browser(
         &mut self,
         logical: &str,

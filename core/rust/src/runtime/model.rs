@@ -74,6 +74,7 @@ mod embedding_namespace_tests {
     }
 }
 
+#[cfg(not(feature = "raw-wasm"))]
 use wasm_bindgen::prelude::*;
 
 include!(concat!(env!("OUT_DIR"), "/embedded_hal.rs"));
@@ -183,7 +184,7 @@ pub struct Runtime {
     generated_configs: HashMap<String, kernel::GeneratedNamespaceConfig>,
     #[cfg(feature = "evaluation-journal")]
     next_journal_id: u64,
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(all(target_arch = "wasm32", not(feature = "raw-wasm")))]
     host_handler: Option<js_sys::Function>,
     #[cfg(not(target_arch = "wasm32"))]
     native_host_handler:

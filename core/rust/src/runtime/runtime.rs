@@ -91,7 +91,7 @@ impl Runtime {
             )]),
             #[cfg(feature = "evaluation-journal")]
             next_journal_id: 1,
-            #[cfg(target_arch = "wasm32")]
+            #[cfg(all(target_arch = "wasm32", not(feature = "raw-wasm")))]
             host_handler: None,
             #[cfg(not(target_arch = "wasm32"))]
             native_host_handler: None,
@@ -856,7 +856,7 @@ impl Runtime {
     }
 
     /// Installs the JS host handler that backs `std.native.Host/call`.
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(all(target_arch = "wasm32", not(feature = "raw-wasm")))]
     pub fn install_host_handler(&mut self, handler: js_sys::Function) {
         self.host_handler = Some(handler);
     }
@@ -1244,8 +1244,8 @@ impl Runtime {
             .map_err(|error| JsValue::from_str(&error))
     }
 
-    #[cfg(target_arch = "wasm32")]
-    #[cfg_attr(not(feature = "raw-wasm"), wasm_bindgen(js_name = installDirectWasmImport))]
+    #[cfg(all(target_arch = "wasm32", not(feature = "raw-wasm")))]
+    #[wasm_bindgen(js_name = installDirectWasmImport)]
     pub fn install_direct_wasm_import_js(
         &mut self,
         logical: &str,

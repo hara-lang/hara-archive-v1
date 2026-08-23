@@ -5,7 +5,7 @@ pub mod asset;
 pub mod cli_app;
 // Public embedding surface used by native hosts such as Hoplite. The module's
 // value, protocol, promise, and host-call types form the runtime integration ABI.
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", not(feature = "raw-wasm")))]
 mod browser_wasm_provider;
 mod clock;
 pub mod compiled_product;
@@ -94,6 +94,17 @@ use crate::lang::protocol::INamespaced;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
+
+#[cfg(feature = "raw-wasm")]
+#[derive(Debug, Clone)]
+pub struct JsValue;
+
+#[cfg(feature = "raw-wasm")]
+impl JsValue {
+    fn from_str(_value: &str) -> Self {
+        Self
+    }
+}
 
 include!("runtime/evaluator.rs");
 include!("runtime/model.rs");
