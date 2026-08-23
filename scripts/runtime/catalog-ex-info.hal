@@ -26,7 +26,14 @@
            (lines output))))))
 
 (defn repository-id [root logical-path]
-  (let [result (sh/run-record ["git" "-C" root "remote" "get-url" "origin"])
+  (let [outcome (sh/run ["git" "-C" root "remote" "get-url" "origin"])
+        result (if (Result/success? outcome)
+                 (Result/data outcome)
+                 (let [error (Result/error-value outcome)
+                       data (ex-data error)]
+                   (if (and (map? data) (has? data :exit))
+                     data
+                     (throw error))))
         url (if (= 0 (:exit result)) (:stdout result) logical-path)
         cleaned (str/replace
                  (str/replace url "git@github.com:" "")
@@ -36,7 +43,14 @@
       cleaned)))
 
 (defn tracked-hal-paths [root]
-  (let [result (sh/run-record ["git" "-C" root "grep" "-l" "ex-info" "HEAD" "--" "*.hal"])]
+  (let [outcome (sh/run ["git" "-C" root "grep" "-l" "ex-info" "HEAD" "--" "*.hal"])
+        result (if (Result/success? outcome)
+                 (Result/data outcome)
+                 (let [error (Result/error-value outcome)
+                       data (ex-data error)]
+                   (if (and (map? data) (has? data :exit))
+                     data
+                     (throw error))))]
     (if (= 0 (:exit result))
       (mapv (fn [line]
               (str/slice line (inc (str/index-of line ":"))))
@@ -44,8 +58,14 @@
       [])))
 
 (defn host-read [file]
-  (let [result (sh/run-record ["/bin/cat" file] {:trim false})]
-    (if (= 0 (:exit result)) (:stdout result) nil)))
+  (let [outcome (sh/run ["/bin/cat" file])]
+    (if (Result/success? outcome)
+      (:stdout (Result/data outcome))
+      (let [error (Result/error-value outcome)
+            data (ex-data error)]
+        (if (and (map? data) (has? data :exit))
+          nil
+          (throw error))))))
 
 (defn host-write [file text]
   (let [process (Process/spawn ["/usr/bin/tee" file])]
@@ -75,7 +95,14 @@
     site))
 
 (defn scan-repository [workspace logical-path root review]
-  (let [probe (sh/run-record ["git" "-C" root "rev-parse" "--git-dir"])]
+  (let [outcome (sh/run ["git" "-C" root "rev-parse" "--git-dir"])
+        probe (if (Result/success? outcome)
+                (Result/data outcome)
+                (let [error (Result/error-value outcome)
+                      data (ex-data error)]
+                  (if (and (map? data) (has? data :exit))
+                    data
+                    (throw error))))]
   (if (= 0 (:exit probe))
     (let [repository (repository-id root logical-path)
           revision (git root ["rev-parse" "HEAD"])

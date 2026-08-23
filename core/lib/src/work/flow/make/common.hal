@@ -93,7 +93,7 @@
 (defn- run-command [config command]
   (let [directory (make-dir config)
         started (OS/time-ms)
-        result (sh/run-record ["make" (string/tag command)] {:cwd directory})
+        _ (sh/run ["make" (string/tag command)] {:cwd directory})
         elapsed (- (OS/time-ms) started)]
     [elapsed true]))
 
@@ -107,12 +107,12 @@
          argv ["make" (string/tag command)]]
      (cond
        *internal-shell* (run-command config command)
-       (not *tmux*) (sh/run-record argv {:cwd directory})
+       (not *tmux*) (sh/run argv {:cwd directory})
        :else
        (let [window (command-name command tag)]
-         (sh/run-record ["tmux" "new-session" "-d" "-s" "DEV"])
-         (sh/run-record ["tmux" "new-window" "-d" "-t" "DEV" "-n" window "-c" directory])
-         (sh/run-record ["tmux" "send-keys" "-t" (str "DEV:" window)
+         (sh/run ["tmux" "new-session" "-d" "-s" "DEV"])
+         (sh/run ["tmux" "new-window" "-d" "-t" "DEV" "-n" window "-c" directory])
+         (sh/run ["tmux" "send-keys" "-t" (str "DEV:" window)
                   (string/join " " argv) "Enter"]))))))
 
 (defn make-run-close
@@ -120,14 +120,14 @@
   ([config command]
    (let [tag (:tag (deref (:instance config)))
          window (command-name (or command :build) tag)]
-     (sh/run-record ["tmux" "kill-window" "-t" (str "DEV:" window)]))))
+     (sh/run ["tmux" "kill-window" "-t" (str "DEV:" window)]))))
 
 (defn make-run-internal [config & commands]
   (with:internal-shell
     (mapv (partial make-run config) commands)))
 
 (defn make-shell [config]
-  (sh/run-record ["ls"] {:cwd (make-dir config)}))
+  (sh/run ["ls"] {:cwd (make-dir config)}))
 
 (defn make-run-init [config] (make-run config :init))
 (defn make-run-package [config] (make-run config :package))

@@ -133,7 +133,15 @@
 (defn command-result
   [language root]
   (try
-    (sh/run-record (get +runtime-commands+ language) {:cwd root})
+    (let [outcome (sh/run (get +runtime-commands+ language) {:cwd root})]
+      (if (Result/success? outcome)
+        (Result/data outcome)
+        (let [error (Result/error-value outcome)
+              data (select-keys (ex-data error)
+                                [:command :stdout :stderr :exit])]
+          (if (and (map? data) (has? data :exit))
+            data
+            (throw error)))))
     (catch error
       {:exit -1
        :stdout ""

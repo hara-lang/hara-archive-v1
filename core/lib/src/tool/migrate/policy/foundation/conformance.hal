@@ -387,10 +387,14 @@
 
 (defn host-read-existing
   [file]
-  (let [result (sh/run-record ["/bin/test" "-f" file])]
-    (if (= 0 (:exit result))
+  (let [outcome (sh/run ["/bin/test" "-f" file])]
+    (if (Result/success? outcome)
       (host-read file)
-      nil)))
+      (let [error (Result/error-value outcome)
+            data (ex-data error)]
+        (if (and (map? data) (has? data :exit))
+          nil
+          (throw error))))))
 
 (defn host-write
   "Writes generated registry documents through the explicit host boundary."

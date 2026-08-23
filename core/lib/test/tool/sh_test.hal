@@ -64,7 +64,7 @@
 
    (test-check
     "stdin strings are UTF-8 encoded, written, and closed"
-    (sh/run-record ["cat"] {:stdin "hello\n"})
+    (Result/data (sh/run ["cat"] {:stdin "hello\n"}))
     {:command ["cat"]
      :stdout "hello\n"
      :stderr ""
@@ -72,12 +72,13 @@
 
    (test-check
     "cwd and string environment entries reach the process builder"
-    [(let [result (sh/run-record ["pwd"] {:cwd "/tmp"})]
+    [(let [result (Result/data (sh/run ["pwd"] {:cwd "/tmp"}))]
        (assoc result
               :stdout
               (str/ends-with? (:stdout result) "/tmp\n")))
-     (sh/run-record ["printenv" "HARA_TOOL_SH_TEST"]
-                    {:env {"HARA_TOOL_SH_TEST" "present"}})]
+     (Result/data
+      (sh/run ["printenv" "HARA_TOOL_SH_TEST"]
+              {:env {"HARA_TOOL_SH_TEST" "present"}}))]
     [{:command ["pwd"]
       :stdout true
       :stderr ""
@@ -121,6 +122,19 @@
      :hara/dependency])
 
    (test-check
+    "require-success preserves an explicit failure message for Results"
+    (try
+       (sh/require-success
+        "Custom command failure"
+        (sh/run ["sh" "-c" "printf err >&2; exit 9"]))
+       nil
+       (catch Throwable error
+         [(ex-message error)
+          (:stderr (ex-data error))
+          (:exit (ex-data error))]))
+    ["Custom command failure" "err" 9])
+
+   (test-check
     "implicit command strings are rejected"
     (try
       (sh/command "echo unsafe")
@@ -161,12 +175,12 @@
 
    (test-check
     "Bytes stdin is preserved and core rejects a domain runner option"
-    [(sh/run-record ["cat"] {:stdin (str/encode-utf8 "bytes\n")})
+    [(Result/data (sh/run ["cat"] {:stdin (str/encode-utf8 "bytes\n")}))
      (try
-       (sh/run-record ["true"]
-                      {:tool.sh/runner
-                       (fn [argv options]
-                         {:command argv :stdout "" :stderr "" :exit 0})})
+       (sh/run ["true"]
+               {:tool.sh/runner
+                (fn [argv options]
+                  {:command argv :stdout "" :stderr "" :exit 0})})
        nil
        (catch Throwable error
          (:tool.sh/error (ex-data error))))]

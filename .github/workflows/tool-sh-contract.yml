@@ -113,10 +113,16 @@ jobs:
                          ["sh" "-c"
                           "printf ' out\n'; printf ' err\n' >&2; exit 7"])
                 async-result (deref pending)
-                input-result (sh/run-record ["cat"] {:stdin "hello\n"})
-                cwd-result (sh/run-record ["pwd"] {:cwd "/tmp"})
-                env-result (sh/run-record ["printenv" "HARA_TOOL_SH_TEST"]
-                                          {:env {"HARA_TOOL_SH_TEST" "present"}})
+                input-result (sh/require-success
+                              "stdin probe failed"
+                              (sh/run ["cat"] {:stdin "hello\n"}))
+                cwd-result (sh/require-success
+                            "cwd probe failed"
+                            (sh/run ["pwd"] {:cwd "/tmp"}))
+                env-result (sh/require-success
+                            "environment probe failed"
+                            (sh/run ["printenv" "HARA_TOOL_SH_TEST"]
+                                    {:env {"HARA_TOOL_SH_TEST" "present"}}))
                 failed (try
                          (sh/run-checked
                           ["sh" "-c" "printf out; printf err >&2; exit 9"])

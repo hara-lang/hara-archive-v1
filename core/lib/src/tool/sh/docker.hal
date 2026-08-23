@@ -10,14 +10,24 @@
 
 (defn- execution-runner
   [value]
-  (or (:tool.sh/runner (or value {})) sh/run-record))
+  (or (:tool.sh/runner (or value {})) sh/run))
 
 (defn command-result
   "Executes Docker argv through an optional final :tool.sh/runner."
   ([argv]
    (command-result argv {}))
   ([argv value]
-   ((execution-runner value) argv (execution-options value))))
+   (let [outcome ((execution-runner value) argv (execution-options value))]
+     (if (Result/instance? outcome)
+       (if (Result/success? outcome)
+         (Result/data outcome)
+         (let [error (Result/error-value outcome)
+               data (select-keys (ex-data error)
+                                 [:command :stdout :stderr :exit])]
+           (if (and (map? data) (has? data :exit))
+             data
+             (throw error))))
+       outcome))))
 
 (defn command
   "Executes Docker argv and rejects non-zero results."

@@ -277,7 +277,19 @@
    (if (Result/instance? value)
      (if (Result/success? value)
        (require-success message (Result/data value))
-       (throw (Result/error-value value)))
+       (let [error (Result/error-value value)
+             data (dissoc (or (ex-data error) {})
+                          :ex/code
+                          :ex/message
+                          :ex/class
+                          :ex/cause)]
+         (if (and (map? data) (has? data :exit))
+           (throw
+            (ex :dependency
+                data
+                :ex/message message
+                :ex/cause error))
+           (throw error))))
      (if (= 0 (:exit value))
        value
        (throw (ex :dependency value :ex/message message))))))
