@@ -200,6 +200,10 @@ pub trait WasmExtensionProvider {
 
     fn cancel(&self, manifest: &ExtensionManifest, request: u64) -> Result<(), String>;
 
+    fn release(&self, _manifest: &ExtensionManifest, _handle: &Value) -> Result<(), String> {
+        Err("extension/release-unsupported: provider has no HTA handle boundary".into())
+    }
+
     fn shutdown(&self, manifest: &ExtensionManifest);
 }
 
@@ -244,6 +248,13 @@ impl ExtensionBinding {
             ));
         }
         Ok(result)
+    }
+
+    pub fn release(&self, handle: &Value) -> Result<(), String> {
+        self.session
+            .provider
+            .release(&self.session.manifest, handle)
+            .map_err(|error| format!("extension/release: {error}"))
     }
 }
 

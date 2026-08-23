@@ -38,6 +38,7 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
   private final BlockingQueue<Command> mailbox;
   private final Map<Long, CompletableFuture<Object>> tasks = new LinkedHashMap<>();
   private final Set<HtaHandle> handles = new LinkedHashSet<>();
+  private final Set<Long> hostCallsSeen = new LinkedHashSet<>();
   private final Thread owner;
 
   HaraWasmExtension(HaraExtensionPackage extensionPackage) {
@@ -187,7 +188,7 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
     }
     CompletableFuture<Object> result = new CompletableFuture<>();
     TaskFuture task = new TaskFuture(result);
-    mailbox.add(new Start(name, values.clone(), task));
+    mailbox.add(new Start(spec.operation(), values.clone(), task));
     result.whenComplete(
         (value, error) -> {
           if (result.isCancelled()) mailbox.add(new Cancel(task));
@@ -304,7 +305,10 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
         else if (command instanceof Delivery) deliver((Delivery) command);
         else if (command instanceof Cancel) cancel((Cancel) command);
         else if (command instanceof Release) releaseNow((Release) command);
-        else running = false;
+        else {
+          rejectAll(new HaraException("hta/session-closed"));
+          running = false;
+        }
         if (running) drainEvents();
       }
     } catch (InterruptedException error) {
@@ -364,6 +368,7 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
       throw new HaraException("hta/host-call-malformed");
     }
     long call = number(event, 1, "call id");
+    if (!hostCallsSeen.add(call)) return;
     int serviceIndex = event.size() == 8 ? 5 : 3;
     String service = string(event.get(serviceIndex), "service");
     String method = string(event.get(serviceIndex + 1), "method");
@@ -440,6 +445,15 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
   private Object bindHandles(Object value) {
     if (value instanceof HtaHandle) {
       HtaHandle handle = ((HtaHandle) value).bind(this);
+      if (manifest.declaresHandles() && manifest.handleTag(handle.type()) == null) {
+        throw new HaraException("hta/handle-type-denied: " + handle.type());
+      }
+      if (manifest.declaresHandles()
+          && !manifest.namespace().equals(handle.owner())
+          && (manifest.identity() == null || !manifest.identity().equals(handle.owner()))
+          && !manifest.handleTag(handle.type()).equals(handle.owner())) {
+        throw new HaraException("hta/handle-owner-mismatch: " + handle.owner());
+      }
       String tag = manifest.handleTag(handle.type());
       if (tag != null) handle.displayAs(tag, handle.type());
       handles.add(handle);
@@ -505,6 +519,16 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
   }
 
   private void rejectAll(HaraException error) {
+    for (long task : List.copyOf(tasks.keySet())) {
+      try {
+        htaCancel.execute(task);
+      } catch (RuntimeException ignored) {
+      }
+      try {
+        htaDropTask.execute(task);
+      } catch (RuntimeException ignored) {
+      }
+    }
     tasks.values().forEach(future -> future.completeExceptionally(error));
     tasks.clear();
   }

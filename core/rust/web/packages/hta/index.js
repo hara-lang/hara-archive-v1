@@ -116,7 +116,7 @@ export function parseHtaManifest(source) {
       handleTags[type] = tag.name;
     }
   }
-  const exportsValue = manifestField(value,"exports"), exports = [];
+  const exportsValue = manifestField(value,"exports"), exports = [], operations = {};
   const exportArity = {};
   if (exportsValue !== undefined) {
     if (!(exportsValue instanceof Map)) throw new Error("hta/manifest-malformed: exports must be a map");
@@ -128,6 +128,11 @@ export function parseHtaManifest(source) {
       }
       exports.push(name);
       exportArity[name] = args?.length ?? 0;
+      const operation = manifestField(spec,"operation");
+      if (operation !== undefined) {
+        if (typeof operation !== "string" || !operation.length) throw new Error("hta/manifest-malformed: invalid export operation");
+        operations[name] = operation;
+      }
     }
   }
   const hostCallsValue = manifestField(value,"host-calls"), hostCalls = {};
@@ -151,7 +156,7 @@ export function parseHtaManifest(source) {
   return Object.freeze({
     namespace,identity,provider,module,abi,browserTarget,assets:Object.freeze(assets),
     handleTags:Object.freeze(handleTags),exports:Object.freeze(exports),
-    exportArity:Object.freeze(exportArity),capabilities:Object.freeze(capabilities),
+    exportArity:Object.freeze(exportArity),operations:Object.freeze(operations),capabilities:Object.freeze(capabilities),
     hostCalls:Object.freeze(hostCalls)
   });
 }
@@ -169,7 +174,7 @@ function validPackagePath(value,suffix) {
   return typeof value === "string" && value.length>0 && !value.startsWith("/") && !value.split("/").includes("..") && !value.includes(":") && (!suffix || value.endsWith(suffix));
 }
 
-export async function loadHtaExtension({worker,descriptor,descriptorUrl,packageUrl,moduleBytes,hostCalls={}}) {
+export async function loadHtaExtension({worker,descriptor,descriptorUrl,packageUrl,moduleBytes,hostCalls={},capabilities=[]}) {
   if (descriptor === undefined) {
     if (!descriptorUrl) throw new Error("hta/manifest-missing: descriptor or descriptorUrl is required");
     const response = await fetch(descriptorUrl);
@@ -197,7 +202,7 @@ export async function loadHtaExtension({worker,descriptor,descriptorUrl,packageU
   }
   if (!worker) throw new Error("hta/worker-missing: worker is required for WASM providers");
   const context = new HtaContext({
-    worker,moduleUrl,moduleBytes,libraryUrl,hostCalls,handleTags:manifest.handleTags,
+    worker,moduleUrl,moduleBytes,libraryUrl,hostCalls,capabilities,handleTags:manifest.handleTags,
     manifest
   });
   return context;
@@ -305,8 +310,9 @@ class Reader {
 }
 
 export class HtaContext {
-  constructor({ worker, moduleUrl, moduleBytes, libraryUrl, libraryBytes, hostCalls = {}, filesystemHost = hostCalls.filesystemHost ?? null, handleTags = {}, promiseProvider = new BrowserPromiseProvider(), kernelId = null, manifest = null }) {
-    this.worker=worker;this.hostCalls=hostCalls;this.filesystemHost=filesystemHost;this.handleTags=handleTags;this.promiseProvider=promiseProvider;this.kernelId=kernelId;this.manifest=manifest;this.allowedExports=manifest ? new Set(manifest.exports) : null;this.allowedHostCalls=manifest ? new Set(Object.entries(manifest.hostCalls).flatMap(([service,methods])=>methods.map(method=>`${service}/${method}`))) : null;this.next=1;this.pending=new Map();this.sessions=new Map();this.mounts=new Set();this.closed=false;
+  constructor({ worker, moduleUrl, moduleBytes, libraryUrl, libraryBytes, hostCalls = {}, capabilities = [], filesystemHost = hostCalls.filesystemHost ?? null, handleTags = {}, promiseProvider = new BrowserPromiseProvider(), kernelId = null, manifest = null }) {
+    this.worker=worker;this.hostCalls=hostCalls;this.filesystemHost=filesystemHost;this.handleTags=handleTags;this.promiseProvider=promiseProvider;this.kernelId=kernelId;this.manifest=manifest;this.allowedExports=manifest ? new Set(manifest.exports) : null;this.operations=manifest?.operations ?? Object.create(null);this.allowedHostCalls=manifest ? new Set(Object.entries(manifest.hostCalls).flatMap(([service,methods])=>methods.map(method=>`${service}/${method}`))) : null;this.hostCallsInFlight=new Set();this.next=1;this.pending=new Map();this.sessions=new Map();this.mounts=new Set();this.closed=false;
+    if (manifest?.capabilities.some(capability=>!capabilities.includes(capability))) throw new Error(`hta/capability-denied: ${manifest.namespace}`);
     this.ready=new Promise((resolve,reject)=>{this.readyResolve=resolve;this.readyReject=reject;});
     this.ready.catch(()=>{});
     worker.addEventListener("message", event=>this.message(event.data));
@@ -316,7 +322,7 @@ export class HtaContext {
   call(target, args=[]) { let id=null,cancelled=false;
     return this.promiseProvider.create((resolve,reject,onCancel)=>{
       onCancel(()=>{cancelled=true;if(id!==null)this.worker.postMessage({type:"cancel",id});});
-      this.ready.then(()=>{if(cancelled)return;if(this.closed)throw new Error("hta/context-closed");if(this.allowedExports && !this.allowedExports.has(target))throw new Error(`hta/export-denied: ${target}`);validateHandles(args,this);id=this.next++;this.pending.set(id,{resolve,reject});this.worker.postMessage({type:"call",id,frame:encodeHta([target,args])});}).catch(reject);
+      this.ready.then(()=>{if(cancelled)return;if(this.closed)throw new Error("hta/context-closed");if(this.allowedExports && !this.allowedExports.has(target))throw new Error(`hta/export-denied: ${target}`);validateHandles(args,this);id=this.next++;this.pending.set(id,{resolve,reject});this.worker.postMessage({type:"call",id,frame:encodeHta([this.operations[target]??target,args])});}).catch(reject);
     });
   }
   releaseHandle(handle){if(handle.context!==this)throw new Error("hta/handle-owner-mismatch");if(this.closed)return;const wireHandle=new HtaHandle(handle.owner,handle.type,handle.id);this.worker.postMessage({type:"release",frame:encodeHta(wireHandle)});}
@@ -335,8 +341,8 @@ export class HtaContext {
   listSessions(){return this.call("session/list",[]);}
   async message(message) {
     if(message.type==="ready"){this.readyResolve();return;}if(message.type==="fatal"){this.fail(new Error(message.error?.message??"HTA worker failed"));return;}
-    if(message.type==="result"){const pending=this.pending.get(message.id);if(!pending)return;this.pending.delete(message.id);const value=bindHandles(decodeHta(message.frame),this);message.ok?pending.resolve(value):pending.reject(errorFrom(value));return;}
-    if(message.type==="host-call"){const key=`${message.service}/${message.method}`,handler=this.hostCalls[key],sessionId=message.session??"ROOT";try{if(this.allowedHostCalls && !this.allowedHostCalls.has(key))throw new Error(`hta/host-call-denied: ${key}`);if(!handler)throw new Error(`hta/host-call-denied: ${key}`);const value=await handler.call({context:this.session(sessionId),kernelContext:this,kernelId:this.kernelId??null,sessionId,mountId:message.mount??null,task:message.task},...decodeHta(message.frame));this.worker.postMessage({type:"delivery",call:message.call,ok:true,frame:encodeHta(value)});}catch(error){this.worker.postMessage({type:"delivery",call:message.call,ok:false,frame:encodeHta(errorValue(error))});}}
+    if(message.type==="result"){const pending=this.pending.get(message.id);if(!pending)return;this.pending.delete(message.id);try{const value=bindHandles(decodeHta(message.frame),this);message.ok?pending.resolve(value):pending.reject(errorFrom(value));}catch(error){pending.reject(error);}return;}
+    if(message.type==="host-call"){const key=`${message.service}/${message.method}`,handler=this.hostCalls[key],sessionId=message.session??"ROOT";if(this.hostCallsInFlight.has(message.call))return;this.hostCallsInFlight.add(message.call);try{if(this.allowedHostCalls && !this.allowedHostCalls.has(key))throw new Error(`hta/host-call-denied: ${key}`);if(!handler)throw new Error(`hta/host-call-denied: ${key}`);const value=await handler.call({context:this.session(sessionId),kernelContext:this,kernelId:this.kernelId??null,sessionId,mountId:message.mount??null,task:message.task},...decodeHta(message.frame));if(!this.closed)this.worker.postMessage({type:"delivery",call:message.call,ok:true,frame:encodeHta(value)});}catch(error){if(!this.closed)this.worker.postMessage({type:"delivery",call:message.call,ok:false,frame:encodeHta(errorValue(error))});}finally{this.hostCallsInFlight.delete(message.call);}}
   }
   fail(error){if(this.closed)return;this.closed=true;this.readyReject(error);for(const pending of this.pending.values())pending.reject(error);this.pending.clear();}
   close(){if(!this.closed){this.closed=true;const error=new Error("hta/context-closed");this.readyReject(error);for(const pending of this.pending.values())pending.reject(error);this.pending.clear();}const closes=[...this.mounts].map(mountId=>this.filesystemHost?.close(this,mountId).catch(()=>{}));this.mounts.clear();this.worker.postMessage({type:"close"});this.worker.terminate();return Promise.all(closes);}
@@ -357,7 +363,7 @@ export class HtaSession {
   async close(){const result=await this.context.call("session/close",[this.name]);this.context.sessions.delete(this.name);return result;}
 }
 
-function bindHandles(value,context){if(value instanceof HtaHandle){value.context=context;const tag=context.handleTags[value.type];if(tag){value.displayTag=tag;value.displayKind=value.type;}return value;}if(Array.isArray(value)){value.forEach(item=>bindHandles(item,context));}else if(value instanceof Set){for(const item of value)bindHandles(item,context);}else if(value instanceof Map){for(const [key,item]of value){bindHandles(key,context);bindHandles(item,context);}}return value;}
+function bindHandles(value,context){if(value instanceof HtaHandle){const tag=context.handleTags[value.type];if(context.manifest && Object.keys(context.handleTags).length && !tag)throw new Error(`hta/handle-type-denied: ${value.type}`);if(context.manifest && tag && ![context.manifest.namespace,context.manifest.identity,tag].includes(value.owner))throw new Error(`hta/handle-owner-mismatch: ${value.owner}`);value.context=context;if(tag){value.displayTag=tag;value.displayKind=value.type;}return value;}if(Array.isArray(value)){value.forEach(item=>bindHandles(item,context));}else if(value instanceof Set){for(const item of value)bindHandles(item,context);}else if(value instanceof Map){for(const [key,item]of value){bindHandles(key,context);bindHandles(item,context);}}return value;}
 function validateHandles(value,context){if(value instanceof HtaHandle){if(value.released)throw new Error("hta/handle-released");if(value.context!==context)throw new Error("hta/handle-owner-mismatch");return;}if(Array.isArray(value)){value.forEach(item=>validateHandles(item,context));}else if(value instanceof Set){for(const item of value)validateHandles(item,context);}else if(value instanceof Map){for(const [key,item]of value){validateHandles(key,context);validateHandles(item,context);}}}
 function errorValue(error){return new Map([[new HtaKeyword("code"),new HtaKeyword("host/error")],[new HtaKeyword("message"),String(error?.message??error)],[new HtaKeyword("origin"),new HtaKeyword("browser")],[new HtaKeyword("retryable"),false]]);}
 function errorFrom(value){if(value instanceof Error)return value;if(value instanceof Map){let message="HTA request failed",code;for(const[key,item]of value)if(key instanceof HtaKeyword&&key.name==="message")message=String(item);else if(key instanceof HtaKeyword&&key.name==="code")code=item instanceof HtaKeyword?item.name:String(item);const error=new Error(message);error.code=code;error.data=value;return error;}return new Error(String(value));}

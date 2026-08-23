@@ -41,8 +41,8 @@ public final class HaraExtensionManifest {
   private static final Set<String> REQUIRED_FIELDS =
       Set.of("namespace", "version", "provider", "abi", "exports", "capabilities");
   private static final Set<String> EXPORT_FIELDS =
-      Set.of("wasm/export", "args", "returns", "async");
-  private static final Set<String> HANDLE_FIELDS = Set.of("tag");
+      Set.of("wasm/export", "args", "returns", "async", "operation");
+  private static final Set<String> HANDLE_FIELDS = Set.of("tag", "release");
 
   private final String namespace;
   private final String identity;
@@ -56,6 +56,7 @@ public final class HaraExtensionManifest {
   private final java.util.List<String> capabilities;
   private final Map<String, java.util.List<String>> hostCalls;
   private final Map<String, String> handleTags;
+  private final Map<String, String> handleReleases;
 
   private HaraExtensionManifest(
       String namespace,
@@ -69,7 +70,8 @@ public final class HaraExtensionManifest {
       Map<String, Export> exports,
       java.util.List<String> capabilities,
       Map<String, java.util.List<String>> hostCalls,
-      Map<String, String> handleTags) {
+      Map<String, String> handleTags,
+      Map<String, String> handleReleases) {
     this.namespace = namespace;
     this.identity = identity;
     this.version = version;
@@ -86,6 +88,7 @@ public final class HaraExtensionManifest {
             copiedHostCalls.put(service, Collections.unmodifiableList(new ArrayList<>(methods))));
     this.hostCalls = Collections.unmodifiableMap(copiedHostCalls);
     this.handleTags = Collections.unmodifiableMap(new LinkedHashMap<>(handleTags));
+    this.handleReleases = Collections.unmodifiableMap(new LinkedHashMap<>(handleReleases));
   }
 
   public static HaraExtensionManifest parse(String source, String origin) {
@@ -132,7 +135,8 @@ public final class HaraExtensionManifest {
         parseKeywords(lookup(map, "capabilities"), origin, "capabilities");
     Map<String, java.util.List<String>> hostCalls =
         parseHostCalls(lookup(map, "host-calls"), origin);
-    Map<String, String> handleTags = parseHandleTags(lookup(map, "handles"), origin);
+    Map<String, String> handleTags = new LinkedHashMap<>();
+    Map<String, String> handleReleases = parseHandleTags(lookup(map, "handles"), handleTags, origin);
     return new HaraExtensionManifest(
         namespace,
         identity,
@@ -145,7 +149,8 @@ public final class HaraExtensionManifest {
         exports,
         capabilities,
         hostCalls,
-        handleTags);
+        handleTags,
+        handleReleases);
   }
 
   public String namespace() {
@@ -198,6 +203,14 @@ public final class HaraExtensionManifest {
 
   public String handleTag(String type) {
     return handleTags.get(type);
+  }
+
+  public String handleRelease(String type) {
+    return handleReleases.get(type);
+  }
+
+  public boolean declaresHandles() {
+    return !handleTags.isEmpty();
   }
 
   public boolean permitsHostCall(String service, String method) {
@@ -264,7 +277,8 @@ public final class HaraExtensionManifest {
     }
   }
 
-  private static Map<String, String> parseHandleTags(Object value, String origin) {
+  private static Map<String, String> parseHandleTags(
+      Object value, Map<String, String> tags, String origin) {
     if (value == null) return Map.of();
     if (!(value instanceof IMapType<?, ?>)) throw invalid(origin, "handles must be a map");
     LinkedHashMap<String, String> result = new LinkedHashMap<>();
@@ -288,7 +302,9 @@ public final class HaraExtensionManifest {
       if (!HANDLE_TAG.matcher(tag).matches()) {
         throw invalid(origin, "handle tags must be lower-case symbols");
       }
-      result.put((String) entry.getKey(), tag);
+      tags.put((String) entry.getKey(), tag);
+      Object releaseValue = lookup(spec, "release");
+      if (releaseValue != null) result.put((String) entry.getKey(), requireString(spec, "release", origin));
     }
     return result;
   }
@@ -345,9 +361,12 @@ public final class HaraExtensionManifest {
       if (asyncValue != null && !(asyncValue instanceof Boolean)) {
         throw invalid(origin, "export async must be boolean");
       }
+      Object operationValue = lookup(spec, "operation");
+      String operation =
+          operationValue == null ? name : requireString(spec, "operation", origin);
       result.put(
           name,
-          new Export(wasmExport, arguments, returns, Boolean.TRUE.equals(asyncValue)));
+          new Export(wasmExport, operation, arguments, returns, Boolean.TRUE.equals(asyncValue)));
     }
     if (result.isEmpty()) throw invalid(origin, "exports cannot be empty");
     return result;
@@ -438,16 +457,19 @@ public final class HaraExtensionManifest {
 
   public static final class Export {
     private final String wasmExport;
+    private final String operation;
     private final java.util.List<String> arguments;
     private final String returns;
     private final boolean async;
 
     private Export(
         String wasmExport,
+        String operation,
         java.util.List<String> arguments,
         String returns,
         boolean async) {
       this.wasmExport = wasmExport;
+      this.operation = operation;
       this.arguments = Collections.unmodifiableList(new ArrayList<>(arguments));
       this.returns = returns;
       this.async = async;
@@ -455,6 +477,10 @@ public final class HaraExtensionManifest {
 
     public String wasmExport() {
       return wasmExport;
+    }
+
+    public String operation() {
+      return operation;
     }
 
     public java.util.List<String> arguments() {

@@ -457,12 +457,14 @@ fn build_product_document(
     binding_digest: &str,
     adapter: Option<&super::AdapterArtifact>,
 ) -> String {
-    let product_type = if target == BindingTarget::HtaV1 {
+    let product_type = if target == BindingTarget::HtaV1 && adapter.is_some() {
         "hta-adapter-wasm"
+    } else if target == BindingTarget::HtaV1 {
+        "hta-wasm-module"
     } else {
         "extension-wasm-module"
     };
-    let artifact_path = if target == BindingTarget::HtaV1 {
+    let artifact_path = if target == BindingTarget::HtaV1 && adapter.is_some() {
         ADAPTER_FILE
     } else {
         &interface.module

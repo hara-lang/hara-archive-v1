@@ -420,7 +420,8 @@ fn emit_start(exports: &[BindingFunction], alloc: u32) -> Function {
     function.instruction(&Instruction::GlobalSet(5));
 
     for (index, export) in exports.iter().enumerate() {
-        let name = export.name.as_bytes();
+        let operation = export.operation.as_deref().unwrap_or(&export.name);
+        let name = operation.as_bytes();
         let mut checks = Vec::new();
         for (offset, byte) in b"HTA0".iter().enumerate() {
             checks.push(byte_check(0, offset as u32, *byte));
@@ -449,7 +450,7 @@ fn emit_start(exports: &[BindingFunction], alloc: u32) -> Function {
         }
         checks.push(vec![
             Instruction::LocalGet(1),
-            Instruction::I32Const(expected_frame_size(export) as i32),
+            Instruction::I32Const(expected_frame_size(export, name.len()) as i32),
             Instruction::I32Eq,
         ]);
         for (index, check) in checks.into_iter().enumerate() {
@@ -505,8 +506,8 @@ fn emit_start(exports: &[BindingFunction], alloc: u32) -> Function {
     function
 }
 
-fn expected_frame_size(export: &BindingFunction) -> u32 {
-    19 + export.name.len() as u32 + export.arguments.iter().map(encoded_size).sum::<u32>()
+fn expected_frame_size(export: &BindingFunction, operation_length: usize) -> u32 {
+    19 + operation_length as u32 + export.arguments.iter().map(encoded_size).sum::<u32>()
 }
 
 fn store_i32_constant(function: &mut Function, pointer: u32, offset: u32, value: i32) {
@@ -782,11 +783,15 @@ fn hta_adapter_manifest(
     let exports = exports
         .iter()
         .map(|export| {
-            Form::Map(vec![
+            let mut fields = vec![
                 (keyword("hara/name"), symbol(&export.name)),
                 (keyword("wasm/export"), string(&export.wasm_export)),
                 (keyword("async"), Form::Bool(true)),
-            ])
+            ];
+            if let Some(operation) = export.operation.as_deref() {
+                fields.push((keyword("operation"), string(operation)));
+            }
+            Form::Map(fields)
         })
         .collect();
     Form::Map(vec![
