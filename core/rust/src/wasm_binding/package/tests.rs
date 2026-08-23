@@ -131,7 +131,7 @@ fn direct_package_loads_through_the_native_import_route() {
     let error = rejected
         .eval_text("(ns rejected-project (:import math.scalar))")
         .unwrap_err();
-    assert!(error.starts_with("package/digest-mismatch:"), "{error}");
+    assert!(error.starts_with("package/size-mismatch:"), "{error}");
     fs::remove_dir_all(root).unwrap();
 }
 
