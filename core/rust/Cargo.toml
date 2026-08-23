@@ -102,10 +102,16 @@ js-sys = "0.3"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 hara-db-postgres = { version = "0.1.0", git = "https://github.com/hara-lang/hara-extensions.git", rev = "0432324505d721711d1de5aaeae66ee305730456", package = "hara-db-postgres" }
+russh = "0.62.7"
+russh-sftp = "2.4.0"
+tokio = { version = "1.53", features = ["io-util", "net", "rt", "sync", "time"] }
 wasmtime = { version = "18.0.0", default-features = false, features = ["cranelift", "runtime"] }
 rustyline = "14.0.0"
 home = "=0.5.9"
 zip = { version = "2.2", default-features = false, features = ["deflate"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+rand = "0.10"
 
 # Experimental bytecode VM benchmark driver (issue #195). The binary remains
 # feature-gated so feature-minimal builds exclude it.

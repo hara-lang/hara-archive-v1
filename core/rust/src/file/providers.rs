@@ -622,6 +622,10 @@ impl ScopedSftpClient {
     }
 
     fn guard_ancestors(&self, path: &str) -> Result<(), FileError> {
+        self.ensure_ancestors(path, false)
+    }
+
+    fn ensure_ancestors(&self, path: &str, parents: bool) -> Result<(), FileError> {
         let path = crate::file::logical_normalise(path)?;
         let segments = path
             .strip_prefix('/')
@@ -634,7 +638,25 @@ impl ScopedSftpClient {
             current = crate::file::logical_join(&current, segment)?;
             let entry = match self.client.stat(&self.remote_path(&current)?) {
                 Ok(entry) => entry,
-                Err(FileError::NotFound) => return Ok(()),
+                Err(FileError::NotFound) if parents => {
+                    if !self
+                        .client
+                        .capabilities()
+                        .contains(FilesystemCapability::Mkdir)
+                    {
+                        return Err(FileError::Unsupported);
+                    }
+                    self.client.mkdir(
+                        &self.remote_path(&current)?,
+                        MkdirOptions {
+                            parents: false,
+                            exists_ok: false,
+                        },
+                        &FilesystemMutationContext::default(),
+                    )?;
+                    self.client.stat(&self.remote_path(&current)?)?
+                }
+                Err(FileError::NotFound) => return Err(FileError::NotFound),
                 Err(error) => return Err(error),
             };
             if entry.kind == FileType::Symlink {
@@ -718,7 +740,7 @@ impl RemoteFilesystemClient for ScopedSftpClient {
         options: WriteOptions,
         mutation: &FilesystemMutationContext,
     ) -> Result<FilesystemMutation, FileError> {
-        self.guard_ancestors(path)?;
+        self.ensure_ancestors(path, options.parents)?;
         if let Some(entry) = self.optional_stat(path)? {
             Self::reject_symlink(&entry)?;
             if entry.kind == FileType::Directory {
@@ -770,12 +792,23 @@ impl RemoteFilesystemClient for ScopedSftpClient {
         options: MkdirOptions,
         mutation: &FilesystemMutationContext,
     ) -> Result<FilesystemMutation, FileError> {
-        self.guard_ancestors(path)?;
+        let logical = crate::file::logical_normalise(path)?;
+        self.ensure_ancestors(&logical, options.parents)?;
+        if let Some(entry) = self.optional_stat(&logical)? {
+            if entry.kind == FileType::Directory && options.exists_ok {
+                return Ok(FilesystemMutation::path(logical));
+            }
+            return Err(if entry.kind == FileType::Symlink {
+                FileError::Unsupported
+            } else {
+                FileError::AlreadyExists
+            });
+        }
         let mutation = self
             .client
-            .mkdir(&self.remote_path(path)?, options, mutation)?;
+            .mkdir(&self.remote_path(&logical)?, options, mutation)?;
         Ok(FilesystemMutation {
-            path: crate::file::logical_normalise(path)?,
+            path: logical,
             ..mutation
         })
     }
@@ -821,7 +854,7 @@ impl RemoteFilesystemClient for ScopedSftpClient {
             return Err(FileError::AlreadyExists);
         }
         self.guard_ancestors(&source)?;
-        self.guard_ancestors(&target)?;
+        self.ensure_ancestors(&target, options.parents)?;
         let source_entry = self.stat_remote(&source)?;
         Self::reject_symlink(&source_entry)?;
         if source_entry.kind != FileType::File {
@@ -829,6 +862,9 @@ impl RemoteFilesystemClient for ScopedSftpClient {
         }
         if let Some(target_entry) = self.optional_stat(&target)? {
             Self::reject_symlink(&target_entry)?;
+            if target_entry.kind == FileType::Directory {
+                return Err(FileError::IsDirectory);
+            }
         }
         let mutation = self.client.copy(
             &self.remote_path(&source)?,
@@ -854,13 +890,17 @@ impl RemoteFilesystemClient for ScopedSftpClient {
         if source == "/" || target == "/" {
             return Err(FileError::Denied);
         }
+        if source == target {
+            self.stat_remote(&source)?;
+            return Ok(FilesystemMutation::path(target));
+        }
         if target.starts_with(&(source.clone() + "/")) {
             return Err(FileError::InvalidPath(
                 "cannot move an entry beneath itself".into(),
             ));
         }
         self.guard_ancestors(&source)?;
-        self.guard_ancestors(&target)?;
+        self.ensure_ancestors(&target, options.parents)?;
         let source_entry = self.stat_remote(&source)?;
         Self::reject_symlink(&source_entry)?;
         if let Some(target_entry) = self.optional_stat(&target)? {
@@ -890,6 +930,26 @@ pub struct SftpFilesystem {
 }
 
 impl SftpFilesystem {
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn connect(
+        options: crate::filesystem::sftp::SftpConnectOptions,
+        root: impl Into<String>,
+        display: impl Into<String>,
+        read_only: bool,
+    ) -> Result<Self, FileError> {
+        let client = Rc::new(crate::filesystem::sftp::NativeSftpClient::connect(options)?);
+        match Self::new(client.clone(), root, display, read_only) {
+            Ok(filesystem) => Ok(filesystem),
+            Err(error) => {
+                // A root validation failure must tear down the authenticated
+                // transport instead of leaving its worker alive in the
+                // background.
+                let _ = client.close();
+                Err(error)
+            }
+        }
+    }
+
     pub fn new(
         client: Rc<dyn RemoteFilesystemClient>,
         root: impl Into<String>,
@@ -1552,6 +1612,71 @@ mod tests {
         .err()
         .unwrap();
         assert_eq!(invalid_root.code(), "invalid-path");
+    }
+
+    #[test]
+    fn sftp_mutations_enforce_parent_and_mount_boundaries() {
+        let client = MemoryRemoteClient::new();
+        client.insert("/source.txt", b"source".to_vec()).unwrap();
+        let filesystem = SftpFilesystem::from_client(client.clone(), "/", "SFTP", false).unwrap();
+
+        let missing_parent = block_on_local(filesystem.write(
+            FilesystemCallContext::default(),
+            "/missing/file.txt".into(),
+            b"data".to_vec(),
+            WriteOptions::default(),
+            FilesystemMutationContext::default(),
+        ))
+        .unwrap_err();
+        assert_eq!(missing_parent.code(), "not-found");
+
+        block_on_local(filesystem.write(
+            FilesystemCallContext::default(),
+            "/missing/file.txt".into(),
+            b"data".to_vec(),
+            WriteOptions {
+                parents: true,
+                ..WriteOptions::default()
+            },
+            FilesystemMutationContext::default(),
+        ))
+        .unwrap();
+        assert_eq!(
+            client.provider().read_bytes("/missing/file.txt").unwrap(),
+            b"data"
+        );
+
+        let target_directory = block_on_local(filesystem.copy(
+            FilesystemCallContext::default(),
+            "/source.txt".into(),
+            "/missing".into(),
+            CopyOptions {
+                replace: true,
+                ..CopyOptions::default()
+            },
+            FilesystemMutationContext::default(),
+        ))
+        .unwrap_err();
+        assert_eq!(target_directory.code(), "is-directory");
+
+        let same_move = block_on_local(filesystem.move_entry(
+            FilesystemCallContext::default(),
+            "/source.txt".into(),
+            "/./source.txt".into(),
+            MoveOptions::default(),
+            FilesystemMutationContext::default(),
+        ))
+        .unwrap();
+        assert_eq!(same_move.path, "/source.txt");
+
+        let root_delete = block_on_local(filesystem.delete(
+            FilesystemCallContext::default(),
+            "/".into(),
+            DeleteOptions::default(),
+            FilesystemMutationContext::default(),
+        ))
+        .unwrap_err();
+        assert_eq!(root_delete.code(), "denied");
     }
 
     #[test]

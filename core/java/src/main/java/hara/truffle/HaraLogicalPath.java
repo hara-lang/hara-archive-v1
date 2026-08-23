@@ -5,23 +5,23 @@ import java.util.ArrayList;
 import java.util.List;
 
 /** Portable path algebra for the logical filesystem mounted at {@code /}. */
-final class HaraLogicalPath {
-  static final class Error extends IllegalArgumentException {
+public final class HaraLogicalPath {
+  public static final class Error extends IllegalArgumentException {
     private final String code;
 
-    Error(String code, String message) {
+    public Error(String code, String message) {
       super(message);
       this.code = code;
     }
 
-    String code() {
+    public String code() {
       return code;
     }
   }
 
   private HaraLogicalPath() {}
 
-  static String normalise(String input) {
+  public static String normalise(String input) {
     if (input == null) throw invalid("logical path must be a string");
     if (input.indexOf('\0') >= 0) throw invalid("logical path contains NUL");
     if (input.indexOf('\\') >= 0) {
@@ -45,7 +45,7 @@ final class HaraLogicalPath {
     return segments.isEmpty() ? "/" : "/" + String.join("/", segments);
   }
 
-  static String join(String base, String path) {
+  public static String join(String base, String path) {
     String canonicalBase = normalise(base);
     String relative = path == null ? null : path;
     if (relative == null) throw invalid("logical path must be a string");
@@ -53,31 +53,31 @@ final class HaraLogicalPath {
     return normalise(("/".equals(canonicalBase) ? "" : canonicalBase) + "/" + relative);
   }
 
-  static String resolve(String base, String path) {
+  public static String resolve(String base, String path) {
     if (path == null) throw invalid("logical path must be a string");
     return path.startsWith("/") ? normalise(path) : join(base, path);
   }
 
-  static String parent(String path) {
+  public static String parent(String path) {
     String canonical = normalise(path);
     if ("/".equals(canonical)) return null;
     int separator = canonical.lastIndexOf('/');
     return separator == 0 ? "/" : canonical.substring(0, separator);
   }
 
-  static String fileName(String path) {
+  public static String fileName(String path) {
     String canonical = normalise(path);
     if ("/".equals(canonical)) return "";
     return canonical.substring(canonical.lastIndexOf('/') + 1);
   }
 
-  static List<String> segments(String path) {
+  public static List<String> segments(String path) {
     String canonical = normalise(path);
     if ("/".equals(canonical)) return List.of();
     return List.of(canonical.substring(1).split("/"));
   }
 
-  static Path toHost(Path root, String logical) {
+  public static Path toHost(Path root, String logical) {
     Path canonicalRoot = root.toAbsolutePath().normalize();
     Path output = canonicalRoot;
     for (String segment : segments(logical)) output = output.resolve(segment);
@@ -88,7 +88,7 @@ final class HaraLogicalPath {
     return output;
   }
 
-  static String fromHost(Path root, Path host) {
+  public static String fromHost(Path root, Path host) {
     Path canonicalRoot = root.toAbsolutePath().normalize();
     Path canonicalHost = host.toAbsolutePath().normalize();
     if (!canonicalHost.startsWith(canonicalRoot)) {
@@ -100,7 +100,7 @@ final class HaraLogicalPath {
     return segments.isEmpty() ? "/" : normalise("/" + String.join("/", segments));
   }
 
-  static void validateFragment(String value, String label) {
+  public static void validateFragment(String value, String label) {
     if (value == null) throw invalid(label + " must be a string");
     if (value.indexOf('/') >= 0 || value.indexOf('\\') >= 0 || value.indexOf('\0') >= 0) {
       throw invalid(label + " must be one logical path fragment");

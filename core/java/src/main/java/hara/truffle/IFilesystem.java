@@ -35,7 +35,7 @@ public interface IFilesystem {
     TRANSACTIONS,
     WATCH;
 
-    String keyword() {
+    public String keyword() {
       return name().toLowerCase(java.util.Locale.ROOT).replace('_', '-');
     }
   }
@@ -46,7 +46,7 @@ public interface IFilesystem {
     SYMLINK,
     OTHER;
 
-    String keyword() {
+    public String keyword() {
       return name().toLowerCase(java.util.Locale.ROOT);
     }
   }
@@ -65,12 +65,12 @@ public interface IFilesystem {
               : Collections.unmodifiableSet(EnumSet.copyOf(values));
     }
 
-    static Capabilities of(Capability... values) {
+    public static Capabilities of(Capability... values) {
       if (values == null || values.length == 0) return new Capabilities(Set.of());
       return new Capabilities(EnumSet.copyOf(List.of(values)));
     }
 
-    static Capabilities nativeReadWrite() {
+    public static Capabilities nativeReadWrite() {
       return of(
           Capability.READ,
           Capability.WRITE,
@@ -82,7 +82,7 @@ public interface IFilesystem {
           Capability.APPEND);
     }
 
-    boolean contains(Capability capability) {
+    public boolean contains(Capability capability) {
       return values.contains(capability);
     }
   }
@@ -124,13 +124,13 @@ public interface IFilesystem {
   }
 
   record PageRequest(String token, int limit) {
-    static final int DEFAULT_LIMIT = 256;
+    public static final int DEFAULT_LIMIT = 256;
 
     public PageRequest {
       if (limit <= 0) throw new IllegalArgumentException("filesystem page limit must be positive");
     }
 
-    static PageRequest first() {
+    public static PageRequest first() {
       return new PageRequest(null, DEFAULT_LIMIT);
     }
   }
@@ -158,11 +158,11 @@ public interface IFilesystem {
   record MoveOptions(boolean replace, boolean parents, boolean atomic) {}
 
   record MutationContext(String expectedRevision, String expectedTargetRevision) {
-    static MutationContext none() {
+    public static MutationContext none() {
       return new MutationContext(null, null);
     }
 
-    boolean required() {
+    public boolean required() {
       return expectedRevision != null || expectedTargetRevision != null;
     }
   }
@@ -177,7 +177,7 @@ public interface IFilesystem {
       extensions = immutableMap(extensions);
     }
 
-    static Mutation path(String path) {
+    public static Mutation path(String path) {
       return new Mutation(path, null, null, Map.of());
     }
   }
@@ -203,17 +203,17 @@ public interface IFilesystem {
       this.state = state;
     }
 
-    static CallContext create() {
+    public static CallContext create() {
       return new CallContext(false, 0L, null, new State());
     }
 
-    static CallContext until(Instant deadline) {
+    public static CallContext until(Instant deadline) {
       Objects.requireNonNull(deadline, "deadline");
       Duration remaining = Duration.between(Instant.now(), deadline);
       return within(remaining.isNegative() ? Duration.ZERO : remaining);
     }
 
-    static CallContext within(Duration timeout) {
+    public static CallContext within(Duration timeout) {
       Objects.requireNonNull(timeout, "timeout");
       long durationNanos;
       try {
@@ -228,29 +228,29 @@ public interface IFilesystem {
       return new CallContext(true, deadline, null, new State());
     }
 
-    CallContext withTraceId(String traceId) {
+    public CallContext withTraceId(String traceId) {
       return new CallContext(
           hasDeadline, deadlineNanos, requireText(traceId, "trace id"), state);
     }
 
-    String traceId() {
+    public String traceId() {
       return traceId;
     }
 
-    boolean hasDeadline() {
+    public boolean hasDeadline() {
       return hasDeadline;
     }
 
-    long remainingNanos() {
+    public long remainingNanos() {
       if (!hasDeadline) return Long.MAX_VALUE;
       return Math.max(0L, deadlineNanos - System.nanoTime());
     }
 
-    boolean cancelled() {
+    public boolean cancelled() {
       return state.cancelled.get();
     }
 
-    boolean cancel() {
+    public boolean cancel() {
       if (!state.cancelled.compareAndSet(false, true)) return false;
       for (Runnable hook : state.cancellationHooks) {
         try {
@@ -263,7 +263,7 @@ public interface IFilesystem {
       return true;
     }
 
-    AutoCloseable onCancel(Runnable hook) {
+    public AutoCloseable onCancel(Runnable hook) {
       Objects.requireNonNull(hook, "cancellation hook");
       if (cancelled()) {
         hook.run();
@@ -274,7 +274,7 @@ public interface IFilesystem {
       return () -> state.cancellationHooks.remove(hook);
     }
 
-    void check(String provider, String operation, String path, String target) {
+    public void check(String provider, String operation, String path, String target) {
       if (cancelled()) {
         throw FilesystemException.cancelled(provider, operation, path, target);
       }

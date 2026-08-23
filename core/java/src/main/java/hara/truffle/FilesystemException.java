@@ -5,7 +5,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /** Stable provider-neutral failure carried by an exceptional CompletionStage. */
-final class FilesystemException extends RuntimeException {
+public final class FilesystemException extends RuntimeException {
   private static final long serialVersionUID = 1L;
   private final String code;
   private final String provider;
@@ -15,7 +15,7 @@ final class FilesystemException extends RuntimeException {
   private final String providerCode;
   private final boolean retryable;
 
-  FilesystemException(
+  public FilesystemException(
       String code,
       String message,
       String provider,
@@ -35,35 +35,35 @@ final class FilesystemException extends RuntimeException {
     this.retryable = retryable;
   }
 
-  String code() {
+  public String code() {
     return code;
   }
 
-  String provider() {
+  public String provider() {
     return provider;
   }
 
-  String operation() {
+  public String operation() {
     return operation;
   }
 
-  String path() {
+  public String path() {
     return path;
   }
 
-  String target() {
+  public String target() {
     return target;
   }
 
-  String providerCode() {
+  public String providerCode() {
     return providerCode;
   }
 
-  boolean retryable() {
+  public boolean retryable() {
     return retryable;
   }
 
-  Map<String, Object> data() {
+  public Map<String, Object> data() {
     LinkedHashMap<String, Object> values = new LinkedHashMap<>();
     values.put("ex/code", "file/" + code);
     values.put("file/provider", provider);
@@ -75,7 +75,7 @@ final class FilesystemException extends RuntimeException {
     return Collections.unmodifiableMap(values);
   }
 
-  static FilesystemException cancelled(
+  public static FilesystemException cancelled(
       String provider, String operation, String path, String target) {
     return new FilesystemException(
         "cancelled",
@@ -89,7 +89,7 @@ final class FilesystemException extends RuntimeException {
         null);
   }
 
-  static FilesystemException timeout(
+  public static FilesystemException timeout(
       String provider, String operation, String path, String target) {
     return new FilesystemException(
         "timeout",
@@ -103,7 +103,7 @@ final class FilesystemException extends RuntimeException {
         null);
   }
 
-  static FilesystemException providerClosed(
+  public static FilesystemException providerClosed(
       String provider, String operation, String path, String target) {
     return new FilesystemException(
         "provider-closed",
@@ -117,7 +117,7 @@ final class FilesystemException extends RuntimeException {
         null);
   }
 
-  static FilesystemException unsupportedRevision(
+  public static FilesystemException unsupportedRevision(
       String provider, String operation, String path, String target) {
     return new FilesystemException(
         "unsupported",
@@ -131,7 +131,7 @@ final class FilesystemException extends RuntimeException {
         null);
   }
 
-  static FilesystemException fromLegacy(
+  public static FilesystemException fromLegacy(
       String provider, String operation, String path, String target, Throwable error) {
     Throwable cause = unwrap(error);
     String code = HaraFileProvider.code(cause);

@@ -392,6 +392,8 @@ pub trait IFilesystem {
 
 #[path = "providers.rs"]
 pub mod providers;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod sftp;
 
 #[derive(Clone)]
 pub struct FilesystemHandle {

@@ -21,12 +21,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 
 /** Provider-neutral WebDAV mount over a trusted authenticated transport capability. */
-final class WebdavFilesystem implements IFilesystem {
+public final class WebdavFilesystem implements IFilesystem {
   /**
    * Trusted host transport. Authentication and host-key verification happen before Hara receives
    * this capability; filesystem semantics remain owned here.
    */
-  interface Client extends AutoCloseable {
+  public interface Client extends AutoCloseable {
     boolean authenticated();
 
     default boolean transportVerified() {
@@ -64,7 +64,7 @@ final class WebdavFilesystem implements IFilesystem {
     void close() throws Exception;
   }
 
-  record RemoteEntry(
+  public record RemoteEntry(
       String name,
       EntryType type,
       Long size,
@@ -73,7 +73,7 @@ final class WebdavFilesystem implements IFilesystem {
       String revision,
       Capabilities capabilities,
       Map<String, Object> extensions) {
-    RemoteEntry {
+    public RemoteEntry {
       if (name == null || name.isBlank() || name.contains("/") || ".".equals(name) || "..".equals(name)) {
         throw new IllegalArgumentException("invalid WebDAV entry name");
       }
@@ -84,28 +84,28 @@ final class WebdavFilesystem implements IFilesystem {
   }
 
   /** Typed transport failure. Portable behavior never depends on server message strings. */
-  static final class ClientFailure extends Exception {
+  public static final class ClientFailure extends Exception {
     private static final long serialVersionUID = 1L;
     private final String code;
     private final String providerCode;
     private final boolean retryable;
 
-    ClientFailure(String code, String providerCode, boolean retryable) {
+    public ClientFailure(String code, String providerCode, boolean retryable) {
       super("WebDAV transport operation failed");
       this.code = requireCode(code);
       this.providerCode = providerCode;
       this.retryable = retryable;
     }
 
-    String code() {
+    public String code() {
       return code;
     }
 
-    String providerCode() {
+    public String providerCode() {
       return providerCode;
     }
 
-    boolean retryable() {
+    public boolean retryable() {
       return retryable;
     }
 
@@ -117,7 +117,7 @@ final class WebdavFilesystem implements IFilesystem {
     }
   }
 
-  static final class Factory implements IFilesystemFactory {
+  public static final class Factory implements IFilesystemFactory {
     private static final Set<String> ALLOWED =
         Set.of(
             "credential-ref",
