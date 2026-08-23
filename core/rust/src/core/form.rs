@@ -843,7 +843,25 @@ fn binding_value(env: &HashMap<String, Value>, name: &str) -> Option<Value> {
 }
 
 fn foundation_fallback_omitted(env: &HashMap<String, Value>, name: &str) -> bool {
-    if name.contains('/') || env.contains_key(name) || syntax_symbol(name) {
+    // Namespace introspection is implemented as an evaluator intrinsic, not
+    // as an optional Foundation fallback. Keep it available in restricted
+    // namespaces so the structural evaluator arms can enforce their own
+    // argument and visibility semantics.
+    const INTRINSIC_FORMS: &[&str] = &[
+        "ns-alias-state",
+        "ns-loaded?",
+        "ns-name",
+        "ns-publics",
+        "ns-state",
+        "resolve",
+        "special-symbol?",
+        "the-ns",
+    ];
+    if name.contains('/')
+        || env.contains_key(name)
+        || syntax_symbol(name)
+        || INTRINSIC_FORMS.contains(&name)
+    {
         return false;
     }
     let Ok(registry) = namespace_registry() else {
