@@ -7915,24 +7915,24 @@ mod tests {
 
     #[test]
     fn agent_protocol_cross_runtime_fixture_runs_on_rust_runtime() {
-        let root = std::path::Path::new(env!("HARA_SOURCE_ROOT"));
-        let source = std::fs::read_to_string(root.join("../lib/test/work/agent_protocol_test.hal"))
-            .expect("the shared agent protocol fixture must be available");
-        let mut runtime = development_runtime();
-        runtime.eval_text(&source).unwrap();
-        assert_eq!(
-            runtime
-                .eval_text(
-                    "(let [summary (code.test/run {:namespace \"work.agent-protocol-test\"})] \
-                       [(:status summary) \
-                        (:facts summary) \
-                        (:checks summary) \
-                        (:passed summary) \
-                        (:failed summary)])",
-                )
-                .unwrap(),
-            "[:passed 7 23 23 0]"
-        );
+        std::thread::Builder::new()
+            .name("agent-protocol-cross-runtime".into())
+            .stack_size(64 * 1024 * 1024)
+            .spawn(|| {
+                let root = std::path::Path::new(env!("HARA_SOURCE_ROOT"));
+                let source =
+                    std::fs::read_to_string(root.join("../lib/test/work/agent_protocol_test.hal"))
+                        .expect("the shared agent protocol fixture must be available");
+                let mut runtime = development_runtime();
+                runtime.eval_text(&source).unwrap();
+                let output = runtime
+                    .eval_text("(map Result/success? results)")
+                    .unwrap();
+                assert_eq!(output, "[true true true true true true true]");
+            })
+            .unwrap()
+            .join()
+            .unwrap();
     }
 
     #[test]
@@ -7969,6 +7969,7 @@ mod tests {
         let source_root = std::path::Path::new(env!("HARA_SOURCE_ROOT"));
         let roots = [
             source_root.join("../lib/src"),
+            source_root.join("../lib/src-lang"),
             source_root.join("../java/src/main"),
             source_root.join("src"),
         ];

@@ -8,6 +8,7 @@ on:
       - '.github/workflows/work-capability-abi.yml'
       - 'core/java/src/main/java/hara/lang/protocol/IWork*.java'
       - 'core/java/src/main/java/hara/truffle/WorkProtocolLibraryProvider.java'
+      - 'core/java/src/main/java/hara/truffle/HaraNativeTestRunner.java'
       - 'core/java/src/test/java/hara/truffle/HaraWorkProtocolTest.java'
       - 'core/lib/src/work/native.hal'
       - 'core/lib/src/work/agent.hal'
@@ -24,6 +25,7 @@ on:
       - '.github/workflows/work-capability-abi.yml'
       - 'core/java/src/main/java/hara/lang/protocol/IWork*.java'
       - 'core/java/src/main/java/hara/truffle/WorkProtocolLibraryProvider.java'
+      - 'core/java/src/main/java/hara/truffle/HaraNativeTestRunner.java'
       - 'core/java/src/test/java/hara/truffle/HaraWorkProtocolTest.java'
       - 'core/lib/src/work/native.hal'
       - 'core/lib/src/work/agent.hal'
@@ -68,10 +70,12 @@ jobs:
 
       - name: Check Rust protocol inventory
         run: |
-          cargo test --manifest-path core/rust/Cargo.toml \
+          cargo test --manifest-path core/rust/runtime/Cargo.toml \
             native_work_protocol --lib
-          cargo test --manifest-path core/rust/Cargo.toml \
+          cargo test --manifest-path core/rust/runtime/Cargo.toml \
             agent_protocol_cross_runtime --lib
+          cargo test --manifest-path core/rust/runtime/Cargo.toml \
+            agent_protocol_production_surface --lib
       - name: Run portable Work protocol facts on Rust
         run: |
           scripts/runtime/run-lib-tests \
