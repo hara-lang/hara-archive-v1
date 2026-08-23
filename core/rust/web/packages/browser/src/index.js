@@ -1,7 +1,12 @@
 import init, * as wasmBindings from "./wasm/hara_wasm.js";
 import { instantiateWholeWasm } from "./whole-wasm.js";
 import { parseJson } from "../../../host/services.js";
-export { installLockedPackages, installPackageProvider, loadLockedPackageResources } from "./packages.js";
+export {
+  disposeBrowserPackageProviders,
+  installLockedPackages,
+  installPackageProvider,
+  loadLockedPackageResources
+} from "./packages.js";
 
 const { Runtime } = wasmBindings;
 
@@ -33,6 +38,12 @@ function createApi(runtime) {
     },
     installDirectWasmImport(logical, bytes) {
       runtime.installDirectWasmImport(String(logical), bytes);
+    },
+    installHostHandler(handler) {
+      if (typeof handler !== "function" || typeof runtime.install_host_handler !== "function") {
+        throw new Error("host-handler-unavailable");
+      }
+      runtime.install_host_handler(handler);
     },
     unregisterResource(namespace) {
       runtime.unregister_resource(String(namespace));
@@ -85,7 +96,9 @@ function createApi(runtime) {
     },
     raw: runtime,
     dispose() {
+      const cleanup = disposeBrowserPackageProviders(runtime);
       runtime.free();
+      return cleanup;
     }
   });
 }
