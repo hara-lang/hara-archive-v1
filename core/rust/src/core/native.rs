@@ -926,7 +926,10 @@ fn native_regex_values(operation: &str, values: Vec<Value>) -> Result<Value, Str
 }
 
 fn file_error(operation: &str, error: FileError) -> String {
-    format!("{operation} failed: file/{}", error.code())
+    let method = operation
+        .strip_prefix("std.native.File/")
+        .unwrap_or(operation);
+    format!("file/{method} failed: file/{}", error.code())
 }
 
 fn socket_error(operation: &str, error: SocketError) -> String {
@@ -1012,40 +1015,47 @@ fn file_write_options(options: &Value) -> Result<WriteOptions, String> {
         Some(Value::Keyword(value)) if value.as_str() == "create" => WriteMode::Create,
         Some(Value::Keyword(value)) if value.as_str() == "replace" => WriteMode::Replace,
         Some(Value::Keyword(value)) if value.as_str() == "append" => WriteMode::Append,
-        Some(_) => return Err("file/write :mode must be :create, :replace, or :append".into()),
+        Some(_) => {
+            return Err("std.native.File/write :mode must be :create, :replace, or :append".into())
+        }
     };
     Ok(WriteOptions {
         mode,
-        parents: file_bool_option(options, "parents?", false, "file/write")?,
+        parents: file_bool_option(options, "parents?", false, "std.native.File/write")?,
     })
 }
 
 fn file_mkdir_options(options: &Value) -> Result<MkdirOptions, String> {
     Ok(MkdirOptions {
-        parents: file_bool_option(options, "parents?", true, "file/mkdir")?,
-        exists_ok: file_bool_option(options, "exists-ok?", true, "file/mkdir")?,
+        parents: file_bool_option(options, "parents?", true, "std.native.File/mkdir")?,
+        exists_ok: file_bool_option(options, "exists-ok?", true, "std.native.File/mkdir")?,
     })
 }
 
 fn file_delete_options(options: &Value) -> Result<DeleteOptions, String> {
     Ok(DeleteOptions {
-        missing_ok: file_bool_option(options, "missing-ok?", false, "file/delete")?,
+        missing_ok: file_bool_option(options, "missing-ok?", false, "std.native.File/delete")?,
     })
 }
 
 fn file_copy_options(options: &Value) -> Result<CopyOptions, String> {
     Ok(CopyOptions {
-        replace: file_bool_option(options, "replace?", false, "file/copy")?,
-        parents: file_bool_option(options, "parents?", false, "file/copy")?,
-        preserve_modified: file_bool_option(options, "preserve-modified?", false, "file/copy")?,
+        replace: file_bool_option(options, "replace?", false, "std.native.File/copy")?,
+        parents: file_bool_option(options, "parents?", false, "std.native.File/copy")?,
+        preserve_modified: file_bool_option(
+            options,
+            "preserve-modified?",
+            false,
+            "std.native.File/copy",
+        )?,
     })
 }
 
 fn file_move_options(options: &Value) -> Result<MoveOptions, String> {
     Ok(MoveOptions {
-        replace: file_bool_option(options, "replace?", false, "file/move")?,
-        parents: file_bool_option(options, "parents?", false, "file/move")?,
-        atomic: file_bool_option(options, "atomic?", false, "file/move")?,
+        replace: file_bool_option(options, "replace?", false, "std.native.File/move")?,
+        parents: file_bool_option(options, "parents?", false, "std.native.File/move")?,
+        atomic: file_bool_option(options, "atomic?", false, "std.native.File/move")?,
     })
 }
 
@@ -1058,17 +1068,20 @@ fn file_operation(
         .iter()
         .map(|form| eval(form, env))
         .collect::<Result<Vec<_>, _>>()?;
-    file_values(operation, values)
+    let operation = operation
+        .strip_prefix("file/")
+        .map(|method| format!("std.native.File/{method}"))
+        .unwrap_or_else(|| operation.to_owned());
+    file_values(&operation, values)
 }
 
 fn file_values(operation: &str, values: Vec<Value>) -> Result<Value, String> {
-    let operation = operation
+    let effect_operation = operation
         .strip_prefix("std.native.File/")
         .map(|method| format!("file/{method}"))
         .unwrap_or_else(|| operation.to_owned());
-    let operation = operation.as_str();
     match operation {
-        "file/join" | "file/resolve" => {
+        "std.native.File/join" | "std.native.File/resolve" => {
             if values.len() != 2 {
                 return Err(format!("{operation} expects a base and path"));
             }
@@ -1078,7 +1091,7 @@ fn file_values(operation: &str, values: Vec<Value>) -> Result<Value, String> {
             let Value::String(path) = &values[1] else {
                 return Err(format!("{operation} expects a base and path"));
             };
-            let result = if operation == "file/join" {
+            let result = if operation == "std.native.File/join" {
                 crate::file::logical_join(&base, &path)
             } else {
                 crate::file::logical_resolve(&base, &path)
@@ -1087,18 +1100,23 @@ fn file_values(operation: &str, values: Vec<Value>) -> Result<Value, String> {
                 .map(Value::String)
                 .map_err(|error| file_error(operation, error))
         }
-        "file/parent" => {
+        "std.native.File/parent" => {
             if values.len() != 1 {
-                return Err(format!("{operation} expects a path"));
+                return Err("std.native.File/parent expects a path".into());
             }
             let Value::String(path) = &values[0] else {
-                return Err(format!("{operation} expects a path"));
+                return Err("std.native.File/parent expects a path".into());
             };
             crate::file::logical_parent(path)
-                .map(|parent| parent.map_or(Value::Nil, Value::String))
+                .map(|parent| parent.map(Value::String).unwrap_or(Value::Nil))
                 .map_err(|error| file_error(operation, error))
         }
-        "file/read" | "file/exists?" | "file/stat" | "file/entries" | "file/list" | "file/walk" => {
+        "std.native.File/read"
+        | "std.native.File/exists?"
+        | "std.native.File/stat"
+        | "std.native.File/entries"
+        | "std.native.File/list"
+        | "std.native.File/walk" => {
             if values.len() != 1 {
                 return Err(format!("{operation} expects a path"));
             }
@@ -1106,31 +1124,33 @@ fn file_values(operation: &str, values: Vec<Value>) -> Result<Value, String> {
                 return Err(format!("{operation} expects a path"));
             };
             Ok(file_effect(
-                operation,
+                &effect_operation,
                 &path,
                 None,
                 |provider| match operation {
-                    "file/read" => provider.read(&path),
-                    "file/exists?" => provider.exists(&path),
-                    "file/stat" => provider.stat(&path),
-                    "file/entries" => provider.entries(&path),
-                    "file/list" => provider.list(&path),
-                    "file/walk" => provider.walk(&path),
+                    "std.native.File/read" => provider.read(&path),
+                    "std.native.File/exists?" => provider.exists(&path),
+                    "std.native.File/stat" => provider.stat(&path),
+                    "std.native.File/entries" => provider.entries(&path),
+                    "std.native.File/list" => provider.list(&path),
+                    "std.native.File/walk" => provider.walk(&path),
                     _ => unreachable!(),
                 },
             ))
         }
-        "file/write" => {
+        "std.native.File/write" => {
             if !(2..=3).contains(&values.len()) {
-                return Err("file/write expects a path, bytes, and optional options".into());
+                return Err(
+                    "std.native.File/write expects a path, bytes, and optional options".into(),
+                );
             }
             let Value::String(path) = &values[0] else {
-                return Err("file/write expects a path and bytes".into());
+                return Err("std.native.File/write expects a path and bytes".into());
             };
             let bytes = match &values[1] {
                 Value::Bytes(value) => value.clone(),
                 Value::ByteBuffer(value) => value.borrow().clone(),
-                _ => return Err("file/write expects a path and bytes".into()),
+                _ => return Err("std.native.File/write expects a path and bytes".into()),
             };
             let options = if values.len() == 3 {
                 file_options_value(values[2].clone(), operation)?
@@ -1138,16 +1158,16 @@ fn file_values(operation: &str, values: Vec<Value>) -> Result<Value, String> {
                 Value::Map(PMap::new())
             };
             let options = file_write_options(&options)?;
-            Ok(file_effect(operation, &path, None, |provider| {
+            Ok(file_effect(&effect_operation, &path, None, |provider| {
                 provider.write_with_options(&path, bytes, options)
             }))
         }
-        "file/mkdir" => {
+        "std.native.File/mkdir" => {
             if !(1..=2).contains(&values.len()) {
-                return Err("file/mkdir expects a path and optional options".into());
+                return Err("std.native.File/mkdir expects a path and optional options".into());
             }
             let Value::String(path) = &values[0] else {
-                return Err("file/mkdir expects a path".into());
+                return Err("std.native.File/mkdir expects a path".into());
             };
             let options = if values.len() == 2 {
                 file_options_value(values[1].clone(), operation)?
@@ -1155,16 +1175,16 @@ fn file_values(operation: &str, values: Vec<Value>) -> Result<Value, String> {
                 Value::Map(PMap::new())
             };
             let options = file_mkdir_options(&options)?;
-            Ok(file_effect(operation, &path, None, |provider| {
+            Ok(file_effect(&effect_operation, &path, None, |provider| {
                 provider.mkdir_with_options(&path, options)
             }))
         }
-        "file/delete" => {
+        "std.native.File/delete" => {
             if !(1..=2).contains(&values.len()) {
-                return Err("file/delete expects a path and optional options".into());
+                return Err("std.native.File/delete expects a path and optional options".into());
             }
             let Value::String(path) = &values[0] else {
-                return Err("file/delete expects a path".into());
+                return Err("std.native.File/delete expects a path".into());
             };
             let options = if values.len() == 2 {
                 file_options_value(values[1].clone(), operation)?
@@ -1172,11 +1192,11 @@ fn file_values(operation: &str, values: Vec<Value>) -> Result<Value, String> {
                 Value::Map(PMap::new())
             };
             let options = file_delete_options(&options)?;
-            Ok(file_effect(operation, &path, None, |provider| {
+            Ok(file_effect(&effect_operation, &path, None, |provider| {
                 provider.delete_with_options(&path, options)
             }))
         }
-        "file/copy" | "file/move" => {
+        "std.native.File/copy" | "std.native.File/move" => {
             if !(2..=3).contains(&values.len()) {
                 return Err(format!(
                     "{operation} expects source, target, and optional options"
@@ -1193,19 +1213,19 @@ fn file_values(operation: &str, values: Vec<Value>) -> Result<Value, String> {
             } else {
                 Value::Map(PMap::new())
             };
-            Ok(if operation == "file/copy" {
+            Ok(if operation == "std.native.File/copy" {
                 let options = file_copy_options(&options)?;
-                file_effect(operation, &source, Some(&target), |provider| {
+                file_effect(&effect_operation, &source, Some(&target), |provider| {
                     provider.copy(&source, &target, options)
                 })
             } else {
                 let options = file_move_options(&options)?;
-                file_effect(operation, &source, Some(&target), |provider| {
+                file_effect(&effect_operation, &source, Some(&target), |provider| {
                     provider.move_entry(&source, &target, options)
                 })
             })
         }
-        "file/temp-file" | "file/temp-directory" => {
+        "std.native.File/temp-file" | "std.native.File/temp-directory" => {
             if !(1..=2).contains(&values.len()) {
                 return Err(format!("{operation} expects a parent and optional options"));
             }
@@ -1217,19 +1237,19 @@ fn file_values(operation: &str, values: Vec<Value>) -> Result<Value, String> {
             } else {
                 Value::Map(PMap::new())
             };
-            Ok(if operation == "file/temp-file" {
+            Ok(if operation == "std.native.File/temp-file" {
                 let options = TempFileOptions {
                     prefix: file_string_option(&options, "prefix", "tmp", operation)?,
                     suffix: file_string_option(&options, "suffix", "", operation)?,
                 };
-                file_effect(operation, &parent, None, |provider| {
+                file_effect(&effect_operation, &parent, None, |provider| {
                     provider.temp_file(&parent, options)
                 })
             } else {
                 let options = TempDirectoryOptions {
                     prefix: file_string_option(&options, "prefix", "tmp", operation)?,
                 };
-                file_effect(operation, &parent, None, |provider| {
+                file_effect(&effect_operation, &parent, None, |provider| {
                     provider.temp_directory(&parent, options)
                 })
             })
