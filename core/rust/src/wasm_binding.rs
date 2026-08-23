@@ -3,9 +3,9 @@
 //! Sources are parsed as data with the Hara reader. This module never evaluates
 //! an interface, instantiates a module, or acquires host authority.
 
-mod canonical;
 #[cfg(not(target_arch = "wasm32"))]
 mod adapter;
+mod canonical;
 mod direct;
 mod memory;
 #[cfg(not(target_arch = "wasm32"))]
@@ -28,12 +28,12 @@ pub use crate::direct_wasm::{
     DirectWasmFunctionExport, DirectWasmImport, DirectWasmImportKind, DirectWasmInspection,
     DirectWasmMemory,
 };
+#[cfg(not(target_arch = "wasm32"))]
+pub use adapter::{generate_adapter, AdapterArtifact, ADAPTER_MANIFEST_SCHEMA};
 pub use direct::{
     direct_inspection_source, direct_interface_skeleton, inspect_direct,
     DIRECT_WASM_INSPECTION_SCHEMA,
 };
-#[cfg(not(target_arch = "wasm32"))]
-pub use adapter::{generate_adapter, AdapterArtifact, ADAPTER_MANIFEST_SCHEMA};
 pub use memory::{
     MemoryArgumentPlan, MemoryBindingPlan, MemoryFunctionPlan, MemoryResultPlan,
     MEMORY_BINDING_SCHEMA,
