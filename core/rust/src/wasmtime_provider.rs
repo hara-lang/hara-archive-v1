@@ -143,11 +143,18 @@ impl WasmExtensionProvider for WasmtimeExtensionProvider {
         )
     }
 
+    fn capabilities(&self) -> Vec<String> {
+        if matches!(&self.mode, ProviderMode::Hta(_)) {
+            return hta_capabilities();
+        }
+        Vec::new()
+    }
+
     fn start(&self, manifest: &ExtensionManifest) -> Result<(), String> {
         if let ProviderMode::Hta(state) = &self.mode {
             return state.start(manifest);
         }
-        if !manifest.capabilities.is_empty() {
+        if !manifest.capabilities.is_empty() || !manifest.host_call_capabilities.is_empty() {
             return Err(format!(
                 "extension/capability-denied: {:?} for {}",
                 manifest.capabilities, manifest.namespace
@@ -291,6 +298,15 @@ impl WasmExtensionProvider for WasmtimeExtensionProvider {
 const MAX_HTA_FRAME_BYTES: usize = 64 * 1024 * 1024;
 const DEFAULT_HTA_TIMEOUT: Duration = Duration::from_secs(120);
 
+fn hta_capabilities() -> Vec<String> {
+    std::env::var("HARA_HTA_CAPABILITIES")
+        .unwrap_or_default()
+        .split([',', ' ', '\n', '\t'])
+        .filter(|capability| !capability.is_empty())
+        .map(str::to_owned)
+        .collect()
+}
+
 struct HtaPending {
     promise: Promise,
     deadline: Option<Instant>,
@@ -330,7 +346,13 @@ impl HtaProviderState {
                 "extension/manifest-mismatch: HTA Wasm provider requires :wasm/:hta.v1".into(),
             );
         }
-        if !manifest.capabilities.is_empty() {
+        let capabilities = hta_capabilities();
+        if manifest
+            .capabilities
+            .iter()
+            .chain(manifest.host_call_capabilities.values().flatten())
+            .any(|capability| !capabilities.contains(capability))
+        {
             return Err(format!(
                 "extension/capability-denied: {:?} for {}",
                 manifest.capabilities, manifest.namespace
@@ -560,6 +582,11 @@ impl HtaProviderState {
             let task = execute_start(session, &request)?;
             if task <= 0 {
                 return Err(format!("hta/start-failed: {}", manifest.namespace));
+            }
+            if session.pending.contains_key(&(task as u64)) {
+                let _ = cancel_task_on_session(session, task as u64);
+                let _ = drop_task_on_session(session, task as u64);
+                return Err(format!("hta/task-duplicate: {}", task));
             }
             session.pending.insert(
                 task as u64,
@@ -796,6 +823,18 @@ impl HtaProviderState {
             );
             return Ok(());
         }
+        if manifest
+            .host_call_capabilities(&service, &method)
+            .iter()
+            .any(|capability| !hta_capabilities().contains(capability))
+        {
+            self.queue_delivery(
+                call,
+                false,
+                host_error("hta/capability-denied", &service, &method),
+            );
+            return Ok(());
+        }
         let Some(handler) = self.host_handler.clone() else {
             self.queue_delivery(
                 call,
@@ -903,16 +942,20 @@ impl HtaProviderState {
     }
 
     fn cancel(&self, task: u64) -> Result<(), String> {
-        if !self.is_pending(task) {
-            return Ok(());
-        }
-        self.cancel_task(task)?;
-        self.session
+        let pending = self
+            .session
             .borrow_mut()
             .as_mut()
             .ok_or_else(|| "hta/session-closed".to_owned())?
             .pending
             .remove(&task);
+        if pending.is_none() {
+            return Ok(());
+        }
+        if let Err(error) = self.cancel_task(task) {
+            let _ = self.drop_task(task);
+            return Err(error);
+        }
         Ok(())
     }
 
@@ -930,12 +973,15 @@ impl HtaProviderState {
         if status != 0 {
             return Err(format!("hta/cancel-failed: {status}"));
         }
-        let _ = call_i32(
+        let drop_status = call_i32(
             &mut session.store,
             &session.drop_task,
             &[Val::I64(task as i64)],
             "hta_drop_task",
         )?;
+        if drop_status != 0 {
+            return Err(format!("hta/drop-task-failed: {drop_status}"));
+        }
         Ok(())
     }
 
@@ -980,7 +1026,9 @@ impl HtaProviderState {
 
     fn timeout(&self, task: u64) {
         if self.is_pending(task) {
-            let _ = self.cancel_task(task);
+            if self.cancel_task(task).is_err() {
+                let _ = self.drop_task(task);
+            }
             let pending = self
                 .session
                 .borrow_mut()
@@ -1002,12 +1050,20 @@ impl HtaProviderState {
                 session
                     .pending
                     .drain()
-                    .map(|(_, pending)| pending.promise)
+                    .map(|(task, pending)| (task, pending.promise))
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
-        for promise in pending {
+        for (task, promise) in pending {
+            if let Some(session) = self.session.borrow_mut().as_mut() {
+                let _ = cancel_task_on_session(session, task);
+                let _ = drop_task_on_session(session, task);
+            }
             promise.reject(error.clone());
+        }
+        if let Some(session) = self.session.borrow_mut().as_mut() {
+            session.host_promises.clear();
+            session.deliveries.clear();
         }
     }
 

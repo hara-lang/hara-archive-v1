@@ -28,6 +28,7 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
   private final Value allocator;
   private final HaraWasmMemoryExecutor memoryExecutor;
   private final boolean hta;
+  private final Set<String> capabilities;
   private final Value deallocator;
   private final Value htaStart;
   private final Value htaNextEvent;
@@ -56,7 +57,11 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
       throw new HaraException(
           "extension/abi-unsupported: " + manifest.abi() + " for " + manifest.namespace());
     }
-    if (!manifest.capabilities().isEmpty()) {
+    capabilities = supportedCapabilities();
+    if (manifest.capabilities().stream().anyMatch(capability -> !capabilities.contains(capability))
+        || manifest.hostCallCapabilities().values().stream()
+            .flatMap(List::stream)
+            .anyMatch(capability -> !capabilities.contains(capability))) {
       throw new HaraException(
           "extension/capability-denied: "
               + manifest.capabilities()
@@ -131,7 +136,7 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
       if (isHta) {
         Value version = requireExport(members, "hta_abi_version", manifest.module());
         int abiVersion = version.execute().asInt();
-        if (abiVersion != 1 && abiVersion != 2) {
+        if (abiVersion != 1 && abiVersion != 2 && abiVersion != 3 && abiVersion != 4) {
           throw new HaraException("extension/abi-version-unsupported: " + manifest.namespace());
         }
       }
@@ -186,6 +191,7 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
       throw new HaraException(
           manifest.namespace() + "/" + name + " expects " + spec.arguments().size() + " arguments");
     }
+    validateHandles(values);
     CompletableFuture<Object> result = new CompletableFuture<>();
     TaskFuture task = new TaskFuture(result);
     mailbox.add(new Start(spec.operation(), values.clone(), task));
@@ -323,12 +329,25 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
 
   private void start(Start command) {
     ArrayList<Object> arguments = new ArrayList<>();
-    for (Object value : command.values) arguments.add(HaraBox.unwrap(value));
+    for (Object value : command.values) {
+      validateHandles(value);
+      arguments.add(HaraBox.unwrap(value));
+    }
     long task = executeFrame(htaStart, List.of(command.name, arguments)).asLong();
     if (task <= 0) throw new HaraException("hta/start-failed: " + manifest.namespace());
+    if (tasks.containsKey(task)) {
+      try {
+        htaCancel.execute(task);
+      } finally {
+        htaDropTask.execute(task);
+      }
+      throw new HaraException("hta/task-duplicate: " + task);
+    }
     command.result.task = task;
     tasks.put(task, command.result.future);
-    if (command.result.future.isCancelled()) htaCancel.execute(task);
+    if (command.result.future.isCancelled()) {
+      cancel(new Cancel(command.result));
+    }
   }
 
   private void deliver(Delivery command) {
@@ -351,7 +370,8 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
         long task = number(event, 1, "task id");
         CompletableFuture<Object> future = tasks.remove(task);
         if (future == null) continue;
-        htaDropTask.execute(task);
+        int dropStatus = htaDropTask.execute(task).asInt();
+        if (dropStatus != 0) throw new HaraException("hta/drop-task-failed: " + dropStatus);
         if (kind == 0) future.complete(event.get(2));
         else future.completeExceptionally(rejection(event.get(2)));
       } else if (kind == 2) {
@@ -375,6 +395,11 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
     List<Object> arguments = (List<Object>) event.get(serviceIndex + 2);
     if (!manifest.permitsHostCall(service, method)) {
       mailbox.add(new Delivery(call, false, error("hta/host-call-denied", service + "/" + method)));
+      return;
+    }
+    if (manifest.hostCallCapabilities(service, method).stream()
+        .anyMatch(capability -> !capabilities.contains(capability))) {
+      mailbox.add(new Delivery(call, false, error("hta/capability-denied", service + "/" + method)));
       return;
     }
     CompletableFuture.supplyAsync(() -> invokeHost(service, method, arguments))
@@ -468,6 +493,9 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
                 bindHandles(key);
                 bindHandles(item);
               });
+    else if (value instanceof Iterable<?> iterable) iterable.forEach(this::bindHandles);
+    else if (value instanceof Object[] array)
+      for (Object item : array) bindHandles(item);
     return value;
   }
 
@@ -481,7 +509,10 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
         new HtaHandle(command.handle.owner(), command.handle.type(), command.handle.id());
     int status = executeFrame(htaRelease, wireHandle).asInt();
     if (status != 0) throw new HaraException("hta/handle-release-failed: " + status);
-    handles.remove(command.handle);
+    if (!handles.remove(command.handle)) {
+      throw new HaraException(
+          "hta/handle-stale: " + command.handle.type() + ":" + command.handle.id());
+    }
   }
 
   private static long number(List<Object> values, int index, String field) {
@@ -494,6 +525,17 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
   private static String string(Object value, String field) {
     if (!(value instanceof String)) throw new HaraException("hta/event-malformed: " + field);
     return (String) value;
+  }
+
+  private static Set<String> supportedCapabilities() {
+    String configured =
+        System.getProperty(
+            "hara.hta.capabilities", System.getenv().getOrDefault("HARA_HTA_CAPABILITIES", ""));
+    LinkedHashSet<String> result = new LinkedHashSet<>();
+    for (String capability : configured.split("[,\\s]+")) {
+      if (!capability.isBlank()) result.add(capability);
+    }
+    return Set.copyOf(result);
   }
 
   private static Map<Object, Object> error(String code, String message) {
@@ -515,7 +557,33 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
   }
 
   private void cancel(Cancel command) {
-    if (command.result.task > 0) htaCancel.execute(command.result.task);
+    if (command.result.task <= 0) return;
+    long task = command.result.task;
+    if (tasks.remove(task) == null) return;
+    try {
+      int status = htaCancel.execute(task).asInt();
+      if (status != 0) throw new HaraException("hta/cancel-failed: " + status);
+    } finally {
+      htaDropTask.execute(task);
+    }
+  }
+
+  private void validateHandles(Object value) {
+    if (value instanceof HtaHandle handle) {
+      handle.requireUsable(this);
+      if (!handles.contains(handle)) {
+        throw new HaraException("hta/handle-stale: " + handle.type() + ":" + handle.id());
+      }
+    } else if (value instanceof Map<?, ?> map) {
+      map.forEach((key, item) -> {
+        validateHandles(key);
+        validateHandles(item);
+      });
+    } else if (value instanceof Iterable<?> iterable) {
+      iterable.forEach(this::validateHandles);
+    } else if (value instanceof Object[] array) {
+      for (Object item : array) validateHandles(item);
+    }
   }
 
   private void rejectAll(HaraException error) {

@@ -33,6 +33,7 @@ public final class HaraExtensionManifest {
           "module",
           "abi",
           "exports",
+          "callbacks",
           "capabilities",
           "host-calls",
           "handles",
@@ -41,7 +42,7 @@ public final class HaraExtensionManifest {
   private static final Set<String> REQUIRED_FIELDS =
       Set.of("namespace", "version", "provider", "abi", "exports", "capabilities");
   private static final Set<String> EXPORT_FIELDS =
-      Set.of("wasm/export", "args", "returns", "async", "operation");
+      Set.of("wasm/export", "args", "returns", "async", "operation", "reentrant");
   private static final Set<String> HANDLE_FIELDS = Set.of("tag", "release");
 
   private final String namespace;
@@ -53,8 +54,10 @@ public final class HaraExtensionManifest {
   private final Map<String, Target> targets;
   private final java.util.List<String> assets;
   private final Map<String, Export> exports;
+  private final Map<String, Export> callbacks;
   private final java.util.List<String> capabilities;
   private final Map<String, java.util.List<String>> hostCalls;
+  private final Map<String, java.util.List<String>> hostCallCapabilities;
   private final Map<String, String> handleTags;
   private final Map<String, String> handleReleases;
 
@@ -68,8 +71,10 @@ public final class HaraExtensionManifest {
       Map<String, Target> targets,
       java.util.List<String> assets,
       Map<String, Export> exports,
+      Map<String, Export> callbacks,
       java.util.List<String> capabilities,
       Map<String, java.util.List<String>> hostCalls,
+      Map<String, java.util.List<String>> hostCallCapabilities,
       Map<String, String> handleTags,
       Map<String, String> handleReleases) {
     this.namespace = namespace;
@@ -81,12 +86,19 @@ public final class HaraExtensionManifest {
     this.targets = Collections.unmodifiableMap(new LinkedHashMap<>(targets));
     this.assets = Collections.unmodifiableList(new ArrayList<>(assets));
     this.exports = Collections.unmodifiableMap(new LinkedHashMap<>(exports));
+    this.callbacks = Collections.unmodifiableMap(new LinkedHashMap<>(callbacks));
     this.capabilities = Collections.unmodifiableList(new ArrayList<>(capabilities));
     LinkedHashMap<String, java.util.List<String>> copiedHostCalls = new LinkedHashMap<>();
     hostCalls.forEach(
         (service, methods) ->
             copiedHostCalls.put(service, Collections.unmodifiableList(new ArrayList<>(methods))));
     this.hostCalls = Collections.unmodifiableMap(copiedHostCalls);
+    LinkedHashMap<String, java.util.List<String>> copiedHostCallCapabilities = new LinkedHashMap<>();
+    hostCallCapabilities.forEach(
+        (call, required) ->
+            copiedHostCallCapabilities.put(
+                call, Collections.unmodifiableList(new ArrayList<>(required))));
+    this.hostCallCapabilities = Collections.unmodifiableMap(copiedHostCallCapabilities);
     this.handleTags = Collections.unmodifiableMap(new LinkedHashMap<>(handleTags));
     this.handleReleases = Collections.unmodifiableMap(new LinkedHashMap<>(handleReleases));
   }
@@ -131,10 +143,13 @@ public final class HaraExtensionManifest {
       throw invalid(origin, "unsupported provider :" + provider);
     }
     Map<String, Export> exports = parseExports(lookup(map, "exports"), origin);
+    Map<String, Export> callbacks = parseCallbacks(lookup(map, "callbacks"), origin);
     java.util.List<String> capabilities =
         parseKeywords(lookup(map, "capabilities"), origin, "capabilities");
     Map<String, java.util.List<String>> hostCalls =
         parseHostCalls(lookup(map, "host-calls"), origin);
+    Map<String, java.util.List<String>> hostCallCapabilities =
+        parseHostCallCapabilities(lookup(map, "host-calls"), origin);
     Map<String, String> handleTags = new LinkedHashMap<>();
     Map<String, String> handleReleases = parseHandleTags(lookup(map, "handles"), handleTags, origin);
     return new HaraExtensionManifest(
@@ -147,8 +162,10 @@ public final class HaraExtensionManifest {
         targets,
         assets,
         exports,
+        callbacks,
         capabilities,
         hostCalls,
+        hostCallCapabilities,
         handleTags,
         handleReleases);
   }
@@ -193,12 +210,24 @@ public final class HaraExtensionManifest {
     return exports;
   }
 
+  public Map<String, Export> callbacks() {
+    return callbacks;
+  }
+
   public java.util.List<String> capabilities() {
     return capabilities;
   }
 
   public Map<String, java.util.List<String>> hostCalls() {
     return hostCalls;
+  }
+
+  public java.util.List<String> hostCallCapabilities(String service, String method) {
+    return hostCallCapabilities.getOrDefault(service + "/" + method, java.util.List.of());
+  }
+
+  public Map<String, java.util.List<String>> hostCallCapabilities() {
+    return hostCallCapabilities;
   }
 
   public String handleTag(String type) {
@@ -321,9 +350,8 @@ public final class HaraExtensionManifest {
         throw invalid(origin, "host-call services must be non-empty strings");
       }
       Object methods = entry.getValue();
-      if (!(methods instanceof ILinearType<?>)) {
-        throw invalid(origin, "host-call methods must be vectors");
-      }
+      if (methods instanceof IMapType<?, ?>) methods = lookup((IMapType<?, ?>) methods, "methods");
+      if (!(methods instanceof ILinearType<?>)) throw invalid(origin, "host-call methods must be vectors");
       ArrayList<String> names = new ArrayList<>();
       for (Object method : (ILinearType<?>) methods) {
         if (!(method instanceof String) || ((String) method).isBlank()) {
@@ -332,6 +360,40 @@ public final class HaraExtensionManifest {
         names.add((String) method);
       }
       result.put((String) entry.getKey(), names);
+    }
+    return result;
+  }
+
+  private static Map<String, java.util.List<String>> parseHostCallCapabilities(
+      Object value, String origin) {
+    if (value == null) return Map.of();
+    if (!(value instanceof IMapType<?, ?>)) throw invalid(origin, "host-calls must be a map");
+    LinkedHashMap<String, java.util.List<String>> result = new LinkedHashMap<>();
+    Iterator<?> iterator = ((IMapType<?, ?>) value).iterator();
+    while (iterator.hasNext()) {
+      Map.Entry<?, ?> entry = (Map.Entry<?, ?>) iterator.next();
+      if (!(entry.getKey() instanceof String) || !(entry.getValue() instanceof IMapType<?, ?>)) {
+        continue;
+      }
+      String service = (String) entry.getKey();
+      Object methods = lookup((IMapType<?, ?>) entry.getValue(), "methods");
+      Object capabilities = lookup((IMapType<?, ?>) entry.getValue(), "capabilities");
+      if (capabilities == null) continue;
+      if (!(capabilities instanceof ILinearType<?>)) {
+        throw invalid(origin, "host-call capabilities must be a vector");
+      }
+      ArrayList<String> required = new ArrayList<>();
+      for (Object capability : (ILinearType<?>) capabilities) {
+        if (!(capability instanceof Keyword) || ((Keyword) capability).getNamespace() != null) {
+          throw invalid(origin, "host-call capabilities must be keywords");
+        }
+        required.add(((Keyword) capability).getName());
+      }
+      if (!(methods instanceof ILinearType<?>)) throw invalid(origin, "host-call methods must be vectors");
+      for (Object method : (ILinearType<?>) methods) {
+        if (!(method instanceof String)) throw invalid(origin, "host-call methods must be non-empty strings");
+        result.put(service + "/" + method, required);
+      }
     }
     return result;
   }
@@ -345,6 +407,7 @@ public final class HaraExtensionManifest {
       if (!(entry.getKey() instanceof String) || ((String) entry.getKey()).isBlank()) {
         throw invalid(origin, "export names must be non-empty strings");
       }
+
       if (!(entry.getValue() instanceof IMapType<?, ?>)) {
         throw invalid(origin, "export " + entry.getKey() + " must be a map");
       }
@@ -370,6 +433,24 @@ public final class HaraExtensionManifest {
     }
     if (result.isEmpty()) throw invalid(origin, "exports cannot be empty");
     return result;
+  }
+
+  private static Map<String, Export> parseCallbacks(Object value, String origin) {
+    if (value == null) return Map.of();
+    if (!(value instanceof IMapType<?, ?> map)) throw invalid(origin, "callbacks must be a map");
+    Iterator<?> iterator = map.iterator();
+    while (iterator.hasNext()) {
+      Map.Entry<?, ?> entry = (Map.Entry<?, ?>) iterator.next();
+      if (!(entry.getValue() instanceof IMapType<?, ?> specification)) {
+        throw invalid(origin, "callback specification must be a map");
+      }
+      Object reentrant = lookup(specification, "reentrant");
+      if (Boolean.TRUE.equals(reentrant)) {
+        throw invalid(origin, "callbacks cannot be reentrant");
+      }
+    }
+    if (!map.iterator().hasNext()) return Map.of();
+    return parseExports(value, origin);
   }
 
   private static java.util.List<String> parseKeywords(

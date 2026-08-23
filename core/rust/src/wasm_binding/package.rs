@@ -303,6 +303,7 @@ fn project_document(
             ),
         ),
         (keyword_form("host-calls"), host_calls_form(interface)),
+        (keyword_form("callbacks"), callbacks_form(interface)?),
         (keyword_form("handles"), handles_form(interface)),
         (keyword_form("assets"), Form::Vector(assets)),
     ]);
@@ -590,8 +591,8 @@ fn host_calls_form(interface: &WasmInterface) -> Form {
             .host_calls
             .iter()
             .map(|(service, contract)| {
-                (
-                    string_form(service),
+                let mut fields = vec![(
+                    keyword_form("methods"),
                     Form::Vector(
                         contract
                             .methods
@@ -599,6 +600,22 @@ fn host_calls_form(interface: &WasmInterface) -> Form {
                             .map(|method| string_form(method))
                             .collect(),
                     ),
+                )];
+                if !contract.capabilities.is_empty() {
+                    fields.push((
+                        keyword_form("capabilities"),
+                        Form::Vector(
+                            contract
+                                .capabilities
+                                .iter()
+                                .map(|capability| keyword_form(capability))
+                                .collect(),
+                        ),
+                    ));
+                }
+                (
+                    string_form(service),
+                    Form::Map(fields),
                 )
             })
             .collect(),
@@ -625,6 +642,35 @@ fn handles_form(interface: &WasmInterface) -> Form {
             })
             .collect(),
     )
+}
+
+fn callbacks_form(interface: &WasmInterface) -> Result<Form, String> {
+    Ok(Form::Map(
+        interface
+            .callbacks
+            .iter()
+            .map(|(name, contract)| {
+                let mut fields = vec![
+                    (
+                        keyword_form("args"),
+                        Form::Vector(
+                            contract
+                                .arguments
+                                .iter()
+                                .map(|argument| manifest_type(&argument.hara_type))
+                                .collect::<Result<Vec<_>, _>>()?,
+                        ),
+                    ),
+                    (
+                        keyword_form("returns"),
+                        manifest_type(&contract.returns)?,
+                    ),
+                ];
+                fields.push((keyword_form("reentrant"), Form::Bool(contract.reentrant)));
+                Ok((string_form(name), Form::Map(fields)))
+            })
+            .collect::<Result<Vec<_>, String>>()?,
+    ))
 }
 
 fn manifest_type(value: &HaraValueType) -> Result<Form, String> {

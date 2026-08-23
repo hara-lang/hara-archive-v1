@@ -17,6 +17,7 @@ const MANIFEST_FIELDS: &[&str] = &[
     "exports",
     "capabilities",
     "host-calls",
+    "callbacks",
     "handles",
     "targets",
     "assets",
@@ -38,6 +39,12 @@ pub struct ExtensionExport {
     pub returns: String,
     pub asynchronous: bool,
     pub raw_export: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExtensionCallback {
+    pub arguments: Vec<String>,
+    pub returns: String,
 }
 
 impl ExtensionExport {
@@ -67,6 +74,8 @@ pub struct ExtensionManifest {
     pub operations: HashMap<String, String>,
     pub capabilities: Vec<String>,
     pub host_calls: HashMap<String, Vec<String>>,
+    pub host_call_capabilities: HashMap<String, Vec<String>>,
+    pub callbacks: HashMap<String, ExtensionCallback>,
     pub handle_tags: HashMap<String, String>,
     pub handle_releases: HashMap<String, String>,
 }
@@ -150,8 +159,12 @@ impl ExtensionManifest {
             origin,
             "capabilities",
         )?;
-        let host_calls = optional(entries, "host-calls")
-            .map_or_else(|| Ok(HashMap::new()), |form| parse_host_calls(form, origin))?;
+        let (host_calls, host_call_capabilities) = optional(entries, "host-calls").map_or_else(
+            || Ok((HashMap::new(), HashMap::new())),
+            |form| parse_host_calls(form, origin),
+        )?;
+        let callbacks = optional(entries, "callbacks")
+            .map_or_else(|| Ok(HashMap::new()), |form| parse_callbacks(form, origin))?;
         let (handle_tags, handle_releases) = optional(entries, "handles").map_or_else(
             || Ok((HashMap::new(), HashMap::new())),
             |form| parse_handles(form, origin),
@@ -170,6 +183,8 @@ impl ExtensionManifest {
             operations,
             capabilities,
             host_calls,
+            host_call_capabilities,
+            callbacks,
             handle_tags,
             handle_releases,
         })
@@ -179,6 +194,13 @@ impl ExtensionManifest {
         self.host_calls.get(service).map_or(false, |methods| {
             methods.iter().any(|candidate| candidate == method)
         })
+    }
+
+    pub fn host_call_capabilities(&self, service: &str, method: &str) -> &[String] {
+        self.host_call_capabilities
+            .get(&format!("{service}/{method}"))
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
     }
 }
 
@@ -293,12 +315,13 @@ impl WasmExtension {
                 .capabilities()
                 .into_iter()
                 .collect::<HashSet<_>>();
-            if let Some(capability) = self
+            let missing = self
                 .manifest
                 .capabilities
                 .iter()
-                .find(|capability| !available.contains(*capability))
-            {
+                .chain(self.manifest.host_call_capabilities.values().flatten())
+                .find(|capability| !available.contains(*capability));
+            if let Some(capability) = missing {
                 return Err(format!(
                     "extension/denied: {} requires capability :{}",
                     self.manifest.namespace, capability
@@ -462,18 +485,59 @@ fn parse_exports(
     Ok((exports, operations))
 }
 
-fn parse_host_calls(form: &Form, origin: &str) -> Result<HashMap<String, Vec<String>>, String> {
-    map(form, origin, "host-calls")?
-        .iter()
-        .map(|(service, methods)| {
-            let service = string(service, origin, "host-call service")?.to_owned();
-            let methods = vector(methods, origin, "host-call methods")?
+fn parse_host_calls(
+    form: &Form,
+    origin: &str,
+) -> Result<(HashMap<String, Vec<String>>, HashMap<String, Vec<String>>), String> {
+    let mut host_calls = HashMap::new();
+    let mut host_call_capabilities = HashMap::new();
+    for (service, specification) in map(form, origin, "host-calls")? {
+        let service = string(service, origin, "host-call service")?.to_owned();
+        let (methods, capabilities) = match specification {
+            Form::Vector(_) => (
+                vector(specification, origin, "host-call methods")?
+                    .iter()
+                    .map(|method| string(method, origin, "host-call method").map(str::to_owned))
+                    .collect::<Result<Vec<_>, _>>()?,
+                Vec::new(),
+            ),
+            Form::Map(entries) => {
+                reject_unknown(entries, &["methods", "capabilities"], origin, "host-call")?;
+                let methods = vector(
+                    required(entries, "methods", origin)?,
+                    origin,
+                    "host-call methods",
+                )?
                 .iter()
                 .map(|method| string(method, origin, "host-call method").map(str::to_owned))
                 .collect::<Result<Vec<_>, _>>()?;
-            Ok((service, methods))
-        })
-        .collect()
+                let capabilities = optional(entries, "capabilities")
+                    .map(|form| keyword_vector(form, origin, "host-call capabilities"))
+                    .transpose()?
+                    .unwrap_or_default();
+                (methods, capabilities)
+            }
+            _ => {
+                return Err(malformed(
+                    origin,
+                    "host-call specification must be a vector or map",
+                ))
+            }
+        };
+        if host_calls
+            .insert(service.clone(), methods.clone())
+            .is_some()
+        {
+            return Err(malformed(
+                origin,
+                format!("duplicate host-call service {service}"),
+            ));
+        }
+        for method in methods {
+            host_call_capabilities.insert(format!("{service}/{method}"), capabilities.clone());
+        }
+    }
+    Ok((host_calls, host_call_capabilities))
 }
 
 fn parse_handles(
@@ -504,6 +568,40 @@ fn parse_handles(
         }
     }
     Ok((tags, releases))
+}
+
+fn parse_callbacks(
+    form: &Form,
+    origin: &str,
+) -> Result<HashMap<String, ExtensionCallback>, String> {
+    let mut callbacks = HashMap::new();
+    for (name, specification) in map(form, origin, "callbacks")? {
+        let name = string(name, origin, "callback name")?.to_owned();
+        let entries = map(specification, origin, "callback specification")?;
+        reject_unknown(entries, &["args", "returns", "reentrant"], origin, "callback")?;
+        let arguments = wire_vector(required(entries, "args", origin)?, origin, "callback args")?;
+        let returns = wire_type(
+            required(entries, "returns", origin)?,
+            origin,
+            "callback returns",
+        )?;
+        if matches!(optional(entries, "reentrant"), Some(Form::Bool(true))) {
+            return Err(malformed(
+                origin,
+                format!("callback {name} cannot be reentrant"),
+            ));
+        }
+        if optional(entries, "reentrant").is_some_and(|form| !matches!(form, Form::Bool(_))) {
+            return Err(malformed(origin, "callback reentrant must be boolean"));
+        }
+        if callbacks
+            .insert(name.clone(), ExtensionCallback { arguments, returns })
+            .is_some()
+        {
+            return Err(malformed(origin, format!("duplicate callback {name}")));
+        }
+    }
+    Ok(callbacks)
 }
 
 fn valid_identity(value: &str) -> bool {
