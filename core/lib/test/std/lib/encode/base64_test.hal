@@ -1,39 +1,63 @@
 (ns std.lib.encode.base64-test
+  (:use code.test)
   (:require [std.lib.encode.base64 :as base64]))
 
 (def +all-bytes+ (apply bytes (range 0 256)))
 
-(def results
-  [(test-check "Base64 emits canonical padded RFC 4648 output"
-               [(base64/encode (str/encode-utf8 ""))
-                (base64/encode (str/encode-utf8 "f"))
-                (base64/encode (str/encode-utf8 "fo"))
-                (base64/encode (str/encode-utf8 "foo"))
-                (base64/encode (str/encode-utf8 "foobar"))]
-               ["" "Zg==" "Zm8=" "Zm9v" "Zm9vYmFy"])
+^{:refer std.lib.encode.base64/input-bytes}
+(fact "accepts Bytes and rejects other encode inputs"
+  [(Bytes/instance? (base64/input-bytes (bytes 1 2 3)))
+   (try (base64/input-bytes "Hara") false
+        (catch Throwable error true))]
+  => [true true])
 
-   (test-check "Base64 decodes UTF-8 bytes and round trips every byte"
-               [(= (base64/decode "SGFyYSDOuw==")
-                   (str/encode-utf8 "Hara λ"))
-                (= (base64/decode (base64/encode +all-bytes+))
-                   +all-bytes+)]
-               [true true])
+^{:refer std.lib.encode.base64/value-of}
+(fact "maps Base64 alphabet characters and rejects invalid input"
+  [(base64/value-of "A" 0)
+   (base64/value-of "/" 1)
+   (try (base64/value-of "$" 2) false
+        (catch Throwable error true))]
+  => [0 63 true])
 
-   (test-check "Base64 rejects non-Bytes encode input and malformed values"
-               [(try (base64/encode "f") false
-                     (catch Throwable error true))
-                (try (base64/decode "abc") false
-                     (catch Throwable error true))
-                (try (base64/decode "Zm$=") false
-                     (catch Throwable error true))
-                (try (base64/decode "Zg=A") false
-                     (catch Throwable error true))
-                (try (base64/decode "Zg==AAAA") false
-                     (catch Throwable error true))
-                (try (base64/decode "Zh==") false
-                     (catch Throwable error true))
-                (try (base64/decode "Zg") false
-                     (catch Throwable error true))]
-               [true true true true true true true])])
+^{:refer std.lib.encode.base64/encode}
+(fact "emits canonical padded RFC 4648 output"
+  [(base64/encode (str/encode-utf8 ""))
+   (base64/encode (str/encode-utf8 "f"))
+   (base64/encode (str/encode-utf8 "fo"))
+   (base64/encode (str/encode-utf8 "foo"))
+   (base64/encode (str/encode-utf8 "foobar"))]
+  => ["" "Zg==" "Zm8=" "Zm9v" "Zm9vYmFy"])
 
-results
+^{:refer std.lib.encode.base64/decode}
+(fact "decodes UTF-8 bytes and round trips every byte"
+  [(= (base64/decode "SGFyYSDOuw==")
+      (str/encode-utf8 "Hara λ"))
+   (= (base64/decode (base64/encode +all-bytes+))
+      +all-bytes+)]
+  => [true true])
+
+(fact "marks only the supported Base64 surface public"
+  [(:public (meta (get (ns-publics 'std.lib.encode.base64) 'encode)))
+   (:public (meta (get (ns-publics 'std.lib.encode.base64) 'decode)))
+   (:public (meta (get (ns-publics 'std.lib.encode.base64) 'input-bytes)))
+   (:public (meta (get (ns-publics 'std.lib.encode.base64) 'value-of)))]
+  => [true true nil nil])
+
+(fact "rejects non-Bytes encode input and malformed values"
+  [(try (base64/encode "f") false
+        (catch Throwable error true))
+   (try (base64/decode "abc") false
+        (catch Throwable error true))
+   (try (base64/decode "Zm$=") false
+        (catch Throwable error true))
+   (try (base64/decode "Zg=A") false
+        (catch Throwable error true))
+   (try (base64/decode "Zg==AAAA") false
+        (catch Throwable error true))
+   (try (base64/decode "Zh==") false
+        (catch Throwable error true))
+   (try (base64/decode "Zg") false
+        (catch Throwable error true))]
+  => [true true true true true true true])
+
+(pr-str (run {:namespace "std.lib.encode.base64-test"}))
