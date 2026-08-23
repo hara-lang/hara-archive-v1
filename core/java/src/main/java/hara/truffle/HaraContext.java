@@ -87,6 +87,7 @@ public final class HaraContext {
   private final Map<String, HaraNamespace> namespaces = new ConcurrentHashMap<>();
   private final Map<String, Map<String, HaraMacro>> macros = new ConcurrentHashMap<>();
   private final Map<String, Map<String, String>> aliases = new ConcurrentHashMap<>();
+  private final Map<String, String> globalAliases = new ConcurrentHashMap<>();
   private final Map<String, NamespaceLoadState> namespaceStates = new ConcurrentHashMap<>();
   private final Map<String, String> namespaceFailures = new ConcurrentHashMap<>();
   private final Map<String, String> nativeFlavors = new ConcurrentHashMap<>();
@@ -804,6 +805,7 @@ public final class HaraContext {
 
   private void applyNamespaceDeclaration(HaraNamespaceDeclaration declaration) {
     currentNamespace = namespace(declaration.name.getName());
+    registerGlobalAlias(declaration.globalAlias, currentNamespace.name());
     currentNamespace.role = declaration.role;
     if (declaration.blank) {
       blankNamespaces.add(currentNamespace.name());
@@ -820,6 +822,7 @@ public final class HaraContext {
     configureNativeFlavor(declaration.structuralClauses);
     applyNamespaceRequires(declaration.structuralClauses);
     applyNamespaceUses(declaration.structuralClauses);
+    configureGlobalAliases(declaration);
     if (declaration.selectiveFoundation) {
       for (String name : namespace(FOUNDATION_NAMESPACE).vars.keySet()) {
         if (!declaration.exposedFoundation.contains(name)) removeFoundationRefer(name);
@@ -844,12 +847,36 @@ public final class HaraContext {
     namespaceAliases
         .entrySet()
         .removeIf(entry -> HaraBuiltinCatalog.GENERATED_LIBRARIES.containsValue(entry.getValue()));
+    namespaceAliases.keySet().removeAll(globalAliases.keySet());
     for (Map.Entry<String, String> library : HaraBuiltinCatalog.GENERATED_LIBRARIES.entrySet()) {
       if (declaration.excludedIntrinsics.contains(library.getKey())) continue;
       String alias =
           declaration.intrinsicAliases.getOrDefault(
               library.getKey(), HaraBuiltinCatalog.DEFAULT_LIBRARY_ALIASES.get(library.getKey()));
       putAlias(namespaceAliases, alias, library.getValue());
+    }
+  }
+
+  private void configureGlobalAliases(HaraNamespaceDeclaration declaration) {
+    Map<String, String> namespaceAliases =
+        aliases.computeIfAbsent(currentNamespace.name(), ignored -> new ConcurrentHashMap<>());
+    for (Map.Entry<String, String> global : globalAliases.entrySet()) {
+      String library = global.getValue().startsWith("std.foundation.")
+          ? global.getValue().substring("std.foundation.".length())
+          : null;
+      if (library != null && declaration.excludedIntrinsics.contains(library)) continue;
+      if (!currentNamespace.name().equals(global.getValue())) {
+        namespaceAliases.putIfAbsent(global.getKey(), global.getValue());
+      }
+    }
+  }
+
+  private void registerGlobalAlias(String alias, String namespace) {
+    if (alias == null) return;
+    String previous = globalAliases.putIfAbsent(alias, namespace);
+    if (previous != null && !previous.equals(namespace)) {
+      throw new HaraException(
+          "Global namespace alias already refers to " + previous + ": " + alias);
     }
   }
 
@@ -7963,6 +7990,7 @@ public final class HaraContext {
     for (Map.Entry<String, Map<String, String>> entry : aliases.entrySet()) {
       aliasValues.put(entry.getKey(), new LinkedHashMap<>(entry.getValue()));
     }
+    Map<String, String> globalAliasValues = new LinkedHashMap<>(globalAliases);
     Map<String, Set<String>> dependencyValues = new LinkedHashMap<>();
     for (Map.Entry<String, Set<String>> entry : moduleDependencies.entrySet()) {
       dependencyValues.put(entry.getKey(), new LinkedHashSet<>(entry.getValue()));
@@ -7976,6 +8004,7 @@ public final class HaraContext {
         roles,
         macroValues,
         aliasValues,
+        globalAliasValues,
         new LinkedHashMap<>(modules),
         dependencyValues,
         new LinkedHashMap<>(namespaceStates),
@@ -8009,6 +8038,8 @@ public final class HaraContext {
     for (Map.Entry<String, Map<String, String>> entry : snapshot.aliases.entrySet()) {
       aliases.put(entry.getKey(), new ConcurrentHashMap<>(entry.getValue()));
     }
+    globalAliases.clear();
+    globalAliases.putAll(snapshot.globalAliases);
     modules.clear();
     modules.putAll(snapshot.modules);
     moduleDependencies.clear();
@@ -8052,6 +8083,7 @@ public final class HaraContext {
     private final Map<String, String> roles;
     private final Map<String, Map<String, HaraMacro>> macros;
     private final Map<String, Map<String, String>> aliases;
+    private final Map<String, String> globalAliases;
     private final Map<String, ModuleRecord> modules;
     private final Map<String, Set<String>> moduleDependencies;
     private final Map<String, NamespaceLoadState> namespaceStates;
@@ -8066,6 +8098,7 @@ public final class HaraContext {
         Map<String, String> roles,
         Map<String, Map<String, HaraMacro>> macros,
         Map<String, Map<String, String>> aliases,
+        Map<String, String> globalAliases,
         Map<String, ModuleRecord> modules,
         Map<String, Set<String>> moduleDependencies,
         Map<String, NamespaceLoadState> namespaceStates,
@@ -8078,6 +8111,7 @@ public final class HaraContext {
       this.roles = roles;
       this.macros = macros;
       this.aliases = aliases;
+      this.globalAliases = globalAliases;
       this.modules = modules;
       this.moduleDependencies = moduleDependencies;
       this.namespaceStates = namespaceStates;
