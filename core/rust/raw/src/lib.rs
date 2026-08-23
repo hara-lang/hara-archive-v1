@@ -222,11 +222,6 @@ impl Session {
         events: Rc<RefCell<VecDeque<Vec<u8>>>>,
     ) -> Self {
         let namespaces = core::minimal_namespace_registry();
-        let native_string = namespaces.find_or_create("std.native.String");
-        let string = namespaces.find_or_create("std.foundation.string");
-        for (name, var) in native_string.mappings() {
-            string.map_var(name, var);
-        }
         let native_json = namespaces.find_or_create("std.native.Json");
         native_json.intern(
             "read",
@@ -2717,16 +2712,6 @@ mod tests {
         ];
         for (index, probe) in source_aliases.into_iter().enumerate() {
             let mut kernel = SessionKernel::new();
-            eprintln!(
-                "probe {probe}, aliases {:?}, env {:?}",
-                kernel
-                    .sessions
-                    .get("ROOT")
-                    .unwrap()
-                    .namespaces
-                    .global_aliases(),
-                kernel.sessions.get("ROOT").unwrap().env.keys().collect::<Vec<_>>()
-            );
             let task = index as u64 + 1;
             dispatch(
                 &mut kernel,
@@ -2974,10 +2959,10 @@ mod tests {
             .start_fiber(
                 5,
                 "(try \
-                   (throw (std.foundation/ex-info \"bad input\" {:kind :invalid})) \
+                   (throw (ex-info \"bad input\" {:kind :invalid})) \
                    (catch Throwable error \
-                     [(std.foundation/ex-message error) \
-                      (std.foundation/ex-data error)]))",
+                     [(ex-message error) \
+                      (ex-data error)]))",
             )
             .unwrap();
         assert_eq!(
