@@ -14,17 +14,8 @@
 
 (defn- command-result
   [argv value]
-  (let [outcome ((execution-runner value) argv {})]
-    (if (Result/instance? outcome)
-      (if (Result/success? outcome)
-        (Result/data outcome)
-        (let [error (Result/error-value outcome)
-              data (select-keys (ex-data error)
-                                [:command :stdout :stderr :exit])]
-          (if (and (map? data) (has? data :exit))
-            data
-            (throw error))))
-      outcome)))
+  (sh/result-record
+   ((execution-runner value) argv {})))
 
 (defn- command-checked
   [argv value]

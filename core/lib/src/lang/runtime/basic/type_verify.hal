@@ -43,15 +43,8 @@
   [runtime source]
   (let [argv (get runtime :exec)]
     (try
-      (let [outcome (sh/run argv (process-options runtime source))
-            result (if (Result/success? outcome)
-                     (Result/data outcome)
-                     (let [error (Result/error-value outcome)
-                           data (select-keys (ex-data error)
-                                             [:command :stdout :stderr :exit])]
-                       (if (and (map? data) (has? data :exit))
-                         data
-                         (throw error))))]
+      (let [result (sh/result-record
+                    (sh/run argv (process-options runtime source)))]
         (checker-result runtime result))
       (catch Throwable error
         (throw

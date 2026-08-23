@@ -14,17 +14,10 @@
     {:cwd (str (:root value) "/" (:build value))}))
 
 (defn- gh-run [argv options]
-  (let [outcome (sh/run argv options)]
-    (if (Result/success? outcome)
-      (Result/data outcome)
-      (let [error (Result/error-value outcome)
-            result (select-keys (ex-data error)
-                                [:command :stdout :stderr :exit])]
-        (if (and (map? result) (has? result :exit))
-          (if *verbose*
-            (throw (ex :host result :ex/message "GitHub command failed"))
-            result)
-          (throw error))))))
+  (let [result (sh/result-record (sh/run argv options))]
+    (if (or (= 0 (:exit result)) (not *verbose*))
+      result
+      (throw (ex :host result :ex/message "GitHub command failed")))))
 
 (defn gh-commit [config message]
   (let [options (gh-sh-opts config)]

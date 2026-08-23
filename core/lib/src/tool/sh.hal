@@ -260,6 +260,23 @@
        (catch Throwable error
          (Result/create :error error context))))))
 
+(defn result-record
+  "Returns a process record from a Result or an existing record.
+
+   Process failures retain their command, output, and exit data. Other errors
+   are rethrown."
+  [value]
+  (if (Result/instance? value)
+    (if (Result/success? value)
+      (Result/data value)
+      (let [error (Result/error-value value)
+            data (select-keys (or (ex-data error) {})
+                              [:command :stdout :stderr :exit])]
+        (if (and (map? data) (has? data :exit))
+          data
+          (throw error))))
+    value))
+
 (defn run-record
   "Runs argv synchronously and returns the ordinary completion record.
 

@@ -32,19 +32,10 @@
   ([args]
    (git-result args {}))
   ([args options]
-   (let [outcome ((execution-runner options)
-                  (command args options)
-                  (execution-options options))]
-     (if (Result/instance? outcome)
-       (if (Result/success? outcome)
-         (Result/data outcome)
-         (let [error (Result/error-value outcome)
-               data (select-keys (ex-data error)
-                                 [:command :stdout :stderr :exit])]
-           (if (and (map? data) (has? data :exit))
-             data
-             (throw error))))
-       outcome))))
+   (sh/result-record
+    ((execution-runner options)
+     (command args options)
+     (execution-options options)))))
 
 (defn git-run
   "Runs Git and optionally rejects non-zero results."

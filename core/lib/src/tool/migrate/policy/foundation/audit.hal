@@ -17,18 +17,12 @@
        (ex :tool.migrate/git-stdin-unsupported
            {:ex/message "The command adapter does not write Foundation objects"
             :argv argv})))
-    (let [outcome (sh/run
+    (let [result (sh/result-record
+                  (sh/run
                    (vec
                     (concat
                      ["git" "--git-dir" git-dir]
-                     argv)))
-          result (if (Result/success? outcome)
-                   (Result/data outcome)
-                   (let [error (Result/error-value outcome)
-                         data (ex-data error)]
-                     (if (and (map? data) (has? data :exit))
-                       data
-                       (throw error))))]
+                     argv))))]
       {:exit (:exit result)
        :out (:stdout result)
        :err (:stderr result)})))

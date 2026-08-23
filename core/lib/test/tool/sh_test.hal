@@ -18,6 +18,38 @@
       :exit 7}])
 
    (test-check
+    "result-record unwraps process Results and rethrows unrelated errors"
+    (let [success
+          (Result/create
+           :success
+           {:command ["true"] :stdout "out" :stderr "" :exit 0})
+          failed
+          (Result/create
+           :error
+           (ex :dependency
+               {:command ["false"] :stdout "out" :stderr "err" :exit 7
+                :ignored true}
+               :ex/message "Command failed")
+           {:tool.sh/operation :run})
+          unrelated
+          (Result/create
+           :error
+           (ex :host {:reason :unavailable} :ex/message "Unavailable"))
+          record {:command ["existing"] :stdout "" :stderr "" :exit 0}]
+      [(sh/result-record success)
+       (sh/result-record failed)
+       (sh/result-record record)
+       (try
+         (sh/result-record unrelated)
+         nil
+         (catch Throwable error
+           [(ex-message error) (:reason (ex-data error))]))])
+    [{:command ["true"] :stdout "out" :stderr "" :exit 0}
+     {:command ["false"] :stdout "out" :stderr "err" :exit 7}
+     {:command ["existing"] :stdout "" :stderr "" :exit 0}
+     ["Unavailable" :unavailable]])
+
+   (test-check
     "run returns a successful Result for a zero exit"
     (let [argv ["sh" "-c" "printf out"]
          outcome (sh/run argv)]
