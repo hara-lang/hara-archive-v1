@@ -14,7 +14,6 @@ use super::{
     MemoryBindingPlan, WasmInterface,
 };
 
-#[cfg(test)]
 mod manifest;
 #[cfg(test)]
 mod tests;
