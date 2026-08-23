@@ -597,7 +597,10 @@ final class SftpFilesystem implements IFilesystem {
                 "denied", "cannot move mounted root", "move", sourceLogical, targetLogical, null, false, null);
           }
           if (sourceLogical.equals(targetLogical)) {
-            return mutation(sourceLogical, client.lstat(remote(sourceLogical)));
+            RemoteEntry same = client.lstat(remote(sourceLogical));
+            checkExpected(same, mutation.expectedRevision(), "move", sourceLogical, targetLogical);
+            checkExpected(same, mutation.expectedTargetRevision(), "move", sourceLogical, targetLogical);
+            return mutation(sourceLogical, same);
           }
           if (targetLogical.startsWith(sourceLogical + "/")) {
             throw failure(
@@ -842,6 +845,22 @@ final class SftpFilesystem implements IFilesystem {
       MutationContext mutation, String operation, String path, String target) {
     if (mutation.required() && !capabilities.contains(Capability.REVISION_CHECK)) {
       throw FilesystemException.unsupportedRevision("sftp", operation, path, target);
+    }
+  }
+
+  private static void checkExpected(
+      RemoteEntry entry, String expected, String operation, String path, String target) {
+    if (expected == null) return;
+    if (entry.revision() == null || !expected.equals(entry.revision())) {
+      throw failure(
+          "conflict",
+          "SFTP entry revision does not match",
+          operation,
+          path,
+          target,
+          "revision-mismatch",
+          false,
+          null);
     }
   }
 

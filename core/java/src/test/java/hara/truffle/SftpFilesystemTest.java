@@ -108,6 +108,19 @@ public class SftpFilesystemTest {
         assertEquals("conflict", error.code());
         assertEquals("revision-mismatch", error.providerCode());
       }
+      try {
+        join(
+            filesystem.move(
+                IFilesystem.CallContext.create(),
+                "/README.md",
+                "/README.md",
+                new IFilesystem.MoveOptions(false, false, false),
+                new IFilesystem.MutationContext("stale", null)));
+        fail("expected same-path revision conflict");
+      } catch (FilesystemException error) {
+        assertEquals("conflict", error.code());
+        assertEquals("revision-mismatch", error.providerCode());
+      }
 
       join(
           filesystem.copy(
