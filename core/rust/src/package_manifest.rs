@@ -209,6 +209,16 @@ impl PackageManifest {
         Ok(VerifiedPackageSelection { manifest, selection })
     }
 
+    pub fn select_hta_require_archive(
+        path: &Path,
+        module: &str,
+        requirements: &PackageRuntimeRequirements,
+    ) -> Result<VerifiedPackageSelection, PackageManifestError> {
+        let manifest = Self::read_archive(path)?;
+        let selection = manifest.select_hta_require(module, requirements)?;
+        Ok(VerifiedPackageSelection { manifest, selection })
+    }
+
     pub fn parse(source: &str) -> Result<Self, PackageManifestError> {
         parse::parse_manifest(source)
     }
@@ -270,7 +280,16 @@ impl PackageManifest {
         requirements: &PackageRuntimeRequirements,
     ) -> Result<PackageSelection, PackageManifestError> {
         if self.flavors.is_empty() {
-            return Ok(PackageSelection::Portable);
+            if self.wasm_imports.is_empty() {
+                return Ok(PackageSelection::Portable);
+            }
+            return Err(PackageManifestError::new(
+                "package/missing-flavor",
+                format!(
+                    "{} {} has no :{} host flavor",
+                    self.identity, self.version, flavor
+                ),
+            ));
         }
         let variant = self.flavors.get(flavor).ok_or_else(|| {
             PackageManifestError::new(
@@ -281,6 +300,56 @@ impl PackageManifest {
                 ),
             )
         })?;
+        if variant.artifact.artifact_type != PackageArtifactType::Jar {
+            return Err(PackageManifestError::new(
+                "package/artifact-type-mismatch",
+                format!(
+                    ":{} flavor must select :jar, got :{}",
+                    flavor,
+                    variant.artifact.artifact_type.keyword()
+                ),
+            ));
+        }
+        self.preflight_variant(&format!(":{} flavor", flavor), variant, requirements)?;
+        Ok(PackageSelection::Variant(variant.clone()))
+    }
+
+    pub fn select_hta_require(
+        &self,
+        module: &str,
+        requirements: &PackageRuntimeRequirements,
+    ) -> Result<PackageSelection, PackageManifestError> {
+        if self.wasm_imports.is_empty() && self.flavors.is_empty() {
+            return Ok(PackageSelection::Portable);
+        }
+        let variant = self.wasm_imports.get(module).ok_or_else(|| {
+            PackageManifestError::new(
+                "package/missing-require-artifact",
+                format!(
+                    "{} {} has no HTA artifact for :require {module}",
+                    self.identity, self.version
+                ),
+            )
+        })?;
+        if variant.artifact.artifact_type != PackageArtifactType::Hta {
+            return Err(PackageManifestError::new(
+                "package/artifact-type-mismatch",
+                format!(
+                    ":require {module} must select :hta, got :{}",
+                    variant.artifact.artifact_type.keyword()
+                ),
+            ));
+        }
+        self.preflight_variant(&format!(":require {module}"), variant, requirements)?;
+        Ok(PackageSelection::Variant(variant.clone()))
+    }
+
+    fn preflight_variant(
+        &self,
+        route: &str,
+        variant: &PackageVariant,
+        requirements: &PackageRuntimeRequirements,
+    ) -> Result<(), PackageManifestError> {
         if !requirements
             .supported_targets
             .contains(&variant.artifact.target)
@@ -288,8 +357,7 @@ impl PackageManifest {
             return Err(PackageManifestError::new(
                 "package/target-mismatch",
                 format!(
-                    ":{} artifact target {} is not supported",
-                    flavor,
+                    "{route} artifact target {} is not supported",
                     variant.artifact.target
                 ),
             ));
@@ -298,8 +366,7 @@ impl PackageManifest {
             return Err(PackageManifestError::new(
                 "package/abi-mismatch",
                 format!(
-                    ":{} artifact ABI {} is not supported",
-                    flavor,
+                    "{route} artifact ABI {} is not supported",
                     variant.artifact.abi
                 ),
             ));
@@ -322,7 +389,7 @@ impl PackageManifest {
                 format!("denied host calls: {}", denied_host_calls.join(", ")),
             ));
         }
-        Ok(PackageSelection::Variant(variant.clone()))
+        Ok(())
     }
 
     pub fn select_wasm_import(
@@ -336,33 +403,16 @@ impl PackageManifest {
                 format!("{} {} has no Wasm import {module}", self.identity, self.version),
             )
         })?;
-        if !requirements.supported_targets.contains(&variant.artifact.target) {
+        if variant.artifact.artifact_type != PackageArtifactType::Wasm {
             return Err(PackageManifestError::new(
-                "package/target-mismatch",
-                format!("Wasm import {module} target {} is not supported", variant.artifact.target),
+                "package/artifact-type-mismatch",
+                format!(
+                    ":import {module} must select :wasm, got :{}",
+                    variant.artifact.artifact_type.keyword()
+                ),
             ));
         }
-        if !requirements.supported_abis.contains(&variant.artifact.abi) {
-            return Err(PackageManifestError::new(
-                "package/abi-mismatch",
-                format!("Wasm import {module} ABI {} is not supported", variant.artifact.abi),
-            ));
-        }
-        let missing_capabilities =
-            difference(&variant.required_capabilities, &requirements.available_capabilities);
-        if !missing_capabilities.is_empty() {
-            return Err(PackageManifestError::new(
-                "package/capability-denied",
-                format!("missing capabilities: {}", missing_capabilities.join(", ")),
-            ));
-        }
-        let denied_host_calls = difference(&variant.host_calls, &requirements.allowed_host_calls);
-        if !denied_host_calls.is_empty() {
-            return Err(PackageManifestError::new(
-                "package/host-call-denied",
-                format!("denied host calls: {}", denied_host_calls.join(", ")),
-            ));
-        }
+        self.preflight_variant(&format!(":import {module}"), variant, requirements)?;
         Ok(PackageSelection::Variant(variant.clone()))
     }
 

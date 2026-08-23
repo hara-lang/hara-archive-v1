@@ -85,6 +85,16 @@ fn portable_packages_remain_portable_and_missing_flavors_are_not_fallbacks() {
     let manifest = PackageManifest::parse(&package_manifest()).unwrap();
     let error = manifest.select_flavor("dotnet", &PackageRuntimeRequirements::default()).unwrap_err();
     assert_eq!(error.code, "package/missing-flavor");
+
+    let mut direct_only = manifest.clone();
+    direct_only.flavors.clear();
+    let error = direct_only
+        .select_flavor(
+            "jvm",
+            &requirements("java-21", "hara.provider.jvm.v1", &[], &[]),
+        )
+        .unwrap_err();
+    assert_eq!(error.code, "package/missing-flavor");
 }
 
 #[test]
@@ -109,6 +119,43 @@ fn rejects_wasm_flavors_and_requires_provenance() {
     let error = PackageManifest::parse(&source).unwrap_err();
     assert_eq!(error.code, "package/invalid-manifest");
     assert!(error.detail.contains("provenance"));
+}
+
+#[test]
+fn route_selection_rejects_cross_route_artifacts() {
+    let manifest = PackageManifest::parse(&package_manifest()).unwrap();
+    let error = manifest
+        .select_hta_require(
+            "provider",
+            &requirements("wasm32-wasi-preview1", "hta.v1", &[], &[]),
+        )
+        .unwrap_err();
+    assert_eq!(error.code, "package/artifact-type-mismatch");
+
+    let mut jar_only = manifest.clone();
+    jar_only.wasm_imports.clear();
+    let error = jar_only
+        .select_hta_require(
+            "provider",
+            &requirements("wasm32-wasi-preview1", "hta.v1", &[], &[]),
+        )
+        .unwrap_err();
+    assert_eq!(error.code, "package/missing-require-artifact");
+
+    let hta_source = package_manifest()
+        .replace(":artifact/type :wasm", ":artifact/type :hta")
+        .replace(":artifact/abi \"core.v1\"", ":artifact/abi \"hta.v1\"");
+    let hta = PackageManifest::parse(&hta_source).unwrap();
+    let selection = hta
+        .select_hta_require(
+            "provider",
+            &requirements("wasm32-wasi-preview1", "hta.v1", &[], &[]),
+        )
+        .unwrap();
+    let PackageSelection::Variant(variant) = selection else {
+        panic!("expected HTA require variant");
+    };
+    assert_eq!(variant.artifact.artifact_type, PackageArtifactType::Hta);
 }
 
 #[test]

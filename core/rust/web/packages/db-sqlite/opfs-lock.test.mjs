@@ -22,6 +22,22 @@ function sqliteModule() {
   };
 }
 
+function filesystemSqliteModule(databases) {
+  class Database extends FakeDatabase {
+    constructor(...args) {
+      super(...args);
+      databases.push(this);
+    }
+  }
+  return {
+    oo1: { DB: Database },
+    version: { libVersion: "test" },
+    capi: {
+      sqlite3_js_db_export: () => new Uint8Array([1])
+    }
+  };
+}
+
 function options() {
   return new Map([
     ["storage", { name: "opfs" }],
@@ -46,6 +62,7 @@ test("OPFS connections require an exclusive Web Lock and release it on close", a
       }
     }
   });
+
   async function pump() {
     if (active || !waiters.length) return;
     const next = waiters.shift();
@@ -93,4 +110,33 @@ test("OPFS connections require an exclusive Web Lock and release it on close", a
       value: previous
     });
   }
+});
+
+test("filesystem close cleans up even when final persistence fails", async () => {
+  const databases = [];
+  const provider = createSqliteProvider(
+    async () => filesystemSqliteModule(databases),
+    {
+      fileSystem: {
+        resolve: path => `/tmp/${path}`,
+        read: async () => null,
+        writeAtomic: async () => {
+          throw new Error("disk failure");
+        }
+      }
+    }
+  );
+  const connection = await provider.call(
+    "node",
+    "open",
+    [new Map([["storage", { name: "filesystem" }], ["path", "state.db"]])]
+  );
+
+  await assert.rejects(
+    () => provider.call("node", "close", [connection.id]),
+    { message: "db/sqlite-persist: filesystem write failed" }
+  );
+  assert.equal(databases.length, 1);
+  assert.equal(databases[0].closed, true);
+  assert.equal(await provider.call("node", "close", [connection.id]), false);
 });

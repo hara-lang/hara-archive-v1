@@ -209,13 +209,13 @@ export function createSqliteProvider(sqlite3InitModule, providerOptions = {}) {
       } catch (_) {
         connections.delete(value.id);
       }
-      throw new Error(`db/sqlite-persist: ${error.message}`);
+      throw new Error("db/sqlite-persist: filesystem write failed");
     }
   }
 
   async function mutate(value, operation) {
     const before = value.storage === "filesystem" ? exportDatabase(value) : null;
-    const result = operation();
+    const result = await operation();
     await persist(value, before);
     return result;
   }
@@ -267,16 +267,30 @@ export function createSqliteProvider(sqlite3InitModule, providerOptions = {}) {
     const key = Number(id);
     const value = connections.get(key);
     if (!value) return false;
+    connections.delete(key);
     return serial(value, async () => {
+      let failure = null;
       if (value.storage === "filesystem") {
-        await providerOptions.fileSystem.writeAtomic(value.path, exportDatabase(value));
+        try {
+          await providerOptions.fileSystem.writeAtomic(value.path, exportDatabase(value));
+        } catch (_) {
+          failure = new Error("db/sqlite-persist: filesystem write failed");
+        }
       }
       try {
-        connections.delete(key);
-        value.database.close();
+        try {
+          value.database.close();
+        } catch (_) {
+          failure ??= new Error("db/sqlite-close: database close failed");
+        }
       } finally {
-        await value.lease?.release();
+        try {
+          await value.lease?.release();
+        } catch (_) {
+          failure ??= new Error("db/sqlite-close: resource release failed");
+        }
       }
+      if (failure) throw failure;
       return true;
     });
   }

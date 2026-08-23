@@ -6406,7 +6406,7 @@ mod tests {
             } else {
                 let expected = match entry(expect, "value") {
                     Form::Number(value) => value.to_string(),
-                    Form::BigInteger(value) => value.clone(),
+                    Form::BigInteger(value) => value.to_string(),
                     Form::String(value) => format!("{value:?}"),
                     Form::Bool(value) => value.to_string(),
                     Form::Keyword(value) => format!(":{value}"),

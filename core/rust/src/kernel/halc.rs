@@ -390,7 +390,7 @@ fn write_value_with_metadata(output: &mut Vec<u8>, form: &Form, metadata: Option
         }
         Form::BigInteger(s) => {
             output.push(BIG_INTEGER);
-            write_string(output, s);
+            write_string(output, &s.to_string());
         }
         Form::String(s) => {
             output.push(STRING);
