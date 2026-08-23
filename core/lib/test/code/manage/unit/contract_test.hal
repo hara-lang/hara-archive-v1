@@ -162,7 +162,7 @@
          {:source (str/replace valid-source "## Outcome\n" "##Outcome\n")})]
     [(get-in result [:findings 0 :code])
      (get-in result [:findings 0 :path])])
-  => [:section/malformed "sections/outcome"]))
+  => [:section/malformed "sections/outcome"])
 
 (fact "reports malformed noncanonical links"
   (let [result
@@ -171,7 +171,7 @@
           :links ["http://github.com/greenways-ai/workspace/issues/26"]})]
     [(get-in result [:findings 0 :code])
      (get-in result [:findings 0 :path])])
-  => [:link/noncanonical "links/0"]))
+  => [:link/noncanonical "links/0"])
 
 (fact "requires Advances for incomplete work and rejects Closes-only"
   (let [missing
