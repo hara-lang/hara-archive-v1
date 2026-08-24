@@ -224,9 +224,7 @@ public interface NumOps {
 
   public static class DoubleOps extends BaseOps {
     private static int compareIntegerToDouble(BigInteger integer, double floating) {
-    if (Double.isNaN(floating)) return -1;
-    if (floating == Double.POSITIVE_INFINITY) return -1;
-    if (floating == Double.NEGATIVE_INFINITY) return 1;
+    NumUtils.requireFinite(floating);
     return new BigDecimal(integer).compareTo(BigDecimal.valueOf(floating));
   }
 
@@ -253,12 +251,14 @@ public interface NumOps {
   }
 
   private static boolean ordered(Number x, Number y) {
-      return !Double.isNaN(x.doubleValue()) && !Double.isNaN(y.doubleValue());
+      NumUtils.requireFinite(x.doubleValue());
+      NumUtils.requireFinite(y.doubleValue());
+      return true;
     }
 
     @Override
     public final Number add(Number x, Number y) {
-      return Double.valueOf(x.doubleValue() + y.doubleValue());
+      return Double.valueOf(NumUtils.requireFinite(x.doubleValue() + y.doubleValue()));
     }
 
     @Override
@@ -268,12 +268,12 @@ public interface NumOps {
 
     @Override
     public Number dec(Number x) {
-      return Double.valueOf(x.doubleValue() - 1);
+      return Double.valueOf(NumUtils.requireFinite(x.doubleValue() - 1));
     }
 
     @Override
     public Number divide(Number x, Number y) {
-      return Double.valueOf(x.doubleValue() / y.doubleValue());
+      return Double.valueOf(NumUtils.requireFinite(x.doubleValue() / y.doubleValue()));
     }
 
     @Override
@@ -290,7 +290,7 @@ public interface NumOps {
 
     @Override
     public Number inc(Number x) {
-      return Double.valueOf(x.doubleValue() + 1);
+      return Double.valueOf(NumUtils.requireFinite(x.doubleValue() + 1));
     }
 
     @Override
@@ -320,12 +320,12 @@ public interface NumOps {
 
     @Override
     public final Number multiply(Number x, Number y) {
-      return Double.valueOf(x.doubleValue() * y.doubleValue());
+      return Double.valueOf(NumUtils.requireFinite(x.doubleValue() * y.doubleValue()));
     }
 
     @Override
     public final Number negate(Number x) {
-      return Double.valueOf(-x.doubleValue());
+      return Double.valueOf(NumUtils.requireFinite(-x.doubleValue()));
     }
 
     @Override

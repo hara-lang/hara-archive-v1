@@ -189,19 +189,11 @@ pub fn hash_long_placement(n: i64) -> i32 {
 
 /// `G.hashValue(Double)`:
 /// - `0.0` (and `-0.0`) → 0
-/// - non-finite → `Double.hashCode` (NaN canonicalised like `doubleToLongBits`)
 /// - finite → `canonicalDecimal(BigDecimal.valueOf(d)).hashCode()`
 pub fn hash_double(d: f64) -> i32 {
+    assert!(d.is_finite(), "non-finite number");
     if d == 0.0 {
         return 0;
-    }
-    if !d.is_finite() {
-        let bits: u64 = if d.is_nan() {
-            0x7ff8000000000000
-        } else {
-            d.to_bits()
-        };
-        return (bits ^ (bits >> 32)) as u32 as i32;
     }
     // BigDecimal.valueOf(d) is defined via Double.toString; Rust's `{}` also
     // produces shortest round-trip digits (see module deviation notes).
@@ -429,10 +421,7 @@ mod tests {
     /// Locates a repo-relative file from the crate manifest dir (mirrors the
     /// corpus runners in kernel::parser_tests and vm::conformance_tests).
     fn corpus_path(relative: &str) -> Option<std::path::PathBuf> {
-        std::path::Path::new(env!("HARA_SOURCE_ROOT"))
-            .ancestors()
-            .map(|root| root.join("hara-specs-registry").join(relative))
-            .find(|candidate| candidate.is_file())
+        crate::spec_registry::resolve(relative).filter(|candidate| candidate.is_file())
     }
 
     fn field<'a>(case: &'a Form, key: &str) -> &'a Form {

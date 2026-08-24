@@ -178,7 +178,7 @@
     (throw (ex :io {:path path} :ex/message "select/transform expect a literal vector path")))
   (let [bad (filter (fn [step]
                       (not (or (keyword? step) (string? step)
-                               (integer? step) (symbol? step)
+                               (long? step) (symbol? step)
                                (list? step) (seq? step) (vector? step))))
                     path)]
     (if (seq bad)
@@ -191,7 +191,7 @@
   (if (or (empty? remaining)
           (keyword? (first remaining))
           (string? (first remaining))
-          (integer? (first remaining))
+          (long? (first remaining))
           (vector? (first remaining)))
     (throw (ex :argument {:step step-name :remaining (vec remaining)} :ex/message (str step-name " must be followed by a predicate step"))))
   remaining)
@@ -290,7 +290,7 @@
                         []
                         sub-paths)))
 
-        (integer? step)
+        (long? step)
         (nav-select-body remaining (list 'nth current step))
 
         (vector? step)
@@ -405,7 +405,7 @@
             (throw (ex :io {} :ex/message ":multi must be followed by at least one sub-path vector")))
           (nav-transform-group sub-paths rest-path function current))
 
-        (integer? step)
+        (long? step)
         (list 'update current step
               (list 'fn ['item__]
                     (nav-transform-body remaining function 'item__)))

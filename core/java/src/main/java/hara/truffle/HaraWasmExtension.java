@@ -3,6 +3,7 @@ package hara.truffle;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -21,12 +22,16 @@ import org.graalvm.polyglot.Context;
 import org.graalvm.polyglot.Source;
 import org.graalvm.polyglot.Value;
 import org.graalvm.polyglot.io.ByteSequence;
+import org.graalvm.polyglot.proxy.ProxyExecutable;
 import org.graalvm.polyglot.proxy.ProxyObject;
 
-/** Generic, import-free Wasm extension instance. */
+/** Generic Wasm extension instance with the portable Hara host imports. */
 final class HaraWasmExtension implements HaraExtensionRuntime {
   private static final long DEFAULT_HTA_TIMEOUT_MILLIS = 120_000L;
   private static final long MAX_WASM_MEMORY_BYTES = 64L * 1024 * 1024;
+  private static final long MAX_FRAME_BYTES = 64L * 1024 * 1024;
+  private static final SecureRandom RANDOM = new SecureRandom();
+  private static final long NANO_ORIGIN = System.nanoTime();
 
   private final HaraExtensionManifest manifest;
   private final Context context;
@@ -104,28 +109,33 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
                   manifest.namespace() + "/" + manifest.module())
               .build();
       opened = Context.newBuilder("wasm").allowAllAccess(false).build();
-      ProxyObject importObject = null;
+      ProxyObject libraryImports = null;
       if (libraryBytes != null) {
         Source librarySource =
-            Source.newBuilder(
+        Source.newBuilder(
                     "wasm",
                     ByteSequence.create(libraryBytes),
                     "hara/library")
                 .build();
         Value libraryModule = opened.eval(librarySource);
+        WasmImportState libraryImportState = new WasmImportState();
         Value libraryInstance =
-            libraryModule.canInstantiate() ? libraryModule.newInstance() : libraryModule;
+            libraryModule.canInstantiate()
+                ? libraryModule.newInstance(libraryImportState.imports(null))
+                : libraryModule;
         Value libraryMembers =
             libraryInstance.hasMember("exports")
                 ? libraryInstance.getMember("exports")
                 : libraryInstance;
-        importObject = ProxyObject.fromMap(Map.of("hara/library", libraryMembers));
+        libraryImportState.bindMemory(libraryMembers);
+        libraryImports = libraryImportObject(libraryMembers);
       }
       Value instance;
       Value module = opened.eval(source);
+      WasmImportState importState = new WasmImportState();
       instance =
           module.canInstantiate()
-              ? importObject == null ? module.newInstance() : module.newInstance(importObject)
+              ? module.newInstance(importState.imports(libraryImports))
               : module;
       Value members = instance.hasMember("exports") ? instance.getMember("exports") : instance;
       Value memoryValue = members.hasMember("memory") ? members.getMember("memory") : null;
@@ -194,6 +204,65 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
           "extension/malformed: module " + module + " has no export " + name);
     }
     return function;
+  }
+
+  private static ProxyObject libraryImportObject(Value libraryMembers) {
+    if (!libraryMembers.hasMembers()) {
+      throw new HaraException("extension/library-malformed: exports are not a member object");
+    }
+    LinkedHashMap<String, Object> exports = new LinkedHashMap<>();
+    for (String name : libraryMembers.getMemberKeys()) {
+      Value value = libraryMembers.getMember(name);
+      if (value != null) exports.put(name, value);
+    }
+    return ProxyObject.fromMap(exports);
+  }
+
+  private static final class WasmImportState {
+    private Value memory;
+
+    private ProxyObject imports(ProxyObject libraryImports) {
+      LinkedHashMap<String, Object> imports = new LinkedHashMap<>();
+      imports.put(
+          "env",
+          ProxyObject.fromMap(
+              Map.of(
+                  "hara_random_fill",
+                  (ProxyExecutable) this::randomFill,
+                  "hara_time_ms",
+                  (ProxyExecutable) arguments -> timeMillis(),
+                  "hara_time_ns",
+                  (ProxyExecutable) arguments -> timeNanos())));
+      if (libraryImports != null) imports.put("hara/library", libraryImports);
+      return ProxyObject.fromMap(imports);
+    }
+
+    private void bindMemory(Value members) {
+      Value candidate = members.hasMember("memory") ? members.getMember("memory") : null;
+      if (candidate != null && candidate.hasBufferElements()) memory = candidate;
+    }
+
+    private int randomFill(Value... arguments) {
+      if (arguments.length != 2 || !arguments[0].isNumber() || !arguments[1].isNumber()) return 1;
+      long pointer = arguments[0].asLong();
+      long length = arguments[1].asLong();
+      if (pointer < 0 || length < 0 || length > Integer.MAX_VALUE || memory == null) return 1;
+      if (!memory.isBufferWritable()
+          || pointer > memory.getBufferSize()
+          || length > memory.getBufferSize() - pointer) return 1;
+      byte[] bytes = new byte[(int) length];
+      RANDOM.nextBytes(bytes);
+      for (int i = 0; i < bytes.length; i++) memory.writeBufferByte(pointer + i, bytes[i]);
+      return 0;
+    }
+
+    private long timeMillis() {
+      return System.currentTimeMillis();
+    }
+
+    private long timeNanos() {
+      return System.nanoTime() - NANO_ORIGIN;
+    }
   }
 
   boolean isHta() {
@@ -317,8 +386,8 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
     if ("boolean".equals(type)) return value.asInt() != 0;
     if ("i32".equals(type)) return (long) value.asInt();
     if ("i64".equals(type)) return value.asLong();
-    if ("f32".equals(type)) return (double) value.asFloat();
-    if ("f64".equals(type)) return value.asDouble();
+    if ("f32".equals(type)) return HaraNumericConversions.requireFinite(value.asFloat());
+    if ("f64".equals(type)) return HaraNumericConversions.requireFinite(value.asDouble());
     throw new HaraException(
         "extension/abi-type-unsupported: " + manifest.namespace() + "/" + export + " -> " + type);
   }
@@ -507,6 +576,7 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
   private Object readFrame(long packed) {
     long pointer = packed >>> 32;
     long size = packed & 0xffff_ffffL;
+    if (size > MAX_FRAME_BYTES) throw new HaraException("hta/event-size-invalid");
     if (pointer > Integer.MAX_VALUE
         || size > Integer.MAX_VALUE
         || memory.getBufferSize() < pointer + size) {

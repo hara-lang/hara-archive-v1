@@ -238,7 +238,7 @@ public class HalcArtifactTest {
   public void goldenBytesLockThePortableFormat() {
     // One form per opcode (0-16, with the historical opcode 7 slot unused). Any change to the byte layout, the opcode
     // numbering, or the canonical collection ordering must update this golden
-    // value and ../hara-specs-registry/01-lang/009-halc/draft/halc-format.md together.
+    // value and the registry's 01-lang/009-halc/draft/halc-format.md together.
     Object[] forms =
         new Object[] {
           null,

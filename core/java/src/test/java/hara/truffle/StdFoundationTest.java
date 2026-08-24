@@ -221,12 +221,14 @@ public class StdFoundationTest {
                       + "(floor 1.75) (ceil 1.25) (pow 2 3) (abs -3) "
                       + "(exp 0) (sqrt 9)]")
               .toString());
-      assertEquals("NaN", context.eval(HaraLanguage.ID, "(sqrt -1)").toString());
+      assertThrows(
+          PolyglotException.class, () -> context.eval(HaraLanguage.ID, "(sqrt -1)"));
       assertEquals(3.0, context.eval(HaraLanguage.ID, "(sqrt (long 9.9))").asDouble(), 0.0);
       assertEquals(3.0, context.eval(HaraLanguage.ID, "(sqrt (double 9))").asDouble(), 0.0);
       assertTrue(Double.isFinite(context.eval(HaraLanguage.ID, "(asinh 1.0e300)").asDouble()));
       assertTrue(Double.isFinite(context.eval(HaraLanguage.ID, "(acosh 1.0e300)").asDouble()));
-      for (String source : new String[] {"(sin)", "(pow 2)", "(sqrt \"9\")"}) {
+      for (String source :
+          new String[] {"(sin)", "(pow 2)", "(sqrt \"9\")", "(exp 10000)"}) {
         assertThrows(source, PolyglotException.class, () -> context.eval(HaraLanguage.ID, source));
       }
     }

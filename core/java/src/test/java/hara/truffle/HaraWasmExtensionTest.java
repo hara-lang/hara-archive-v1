@@ -18,6 +18,42 @@ public class HaraWasmExtensionTest {
     0x7f, 0x03, 0x02, 0x01, 0x00, 0x07, 0x07, 0x01, 0x03, 0x61, 0x64, 0x64, 0x00, 0x00, 0x0a, 0x09,
     0x01, 0x07, 0x00, 0x20, 0x00, 0x20, 0x01, 0x6a, 0x0b
   };
+  private static final byte[] ENV_TIME_WASM = {
+    0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00,
+    0x01, 0x05, 0x01, 0x60, 0x00, 0x01, 0x7e,
+    0x02, 0x14, 0x01, 0x03, 0x65, 0x6e, 0x76, 0x0c, 0x68, 0x61, 0x72, 0x61,
+    0x5f, 0x74, 0x69, 0x6d, 0x65, 0x5f, 0x6d, 0x73, 0x00, 0x00,
+    0x03, 0x02, 0x01, 0x00,
+    0x07, 0x07, 0x01, 0x03, 0x6e, 0x6f, 0x77, 0x00, 0x01,
+    0x0a, 0x06, 0x01, 0x04, 0x00, 0x10, 0x00, 0x0b
+  };
+
+  @Test
+  public void coreWasmReceivesPortableEnvironmentImports() throws Exception {
+    Path root = Files.createTempDirectory("hara-wasm-env-import-");
+    Path extension = root.resolve("demo/time");
+    Files.createDirectories(extension);
+    HaraExtensionTestProject.write(
+        extension,
+        "{:namespace \"demo.time\" :version \"1.0.0\" :provider :wasm "
+            + ":module \"time.wasm\" :abi :core.v1 "
+            + ":exports {\"now\" {:args [] :returns :i64}} :capabilities []}");
+    Files.write(extension.resolve("time.wasm"), ENV_TIME_WASM);
+    Path descriptor = extension.resolve("project.edn");
+    try {
+      HaraProject project = HaraProject.read(descriptor);
+      HaraExtensionManifest manifest =
+          HaraExtensionManifest.parse(
+              project.extensionManifestSource("demo.time"), descriptor.toString());
+      HaraExtensionPackage extensionPackage =
+          new HaraExtensionPackage(manifest, descriptor.toUri().toURL());
+      try (HaraWasmExtension wasm = new HaraWasmExtension(extensionPackage)) {
+        assertTrue(((Number) wasm.invoke("now", new Object[0])).longValue() >= 0);
+      }
+    } finally {
+      deleteTree(root);
+    }
+  }
 
   @Test
   public void descriptorAndWasmGenerateTheDeclaredAnswer42Namespace() throws Exception {
@@ -193,5 +229,19 @@ public class HaraWasmExtensionTest {
 
   private static String digest(byte[] bytes) throws Exception {
     return "sha256:" + HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
+  }
+
+  private static void deleteTree(Path root) throws Exception {
+    try (var paths = Files.walk(root)) {
+      paths
+          .sorted(java.util.Comparator.reverseOrder())
+          .forEach(
+              path -> {
+                try {
+                  Files.deleteIfExists(path);
+                } catch (Exception ignored) {
+                }
+              });
+    }
   }
 }

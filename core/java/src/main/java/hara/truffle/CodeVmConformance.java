@@ -370,6 +370,7 @@ public final class CodeVmConformance {
     if (normalized.contains("division by zero")
         || normalized.contains("divide by zero")
         || normalized.contains("/ by zero")) return "division by zero";
+    if (normalized.contains("non-finite number")) return "non-finite number";
     if (normalized.contains("expects numbers")
         || normalized.contains("expects two numbers")
         || normalized.contains("expected a number")

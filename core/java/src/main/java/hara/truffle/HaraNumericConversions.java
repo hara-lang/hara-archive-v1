@@ -12,15 +12,6 @@ final class HaraNumericConversions {
     return numericValue(input) instanceof Number;
   }
 
-  static boolean isInteger(Object input) {
-    Object value = numericValue(input);
-    return value instanceof Byte
-        || value instanceof Short
-        || value instanceof Integer
-        || value instanceof Long
-        || value instanceof BigInteger;
-  }
-
   static boolean fitsLong(Object input) {
     try {
       toLong(input);
@@ -94,13 +85,18 @@ final class HaraNumericConversions {
   static double toDouble(Object input) {
     Object value = numericValue(input);
     if (value instanceof Double || value instanceof Float) {
-      return ((Number) value).doubleValue();
+      return requireFinite(((Number) value).doubleValue());
     }
     if (value instanceof Number number) {
       double converted = number.doubleValue();
       if (Double.isFinite(converted)) return converted;
     }
     throw cannotConvert("double", input);
+  }
+
+  static double requireFinite(double value) {
+    if (!Double.isFinite(value)) throw new HaraException("non-finite number");
+    return value;
   }
 
   @TruffleBoundary

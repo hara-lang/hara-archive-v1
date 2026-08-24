@@ -110,6 +110,20 @@ public class HbcCodecTest {
   }
 
   @Test
+  public void rejectsNonFiniteMetadata() {
+    HbcProgram.MetadataValue nonFinite =
+        new HbcProgram.MetadataValue(HbcProgram.MetadataValue.Kind.FLOAT, Double.NaN);
+    HbcProgram base = arithmeticProgram();
+    HbcProgram program =
+        new HbcProgram(
+            base.constants(),
+            List.of(List.of(new HbcProgram.MetadataEntry(nonFinite, nonFinite))),
+            base.functions(),
+            base.entry());
+    assertThrows(HbcFormatException.class, () -> HbcCodec.encode(program));
+  }
+
+  @Test
   public void invalidStackProgramsNeverReachExecution() {
     Function invalid =
         new Function(

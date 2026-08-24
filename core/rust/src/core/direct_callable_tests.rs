@@ -126,17 +126,9 @@ fn representative_direct_callables_preserve_value_behavior() {
 #[cfg(not(feature = "raw-wasm"))]
 #[test]
 fn specs_owned_direct_callable_bootstrap_fixture_runs_before_foundation_source_loading() {
-    let registry = std::env::var_os("HARA_SPECS_REGISTRY")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| {
-            std::path::Path::new(env!("HARA_SOURCE_ROOT"))
-                .join("..")
-                .join("..")
-                .join("..")
-                .join("hara-specs-registry")
-        });
-    let path = registry
-        .join("01-lang/004-foundation/draft/conformance/fixtures/direct_callable_bootstrap.hal");
+    let path = crate::spec_registry::require(
+        "01-lang/004-foundation/draft/conformance/fixtures/direct_callable_bootstrap.hal",
+    );
     let source = std::fs::read_to_string(&path).unwrap_or_else(|error| {
         panic!(
             "authoritative direct-callable bootstrap fixture is required at {}: {error}",

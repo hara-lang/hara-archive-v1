@@ -50,13 +50,9 @@ fn differential(runtime: &mut Runtime, source: &str) {
 }
 
 fn shared_runtime_corpus_path() -> PathBuf {
-    if let Some(root) = std::env::var_os("HARA_SPECS_REGISTRY") {
-        return PathBuf::from(root)
-            .join("01-lang/001-language/draft/conformance/parity/jvm-truffle.edn");
-    }
-    PathBuf::from(env!("HARA_SOURCE_ROOT"))
-        .join("../../hara-specs-registry")
-        .join("01-lang/001-language/draft/conformance/parity/jvm-truffle.edn")
+    crate::spec_registry::require(
+        "01-lang/001-language/draft/conformance/parity/jvm-truffle.edn",
+    )
 }
 
 fn shared_core_language_corpus_path() -> PathBuf {

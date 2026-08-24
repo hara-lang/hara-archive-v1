@@ -300,8 +300,8 @@ final class HaraWasmMemoryExecutor {
         case BOOLEAN -> value.asInt() != 0;
         case I32 -> (long) value.asInt();
         case I64 -> value.asLong();
-        case F32 -> (double) value.asFloat();
-        case F64 -> value.asDouble();
+        case F32 -> HaraNumericConversions.requireFinite(value.asFloat());
+        case F64 -> HaraNumericConversions.requireFinite(value.asDouble());
         default ->
             throw new HaraException(
                 "extension/abi-type-unsupported: "

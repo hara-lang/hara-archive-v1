@@ -51,6 +51,22 @@ public class HaraNumericInteropTest {
   }
 
   @Test
+  public void rejectsHostNonFiniteFloatsAtTheLanguageBoundary() {
+    for (Number value :
+        new Number[] {
+          Double.NaN,
+          Double.POSITIVE_INFINITY,
+          Double.NEGATIVE_INFINITY,
+          Float.NaN,
+          Float.POSITIVE_INFINITY,
+          Float.NEGATIVE_INFINITY
+        }) {
+      assertThrows(HaraException.class, () -> HaraBox.export(value));
+      assertThrows(HaraException.class, () -> new HaraBox(value));
+    }
+  }
+
+  @Test
   public void exposesArbitraryIntegersAndFloatsAtTheLanguageBoundary() {
     try (Context context = Context.newBuilder(HaraLanguage.ID).build()) {
       Value integer = context.eval(HaraLanguage.ID, Long.toString(Long.MAX_VALUE));

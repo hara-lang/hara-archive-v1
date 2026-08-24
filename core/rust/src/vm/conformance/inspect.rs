@@ -44,6 +44,7 @@ pub(super) fn teaching_annotations(
 pub fn normalize_error_category(message: &str) -> &'static str {
     let buckets: &[(&[&str], &str)] = &[
         (&["division by zero"], "division by zero"),
+        (&["non-finite number"], "non-finite number"),
         (&["integer overflow"], "integer overflow"),
         (&["expects numbers"], "expects numbers"),
         (&["unbound symbol"], "unbound symbol"),

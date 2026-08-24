@@ -673,14 +673,14 @@ pub(crate) fn number_conversion_value(operation: &str, value: Value) -> Result<V
         },
         "parse-double" => match value {
             Value::String(value) if !value.is_empty() && value.trim() == value => {
-                let parsed = match value.as_str() {
-                    "NaN" => Some(f64::NAN),
-                    "Infinity" | "+Infinity" => Some(f64::INFINITY),
-                    "-Infinity" => Some(f64::NEG_INFINITY),
-                    _ if decimal_double_text(&value) => value.parse::<f64>().ok(),
-                    _ => None,
-                };
-                Ok(parsed.map(Value::Float).unwrap_or(Value::Nil))
+                if matches!(value.as_str(), "NaN" | "Infinity" | "+Infinity" | "-Infinity") {
+                    return Err("non-finite number".into());
+                }
+                if !decimal_double_text(&value) {
+                    return Ok(Value::Nil);
+                }
+                let parsed = value.parse::<f64>().map_err(|_| "non-finite number")?;
+                Ok(Value::Float(numeric::finite_float(parsed)?))
             }
             Value::String(_) => Ok(Value::Nil),
             _ => Err("parse-double expects a string".into()),
@@ -772,7 +772,7 @@ fn math_values(operation: &str, values: Vec<Value>) -> Result<Value, String> {
         "tanh" => first.tanh(),
         _ => return Err(format!("unknown math operation: {operation}")),
     };
-    Ok(Value::Float(result))
+    Ok(Value::Float(numeric::finite_float(result)?))
 }
 
 #[derive(Clone, Debug)]

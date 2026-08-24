@@ -19,21 +19,21 @@
 (defn datetime? [value] (instance? DateTime value))
 
 (defn instant [millisecond]
-  (if (integer? millisecond)
+  (if (long? millisecond)
     (Instant millisecond)
     (fail "instant expects integer milliseconds" {:value millisecond})))
 
 (defn duration
   [value]
   (cond (duration? value) value
-        (integer? value) (Duration value)
+        (long? value) (Duration value)
         (map? value)
         (Duration
          (reduce (fn [total entry]
                    (let [unit (key entry)
                          amount (val entry)
                          scale (get duration-units unit)]
-                     (if (and scale (integer? amount))
+                     (if (and scale (long? amount))
                        (+ total (* scale amount))
                        (fail "duration expects fixed integer units"
                              {:unit unit :value amount}))))
@@ -54,7 +54,7 @@
     (fail "month must be between 1 and 12" {:month month})))
 
 (defn- valid-offset? [value]
-  (and (integer? value) (<= -1080 value) (<= value 1080)))
+  (and (long? value) (<= -1080 value) (<= value 1080)))
 
 (defn- make-civil
   [value]
@@ -66,9 +66,9 @@
         second-value (or (:second value) 0)
         millisecond (or (:millisecond value) 0)
         offset (or (:offset-minutes value) 0)]
-    (if-not (and (integer? year) (integer? month) (integer? day)
-                 (integer? hour) (integer? minute) (integer? second-value)
-                 (integer? millisecond) (valid-offset? offset))
+    (if-not (and (long? year) (long? month) (long? day)
+                 (long? hour) (long? minute) (long? second-value)
+                 (long? millisecond) (valid-offset? offset))
       (fail "datetime fields must be integers" {:value value})
       (if-not (and (<= 1 month) (<= month 12)
                    (<= 1 day) (<= day (days-in-month year month))

@@ -44,7 +44,7 @@
   (let [configured (or (:maximum-depth spec)
                        default-maximum-depth)
         inherited (:work/bind-maximum-depth frame)]
-    (if (or (not (integer? configured))
+    (if (or (not (long? configured))
             (<= configured 0))
       (throw
        (ex :argument

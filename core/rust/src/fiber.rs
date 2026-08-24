@@ -171,7 +171,6 @@ pub(crate) const CORE_SPECIAL_FORMS: &[&str] = &[
     "identity",
     "if",
     "inc",
-    "integer?",
     "instance?",
     "intern-var",
     "interleave",
@@ -1815,9 +1814,7 @@ mod tests {
     fn numeric_and_boolean_predicates_match_foundation_types() {
         let cases = [
             ("(long? 42)", Value::Bool(true)),
-            ("(double? ##Inf)", Value::Bool(true)),
-            ("(integer? 42)", Value::Bool(true)),
-            ("(integer? 9223372036854775808)", Value::Bool(true)),
+            ("(double? 42.0)", Value::Bool(true)),
             ("(number? 42)", Value::Bool(true)),
             ("(boolean? false)", Value::Bool(true)),
             ("(boolean? nil)", Value::Bool(false)),

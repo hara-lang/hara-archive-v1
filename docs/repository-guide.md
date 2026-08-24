@@ -60,6 +60,20 @@ and archive:
   ([`hara-lang/hara-archive`](https://github.com/hara-lang/hara-archive)).
 - [`../hara-specs-registry/00-unsorted/contrib/`](../../hara-specs-registry/00-unsorted/contrib/)
   — independently owned contribution formats and their conformance material.
+
+The canonical registry checkout in the Greenways workspace is
+`technology/hara-specs-registry`. Java and Rust registry consumers resolve it
+in this order: explicit configuration (`-Dhara.specs.registry=...` for Java
+or `HARA_SPECS_REGISTRY`), `HARA_WORKSPACE_ROOT/technology/hara-specs-registry`,
+then ancestor discovery. The Maven or Cargo working directory therefore does
+not affect registry lookup. Set these variables in CI or for a non-standard
+checkout:
+
+```shell
+export HARA_WORKSPACE_ROOT=/absolute/path/to/workspace
+export HARA_SPECS_REGISTRY="$HARA_WORKSPACE_ROOT/technology/hara-specs-registry"
+```
+
 - [`notes/`](../notes/) — working documents (not published): design notes and
   `notes/superpowers/` plans/specs.
 - [`../../website/hara-docs/docs/books/`](../../../website/hara-docs/docs/books/) — published books.
@@ -138,7 +152,7 @@ validation of saved `.hal` files.
 The Makefile also mirrors the main repository and CI workflows:
 
 ```shell
-make -C core java-test java-conformance
+make -C core java-test java-specs java-conformance
 make -C core rust-test rust-raw-test rust-layout
 make -C core lib-test
 
@@ -149,6 +163,17 @@ make -C core studio-test
 make -C core chrome-build chrome-test
 make -C core docs-build
 make -C core www-build
+```
+
+`java-test` excludes tests tagged `hara.spec.RegistryConformance`, so it is a
+fast implementation signal and does not require the external registry. Use
+`java-specs` for only registry-backed Java tests, or `java-conformance` for the
+complete JVM suite. The underlying Maven profile is explicit:
+
+```shell
+mvn -f core/java/pom.xml -Ptruffle test
+mvn -f core/java/pom.xml -Ptruffle -Pconformance \
+  -Dhara.specs.registry="$HARA_SPECS_REGISTRY" test
 ```
 
 Run `make web-install` or `make chrome-install` before the corresponding Node

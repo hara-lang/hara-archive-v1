@@ -31,6 +31,11 @@ public class NumUtils {
     return BigInteger.valueOf(((Number) x).longValue());
   }
 
+  public static double requireFinite(double value) {
+    if (!Double.isFinite(value)) throw new ArithmeticException("non-finite number");
+    return value;
+  }
+
   public static int throwIntOverflow() {
     throw new ArithmeticException("integer overflow");
   }

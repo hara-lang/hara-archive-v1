@@ -25,12 +25,12 @@
 (defn normalize-buffer [buffer]
   (cond
     (nil? buffer) {:mode :fixed :capacity 0}
-    (integer? buffer) (if (= buffer 0)
+    (long? buffer) (if (= buffer 0)
                         {:mode :fixed :capacity 0}
                         (fixed-buffer buffer))
     (and (map? buffer)
          (not (nil? (get #{:fixed :sliding :dropping} (:mode buffer))))
-         (integer? (:capacity buffer))
+         (long? (:capacity buffer))
          (> (:capacity buffer) 0)) buffer
     :else (throw (ex :io {:error/type :stream.channel/invalid-buffer
                            :buffer buffer} :ex/message "Invalid channel buffer"))))

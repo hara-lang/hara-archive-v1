@@ -14,6 +14,23 @@ import org.junit.Test;
 
 public class HtaValueCodecTest {
   @Test
+  public void rejectsNonFiniteFloatsAtTheHtaBoundary() {
+    for (double value :
+        new double[] {Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY}) {
+      assertThrows(HaraException.class, () -> HtaValueCodec.encode(value));
+    }
+    for (double value :
+        new double[] {Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY}) {
+      byte[] frame = {'H', 'T', 'A', '0', 15, 0, 0, 0, 0, 0, 0, 0, 0};
+      long bits = Double.doubleToRawLongBits(value);
+      for (int index = 0; index < 8; index++) {
+        frame[5 + index] = (byte) (bits >>> (56 - (index * 8)));
+      }
+      assertThrows(HaraException.class, () -> HtaValueCodec.decode(frame));
+    }
+  }
+
+  @Test
   public void encodesTheAlphaHtaGoldenVector() {
     byte[] encoded = HtaValueCodec.encode(List.of("x", 42L, true));
     assertArrayEquals(

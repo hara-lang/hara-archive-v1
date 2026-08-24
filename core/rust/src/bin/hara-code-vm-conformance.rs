@@ -1,4 +1,5 @@
 use hara_wasm::vm::conformance::{parse_corpus, run_embedded, validate_upstream, EMBEDDED_CORPUS};
+use hara_wasm::spec_registry;
 use std::path::{Path, PathBuf};
 
 fn main() {
@@ -40,18 +41,13 @@ fn run() -> Result<(), String> {
 
 fn validate_embedded_upstream() -> Result<(), String> {
     let corpus = parse_corpus(EMBEDDED_CORPUS)?;
-    let configured = std::env::var_os("HARA_SPECS_ROOT").map(PathBuf::from);
     let relative = corpus
         .upstream
         .strip_prefix("hara-specs-registry/")
         .unwrap_or(&corpus.upstream);
-    let candidates = configured
+    let candidates = spec_registry::resolve(relative)
         .into_iter()
-        .map(|root| root.join(relative))
-        .chain([
-            PathBuf::from(&corpus.upstream),
-            Path::new("..").join(&corpus.upstream),
-        ])
+        .chain([PathBuf::from(&corpus.upstream), Path::new("..").join(&corpus.upstream)])
         .collect::<Vec<_>>();
     let path = candidates
         .iter()

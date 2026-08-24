@@ -558,6 +558,9 @@ fn write_metadata_value(out: &mut Writer, value: &MetadataValue) -> Result<(), S
             out.i64(*v);
         }
         Float(v) => {
+            if !v.is_finite() {
+                return Err("non-finite number".into());
+            }
             out.byte(3);
             out.u64(v.to_bits());
         }
@@ -627,7 +630,13 @@ fn read_metadata_value(reader: &mut Reader<'_>) -> Result<MetadataValue, String>
         0 => MetadataValue::Nil,
         1 => MetadataValue::Boolean(reader.boolean()?),
         2 => MetadataValue::Number(reader.i64()?),
-        3 => MetadataValue::Float(f64::from_bits(reader.u64()?)),
+        3 => {
+            let value = f64::from_bits(reader.u64()?);
+            if !value.is_finite() {
+                return Err("non-finite number".into());
+            }
+            MetadataValue::Float(value)
+        }
         4 => {
             let value = BigInt::parse_bytes(reader.string()?.as_bytes(), 10)
                 .ok_or("invalid metadata big integer")?;

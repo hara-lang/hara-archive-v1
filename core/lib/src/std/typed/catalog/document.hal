@@ -88,7 +88,7 @@
 
 (defn- require-version
   [value path]
-  (if (and (integer? value) (>= value 0))
+  (if (and (long? value) (>= value 0))
     value
     (document-error
      :std.typed.catalog.document/version-invalid

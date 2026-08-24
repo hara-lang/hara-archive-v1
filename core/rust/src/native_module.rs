@@ -121,7 +121,7 @@ fn to_abi(value: &Value) -> Result<hara_abi::Value, String> {
         Value::Bool(value) => Abi::Boolean(*value),
         Value::Number(value) => Abi::Integer(*value),
         Value::BigInteger(value) => Abi::BigInteger(value.to_string()),
-        Value::Float(value) => Abi::Float(*value),
+        Value::Float(value) => Abi::Float(crate::numeric::finite_float(*value)?),
         Value::String(value) => Abi::String(value.clone()),
         Value::Bytes(value) => Abi::Bytes(value.clone()),
         Value::ByteBuffer(value) => Abi::Bytes(value.borrow().clone()),
@@ -167,7 +167,7 @@ fn from_abi(value: hara_abi::Value) -> Result<Value, String> {
                 .ok_or_else(|| "native-module/value-invalid: big integer".to_string())?;
             crate::numeric::compact_integer(value)
         }
-        Abi::Float(value) => Value::Float(value),
+        Abi::Float(value) => Value::Float(crate::numeric::finite_float(value)?),
         Abi::String(value) => Value::String(value),
         Abi::Bytes(value) => Value::Bytes(value),
         Abi::Keyword(value) => Value::Keyword(value.into()),

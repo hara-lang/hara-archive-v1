@@ -605,15 +605,24 @@ public class HaraLanguageTest {
   }
 
   @Test
-  public void numericSpecialValuesHaveStableComparisonBehavior() {
+  public void numericValuesRejectNonFiniteResults() {
     try (Context context = context()) {
-      assertTrue(context.eval(HaraLanguage.ID, "(= ##NaN ##NaN)").asBoolean());
-      assertTrue(context.eval(HaraLanguage.ID, "(not= ##NaN 1)").asBoolean());
       assertTrue(context.eval(HaraLanguage.ID, "(= -0.0 0.0)").asBoolean());
       assertTrue(context.eval(HaraLanguage.ID, "(= 1.0 1.00)").asBoolean());
-      assertTrue(context.eval(HaraLanguage.ID, "(= ##Inf ##Inf)").asBoolean());
-      assertTrue(context.eval(HaraLanguage.ID, "(< 1 ##Inf)").asBoolean());
-      assertTrue(context.eval(HaraLanguage.ID, "(not= ##Inf 1)").asBoolean());
+      assertThrows(PolyglotException.class, () -> context.eval(HaraLanguage.ID, "(integer? 1)"));
+      for (String source :
+          new String[] {
+            "##NaN",
+            "##Inf",
+            "##-Inf",
+            "1e309",
+            "(sqrt -1)",
+            "(exp 10000)",
+            "(* 1.0e308 1.0e308)",
+            "(std.native.Num/parse-double \"Infinity\")"
+          }) {
+        assertThrows(PolyglotException.class, () -> context.eval(HaraLanguage.ID, source));
+      }
       assertTrue(context.eval(HaraLanguage.ID, "(not false)").asBoolean());
       assertTrue(!context.eval(HaraLanguage.ID, "(not true)").asBoolean());
       assertTrue(context.eval(HaraLanguage.ID, "(not nil)").asBoolean());
@@ -698,7 +707,6 @@ public class HaraLanguageTest {
       assertEquals(2.0, context.eval(HaraLanguage.ID, "(double 2)").asDouble(), 0.0);
       assertEquals(1, context.eval(HaraLanguage.ID, "(long 1.9)").asLong());
       assertEquals(-1, context.eval(HaraLanguage.ID, "(long -1.9)").asLong());
-      assertThrows(PolyglotException.class, () -> context.eval(HaraLanguage.ID, "(long ##NaN)"));
       assertThrows(PolyglotException.class, () -> context.eval(HaraLanguage.ID, "(long \"1\")"));
       assertThrows(PolyglotException.class, () -> context.eval(HaraLanguage.ID, "1N"));
       assertThrows(PolyglotException.class, () -> context.eval(HaraLanguage.ID, "1M"));

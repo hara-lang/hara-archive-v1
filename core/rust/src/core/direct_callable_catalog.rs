@@ -440,12 +440,6 @@ pub(crate) const DIRECT_CALLABLE_CATALOG: &[DirectCallableSpec] = &[
         Operation(direct_predicate_operation)
     ),
     direct!(
-        "integer?",
-        DirectCallableArity::Exact(1),
-        BootstrapLibrary,
-        Basic
-    ),
-    direct!(
         "interleave",
         DirectCallableArity::AtLeast(1),
         BootstrapLibrary,

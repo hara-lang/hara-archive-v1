@@ -154,14 +154,14 @@
                                     (let [migration-map-value-1 opts
                                           indents               (get migration-map-value-1 :indents)
                                           prev                  (last interim)
-                                          pad                   (if (integer? padding) (+ 1 padding) (+ 1 (first padding)))
+                                          pad                   (if (long? padding) (+ 1 padding) (+ 1 (first padding)))
                                           nindents              (+ indents pad)
                                           nopts                 (assoc opts :indents nindents)
                                           curr                  (*layout-fn* val nopts)]
                                       {:interim (vec (concat interim
                                                              (repeat (- pad (construct/line-width prev nindents)) (construct/space)) [curr]))
                                        :opts    nopts
-                                       :padding (if (integer? padding) padding (rest padding))})))
+                                       :padding (if (long? padding) padding (rest padding))})))
                           {:interim [(*layout-fn* (first row) opts)]
                            :opts    (assoc opts :indents indents)
                            :padding col-pad}

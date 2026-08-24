@@ -791,7 +791,12 @@ impl Compiler {
                 Ok(())
             }
             Form::Number(value) => self.constant(Value::Number(*value), span),
-            Form::Float(value) => self.constant(Value::Float(*value), span),
+            Form::Float(value) => {
+                let value = crate::numeric::finite_float(*value).map_err(|error| {
+                    CompileError::new(CompileErrorKind::Parse, error, Some(span.start))
+                })?;
+                self.constant(Value::Float(value), span)
+            }
             Form::String(value) => self.constant(Value::String(value.clone()), span),
             Form::Keyword(value) => self.constant(Value::Keyword(value.clone().into()), span),
             Form::Character(value) => self.constant(Value::Character(*value), span),

@@ -2439,8 +2439,6 @@ public final class HaraContext {
     target.define(
         "number?", new UnaryBuiltin("number?", HaraNumericConversions::isNumeric));
     target.define(
-        "integer?", new UnaryBuiltin("integer?", HaraNumericConversions::isInteger));
-    target.define(
         "long?", new UnaryBuiltin("long?", HaraNumericConversions::fitsLong));
     target.define("double?", new UnaryBuiltin("double?", value -> {
       Object raw = HaraBox.unwrap(value);
@@ -5215,19 +5213,21 @@ public final class HaraContext {
   private static UnaryBuiltin mathUnary(String operation, DoubleUnaryOperator implementation) {
     return new UnaryBuiltin(
         operation,
-        value -> implementation.applyAsDouble(HaraNumericConversions.toDouble(value)));
+        value ->
+            HaraNumericConversions.requireFinite(
+                implementation.applyAsDouble(HaraNumericConversions.toDouble(value))));
   }
 
   private static Object mathBinary(String operation, Object[] values) {
     requireMethodArity(operation, values, 2);
     double first = HaraNumericConversions.toDouble(values[0]);
     double second = HaraNumericConversions.toDouble(values[1]);
-    return "atan2".equals(operation) ? Math.atan2(first, second) : Math.pow(first, second);
+    return HaraNumericConversions.requireFinite(
+        "atan2".equals(operation) ? Math.atan2(first, second) : Math.pow(first, second));
   }
 
   private static double asinh(double value) {
     double magnitude = Math.abs(value);
-    if (Double.isInfinite(magnitude) || Double.isNaN(magnitude)) return value;
     if (magnitude > 1.0e154) {
       return Math.copySign(Math.log(magnitude) + Math.log(2.0), value);
     }
@@ -5322,15 +5322,17 @@ public final class HaraContext {
   private Object parseDouble(Object value) {
     String input = stringValue(value, "parse-double");
     if (input.isEmpty() || !input.equals(input.trim())) return null;
-    if (!(input.equals("NaN")
+    if (input.equals("NaN")
         || input.equals("Infinity")
         || input.equals("+Infinity")
-        || input.equals("-Infinity")
-        || input.matches("[+-]?(?:(?:[0-9]+(?:\\.[0-9]*)?)|(?:\\.[0-9]+))(?:[eE][+-]?[0-9]+)?"))) {
+        || input.equals("-Infinity")) {
+      throw new HaraException("non-finite number");
+    }
+    if (!input.matches("[+-]?(?:(?:[0-9]+(?:\\.[0-9]*)?)|(?:\\.[0-9]+))(?:[eE][+-]?[0-9]+)?")) {
       return null;
     }
     try {
-      return Double.parseDouble(input);
+      return HaraNumericConversions.requireFinite(Double.parseDouble(input));
     } catch (NumberFormatException ignored) {
       return null;
     }

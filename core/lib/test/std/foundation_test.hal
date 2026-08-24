@@ -151,7 +151,7 @@
 (Test/run
  [{:name "returns Unix wall-clock milliseconds"
    :test (fn [] (let [value (std.foundation/time-ms)]
-                  [(integer? value) (< 0 value)]))
+                  [(long? value) (< 0 value)]))
    :expected [true true]}])
 
 ^{:refer std.foundation/time-ns}
@@ -159,7 +159,7 @@
  [{:name "returns a nondecreasing runtime-local counter"
    :test (fn [] (let [before (std.foundation/time-ns)
                       after (std.foundation/time-ns)]
-                  [(integer? before) (<= before after)]))
+                  [(long? before) (<= before after)]))
    :expected [true true]}])
 
 ^{:refer std.foundation/F}

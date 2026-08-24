@@ -2,7 +2,10 @@ use std::cell::Cell;
 use std::rc::Rc;
 
 use hara_wasm::extension::{ExtensionManifest, Promise, Value, WasmAbi, WasmExtensionProvider};
+use hara_wasm::wasm_binding::{generate_hta_adapter, WasmInterface};
 use hara_wasm::Runtime;
+
+const START_WASM: &[u8] = b"\0asm\x01\0\0\0\x08\x01\0";
 
 const CORE_MANIFEST: &str = r#"
 {:namespace "fixture.math"
@@ -222,4 +225,27 @@ fn duplicate_namespaces_and_unsupported_abis_are_rejected() {
             .unwrap_err(),
         "extension/unsupported: provider does not support CoreV1"
     );
+}
+
+#[test]
+fn hta_adapter_rejects_wrapped_modules_with_start_functions() {
+    let interface = WasmInterface::parse(
+        r#"
+        (wasm/interface
+         {:schema "hara.wasm-interface/0-alpha"
+          :namespace math.scalar
+          :module "math.wasm"
+          :exports
+          {sum {:wasm/export "add"
+                :async true
+                :arguments [{:name left :hara/type :i64 :wasm/type :i64}
+                            {:name right :hara/type :i64 :wasm/type :i64}]
+                :returns {:hara/type :i64 :wasm/type :i64}}}})
+        "#,
+        "fixture",
+    )
+    .unwrap();
+
+    let error = generate_hta_adapter(START_WASM, &interface).unwrap_err();
+    assert!(error.starts_with("wasm-adapter/start-denied"));
 }

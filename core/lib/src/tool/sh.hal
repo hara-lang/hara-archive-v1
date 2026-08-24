@@ -79,7 +79,7 @@
            :ex/message "tool.sh :stdin must be a string or Bytes")))
     (if (and (has? value :timeout)
             (not (or (nil? (:timeout value))
-                     (and (integer? (:timeout value))
+                     (and (long? (:timeout value))
                           (<= 0 (:timeout value))))))
       (throw
       (ex :dependency

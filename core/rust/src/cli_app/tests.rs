@@ -7,13 +7,7 @@ use super::{
 use crate::kernel::parse;
 
 fn repo_text(relative: &str) -> Option<String> {
-    let path = std::path::Path::new(env!("HARA_SOURCE_ROOT"))
-        .join("..")
-        .join("..")
-        .join("..")
-        .join("hara-specs-registry")
-        .join(relative);
-    std::fs::read_to_string(path).ok()
+    crate::spec_registry::resolve(relative).and_then(|path| std::fs::read_to_string(path).ok())
 }
 
 #[test]

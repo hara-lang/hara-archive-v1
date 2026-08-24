@@ -421,7 +421,11 @@ public final class HbcCodec {
           case NIL -> null;
           case BOOLEAN -> in.bool();
           case NUMBER -> in.i64();
-          case FLOAT -> Double.longBitsToDouble(in.u64());
+          case FLOAT -> {
+            double floating = Double.longBitsToDouble(in.u64());
+            if (!Double.isFinite(floating)) throw malformed("non-finite number");
+            yield floating;
+          }
           case BIG_INTEGER -> new BigInteger(in.string());
           case RESERVED_DECIMAL -> throw malformed("bytecode artifact contains reserved decimal metadata");
           case CHARACTER -> requireUnicodeScalar(Math.toIntExact(in.u32()));
@@ -444,7 +448,11 @@ public final class HbcCodec {
       case NIL -> {}
       case BOOLEAN -> out.bool((Boolean) value);
       case NUMBER -> out.i64(((Number) value).longValue());
-      case FLOAT -> out.u64(Double.doubleToRawLongBits(((Number) value).doubleValue()));
+      case FLOAT -> {
+        double floating = ((Number) value).doubleValue();
+        if (!Double.isFinite(floating)) throw malformed("non-finite number");
+        out.u64(Double.doubleToRawLongBits(floating));
+      }
       case BIG_INTEGER -> out.string(value.toString());
       case RESERVED_DECIMAL -> throw new AssertionError("reserved decimal metadata cannot be encoded");
       case CHARACTER -> out.u32(((Number) value).longValue());

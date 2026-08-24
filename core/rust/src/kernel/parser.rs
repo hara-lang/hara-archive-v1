@@ -405,16 +405,13 @@ impl<'a> Parser<'a> {
             }
             Some('#') => {
                 let value = self.read_required("symbolic value")?;
-                let form = match &value.form {
-                    Form::Symbol(name) if name == "Inf" => Form::Float(f64::INFINITY),
-                    Form::Symbol(name) if name == "-Inf" => Form::Float(f64::NEG_INFINITY),
-                    Form::Symbol(name) if name == "NaN" => Form::Float(f64::NAN),
-                    Form::Symbol(name) => {
-                        return self.error(format!("Unknown symbolic value: ##{name}"))
+                match &value.form {
+                    Form::Symbol(name) if matches!(name.as_str(), "Inf" | "-Inf" | "NaN") => {
+                        self.error("non-finite number")
                     }
-                    _ => return self.error("Invalid symbolic value"),
-                };
-                Ok(Some((form, vec![value])))
+                    Form::Symbol(name) => self.error(format!("Unknown symbolic value: ##{name}")),
+                    _ => self.error("Invalid symbolic value"),
+                }
             }
 
             Some(ch) => {
@@ -489,6 +486,9 @@ impl<'a> Parser<'a> {
                     message: format!("Invalid number: {token}"),
                     position: self.reader.position(),
                 })?;
+                if !float.is_finite() {
+                    return self.error("non-finite number");
+                }
                 return Ok(Form::Float(float));
             }
             let parsed = if let Some(hex) =

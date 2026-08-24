@@ -513,7 +513,7 @@
                      (:timeout-ms (:options relay))
                      1000)]
      (if (and (= operation :read-limit)
-              (or (not (integer? argument)) (< argument 1)))
+              (or (not (long? argument)) (< argument 1)))
        (throw (ex :limit {:error/type :relay/invalid-limit
                         :limit argument} :ex/message "read-limit requires a positive byte count")))
      (promise/from

@@ -403,18 +403,20 @@ registry-contract mismatches, and host-integration failures.
 
 | Command | Coverage |
 | --- | --- |
-| `make -C core java-test` | All JVM/Truffle implementation and conformance tests |
-| `make -C core java-conformance` | JVM core-language parity corpus |
+| `make -C core java-test` | Fast JVM/Truffle tests without registry conformance |
+| `make -C core java-specs` | Registry-backed JVM tests only |
+| `make -C core java-conformance` | Complete JVM/Truffle suite, including registry conformance |
 | `make -C core rust-test` | All ordinary native Rust slices and workspace crates |
 | `make -C core wasm-test` | Raw-Wasm, Node, browser SDK, and Playwright slices |
 | `make -C core lib-test` | Portable `.hal` libraries through the native runner |
 | `make -C core check-all` | Repository gate: layout, Java, Rust, raw-Wasm, libraries, HTA, and Studio |
 
-`java-test` is intentionally broad: it contains local JVM unit and integration
-tests as well as parity tests. Use `java-conformance` when only the focused
-core-language contract is relevant. Registry-owned fixtures require a sibling
-`hara-specs-registry` checkout at `technology/hara-specs-registry` in the
-standard workspace layout.
+`java-test` is the fast implementation signal and excludes tests tagged
+`hara.spec.RegistryConformance`. Use `java-specs` to run only registry-backed
+tests, or `java-conformance` for the complete JVM suite. Registry lookup is
+independent of the Maven working directory; set `HARA_SPECS_REGISTRY` or
+`HARA_WORKSPACE_ROOT` when the checkout is not in the standard workspace
+layout. Maven also accepts `-Dhara.specs.registry=/absolute/path`.
 
 ### Native Rust slices
 

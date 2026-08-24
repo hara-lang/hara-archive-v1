@@ -157,8 +157,19 @@ impl WasmExtensionProvider for BrowserWasmProvider {
                 ("i32", Value::Number(value)) if i32::try_from(*value).is_ok() => {
                     JsValue::from_f64(*value as f64)
                 }
-                ("f32" | "f64", Value::Number(value)) => JsValue::from_f64(*value as f64),
-                ("f32" | "f64", Value::Float(value)) => JsValue::from_f64(*value),
+                ("f32" | "f64", Value::Number(value)) => {
+                    let value = *value as f64;
+                    if !value.is_finite() {
+                        return Err(format!("non-finite number: {export}"));
+                    }
+                    JsValue::from_f64(value)
+                }
+                ("f32" | "f64", Value::Float(value)) => {
+                    if !value.is_finite() {
+                        return Err(format!("non-finite number: {export}"));
+                    }
+                    JsValue::from_f64(*value)
+                }
                 _ => return Err(format!("native/type-error: {export} expects {wire}")),
             });
         }
@@ -178,10 +189,15 @@ impl WasmExtensionProvider for BrowserWasmProvider {
                 .as_f64()
                 .map(|value| Value::Number(value as i32 as i64))
                 .ok_or_else(|| format!("native/result-type-invalid: {export}")),
-            "f32" | "f64" => result
-                .as_f64()
-                .map(Value::Float)
-                .ok_or_else(|| format!("native/result-type-invalid: {export}")),
+            "f32" | "f64" => {
+                let value = result
+                    .as_f64()
+                    .ok_or_else(|| format!("native/result-type-invalid: {export}"))?;
+                if !value.is_finite() {
+                    return Err(format!("non-finite number: {export}"));
+                }
+                Ok(Value::Float(value))
+            }
             _ => Err(format!("native/result-type-invalid: {export}")),
         }
     }
@@ -418,10 +434,17 @@ fn scalar_argument(
             "native/integer-overflow: {export} expects signed 64-bit integer"
         )),
         (HaraValueType::F32 | HaraValueType::F64, Value::Float(value)) => {
+            if !value.is_finite() {
+                return Err(format!("non-finite number: {export}"));
+            }
             Ok(JsValue::from_f64(*value))
         }
         (HaraValueType::F32 | HaraValueType::F64, Value::Number(value)) => {
-            Ok(JsValue::from_f64(*value as f64))
+            let value = *value as f64;
+            if !value.is_finite() {
+                return Err(format!("non-finite number: {export}"));
+            }
+            Ok(JsValue::from_f64(value))
         }
         _ => Err(format!(
             "native/type-error: {export} expects :{}",
@@ -513,10 +536,15 @@ fn scalar_result(export: &str, expected: &HaraValueType, raw: JsValue) -> Result
                     )
                 })
         }
-        HaraValueType::F32 | HaraValueType::F64 => raw
-            .as_f64()
-            .map(Value::Float)
-            .ok_or_else(|| format!("native/result-type-invalid: {export}")),
+        HaraValueType::F32 | HaraValueType::F64 => {
+            let value = raw
+                .as_f64()
+                .ok_or_else(|| format!("native/result-type-invalid: {export}"))?;
+            if !value.is_finite() {
+                return Err(format!("non-finite number: {export}"));
+            }
+            Ok(Value::Float(value))
+        }
         _ => Err(format!(
             "native/result-type-invalid: {export} -> :{}",
             hara_type_name(expected)

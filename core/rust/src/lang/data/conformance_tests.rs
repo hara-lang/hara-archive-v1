@@ -34,10 +34,7 @@ const SKIP: &[(&str, &str, &str)] = &[];
 // ---------------------------------------------------------------------------
 
 fn corpus_path(relative: &str) -> Option<std::path::PathBuf> {
-    std::path::Path::new(env!("HARA_SOURCE_ROOT"))
-        .ancestors()
-        .map(|root| root.join("hara-specs-registry").join(relative))
-        .find(|candidate| candidate.is_file())
+    crate::spec_registry::resolve(relative).filter(|candidate| candidate.is_file())
 }
 
 fn field<'a>(case: &'a Form, key: &str) -> &'a Form {

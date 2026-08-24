@@ -376,24 +376,17 @@ mod spec_tests {
 
     #[test]
     fn greenways_buildspec_validates_against_artifact_metaspec() {
-        let repository = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .unwrap()
-            .parent()
-            .unwrap();
-        let metaspec_path = repository
-            .parent()
-            .unwrap()
-            .join("hara-specs-registry")
-            .join("00-unsorted/artifact/metaspec/artifact-metaspec.edn");
+        let Some(specs_root) = hara_wasm::spec_registry::root() else {
+            eprintln!("skipping: hara-specs-registry is unavailable");
+            return;
+        };
+        let metaspec_path = specs_root.join("00-unsorted/artifact/metaspec/artifact-metaspec.edn");
         if !metaspec_path.is_file() {
             eprintln!("skipping: hara-specs-registry sibling repo not present");
             return;
         }
-        let document_path = repository
-            .parent()
-            .unwrap()
-            .join("hara-specs-registry/00-unsorted/contrib/greenways/build/spec/draft/greenways-buildspec.edn");
+        let document_path =
+            specs_root.join("00-unsorted/contrib/greenways/build/spec/draft/greenways-buildspec.edn");
         let document = read_spec_document(&fs::read_to_string(&document_path).unwrap()).unwrap();
         let metaspec = read_spec_document(&fs::read_to_string(metaspec_path).unwrap()).unwrap();
         assert!(validate_against_metaspec(&document, &metaspec, &document_path).is_empty());
@@ -401,15 +394,11 @@ mod spec_tests {
 
     #[test]
     fn build_surface_normalizes_to_exact_canonical_edn() {
-        let repository = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .unwrap()
-            .parent()
-            .unwrap();
-        let contributions = repository
-            .parent()
-            .unwrap()
-            .join("hara-specs-registry/00-unsorted/contrib");
+        let Some(specs_root) = hara_wasm::spec_registry::root() else {
+            eprintln!("skipping: hara-specs-registry is unavailable");
+            return;
+        };
+        let contributions = specs_root.join("00-unsorted/contrib");
         let source_path = contributions.join("greenways/build/examples/minimal-build.hal");
         let edn_path = contributions.join("greenways/build/examples/minimal-build.edn");
         let source = fs::read_to_string(&source_path).unwrap();
@@ -443,15 +432,11 @@ mod spec_tests {
 
     #[test]
     fn build_cycle_and_blocked_checker_reports_are_structured() {
-        let repository = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .unwrap()
-            .parent()
-            .unwrap();
-        let contributions = repository
-            .parent()
-            .unwrap()
-            .join("hara-specs-registry/00-unsorted/contrib");
+        let Some(specs_root) = hara_wasm::spec_registry::root() else {
+            eprintln!("skipping: hara-specs-registry is unavailable");
+            return;
+        };
+        let contributions = specs_root.join("00-unsorted/contrib");
         let cycle_path = contributions.join("greenways/build/examples/invalid-cycle.hal");
         let (cycle, parse_findings) = read_build_source(
             &fs::read_to_string(&cycle_path).unwrap(),
@@ -481,12 +466,10 @@ mod spec_tests {
 
     #[test]
     fn greenways_contribution_envelopes_verify_offline() {
-        let repository = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .unwrap()
-            .parent()
-            .unwrap();
-        let specs_root = repository.parent().unwrap().join("hara-specs-registry");
+        let Some(specs_root) = hara_wasm::spec_registry::root() else {
+            eprintln!("skipping: hara-specs-registry is unavailable");
+            return;
+        };
         if !specs_root.join("00-unsorted/artifact/metaspec").is_dir() {
             eprintln!("skipping: hara-specs-registry sibling repo not present");
             return;

@@ -57,7 +57,7 @@
 
 (defn- require-version
   [value]
-  (if (and (integer? value) (>= value 0))
+  (if (and (long? value) (>= value 0))
     value
     (catalog-error ":schema/version must be a non-negative integer"
                    {:schema/version value})))

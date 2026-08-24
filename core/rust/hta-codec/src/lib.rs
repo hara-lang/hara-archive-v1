@@ -199,7 +199,7 @@ pub fn decode_immutable_canonical(bytes: &[u8], max_bytes: usize) -> Result<Valu
 
 /// Encode the stable provider ABI subset using the full immutable codec.
 pub fn encode(value: &AbiValue) -> Result<Vec<u8>, String> {
-    encode_immutable(&abi_to_immutable(value))
+    encode_immutable(&abi_to_immutable(value)?)
 }
 
 /// Decode only values representable by the stable provider ABI subset.
@@ -211,24 +211,34 @@ pub fn decode_canonical(bytes: &[u8], max_bytes: usize) -> Result<AbiValue, Stri
     immutable_to_abi(decode_immutable_canonical(bytes, max_bytes)?)
 }
 
-fn abi_to_immutable(value: &AbiValue) -> Value {
-    match value {
+fn abi_to_immutable(value: &AbiValue) -> Result<Value, String> {
+    Ok(match value {
         AbiValue::Nil => Value::Nil,
         AbiValue::Boolean(value) => Value::Boolean(*value),
         AbiValue::String(value) => Value::String(value.clone()),
         AbiValue::Integer(value) => Value::Integer(*value),
         AbiValue::BigInteger(value) => Value::BigInteger(value.clone()),
-        AbiValue::Float(value) => Value::Float(*value),
+        AbiValue::Float(value) => {
+            if !value.is_finite() {
+                return Err("hta/non-finite number".into());
+            }
+            Value::Float(*value)
+        }
         AbiValue::Bytes(value) => Value::Bytes(value.clone()),
         AbiValue::Keyword(value) => Value::Keyword(value.clone()),
-        AbiValue::Vector(values) => Value::Vector(values.iter().map(abi_to_immutable).collect()),
+        AbiValue::Vector(values) => Value::Vector(
+            values
+                .iter()
+                .map(abi_to_immutable)
+                .collect::<Result<Vec<_>, _>>()?,
+        ),
         AbiValue::Record(values) => Value::Record(
             values
                 .iter()
-                .map(|(key, value)| (key.clone(), abi_to_immutable(value)))
-                .collect(),
+                .map(|(key, value)| Ok((key.clone(), abi_to_immutable(value)?)))
+                .collect::<Result<_, String>>()?,
         ),
-    }
+    })
 }
 
 fn immutable_to_abi(value: Value) -> Result<AbiValue, String> {
@@ -238,7 +248,12 @@ fn immutable_to_abi(value: Value) -> Result<AbiValue, String> {
         Value::String(value) => AbiValue::String(value),
         Value::Integer(value) => AbiValue::Integer(value),
         Value::BigInteger(value) => AbiValue::BigInteger(value),
-        Value::Float(value) => AbiValue::Float(value),
+        Value::Float(value) => {
+            if !value.is_finite() {
+                return Err("hta/non-finite number".into());
+            }
+            AbiValue::Float(value)
+        }
         Value::Bytes(value) => AbiValue::Bytes(value),
         Value::Keyword(value) => AbiValue::Keyword(value),
         Value::Vector(values) => AbiValue::Vector(
@@ -274,6 +289,9 @@ fn encode_value(value: &Value, depth: usize, output: &mut Vec<u8>) -> Result<(),
             write(output, &value.to_be_bytes())
         }
         Value::Float(value) => {
+            if !value.is_finite() {
+                return Err("hta/non-finite number".into());
+            }
             push(output, F64)?;
             write(output, &value.to_bits().to_be_bytes())
         }
@@ -501,9 +519,15 @@ impl Reader<'_> {
             I64 => Ok(Value::Integer(i64::from_be_bytes(
                 self.take(8)?.try_into().expect("eight bytes"),
             ))),
-            F64 => Ok(Value::Float(f64::from_bits(u64::from_be_bytes(
-                self.take(8)?.try_into().expect("eight bytes"),
-            )))),
+            F64 => {
+                let value = f64::from_bits(u64::from_be_bytes(
+                    self.take(8)?.try_into().expect("eight bytes"),
+                ));
+                if !value.is_finite() {
+                    return Err("hta/non-finite number".into());
+                }
+                Ok(Value::Float(value))
+            }
             CHARACTER => {
                 let scalar = u32::from_be_bytes(self.take(4)?.try_into().expect("four bytes"));
                 char::from_u32(scalar)
@@ -825,12 +849,15 @@ mod tests {
 
     #[test]
     fn floats_preserve_ieee_754_bits() {
-        for value in [0.28, -0.0, f64::INFINITY, f64::NEG_INFINITY] {
+        for value in [0.28, -0.0] {
             let decoded = decode(&encode(&Value::Float(value)).unwrap()).unwrap();
             let Value::Float(decoded) = decoded else {
                 panic!("float value")
             };
             assert_eq!(decoded.to_bits(), value.to_bits());
+        }
+        for value in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            assert!(encode(&Value::Float(value)).is_err());
         }
     }
 

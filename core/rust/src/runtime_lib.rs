@@ -48,6 +48,7 @@ pub mod native_module;
 #[cfg(not(target_arch = "wasm32"))]
 mod native_process;
 mod numeric;
+pub mod spec_registry;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod package;
 pub mod package_catalog;

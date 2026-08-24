@@ -227,8 +227,8 @@
   ([path start end]
    (let [path-segments (canonical-segments :subpath path)
          size (count path-segments)]
-     (if (and (integer? start)
-              (integer? end)
+     (if (and (long? start)
+              (long? end)
               (<= 0 start)
               (< start end)
               (<= end size))

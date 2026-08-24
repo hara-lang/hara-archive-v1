@@ -77,6 +77,9 @@ public final class HaraBox implements TruffleObject, IEquality {
         || value instanceof Boolean
         || value instanceof String
         || value instanceof TruffleObject) {
+      if (value instanceof Double || value instanceof Float) {
+        HaraNumericConversions.requireFinite(((Number) value).doubleValue());
+      }
       return value;
     }
     return new HaraBox(value);
@@ -114,6 +117,9 @@ public final class HaraBox implements TruffleObject, IEquality {
     }
     if (value instanceof HaraBigInteger) {
       return ((HaraBigInteger) value).value();
+    }
+    if (value instanceof Double || value instanceof Float) {
+      HaraNumericConversions.requireFinite(((Number) value).doubleValue());
     }
     return value;
   }

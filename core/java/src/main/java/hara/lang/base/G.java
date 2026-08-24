@@ -104,9 +104,7 @@ public interface G {
       return displayRegex((Pattern) e);
     } else if (e instanceof Double || e instanceof Float) {
       double value = ((Number) e).doubleValue();
-      if (Double.isNaN(value)) return "##NaN";
-      if (value == Double.POSITIVE_INFINITY) return "##Inf";
-      if (value == Double.NEGATIVE_INFINITY) return "##-Inf";
+      if (!Double.isFinite(value)) throw new IllegalArgumentException("non-finite number");
       return "(double " + Double.toString(value) + ")";
     } else if (e instanceof BigInteger) {
       return e.toString();
@@ -187,7 +185,7 @@ public interface G {
     if (value instanceof Double || value instanceof Float) {
       double number = ((Number) value).doubleValue();
       if (number == 0.0d) return 0;
-      if (!Double.isFinite(number)) return Double.hashCode(number);
+      if (!Double.isFinite(number)) throw new IllegalArgumentException("non-finite number");
       return BigDecimal.valueOf(number).stripTrailingZeros().hashCode();
     }
     if (value instanceof BigInteger) {

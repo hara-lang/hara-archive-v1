@@ -372,7 +372,9 @@ public interface Parser {
       }
       m = floatPat.matcher(s);
       if (m.matches() && (s.indexOf('.') >= 0 || s.indexOf('e') >= 0 || s.indexOf('E') >= 0)) {
-        return Double.valueOf(s);
+        double value = Double.valueOf(s);
+        if (!Double.isFinite(value)) throw new Ex.Runtime("non-finite number");
+        return value;
       }
       return null;
     }
@@ -731,24 +733,18 @@ public interface Parser {
     }
 
     public static class SymbolicValueReader implements BiFunction<Reader, Map, Object> {
-
-      static Map specials =
-          hashMap(
-              new Object[] {
-                Symbol.create(null, "Inf"), Double.POSITIVE_INFINITY,
-                Symbol.create(null, "-Inf"), Double.NEGATIVE_INFINITY,
-                Symbol.create(null, "NaN"), Double.NaN
-              });
-
       @SuppressWarnings("unchecked")
       @Override
       public Object apply(Reader r, Map opts) {
         Object o = read(r, true, null, true, opts);
 
         if (!(o instanceof Symbol)) throw new Ex.Runtime("Invalid token: ##" + o);
-        if (!(specials.has(o))) throw new Ex.Runtime("Unknown symbolic value: ##" + o);
-
-        return specials.lookup(o);
+        if (o.equals(Symbol.create(null, "Inf"))
+            || o.equals(Symbol.create(null, "-Inf"))
+            || o.equals(Symbol.create(null, "NaN"))) {
+          throw new Ex.Runtime("non-finite number");
+        }
+        throw new Ex.Runtime("Unknown symbolic value: ##" + o);
       }
     }
 

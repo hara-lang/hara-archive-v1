@@ -8,6 +8,12 @@ NPM ?= npm
 MKDOCS ?= mkdocs
 ARGS ?=
 
+CORE_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
+HARA_ROOT := $(abspath $(CORE_DIR)/..)
+HARA_WORKSPACE_ROOT ?= $(abspath $(HARA_ROOT)/../..)
+HARA_SPECS_REGISTRY ?= $(abspath $(HARA_ROOT)/../hara-specs-registry)
+JAVA_SPECS_ARGS := -Dhara.specs.registry=$(HARA_SPECS_REGISTRY)
+
 TRUFFLE_JAR := java/target/hara-truffle.jar
 TRUFFLE_NATIVE := target/hara-truffle
 RUST_MANIFEST := rust/Cargo.toml
@@ -21,7 +27,7 @@ HARA_WWW_DIR := ../website/hara-www
 HARA_BENCH_SCRIPTS := ../../../website/hara-benchmarks/scripts/hara-runtime
 
 .PHONY: help all build-all check-all test-all clean \
-        java java-offline java-headless java-build java-test java-conformance \
+        java java-offline java-headless java-build java-test java-specs java-conformance \
         rust rust-offline rust-headless rust-build rust-build-release rust-release \
         rust-test rust-test-main rust-test-library rust-test-cli \
         rust-test-integration rust-test-examples rust-test-doc rust-test-ignored rust-test-crates \
@@ -55,8 +61,9 @@ help: ## Show the available runtime targets
 	@echo
 	@echo '  make build-all                  Build JVM, Rust release, and raw WASM'
 	@echo '  make check-all                  Run core layout and runtime test suites'
-	@echo '  make java-test                  Run the Truffle test suite'
-	@echo '  make java-conformance           Run JVM Core-language conformance'
+	@echo '  make java-test                  Run fast JVM tests without registry conformance'
+	@echo '  make java-specs                 Run only registry-backed JVM tests'
+	@echo '  make java-conformance           Run the complete JVM suite, including registry conformance'
 	@echo '  make rust-test                  Run every native Rust test slice'
 	@echo '  make rust-test-main             Run main crate library, CLI, integration, example, and doc slices'
 	@echo '  make rust-test-crates           Run ABI, HTA codec, VM, and compiler crate slices'
@@ -93,7 +100,7 @@ all: help
 java-build: $(TRUFFLE_JAR) ## Build the JVM Truffle runtime
 
 $(TRUFFLE_JAR): java/pom.xml
-	$(MAVEN) -f java/pom.xml -Ptruffle -DskipTests package
+	$(MAVEN) -f java/pom.xml -Ptruffle $(JAVA_SPECS_ARGS) -DskipTests package
 
 java: java-build ## Run the JVM Truffle runtime
 	./hara $(ARGS)
@@ -105,10 +112,16 @@ java-headless: java-build ## Run the JVM Truffle RESP server
 	./hara headless $(ARGS)
 
 java-test: ## Run the JVM Truffle test suite
-	$(MAVEN) -f java/pom.xml -Ptruffle test
+	$(MAVEN) -f java/pom.xml -Ptruffle $(JAVA_SPECS_ARGS) test
 
-java-conformance: ## Run JVM Core-language conformance
-	$(MAVEN) -f java/pom.xml -Ptruffle -Dtest=hara.truffle.HaraCoreLanguageConformanceTest test
+java-specs: ## Run only registry-backed JVM tests
+	HARA_WORKSPACE_ROOT="$(HARA_WORKSPACE_ROOT)" HARA_SPECS_REGISTRY="$(HARA_SPECS_REGISTRY)" \
+	$(MAVEN) -f java/pom.xml -Ptruffle -Pconformance $(JAVA_SPECS_ARGS) \
+		-Dgroups=hara.spec.RegistryConformance test
+
+java-conformance: ## Run the complete JVM suite, including registry conformance
+	HARA_WORKSPACE_ROOT="$(HARA_WORKSPACE_ROOT)" HARA_SPECS_REGISTRY="$(HARA_SPECS_REGISTRY)" \
+	$(MAVEN) -f java/pom.xml -Ptruffle -Pconformance $(JAVA_SPECS_ARGS) test
 
 rust-build: ## Build the Rust native runtime
 	$(CARGO) build --manifest-path $(RUST_MANIFEST) --bin hara

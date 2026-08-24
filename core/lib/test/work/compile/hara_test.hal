@@ -114,7 +114,7 @@
                                       :closure captured-continuation})]
     [(first (get-in lowered [:work]))
      (first (get-in lowered [:closure]))
-     (integer? (second (get-in lowered [:closure])))
+     (long? (second (get-in lowered [:closure])))
      (= (lowering/resolve-closure (second (get-in lowered [:closure])))
         captured-continuation)])
   => ['work.base/definition 'work.compile.hara/resolve-closure true true])

@@ -1559,15 +1559,25 @@ fn host_failure(code: &str, message: &str) -> Value {
 }
 
 fn argument(export: &str, wire_type: &str, value: &Value) -> Result<Val, String> {
+    fn finite_f32(value: f64) -> Result<f32, String> {
+        let value = value as f32;
+        if value.is_finite() {
+            Ok(value)
+        } else {
+            Err("non-finite number".into())
+        }
+    }
     let type_error = || format!("extension/type-error: {export} expects {wire_type}");
     match (wire_type, value) {
         ("i32", Value::Number(value)) => i32::try_from(*value)
             .map(Val::I32)
             .map_err(|_| type_error()),
         ("i64", Value::Number(value)) => Ok(Val::I64(*value)),
-        ("f32", Value::Float(value)) => Ok(Val::F32((*value as f32).to_bits())),
-        ("f32", Value::Number(value)) => Ok(Val::F32((*value as f32).to_bits())),
-        ("f64", Value::Float(value)) => Ok(Val::F64(value.to_bits())),
+        ("f32", Value::Float(value)) => Ok(Val::F32(finite_f32(*value)?.to_bits())),
+        ("f32", Value::Number(value)) => Ok(Val::F32(finite_f32(*value as f64)?.to_bits())),
+        ("f64", Value::Float(value)) => {
+            Ok(Val::F64(crate::numeric::finite_float(*value)?.to_bits()))
+        }
         ("f64", Value::Number(value)) => Ok(Val::F64((*value as f64).to_bits())),
         ("boolean", Value::Bool(value)) => Ok(Val::I32(i32::from(*value))),
         _ => Err(type_error()),
@@ -1589,8 +1599,12 @@ fn result(export: &str, wire_type: &str, value: Option<Val>) -> Result<Value, St
         ("void", None) => Ok(Value::Nil),
         ("i32", Some(Val::I32(value))) => Ok(Value::Number(i64::from(value))),
         ("i64", Some(Val::I64(value))) => Ok(Value::Number(value)),
-        ("f32", Some(Val::F32(value))) => Ok(Value::Float(f32::from_bits(value) as f64)),
-        ("f64", Some(Val::F64(value))) => Ok(Value::Float(f64::from_bits(value))),
+        ("f32", Some(Val::F32(value))) => Ok(Value::Float(crate::numeric::finite_float(
+            f32::from_bits(value) as f64,
+        )?)),
+        ("f64", Some(Val::F64(value))) => Ok(Value::Float(crate::numeric::finite_float(
+            f64::from_bits(value),
+        )?)),
         ("boolean", Some(Val::I32(value))) => Ok(Value::Bool(value != 0)),
         _ => Err(format!(
             "extension/abi-type-unsupported: {export} -> {wire_type}"

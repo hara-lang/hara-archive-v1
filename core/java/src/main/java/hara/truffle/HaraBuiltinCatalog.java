@@ -220,7 +220,7 @@ final class HaraBuiltinCatalog {
               java.util.List.of(
                   "list", "vector", "vec", "set", "tuple", "hash-map", "hash-set", "atom",
                   "pointer", "symbol", "keyword", "reduced", "unreduced", "apply", "not", "boolean", "compare",
-                  "reduced?", "nil?", "boolean?", "string?", "char?", "number?", "integer?",
+                  "reduced?", "nil?", "boolean?", "string?", "char?", "number?",
                   "long?", "double?", "keyword?", "symbol?", "pointer?",
                   "atom?", "function?", "bytes?", "array?", "object?", "list?", "cons?", "vector?",
                   "tuple?", "map?", "set?", "sequential?", "coll?", "satisfies?", "type", "instance?")),

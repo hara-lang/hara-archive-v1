@@ -166,9 +166,6 @@
   number? "Returns true when value is numeric." [value] (std.native.Base/number? value))
 
 (defn ^{:inline true :schema [:fn [:any] :bool]}
-  integer? "Returns true when value is an integer." [value] (std.native.Base/integer? value))
-
-(defn ^{:inline true :schema [:fn [:any] :bool]}
   long? "Returns true when value is a signed 64-bit integer." [value] (std.native.Base/long? value))
 
 (defn ^{:inline true :schema [:fn [:any] :bool]}

@@ -1,9 +1,10 @@
 use hara_wasm::kernel::{parse_forms, Form};
+use hara_wasm::spec_registry;
 use hara_wasm::lang::protocol::{
     find_protocol, protocol_declarations, ProtocolArity, ProtocolAvailability,
 };
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 #[test]
 fn annotated_protocols_close_the_specs_surface() {
@@ -191,14 +192,5 @@ fn lookup<'a>(map: &'a [(Form, Form)], key: &str) -> &'a Form {
 }
 
 fn specs_path() -> PathBuf {
-    if let Some(path) = std::env::var_os("HARA_SPECS_REGISTRY") {
-        return PathBuf::from(path).join("01-lang/001-language/draft/conformance/protocols.edn");
-    }
-    if let Some(workspace) = std::env::var_os("HARA_WORKSPACE_ROOT") {
-        return PathBuf::from(workspace).join(
-            "technology/hara-specs-registry/01-lang/001-language/draft/conformance/protocols.edn",
-        );
-    }
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../hara-specs-registry/01-lang/001-language/draft/conformance/protocols.edn")
+    spec_registry::require("01-lang/001-language/draft/conformance/protocols.edn")
 }

@@ -31,9 +31,11 @@ fn required<'a>(entries: &'a [(Form, Form)], key: &str, id: &str) -> &'a Form {
 
 #[test]
 fn bytecode_vm_conformance_corpus() {
-    let manifest = kernel::parse_forms(include_str!(
-        "../../../../../hara-specs-registry/01-lang/010-bytecode/draft/conformance/bytecode-vm.edn"
+    let corpus = std::fs::read_to_string(crate::spec_registry::require(
+        "01-lang/010-bytecode/draft/conformance/bytecode-vm.edn",
     ))
+    .expect("bytecode VM conformance corpus is readable");
+    let manifest = kernel::parse_forms(&corpus)
     .expect("bytecode VM conformance corpus parses")
     .remove(0);
     let Form::Map(manifest) = manifest else {

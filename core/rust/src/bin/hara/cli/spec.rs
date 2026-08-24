@@ -9,7 +9,7 @@ use super::metaspec::{
 use hara_wasm::kernel::Form;
 use sha2::{Digest, Sha256};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct SpecFinding {
@@ -118,17 +118,8 @@ fn check_contribution_command(args: &[String]) -> Result<(), String> {
     });
     let envelope = read_spec_document(&source)
         .unwrap_or_else(|error| exit_error(&format!("{}: {error}", envelope_path.display()), 2));
-    let repository_root = find_repository_root(contribution_root).unwrap_or_else(|| {
-        exit_error(
-            "cannot locate Hara repository root containing contrib/ and core/",
-            2,
-        )
-    });
-    let specs_root = repository_root
-        .parent()
-        .map(|parent| parent.join("hara-specs-registry"))
-        .filter(|path| path.is_dir())
-        .unwrap_or_else(|| exit_error("cannot locate hara-specs-registry sibling repository", 2));
+    let specs_root = hara_wasm::spec_registry::root()
+        .unwrap_or_else(|| exit_error("cannot locate hara-specs-registry", 2));
     let findings = check_contribution(&envelope, contribution_root, &specs_root);
     let report = contribution_report(&envelope, &findings);
     match format {
@@ -140,15 +131,6 @@ fn check_contribution_command(args: &[String]) -> Result<(), String> {
     } else {
         std::process::exit(1)
     }
-}
-
-fn find_repository_root(path: &Path) -> Option<PathBuf> {
-    let absolute = path.canonicalize().ok()?;
-    absolute.ancestors().find_map(|candidate| {
-        (candidate.join("contrib").is_dir()
-            && (candidate.join("core").is_dir() || candidate.join("packaging").is_dir()))
-        .then(|| candidate.to_path_buf())
-    })
 }
 
 pub(crate) fn check_contribution(

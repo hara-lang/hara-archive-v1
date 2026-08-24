@@ -43,10 +43,6 @@ pub(crate) enum ArithmeticOp {
     Modulo,
 }
 
-pub(crate) fn is_integer_value(value: &Value) -> bool {
-    matches!(value, Value::Number(_) | Value::BigInteger(_))
-}
-
 pub(crate) fn is_numeric_value(value: &Value) -> bool {
     matches!(
         value,
@@ -71,7 +67,7 @@ pub(crate) fn compact_integer(value: BigInt) -> Value {
 
 fn float_value(value: &Value) -> Result<f64, String> {
     match value {
-        Value::Float(value) => Ok(*value),
+        Value::Float(value) => finite_float(*value),
         Value::Number(value) => Ok(*value as f64),
         Value::BigInteger(value) => value
             .to_f64()
@@ -81,15 +77,17 @@ fn float_value(value: &Value) -> Result<f64, String> {
     }
 }
 
+pub(crate) fn finite_float(value: f64) -> Result<f64, String> {
+    if value.is_finite() {
+        Ok(value)
+    } else {
+        Err("non-finite number".into())
+    }
+}
+
 fn compare_integer_to_float(integer: &BigInt, floating: f64) -> Option<Ordering> {
-    if floating.is_nan() {
+    if !floating.is_finite() {
         return None;
-    }
-    if floating == f64::INFINITY {
-        return Some(Ordering::Less);
-    }
-    if floating == f64::NEG_INFINITY {
-        return Some(Ordering::Greater);
     }
     if floating == 0.0 {
         return Some(integer.cmp(&BigInt::zero()));
@@ -140,7 +138,7 @@ fn float_binary(op: ArithmeticOp, left: f64, right: f64) -> Result<Value, String
             }
         }
     };
-    Ok(Value::Float(value))
+    Ok(Value::Float(finite_float(value)?))
 }
 
 fn integer_binary(op: ArithmeticOp, left: BigInt, right: BigInt) -> Result<Value, String> {
@@ -193,7 +191,7 @@ pub(crate) fn numeric_quotient(left: &Value, right: &Value) -> Result<Value, Str
         if right == 0.0 {
             return Err("division by zero".into());
         }
-        return Ok(Value::Float((left / right).trunc()));
+        return Ok(Value::Float(finite_float((left / right).trunc())?));
     }
     integer_binary(
         ArithmeticOp::Divide,
@@ -207,10 +205,20 @@ pub(crate) fn numeric_compare(left: &Value, right: &Value) -> Result<Option<Orde
         return Ok(None);
     }
     match (left, right) {
-        (Value::Float(left), Value::Float(right)) => Ok(left.partial_cmp(right)),
-        (Value::Float(left), _) => Ok(compare_integer_to_float(&integer_value(right)?, *left)
-            .map(|ordering| ordering.reverse())),
-        (_, Value::Float(right)) => Ok(compare_integer_to_float(&integer_value(left)?, *right)),
+        (Value::Float(left), Value::Float(right)) => {
+            finite_float(*left)?;
+            finite_float(*right)?;
+            Ok(left.partial_cmp(right))
+        }
+        (Value::Float(left), _) => {
+            finite_float(*left)?;
+            Ok(compare_integer_to_float(&integer_value(right)?, *left)
+                .map(|ordering| ordering.reverse()))
+        }
+        (_, Value::Float(right)) => {
+            finite_float(*right)?;
+            Ok(compare_integer_to_float(&integer_value(left)?, *right))
+        }
         _ => Ok(Some(integer_value(left)?.cmp(&integer_value(right)?))),
     }
 }
@@ -218,9 +226,6 @@ pub(crate) fn numeric_compare(left: &Value, right: &Value) -> Result<Option<Orde
 pub(crate) fn numeric_equal(left: &Value, right: &Value) -> Option<bool> {
     if !is_numeric_value(left) || !is_numeric_value(right) {
         return None;
-    }
-    if matches!((left, right), (Value::Float(a), Value::Float(b)) if a.is_nan() && b.is_nan()) {
-        return Some(true);
     }
     Some(matches!(
         numeric_compare(left, right),
@@ -231,14 +236,6 @@ pub(crate) fn numeric_equal(left: &Value, right: &Value) -> Option<bool> {
 pub(crate) fn numeric_total_compare(left: &Value, right: &Value) -> Option<Ordering> {
     if !is_numeric_value(left) || !is_numeric_value(right) {
         return None;
-    }
-    let left_nan = matches!(left, Value::Float(value) if value.is_nan());
-    let right_nan = matches!(right, Value::Float(value) if value.is_nan());
-    match (left_nan, right_nan) {
-        (true, true) => return Some(Ordering::Equal),
-        (true, false) => return Some(Ordering::Greater),
-        (false, true) => return Some(Ordering::Less),
-        (false, false) => {}
     }
     numeric_compare(left, right).ok().flatten()
 }
@@ -259,7 +256,7 @@ pub(crate) fn numeric_negate(value: &Value) -> Result<Value, String> {
             None => Ok(Value::BigInteger(BigInt::from(*value).abs())),
         },
         Value::BigInteger(value) => Ok(compact_integer(-value.clone())),
-        Value::Float(value) => Ok(Value::Float(-value)),
+        Value::Float(value) => Ok(Value::Float(finite_float(-value)?)),
         _ => Err("expected a numeric value".into()),
     }
 }
@@ -271,7 +268,7 @@ pub(crate) fn numeric_abs(value: &Value) -> Result<Value, String> {
             None => Ok(Value::BigInteger(BigInt::from(*value).abs())),
         },
         Value::BigInteger(value) => Ok(compact_integer(value.clone().abs())),
-        Value::Float(value) => Ok(Value::Float(value.abs())),
+        Value::Float(value) => Ok(Value::Float(finite_float(value.abs())?)),
         _ => Err("expected a numeric value".into()),
     }
 }

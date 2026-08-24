@@ -588,16 +588,7 @@ mod tests {
     }
 
     fn repo_text(relative: &str) -> Option<String> {
-        let registry = std::env::var_os("HARA_SPECS_REGISTRY")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|| {
-                std::path::Path::new(env!("HARA_SOURCE_ROOT"))
-                    .join("..")
-                    .join("..")
-                    .join("..")
-                    .join("hara-specs-registry")
-            });
-        let path = registry.join(relative);
+        let path = crate::spec_registry::resolve(relative)?;
         match std::fs::read_to_string(&path) {
             Ok(content) => Some(content),
             Err(_) => {
@@ -3222,9 +3213,6 @@ mod tests {
             ("\\newline", "\\newline"),
             ("#\"a+\"", "#\"a+\""),
             ("#demo {:a 1}", "#demo{:a 1}"),
-            ("##Inf", "##Inf"),
-            ("##-Inf", "##-Inf"),
-            ("##NaN", "##NaN"),
         ];
         for (source, expected) in cases {
             assert_eq!(runtime.eval_text(source).unwrap(), expected, "{source}");
@@ -3236,7 +3224,15 @@ mod tests {
             runtime.eval_text("9223372036854775808").unwrap(),
             "9223372036854775808"
         );
-        assert_eq!(runtime.eval_text("(= ##NaN ##NaN)").unwrap(), "true");
+        for source in ["##Inf", "##-Inf", "##NaN", "1e309", "-1e309"] {
+            assert!(
+                runtime
+                    .eval_text(source)
+                    .unwrap_err()
+                    .contains("non-finite number"),
+                "{source}"
+            );
+        }
         assert_eq!(runtime.eval_text("'#demo [1 2]").unwrap(), "#demo[1 2]");
         assert_eq!(runtime.eval_text("()").unwrap(), "()");
         assert_eq!(runtime.eval_text("(list? ())").unwrap(), "true");
@@ -3262,7 +3258,20 @@ mod tests {
                 .unwrap(),
             "[true true (double 0) (double 1) (double 0) (double 0) (double 0) (double 0) (double 0) (double 0) (double 1) (double 0) (double 0) (double 0) (double 0) (double 1) (double 2) (double 8) 3 (double 1) (double 3)]"
         );
-        assert_eq!(runtime.eval_text("(= (sqrt -1) ##NaN)").unwrap(), "true");
+        for source in [
+            "(sqrt -1)",
+            "(exp 10000)",
+            "(* 1.0e308 1.0e308)",
+            "(parse-double \"Infinity\")",
+        ] {
+            assert!(
+                runtime
+                    .eval_text(source)
+                    .unwrap_err()
+                    .contains("non-finite number"),
+                "{source}"
+            );
+        }
         assert_eq!(runtime.eval_text("(sqrt (long 9))").unwrap(), "(double 3)");
         assert_eq!(runtime.eval_text("(long 9.9)").unwrap(), "9");
         assert_eq!(
@@ -3273,12 +3282,8 @@ mod tests {
             runtime.eval_text("(abs -9223372036854775808)").unwrap(),
             "9223372036854775808"
         );
-        assert_eq!(
-            runtime
-                .eval_text("[(= (asinh 1.0e300) ##Inf) (= (acosh 1.0e300) ##Inf)]")
-                .unwrap(),
-            "[false false]"
-        );
+        assert!(runtime.eval_text("(asinh 1.0e300)").is_ok());
+        assert!(runtime.eval_text("(acosh 1.0e300)").is_ok());
         for source in ["(sin)", "(pow 2)", "(sqrt \"9\")"] {
             assert!(runtime.eval_text(source).is_err(), "{source}");
         }
@@ -3546,9 +3551,10 @@ mod tests {
             "native counts must be derived from :types"
         );
 
-        let corpus = include_str!(
-            "../../../../../hara-specs-registry/01-lang/001-language/draft/conformance/fixtures/native_behavioral.hal"
-        );
+        let corpus = std::fs::read_to_string(crate::spec_registry::require(
+            "01-lang/001-language/draft/conformance/fixtures/native_behavioral.hal",
+        ))
+        .expect("native behavioral corpus is readable");
         let mut runtime = Runtime::new();
         let results = runtime
             .eval_text(&format!("{corpus}\n(native-method-results)"))
@@ -4354,7 +4360,7 @@ mod tests {
     fn base_backed_foundation_facades_are_source_owned() {
         let runtime = Runtime::new();
         let foundation = runtime.namespace_registry.find("std.foundation").unwrap();
-        for name in ["list", "boolean", "compare", "integer?"] {
+        for name in ["list", "boolean", "compare", "long?", "double?"] {
             let var = foundation
                 .resolve(&crate::lang::data::Symbol::parse(name))
                 .unwrap_or_else(|| panic!("missing std.foundation/{name}"));
@@ -4366,7 +4372,7 @@ mod tests {
         }
 
         let base = runtime.namespace_registry.find("std.native.Base").unwrap();
-        for name in ["list", "boolean", "compare", "integer?"] {
+        for name in ["list", "boolean", "compare", "long?", "double?"] {
             let var = base
                 .resolve(&crate::lang::data::Symbol::parse(name))
                 .unwrap_or_else(|| panic!("missing std.native.Base/{name}"));
@@ -7931,6 +7937,7 @@ mod tests {
         assert_eq!(runtime.eval_text("(neg? -1)").unwrap(), "true");
         assert_eq!(runtime.eval_text("(even? 4)").unwrap(), "true");
         assert_eq!(runtime.eval_text("(odd? 3)").unwrap(), "true");
+        assert!(runtime.eval_text("(integer? 1)").is_err());
         assert_eq!(runtime.eval_text("(nil? nil)").unwrap(), "true");
         assert_eq!(runtime.eval_text("(true? true)").unwrap(), "true");
         assert_eq!(runtime.eval_text("(false? false)").unwrap(), "true");
@@ -8856,9 +8863,9 @@ mod tests {
         );
         assert_eq!(
             runtime
-                .eval_text("(integer? (inc 9223372036854775807))")
+                .eval_text("(long? (inc 9223372036854775807))")
                 .unwrap(),
-            "true"
+            "false"
         );
     }
 

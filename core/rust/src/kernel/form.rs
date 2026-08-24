@@ -68,11 +68,11 @@ impl std::fmt::Display for Form {
             Self::Nil => "nil".into(),
             Self::Bool(value) => value.to_string(),
             Self::Number(value) => value.to_string(),
-            Self::Float(value) if value.is_nan() => "##NaN".into(),
-            Self::Float(value) if *value == f64::INFINITY => "##Inf".into(),
-            Self::Float(value) if *value == f64::NEG_INFINITY => "##-Inf".into(),
-            Self::Float(value) if value.fract() == 0.0 => format!("(double {value:.1})"),
-            Self::Float(value) => format!("(double {value})"),
+            Self::Float(value) if value.is_finite() && value.fract() == 0.0 => {
+                format!("(double {value:.1})")
+            }
+            Self::Float(value) if value.is_finite() => format!("(double {value})"),
+            Self::Float(_) => panic!("non-finite number"),
             Self::BigInteger(value) => value.to_string(),
             Self::Character('\n') => "\\newline".into(),
             Self::Character(' ') => "\\space".into(),

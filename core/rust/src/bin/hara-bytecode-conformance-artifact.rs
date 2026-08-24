@@ -1,4 +1,4 @@
-use hara_wasm::{kernel::Form, Runtime};
+use hara_wasm::{kernel::Form, spec_registry, Runtime};
 use sha2::{Digest, Sha256};
 use std::{env, fs, path::PathBuf, process};
 
@@ -13,14 +13,11 @@ fn main() {
 
 fn run() -> Result<(), String> {
     let command = env::args().nth(1).unwrap_or_else(|| "check".into());
-    let corpus_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .map(|root| {
-            root.join("hara-specs-registry")
-                .join("01-lang/010-bytecode/draft/conformance/bytecode-vm.edn")
-        })
-        .find(|candidate| candidate.is_file())
-        .ok_or_else(|| "cannot locate bytecode-vm conformance corpus")?;
+    let corpus_path = spec_registry::resolve(
+        "01-lang/010-bytecode/draft/conformance/bytecode-vm.edn",
+    )
+    .filter(|candidate| candidate.is_file())
+    .ok_or_else(|| "cannot locate bytecode-vm conformance corpus")?;
     let asset_path =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets/bytecode-conformance.hcc");
     let corpus = fs::read_to_string(&corpus_path).map_err(|error| error.to_string())?;

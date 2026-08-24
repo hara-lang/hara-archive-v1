@@ -243,7 +243,7 @@
              :format format
              :available [:halc :hbc]})
       nil)
-    (if (not (and (integer? version) (not (neg? version))))
+    (if (not (and (long? version) (not (neg? version))))
       (fail ":artifact/version must be a non-negative integer"
             {:type :tool.vm/invalid-artifact
              :field :artifact/version

@@ -225,7 +225,7 @@
           alive (sh/alive? process)
           _ (sh/kill process)
           exit (deref (sh/wait process))]
-      [alive (integer? exit)])
+      [alive (long? exit)])
     [true true])])
 
 results

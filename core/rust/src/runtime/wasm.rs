@@ -42,7 +42,8 @@ fn value_to_js(value: &core::Value) -> Result<JsValue, String> {
         core::Value::BigInteger(number) => js_sys::BigInt::new(&JsValue::from_str(&number.to_string()))
             .map(Into::into)
             .map_err(|error| format!("std.native.Host/call integer-invalid: {}", js_error_string(error.into()))),
-        core::Value::Float(number) => Ok(JsValue::from_f64(*number)),
+        core::Value::Float(number) => crate::numeric::finite_float(*number)
+            .map(|number| JsValue::from_f64(number)),
         core::Value::String(text) => Ok(JsValue::from_str(text)),
         core::Value::Keyword(keyword) => Ok(JsValue::from_str(keyword.as_str())),
         core::Value::Symbol(symbol) => Ok(JsValue::from_str(symbol.as_str())),
@@ -114,7 +115,7 @@ fn js_to_value(value: &JsValue) -> Result<core::Value, String> {
         {
             return Ok(core::Value::Number(number as i64));
         }
-        return Ok(core::Value::Float(number));
+        return crate::numeric::finite_float(number).map(core::Value::Float);
     }
     if let Some(text) = value.as_string() {
         return Ok(core::Value::String(text));

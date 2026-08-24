@@ -8,7 +8,7 @@ import java.math.BigInteger;
 public interface Num {
 
   static double asDouble(Object value) {
-    return ((Number) value).doubleValue();
+    return NumUtils.requireFinite(((Number) value).doubleValue());
   }
 
   public static double add(double x, double y) {
@@ -200,11 +200,12 @@ public interface Num {
   }
 
   public static double divide(double x, double y) {
-    return x / y;
+    if (y == 0.0d) throw new ArithmeticException("Divide by zero");
+    return NumUtils.requireFinite(x / y);
   }
 
   public static double divide(double x, long y) {
-    return x / y;
+    return divide(x, (double) y);
   }
 
   public static double divide(double x, Object y) {
@@ -212,7 +213,7 @@ public interface Num {
   };
 
   public static double divide(long x, double y) {
-    return x / y;
+    return divide((double) x, y);
   }
 
   public static Number divide(long x, long y) {
@@ -232,11 +233,6 @@ public interface Num {
   }
 
   public static Number divide(Object x, Object y) {
-    if (isNaN(x)) {
-      return (Number) x;
-    } else if (isNaN(y)) {
-      return (Number) y;
-    }
     NumOps yops = ops(y);
     if (yops.isZero((Number) y)) throw new ArithmeticException("Divide by zero");
     return ops(x).combine(yops).divide((Number) x, (Number) y);
@@ -728,10 +724,11 @@ public interface Num {
   }
 
   public static Number num(double x) {
-    return Double.valueOf(x);
+    return Double.valueOf(NumUtils.requireFinite(x));
   }
 
   public static Number num(float x) {
+    NumUtils.requireFinite(x);
     return Float.valueOf(x);
   }
 
@@ -783,7 +780,7 @@ public interface Num {
     if (q <= Long.MAX_VALUE && q >= Long.MIN_VALUE) {
       return (long) q;
     } else {
-      return q;
+      return NumUtils.requireFinite(q);
     }
   }
 
@@ -829,9 +826,9 @@ public interface Num {
 
     double q = n / d;
     if (q <= Long.MAX_VALUE && q >= Long.MIN_VALUE) {
-      return (n - ((long) q) * d);
+      return NumUtils.requireFinite(n - ((long) q) * d);
     } else {
-      return (n - ((long) q) * d);
+      return NumUtils.requireFinite(n - ((long) q) * d);
     }
   }
 

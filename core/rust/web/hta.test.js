@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { BrowserPromiseProvider, decodeHta, encodeHta, HtaContext, HtaDeque, HtaHandle, HtaKeyword, HtaPriorityMap, HtaQueue, HtaSortedMap, HtaTagged, HtaSymbol, loadHtaExtension, parseHtaManifest } from "./packages/hta/index.js";
@@ -6,6 +7,8 @@ import { BrowserPromiseProvider, decodeHta, encodeHta, HtaContext, HtaDeque, Hta
 const tensorDescriptor='{:namespace "math.tensor" :version "1" :provider :wasm :module "tensor.wasm" :abi :hta.v1 :exports {"open" {:args [] :returns :value :async true}} :handles {"tensor" {:tag math}} :capabilities []}';
 const hostDescriptor='{:namespace "host.demo" :version "1" :provider :wasm :module "demo.wasm" :abi :hta.v1 :exports {"open" {}} :host-calls {"store" ["get"]} :capabilities []}';
 const adapterDescriptor='{:namespace "math.async" :version "1" :provider :wasm :module "adapter.wasm" :abi :hta.v1 :exports {"sum" {:args [:i64 :i64] :returns :i64 :async true}} :assets ["adapter.wasm" "modules/math.wasm"] :capabilities []}';
+const adapterFixtureDigest="6742ab577c2f6852103effd650d97d88c7427fd0e7520466126f892fb4fb0dab";
+const libraryFixtureDigest="cf96c3351ea2afd66dd2cee4480ea44fd2e76f8009ca1df96edb9dc149749edc";
 
 test("repository compatibility shim re-exports the package API",async()=>{
   const shim=await import("./hta.js");
@@ -44,11 +47,41 @@ test("worker composes a generated HTA adapter with its wrapped library",async()=
     if(previousSelf===undefined)delete globalThis.self;else globalThis.self=previousSelf;
   }
 });
+test("JVM and browser composition fixtures retain their reviewed bytes",async()=>{
+  const adapterBytes=await readFile(new URL("./test-fixtures/hta-adapter/adapter.wasm",import.meta.url));
+  const libraryBytes=await readFile(new URL("./test-fixtures/hta-adapter/library.wasm",import.meta.url));
+  assert.equal(createHash("sha256").update(adapterBytes).digest("hex"),adapterFixtureDigest);
+  assert.equal(createHash("sha256").update(libraryBytes).digest("hex"),libraryFixtureDigest);
+});
+test("worker rejects a wrapped library with a missing imported export",async()=>{
+  const adapterBytes=new Uint8Array(await readFile(new URL("./test-fixtures/hta-adapter/adapter.wasm",import.meta.url)));
+  const libraryBytes=replaceUtf8(await readFile(new URL("./test-fixtures/hta-adapter/library.wasm",import.meta.url)),"add","sub");
+  const messages=[],listeners=new Map(),previousSelf=globalThis.self;
+  globalThis.self={addEventListener:(type,handler)=>listeners.set(type,handler),postMessage:message=>messages.push(message),close:()=>{}};
+  try{
+    await import(`./packages/hta/worker.js?hta-malformed=${Date.now()}`);
+    await listeners.get("message")({data:{type:"init",moduleBytes:adapterBytes,libraryBytes}});
+    assert.equal(messages[0].type,"fatal");
+    assert.match(messages[0].error.message,/hta\/library-export-missing/);
+  }finally{
+    if(previousSelf===undefined)delete globalThis.self;else globalThis.self=previousSelf;
+  }
+});
 test("descriptor loader fetches EDN when given its URL",async()=>{const worker=new FakeWorker(),descriptorUrl=`data:text/plain,${encodeURIComponent(tensorDescriptor)}`;const context=await loadHtaExtension({worker,descriptorUrl,moduleBytes:new Uint8Array()});assert.deepEqual(context.manifest.handleTags,{tensor:"math"});assert.ok(worker.sent[0].moduleBytes instanceof Uint8Array);context.close();});
 test("context releases bound handles once and rejects later use",async()=>{const worker=new FakeWorker();const context=new HtaContext({worker,moduleUrl:"runtime.wasm"});worker.emit({type:"ready"});const result=context.call("open",[]);await Promise.resolve();const call=worker.sent.find(message=>message.type==="call");worker.emit({type:"result",id:call.id,ok:true,frame:encodeHta(new HtaHandle("runtime","cursor",42n))});const handle=await result;handle.release();handle.release();const releases=worker.sent.filter(message=>message.type==="release");assert.equal(releases.length,1);const released=decodeHta(releases[0].frame);assert.equal(released.id,42n);await assert.rejects(context.call("use",[handle]),/hta\/handle-released/);context.close();});
 test("context exposes worker results as promises",async()=>{const worker=new FakeWorker();const context=new HtaContext({worker,moduleUrl:"runtime.wasm"});worker.emit({type:"ready"});const result=context.call("eval",["(+ 1 2)"]);await Promise.resolve();const call=worker.sent.find(message=>message.type==="call");worker.emit({type:"result",id:call.id,ok:true,frame:encodeHta(3)});assert.equal(await result,3);context.close();});
 test("context cancellation does not leak pre-dispatch requests",async()=>{const worker=new FakeWorker();const context=new HtaContext({worker,moduleUrl:"runtime.wasm"});worker.emit({type:"ready"});const result=context.call("eval",["slow"]);const rejection=assert.rejects(result,/cancelled/);result.cancel();await Promise.resolve();await Promise.resolve();assert.equal(worker.sent.some(message=>message.type==="call"),false);assert.equal(context.pending.size,0);await rejection;context.close();});
-test("context cancellation is forwarded after dispatch",async()=>{const worker=new FakeWorker();const context=new HtaContext({worker,moduleUrl:"runtime.wasm"});worker.emit({type:"ready"});const result=context.call("eval",["slow"]);const rejection=assert.rejects(result,/cancelled/);await Promise.resolve();await Promise.resolve();result.cancel();assert.equal(worker.sent.at(-1).type,"cancel");await rejection;context.close();});
+test("context cancellation is forwarded after dispatch",async()=>{const worker=new FakeWorker();const context=new HtaContext({worker,moduleUrl:"runtime.wasm"});worker.emit({type:"ready"});const result=context.call("eval",["slow"]);const rejection=assert.rejects(result,/cancelled/);await Promise.resolve();await Promise.resolve();result.cancel();assert.equal(worker.sent.at(-1).type,"cancel");assert.equal(context.pending.size,0);await rejection;context.close();});
+test("context failure rejects pending calls and terminates the worker",async()=>{
+const worker=new FakeWorker(),context=new HtaContext({worker,moduleUrl:"runtime.wasm"});
+worker.emit({type:"ready"});
+const pending=context.call("slow");
+await Promise.resolve();await Promise.resolve();
+worker.emit({type:"fatal",error:{message:"malformed HTA module"}});
+await assert.rejects(pending,/malformed HTA module/);
+assert.equal(context.pending.size,0);
+assert.equal(worker.terminated,true);
+context.close();});
 test("context enforces manifest export and host-call policy",async()=>{
   const worker=new FakeWorker(),calls={"store/get":async()=>42,"store/put":async()=>false};
   const context=new HtaContext({worker,moduleUrl:"runtime.wasm",hostCalls:calls,manifest:parseHtaManifest(hostDescriptor)});
@@ -101,6 +134,8 @@ test("context registers kernel-issued mounts and sessions attach numeric ids",as
 });
 
 class FakeWorker{constructor(){this.listeners={};this.sent=[];}addEventListener(type,handler){this.listeners[type]=handler;}postMessage(message){this.sent.push(message);}emit(data){this.listeners.message({data});}terminate(){this.terminated=true;}}
+
+function replaceUtf8(bytes,from,to){const source=new TextEncoder().encode(from),replacement=new TextEncoder().encode(to);if(source.length!==replacement.length)throw new Error("fixture lengths differ");const copy=bytes.slice();for(let index=0;index<=copy.length-source.length;index++){let match=true;for(let offset=0;offset<source.length;offset++)if(copy[index+offset]!==source[offset]){match=false;break;}if(match){copy.set(replacement,index);return copy;}}throw new Error(`fixture marker missing: ${from}`);}
 
 test("browser promise provider uses native microtasks and ordered chaining",async()=>{
   const provider=new BrowserPromiseProvider(),events=[];

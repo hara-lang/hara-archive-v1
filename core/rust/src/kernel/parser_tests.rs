@@ -30,16 +30,15 @@ fn preserves_recursive_source_locations_without_changing_forms() {
 
 #[test]
 fn preserves_locations_through_dispatch_and_metadata() {
-    let root = read_forms("#tag ^:private [#'x ##Inf]").unwrap().remove(0);
-    assert_eq!(root.form.to_string(), "#tag[(var x) ##Inf]");
+    let root = read_forms("#tag ^:private [#'x]").unwrap().remove(0);
+    assert_eq!(root.form.to_string(), "#tag[(var x)]");
     assert_eq!(root.children.len(), 1);
     let metadata = &root.children[0];
     assert_eq!(metadata.children.len(), 2);
     let vector = &metadata.children[1];
-    assert_eq!(vector.children.len(), 2);
+    assert_eq!(vector.children.len(), 1);
     assert_eq!(vector.children[0].form.to_string(), "(var x)");
-    assert_eq!(vector.children[1].form.to_string(), "##Inf");
-    assert_eq!(root.descendants().count(), 7);
+    assert_eq!(root.descendants().count(), 5);
 }
 
 #[test]
@@ -173,10 +172,14 @@ fn matches_extended_canonical_reader_categories() {
         parse_forms(r##"#"\d+""##).unwrap(),
         vec![Form::Regex(r"\d+".into())]
     );
-    let symbolic = parse_forms("##Inf ##-Inf ##NaN").unwrap();
-    assert!(matches!(symbolic[0], Form::Float(value) if value == f64::INFINITY));
-    assert!(matches!(symbolic[1], Form::Float(value) if value == f64::NEG_INFINITY));
-    assert!(matches!(symbolic[2], Form::Float(value) if value.is_nan()));
+    for source in ["##Inf", "##-Inf", "##NaN", "1e309", "-1e309"] {
+        assert!(
+            parse_forms(source)
+                .unwrap_err()
+                .contains("non-finite number"),
+            "{source}"
+        );
+    }
     assert!(parse_forms("#'1")
         .unwrap_err()
         .contains("Var quote expects a symbol"));
@@ -319,16 +322,7 @@ fn matches_java_symbol_and_number_macro_termination() {
 #[test]
 fn shared_reader_corpus_matches_canonical_forms_and_errors() {
     let relative = "01-lang/001-language/draft/conformance/reader.edn";
-    let path = std::env::var_os("HARA_SPECS_REGISTRY")
-        .map(std::path::PathBuf::from)
-        .map(|root| root.join(relative))
-        .filter(|candidate| candidate.is_file())
-        .or_else(|| {
-            std::path::Path::new(env!("HARA_SOURCE_ROOT"))
-                .ancestors()
-                .map(|root| root.join("hara-specs-registry").join(relative))
-                .find(|candidate| candidate.is_file())
-        });
+    let path = crate::spec_registry::resolve(relative).filter(|candidate| candidate.is_file());
     let Some(path) = path else {
         eprintln!(
             "skipping: hara-specs-registry/01-lang/001-language/draft/conformance/reader.edn unavailable (hara-specs-registry sibling repo not present)"

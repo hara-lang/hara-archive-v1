@@ -162,6 +162,9 @@ fn encode_bare(value: &Value, output: &mut Vec<u8>, depth: usize) -> Result<(), 
             output.extend_from_slice(&value.to_be_bytes());
         }
         Value::Float(value) => {
+            if !value.is_finite() {
+                return Err("hta/non-finite number".into());
+            }
             output.push(F64);
             output.extend_from_slice(&value.to_bits().to_be_bytes());
         }
@@ -485,9 +488,11 @@ impl Reader<'_> {
             }
             F64 => {
                 let bytes = self.take(8)?;
-                Ok(Value::Float(f64::from_bits(u64::from_be_bytes(
-                    bytes.try_into().unwrap(),
-                ))))
+                let value = f64::from_bits(u64::from_be_bytes(bytes.try_into().unwrap()));
+                if !value.is_finite() {
+                    return Err("hta/non-finite number".into());
+                }
+                Ok(Value::Float(value))
             }
             CHARACTER => {
                 let codepoint = u32::from_be_bytes(self.take(4)?.try_into().unwrap());
@@ -851,12 +856,15 @@ mod tests {
     }
     #[test]
     fn floats_round_trip_with_ieee_754_bits() {
-        for value in [0.28, -0.0, f64::INFINITY, f64::NEG_INFINITY] {
+        for value in [0.28, -0.0] {
             let decoded = decode(&encode(&Value::Float(value)).unwrap()).unwrap();
             let Value::Float(decoded) = decoded else {
                 panic!("float value")
             };
             assert_eq!(decoded.to_bits(), value.to_bits());
+        }
+        for value in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            assert!(encode(&Value::Float(value)).is_err());
         }
     }
 

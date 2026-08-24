@@ -233,9 +233,10 @@ mod tests {
 
     #[test]
     fn shared_conformance_corpus_is_readable_by_the_rust_runtime() {
-        let source = include_str!(
-            "../../../../../hara-specs-registry/00-unsorted/diagnostics/draft/conformance/evaluation-journal.edn"
-        );
+        let source = std::fs::read_to_string(crate::spec_registry::require(
+            "00-unsorted/diagnostics/draft/conformance/evaluation-journal.edn",
+        ))
+        .expect("evaluation journal corpus is readable");
         let forms = crate::kernel::parse_forms(source).unwrap();
         assert_eq!(forms.len(), 1);
         assert!(source.contains(":function/nested"));

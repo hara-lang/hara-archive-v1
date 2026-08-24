@@ -103,6 +103,7 @@ public final class HtaValueCodec {
       output.write(I64);
       writeLong(output, ((Number) value).longValue());
     } else if (value instanceof Float || value instanceof Double) {
+      HaraNumericConversions.requireFinite(((Number) value).doubleValue());
       output.write(F64);
       writeLong(output, Double.doubleToRawLongBits(((Number) value).doubleValue()));
     } else if (value instanceof Character) {
@@ -371,7 +372,7 @@ public final class HtaValueCodec {
           return input.getLong();
         case F64:
           require(8);
-          return Double.longBitsToDouble(input.getLong());
+          return HaraNumericConversions.requireFinite(Double.longBitsToDouble(input.getLong()));
         case CHARACTER:
           require(4);
           int codePoint = input.getInt();

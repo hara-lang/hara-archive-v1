@@ -1,14 +1,24 @@
 use crate::{core, Runtime};
 use std::collections::BTreeSet;
+use std::sync::OnceLock;
 
-const CORPUS: &str = include_str!(
-    "../../../../hara-specs-registry/01-lang/001-language/draft/conformance/fixtures/native_behavioral.hal"
-);
+fn corpus() -> &'static str {
+    static SOURCE: OnceLock<String> = OnceLock::new();
+    SOURCE
+        .get_or_init(|| {
+            std::fs::read_to_string(crate::spec_registry::require(
+                "01-lang/001-language/draft/conformance/fixtures/native_behavioral.hal",
+            ))
+            .expect("native behavioral corpus must be readable")
+        })
+        .as_str()
+}
 
 fn corpus_methods() -> BTreeSet<String> {
+    let corpus = corpus();
     let mut runtime = Runtime::new();
     let value = runtime
-        .eval_native_value(&format!("{CORPUS}\n(native-method-keys)"))
+        .eval_native_value(&format!("{corpus}\n(native-method-keys)"))
         .expect("native corpus keys must evaluate");
     let core::Value::Vector(values) = value else {
         panic!("native-method-keys must return a vector");
@@ -38,6 +48,7 @@ fn live_methods() -> BTreeSet<String> {
 }
 
 fn closure_pass(methods: &BTreeSet<String>) -> bool {
+    let corpus = corpus();
     let literal = methods
         .iter()
         .map(|method| format!("'{method}"))
@@ -46,17 +57,18 @@ fn closure_pass(methods: &BTreeSet<String>) -> bool {
     let mut runtime = Runtime::new();
     runtime
         .eval_text(&format!(
-            "{CORPUS}\n(get (native-closure-report [{literal}]) :pass)"
+            "{corpus}\n(get (native-closure-report [{literal}]) :pass)"
         ))
         .expect("native closure report must evaluate")
         == "true"
 }
 
 fn calibration_value(name: &str, field: &str) -> core::Value {
+    let corpus = corpus();
     let mut runtime = Runtime::new();
     runtime
         .eval_native_value(&format!(
-            "{CORPUS}\n(get (get native-calibration-snippets :{name}) :{field})"
+            "{corpus}\n(get (get native-calibration-snippets :{name}) :{field})"
         ))
         .expect("native calibration snippet must evaluate")
 }
@@ -77,17 +89,18 @@ fn calibration_expected(name: &str) -> String {
 
 #[test]
 fn specs_owned_native_corpus_closes_over_live_inventory_and_rejects_drift() {
+    let corpus = corpus();
     let mut runtime = Runtime::new();
     assert_eq!(
         "true",
         runtime
-            .eval_text(&format!("{CORPUS}\n(native-corpus-valid?)"))
+            .eval_text(&format!("{corpus}\n(native-corpus-valid?)"))
             .expect("native corpus validation must evaluate")
     );
     eprintln!(
         "native behavioral classifications {}",
         runtime
-            .eval_text(&format!("{CORPUS}\n(native-classification-summary)"))
+            .eval_text(&format!("{corpus}\n(native-classification-summary)"))
             .expect("native classification summary must evaluate")
     );
 
@@ -117,10 +130,11 @@ fn specs_owned_native_corpus_closes_over_live_inventory_and_rejects_drift() {
 
 #[test]
 fn evaluator_runs_every_specs_owned_classification_boundary_and_profile() {
+    let corpus = corpus();
     let methods = corpus_methods();
     let mut runtime = Runtime::new();
     let results = runtime
-        .eval_text(&format!("{CORPUS}\n(native-method-results)"))
+        .eval_text(&format!("{corpus}\n(native-method-results)"))
         .expect("shared native behavioral corpus must evaluate");
     assert!(!results.contains(":pass false"), "{results}");
     assert_eq!(methods.len(), results.matches(":pass true").count());
@@ -130,7 +144,7 @@ fn evaluator_runs_every_specs_owned_classification_boundary_and_profile() {
         "true",
         runtime
             .eval_text(&format!(
-                "{CORPUS}\n(every? (fn [case] (= true (get case :pass))) (native-boundary-results))"
+                "{corpus}\n(every? (fn [case] (= true (get case :pass))) (native-boundary-results))"
             ))
             .expect("portable native boundary results must evaluate")
     );
@@ -138,7 +152,7 @@ fn evaluator_runs_every_specs_owned_classification_boundary_and_profile() {
         "true",
         runtime
             .eval_text(&format!(
-                "{CORPUS}\n(let [report (native-profile-report)] (and (= 0 (get report :failed)) (= (+ (get report :passed) (get report :failed) (get report :skipped)) (+ (get report :portable) (get report :capability-specific) (get report :inventory-only)))))"
+                "{corpus}\n(let [report (native-profile-report)] (and (= 0 (get report :failed)) (= (+ (get report :passed) (get report :failed) (get report :skipped)) (+ (get report :portable) (get report :capability-specific) (get report :inventory-only)))))"
             ))
             .expect("native profile accounting must evaluate")
     );

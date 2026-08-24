@@ -184,9 +184,13 @@ impl<'a> ByteReader<'a> {
 
     fn read_f64(&mut self) -> Result<f64, String> {
         let bytes = self.read_bytes(8)?;
-        Ok(f64::from_be_bytes([
+        let value = f64::from_be_bytes([
             bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
-        ]))
+        ]);
+        if !value.is_finite() {
+            return Err("non-finite number".into());
+        }
+        Ok(value)
     }
 
     fn read_string(&mut self) -> Result<String, String> {
@@ -246,10 +250,11 @@ impl<'a> ByteReader<'a> {
                 // Early shared goldens used opcode 6 for strings before the
                 // decimal slot was assigned. Preserve those artifacts while
                 // accepting the v1 decimal spelling mandated by the format.
-                Ok(value
-                    .parse::<f64>()
-                    .map(Form::Float)
-                    .unwrap_or_else(|_| Form::String(value)))
+                match value.parse::<f64>() {
+                    Ok(value) if value.is_finite() => Ok(Form::Float(value)),
+                    Ok(_) => Err("non-finite number".into()),
+                    Err(_) => Ok(Form::String(value)),
+                }
             }
             STRING => Ok(Form::String(self.read_string()?)),
             CHARACTER => Ok(Form::Character(
@@ -385,6 +390,7 @@ fn write_value_with_metadata(output: &mut Vec<u8>, form: &Form, metadata: Option
             output.extend_from_slice(&n.to_be_bytes());
         }
         Form::Float(f) => {
+            assert!(f.is_finite(), "non-finite number");
             output.push(DOUBLE);
             output.extend_from_slice(&f.to_be_bytes());
         }
@@ -456,6 +462,9 @@ pub fn encode_halc_module(
     forms: Vec<Form>,
 ) -> Result<Vec<u8>, String> {
     let forms = canonicalize_schema_references(namespace, forms)?;
+    for form in &forms {
+        validate_finite_form(form)?;
+    }
     build_schema_index(namespace, &forms)?;
     let mut payload = Vec::new();
     write_string(&mut payload, namespace);
@@ -473,6 +482,32 @@ pub fn encode_halc_module(
     artifact.extend_from_slice(&Sha256::digest(&payload));
     artifact.extend_from_slice(&payload);
     Ok(artifact)
+}
+
+#[cfg(any(test, feature = "halc-encoder"))]
+fn validate_finite_form(form: &Form) -> Result<(), String> {
+    match form {
+        Form::Float(value) if !value.is_finite() => Err("non-finite number".into()),
+        Form::Tagged(_, value) => validate_finite_form(value),
+        Form::Metadata(metadata, value) => {
+            validate_finite_form(metadata)?;
+            validate_finite_form(value)
+        }
+        Form::Map(entries) => {
+            for (key, value) in entries {
+                validate_finite_form(key)?;
+                validate_finite_form(value)?;
+            }
+            Ok(())
+        }
+        Form::Set(values) | Form::Vector(values) | Form::List(values) => {
+            for value in values {
+                validate_finite_form(value)?;
+            }
+            Ok(())
+        }
+        _ => Ok(()),
+    }
 }
 
 fn canonicalize_schema_references(
@@ -1058,17 +1093,19 @@ mod tests {
 
     #[test]
     fn shared_cross_runtime_goldens_decode() {
-        let complete = include_bytes!(
-            "../../../../../hara-specs-registry/01-lang/009-halc/draft/conformance/golden/complete.halc"
-        );
-        let legacy = include_bytes!(
-            "../../../../../hara-specs-registry/01-lang/009-halc/draft/conformance/golden/legacy-v1.hir"
-        );
-        let current = decode_halc(complete).unwrap();
+        let complete = std::fs::read(crate::spec_registry::require(
+            "01-lang/009-halc/draft/conformance/golden/complete.halc",
+        ))
+        .expect("complete HALC golden is readable");
+        let legacy = std::fs::read(crate::spec_registry::require(
+            "01-lang/009-halc/draft/conformance/golden/legacy-v1.hir",
+        ))
+        .expect("legacy HIR golden is readable");
+        let current = decode_halc(&complete).unwrap();
         assert_eq!(current.origin, HalcOrigin::Halc);
         assert_eq!(current.namespace, "halc.conformance.complete");
         assert_eq!(current.resource, "conformance/complete.hal");
-        assert_eq!(decode_halc(legacy).unwrap().origin, HalcOrigin::LegacyHir);
+        assert_eq!(decode_halc(&legacy).unwrap().origin, HalcOrigin::LegacyHir);
     }
 
     fn hex_bytes(hex: &str) -> Vec<u8> {

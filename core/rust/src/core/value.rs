@@ -845,9 +845,6 @@ pub(crate) fn direct_function_value(name: &str) -> Option<Value> {
                 _ => unreachable!("equality primitive must return a boolean"),
             },
         )),
-        "integer?" => Some(native_function("integer?", 1, |arguments| {
-            Ok(Value::Bool(numeric::is_integer_value(&arguments[0])))
-        })),
         "quot" => Some(native_function("quot", 2, |arguments| {
             numeric::numeric_quotient(&arguments[0], &arguments[1])
         })),
@@ -2736,9 +2733,7 @@ impl PartialEq for Value {
         }
         match (self, other) {
             (Value::Number(a), Value::Number(b)) => a == b,
-            (Value::Float(a), Value::Float(b)) => {
-                (a.is_nan() && b.is_nan()) || a.to_bits() == b.to_bits()
-            }
+            (Value::Float(a), Value::Float(b)) => a.to_bits() == b.to_bits(),
             (Value::BigInteger(a), Value::BigInteger(b)) => a == b,
             (Value::Character(a), Value::Character(b)) => a == b,
             (Value::Regex(a), Value::Regex(b)) => a == b,
@@ -3014,10 +3009,10 @@ impl Value {
     pub fn display(&self) -> String {
         match self {
             Self::Number(v) => v.to_string(),
-            Self::Float(v) if v.is_nan() => "##NaN".into(),
-            Self::Float(v) if *v == f64::INFINITY => "##Inf".into(),
-            Self::Float(v) if *v == f64::NEG_INFINITY => "##-Inf".into(),
-            Self::Float(v) => format!("(double {v})"),
+            Self::Float(v) => {
+                assert!(v.is_finite(), "non-finite number");
+                format!("(double {v})")
+            }
             Self::BigInteger(v) => v.to_string(),
             Self::Character('\n') => "\\newline".into(),
             Self::Character(' ') => "\\space".into(),
