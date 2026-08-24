@@ -8,9 +8,9 @@ import java.util.Map;
  * Publishes both namespace- and interface-qualified products of every live built-in protocol.
  *
  * <p>The registrar derives the declaration set from runtime Vars rather than repeating a protocol
- * inventory or scanning the classpath. Missing products reuse the existing protocol descriptor and
- * method callable values, so both source spellings observe one {@link HaraProtocol} dispatch
- * registry.
+ * inventory or scanning the classpath. Each generated product maps the same {@link HaraVar}, so
+ * both source spellings share identity, metadata, bindings, origin, and the underlying {@link
+ * HaraProtocol} dispatch registry.
  */
 public final class ProtocolProductLibraryProvider implements HaraLibraryProvider {
   private static final String FOUNDATION_NAMESPACE = "std.foundation";
@@ -46,7 +46,7 @@ public final class ProtocolProductLibraryProvider implements HaraLibraryProvider
           || !(protocolVar.get() instanceof HaraProtocol protocol)) {
         continue;
       }
-      publishProducts(context, localName.getName(), protocolVar, protocol);
+      publishProducts(context, localName.getName(), protocol);
     }
   }
 
@@ -59,22 +59,18 @@ public final class ProtocolProductLibraryProvider implements HaraLibraryProvider
   }
 
   private static void publishProducts(
-      HaraContext context, String protocolName, HaraVar protocolVar, HaraProtocol protocol) {
+      HaraContext context, String protocolName, HaraProtocol protocol) {
     ProductNamespaces products = ProductNamespaces.from(protocol.name(), protocolName);
 
     HaraVar interfaceDescriptor = context.resolve(Symbol.create(products.interfaceNamespace()));
     HaraVar ownerDescriptor =
         context.resolve(Symbol.create(products.ownerNamespace(), protocolName));
-    if (interfaceDescriptor == null && ownerDescriptor == null) {
-      throw new HaraException("Protocol declaration has no registered descriptor: " + protocol.name());
-    }
+    HaraVar descriptor = existingProduct(interfaceDescriptor, ownerDescriptor, protocol.name());
     if (interfaceDescriptor == null) {
-      context.defineLibraryValue(
-          products.interfaceNamespace(), protocolName, protocol, protocolVar.meta());
+      context.referLibraryVar(products.interfaceNamespace(), protocolName, descriptor);
     }
     if (ownerDescriptor == null) {
-      context.defineLibraryValue(
-          products.ownerNamespace(), protocolName, protocol, protocolVar.meta());
+      context.referLibraryVar(products.ownerNamespace(), protocolName, descriptor);
     }
 
     for (String methodName : protocol.methods().keySet()) {
@@ -82,20 +78,29 @@ public final class ProtocolProductLibraryProvider implements HaraLibraryProvider
           context.resolve(Symbol.create(products.interfaceNamespace(), methodName));
       HaraVar ownerMethod =
           context.resolve(Symbol.create(products.ownerNamespace(), methodName));
-      HaraVar source = interfaceMethod != null ? interfaceMethod : ownerMethod;
-      if (source == null) {
-        throw new HaraException(
-            "Missing built-in protocol method Var: " + protocol.name() + "/" + methodName);
-      }
+      HaraVar method =
+          existingProduct(
+              interfaceMethod, ownerMethod, protocol.name() + "/" + methodName);
       if (interfaceMethod == null) {
-        context.defineLibraryValue(
-            products.interfaceNamespace(), methodName, source.get(), source.meta());
+        context.referLibraryVar(products.interfaceNamespace(), methodName, method);
       }
       if (ownerMethod == null) {
-        context.defineLibraryValue(
-            products.ownerNamespace(), methodName, source.get(), source.meta());
+        context.referLibraryVar(products.ownerNamespace(), methodName, method);
       }
     }
+  }
+
+  private static HaraVar existingProduct(
+      HaraVar interfaceProduct, HaraVar ownerProduct, String declaration) {
+    if (interfaceProduct == null && ownerProduct == null) {
+      throw new HaraException("Declaration has no registered product: " + declaration);
+    }
+    if (interfaceProduct != null
+        && ownerProduct != null
+        && interfaceProduct != ownerProduct) {
+      throw new HaraException("Declaration products do not share one Var: " + declaration);
+    }
+    return interfaceProduct != null ? interfaceProduct : ownerProduct;
   }
 
   private record ProductNamespaces(String ownerNamespace, String interfaceNamespace) {
