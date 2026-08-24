@@ -6,6 +6,18 @@
   {:path "test-lang/xt/example_test.hal"
    :source "(ns xt.example-test)\n^{:seedgen/root {:all true}}\n(fact \"works\" true => true)"})
 
+^{:refer lang.seedgen/run}
+(fact "seed generation runs through the default host value"
+  (let [result
+        (seedgen/run
+         :root
+         {:units []
+          :language :js
+          :test-root "/tmp/test"})]
+    [(get-in result [:summary :operation])
+     (get-in result [:summary :count])])
+  => [:root 0])
+
 (fact "seedgen root discovery runs as a std.work batch"
   (let [result (seedgen/run :list {:units [sample-unit]})]
     [(:count (:summary result))

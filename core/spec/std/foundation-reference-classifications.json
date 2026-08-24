@@ -15,34 +15,10 @@
       "note": "Browser/Wasm coverage proves the retired component namespace is not loadable."
     },
     {
-      "formerName": "std.foundation.crypto",
-      "path": "core/lib/src/tool/migrate/rules.hal",
-      "classification": "migration-rule",
-      "note": "The migration rule set rewrites former crypto dependencies and calls to the native Crypto boundary."
-    },
-    {
-      "formerName": "std.foundation.edn",
-      "path": "core/lib/src/tool/migrate/rules.hal",
-      "classification": "migration-rule",
-      "note": "The migration rule set rewrites former EDN dependencies and calls to the native Edn boundary."
-    },
-    {
       "formerName": "std.foundation.edn",
       "path": "core/spec/std/foundation-architecture.md",
       "classification": "architecture-documentation",
       "note": "The architecture document uses the retired name only to explain that native objects are not loadable child namespaces."
-    },
-    {
-      "formerName": "std.foundation.file",
-      "path": "core/lib/src/tool/migrate/rules.hal",
-      "classification": "migration-rule",
-      "note": "The migration rule set rewrites former file dependencies and calls to File or portable std.fs ownership."
-    },
-    {
-      "formerName": "std.foundation.file",
-      "path": "core/lib/test/tool/migrate_rules_test.hal",
-      "classification": "migration-rule-test",
-      "note": "The migration fixture verifies deterministic migration away from the retired file namespace."
     },
     {
       "formerName": "std.foundation.file",
@@ -55,36 +31,6 @@
       "path": "notes/superpowers/specs/2026-07-25-wasm-foundation-parity-audit.md",
       "classification": "historical-audit-record",
       "note": "The dated audit is retained as historical evidence rather than current API guidance."
-    },
-    {
-      "formerName": "std.foundation.host",
-      "path": "core/lib/src/tool/migrate/rules.hal",
-      "classification": "migration-rule",
-      "note": "The migration rule set rewrites former host dependencies and calls to the native Host boundary."
-    },
-    {
-      "formerName": "std.foundation.json",
-      "path": "core/lib/src/tool/migrate/rules.hal",
-      "classification": "migration-rule",
-      "note": "The migration rule set rewrites former JSON dependencies and calls to the native Json boundary."
-    },
-    {
-      "formerName": "std.foundation.json",
-      "path": "core/lib/test/tool/migrate_rules_test.hal",
-      "classification": "migration-rule-test",
-      "note": "The migration fixture verifies deterministic migration away from the retired JSON namespace."
-    },
-    {
-      "formerName": "std.foundation.kernel",
-      "path": "core/lib/src/tool/migrate/rules.hal",
-      "classification": "migration-rule",
-      "note": "The migration rule set rewrites former kernel dependencies and calls to the native Kernel boundary."
-    },
-    {
-      "formerName": "std.foundation.os",
-      "path": "core/lib/src/tool/migrate/rules.hal",
-      "classification": "migration-rule",
-      "note": "The migration rule set rewrites former OS dependencies toward the profile-supported OS and Process boundary."
     },
     {
       "formerName": "std.foundation.os",
@@ -121,12 +67,6 @@
       "path": "core/java/src/test/java/hara/truffle/StdFoundationTest.java",
       "classification": "rejection-test",
       "note": "Truffle coverage proves set operations resolve from the root rather than a retired child namespace."
-    },
-    {
-      "formerName": "std.foundation.socket",
-      "path": "core/lib/src/tool/migrate/rules.hal",
-      "classification": "migration-rule",
-      "note": "The migration rule set rewrites former socket dependencies and calls to the native Socket boundary."
     }
   ]
 }
