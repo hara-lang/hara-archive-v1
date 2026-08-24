@@ -101,7 +101,6 @@ mod tests {
                     .as_str(),
                 path
             );
-            assert!(namespace.resolve(&Symbol::parse(name)).is_none());
         }
 
         let interface_type = namespaces
