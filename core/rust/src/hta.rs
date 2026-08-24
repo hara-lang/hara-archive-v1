@@ -47,6 +47,81 @@ const PRIORITY_MAP: u8 = 37;
 const RESULT_STRUCT_NAME: &str = "std.native/Result";
 const RESULT_STRUCT_FIELDS: [&str; 4] = ["status", "data", "error", "context"];
 
+fn decode_exception_provenance(
+    value: Value,
+) -> Result<(Option<crate::core::ExceptionSite>, Vec<crate::core::ExceptionSite>), String> {
+    let entries = crate::core::map_entries(&value)
+        .ok_or_else(|| "hta/value-malformed: invalid exception provenance".to_string())?;
+    if entries.len() != 2 {
+        return Err("hta/value-malformed: invalid exception provenance fields".into());
+    }
+    let created = entries
+        .iter()
+        .find_map(|(key, value)| field_name(key, "ex/created-at").then_some(value))
+        .ok_or_else(|| "hta/value-malformed: missing exception creation provenance".to_string())?;
+    let throws = entries
+        .iter()
+        .find_map(|(key, value)| field_name(key, "ex/throws").then_some(value))
+        .ok_or_else(|| "hta/value-malformed: missing exception throw provenance".to_string())?;
+    let created = match created {
+        Value::Nil => None,
+        value => Some(decode_exception_site(value)?),
+    };
+    let Value::Vector(throws) = throws else {
+        return Err("hta/value-malformed: invalid exception throws provenance".into());
+    };
+    let throws = throws
+        .iter()
+        .map(decode_exception_site)
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok((created, throws))
+}
+
+fn decode_exception_site(value: &Value) -> Result<crate::core::ExceptionSite, String> {
+    let entries = crate::core::map_entries(value)
+        .ok_or_else(|| "hta/value-malformed: invalid exception provenance site".to_string())?;
+    if entries.len() != 4 {
+        return Err("hta/value-malformed: invalid exception provenance site".into());
+    }
+    let get = |name: &str| {
+        entries.iter().find_map(|(key, value)| {
+            field_name(key, name).then_some(value)
+        })
+    };
+    let namespace = match get("namespace") {
+        Some(Value::Nil) => None,
+        Some(Value::String(value)) => Some(value.clone()),
+        _ => return Err("hta/value-malformed: invalid exception provenance namespace".into()),
+    };
+    let resource = match get("resource") {
+        Some(Value::Nil) => None,
+        Some(Value::String(value)) => Some(value.clone()),
+        _ => return Err("hta/value-malformed: invalid exception provenance resource".into()),
+    };
+    let line = match get("line") {
+        Some(Value::Number(value)) if *value >= 0 => *value as usize,
+        _ => return Err("hta/value-malformed: invalid exception provenance line".into()),
+    };
+    let column = match get("column") {
+        Some(Value::Number(value)) if *value >= 0 => *value as usize,
+        _ => return Err("hta/value-malformed: invalid exception provenance column".into()),
+    };
+    Ok(crate::core::ExceptionSite {
+        namespace,
+        resource,
+        line,
+        column,
+    })
+}
+
+fn field_name(value: &Value, expected: &str) -> bool {
+    match value {
+        Value::Keyword(value) => value.as_str() == expected,
+        Value::String(value) => value == expected,
+        _ => false,
+    }
+}
+
 pub fn encode(value: &Value) -> Result<Vec<u8>, String> {
     let mut output = MAGIC.to_vec();
     encode_bare(value, &mut output, 0)?;
@@ -238,6 +313,16 @@ fn encode_bare(value: &Value, output: &mut Vec<u8>, depth: usize) -> Result<(), 
             encode_bare(value.form(), output, depth + 1)?;
         }
         Value::ExceptionInfo(value) => {
+            if crate::core::map_entries(&value.data).is_none() {
+                return Err("hta/value-invalid: exception data must be a map".into());
+            }
+            if value
+                .cause
+                .as_deref()
+                .is_some_and(|cause| !matches!(cause, Value::ExceptionInfo(_)))
+            {
+                return Err("hta/value-invalid: exception cause must be an Exception".into());
+            }
             output.push(EXCEPTION_INFO);
             encode_bare(&Value::String(value.message.clone()), output, depth + 1)?;
             encode_bare(&value.data, output, depth + 1)?;
@@ -246,6 +331,7 @@ fn encode_bare(value: &Value, output: &mut Vec<u8>, depth: usize) -> Result<(), 
                 output,
                 depth + 1,
             )?;
+            encode_bare(&crate::core::exception_provenance_value(value), output, depth + 1)?;
         }
         Value::Result(value) => {
             output.push(STRUCT);
@@ -569,14 +655,27 @@ impl Reader<'_> {
                 let data = self.value(depth + 1)?;
                 let cause = match self.value(depth + 1)? {
                     Value::Nil => None,
-                    value => Some(Box::new(value)),
+                    value @ Value::ExceptionInfo(_) => Some(Box::new(value)),
+                    _ => {
+                        return Err("hta/value-malformed: invalid exception cause".into());
+                    }
                 };
+                if crate::core::map_entries(&data).is_none() {
+                    return Err("hta/value-malformed: invalid exception data".into());
+                }
+                let provenance = self.value(depth + 1)?;
+                let (created_at, throws) = decode_exception_provenance(provenance)?;
                 Ok(Value::ExceptionInfo(std::rc::Rc::new(
                     crate::core::ExceptionInfo {
                         message,
                         data: Box::new(data),
                         cause,
-                        provenance: std::rc::Rc::new(std::cell::RefCell::new(Default::default())),
+                        provenance: std::rc::Rc::new(std::cell::RefCell::new(
+                            crate::core::ExceptionProvenance {
+                                created_at,
+                                throws,
+                            },
+                        )),
                     },
                 )))
             }

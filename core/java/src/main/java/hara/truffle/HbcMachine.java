@@ -253,7 +253,15 @@ public final class HbcMachine {
             continue;
           }
           try {
-            stack.add(context.invokeCallable(callee, args));
+            stack.add(
+                context.invokeCallable(
+                    callee,
+                    args,
+                    new hara.lang.base.Ex.Info.Site(
+                        program.namespace(),
+                        null,
+                        sourcePosition(function, ip).line(),
+                        sourcePosition(function, ip).column())));
             if (context.hbcInstrumentationEnabled(InstrumentationModel.EventKind.CALL_RETURN)) {
               context.publishHbcEvent(
                   InstrumentationModel.EventKind.CALL_RETURN,
@@ -520,20 +528,8 @@ public final class HbcMachine {
           ip = caller.returnIp;
           continue;
         }
-        case THROW -> {
-          Object error = pop(stack);
-          if (error instanceof hara.lang.base.Ex.Info info) {
-            HbcProgram.Position position = function.sourceMap().get(ip);
-            info.recordThrow(
-                new hara.lang.base.Ex.Info.Site(
-                    program.namespace(),
-                    null,
-                    position == null ? 0 : position.line(),
-                    position == null ? 0 : position.column()));
-          }
-          throw new HbcThrown(error);
-        }
-        case RETHROW -> throw new HbcThrown(pop(stack));
+        case THROW -> throwValue(program, function, ip, pop(stack));
+        case RETHROW -> throwValue(program, function, ip, pop(stack));
         }
       } catch (RuntimeException failure) {
         Integer target = routeFailure(function, ip, failure, locals, stack);
@@ -618,6 +614,23 @@ public final class HbcMachine {
 
   private static Object invokeGlobal(HaraContext context, String name, Object[] arguments) {
     return context.invokeCallable(resolve(context, name).deref(), arguments);
+  }
+
+  private static HbcProgram.Position sourcePosition(Function function, int ip) {
+    HbcProgram.Position position = function.sourceMap().get(ip);
+    return position == null ? new HbcProgram.Position(0, 0, 0) : position;
+  }
+
+  private static void throwValue(HbcProgram program, Function function, int ip, Object value) {
+    if (!(value instanceof hara.lang.protocol.IExInfo)) {
+      throw new HaraException("throw expects an Exception value created by ex");
+    }
+    if (value instanceof hara.lang.base.Ex.Info info) {
+      HbcProgram.Position position = sourcePosition(function, ip);
+      info.recordThrow(
+          new hara.lang.base.Ex.Info.Site(program.namespace(), null, position.line(), position.column()));
+    }
+    throw new HbcThrown(value);
   }
 
   private static IMetadata metadata(HbcProgram program, long encodedIndex) {

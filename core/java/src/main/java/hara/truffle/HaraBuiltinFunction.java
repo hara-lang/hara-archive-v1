@@ -10,4 +10,8 @@ import hara.lang.protocol.IFn;
  */
 public interface HaraBuiltinFunction {
   Object apply(Object[] arguments);
+
+  default boolean recordsExceptionCreation() {
+    return false;
+  }
 }

@@ -2527,28 +2527,19 @@ public final class HaraContext {
                     ":ex/class conflicts with the registered class for :ex/code");
               }
               Object causeValue = attributes.lookup(Keyword.create("ex", "cause"));
-              if (causeValue != null && !(causeValue instanceof Throwable)) {
-                throw new HaraException(":ex/cause must be an Exception or host error");
+              if (causeValue != null
+                  && causeValue != HaraNull.SINGLETON
+                  && !(causeValue instanceof hara.lang.base.Ex.Info)) {
+                throw new HaraException(":ex/cause must be an Exception");
               }
               Object contextValue = attributes.lookup(Keyword.create("ex", "context"));
               if (contextValue != null && !(contextValue instanceof IMapType)) {
                 throw new HaraException(":ex/context must be a map");
               }
-              Throwable cause = causeValue instanceof Throwable ? (Throwable) causeValue : null;
-              if (cause != null && !(cause instanceof hara.lang.base.Ex.Info)) {
-                IMetadata hostData =
-                    (IMetadata)
-                        hara.lang.data.Map.Standard.from(
-                            null,
-                            Keyword.create("ex", "code"),
-                            Keyword.create("host", "native-error"),
-                            Keyword.create("ex", "message"),
-                            cause.getMessage() == null ? cause.toString() : cause.getMessage());
-                cause = new hara.lang.base.Ex.Info(
-                    cause.getMessage() == null ? cause.toString() : cause.getMessage(), hostData);
-                attributes =
-                    (IMapType) attributes.assoc(Keyword.create("ex", "cause"), cause);
-              }
+              Throwable cause =
+                  causeValue instanceof hara.lang.base.Ex.Info
+                      ? (hara.lang.base.Ex.Info) causeValue
+                      : null;
               IMetadata data =
                   (IMetadata) attributes.assoc(Keyword.create("ex", "code"), code);
               if (classValue == null && registeredClass != null) {
@@ -2558,7 +2549,8 @@ public final class HaraContext {
               }
               return new hara.lang.base.Ex.Info(
                   message instanceof String ? (String) message : code.display(), data, cause);
-            }));
+            },
+            true));
     target.define(
         "ex-info",
         new VariadicBuiltin(
@@ -2570,15 +2562,22 @@ public final class HaraContext {
                   || !(HaraBox.unwrap(values[1]) instanceof IMetadata)) {
                 throw new HaraException("ex-info expects a message, metadata map, and optional cause");
               }
+              Object rawCause = values.length == 3 ? HaraBox.unwrap(values[2]) : null;
+              if (rawCause != null
+                  && rawCause != HaraNull.SINGLETON
+                  && !(rawCause instanceof hara.lang.base.Ex.Info)) {
+                throw new HaraException("ex-info expects an Exception cause");
+              }
               Throwable cause =
-                  values.length == 3 && HaraBox.unwrap(values[2]) instanceof Throwable
-                      ? (Throwable) HaraBox.unwrap(values[2])
+                  rawCause instanceof hara.lang.base.Ex.Info
+                      ? (hara.lang.base.Ex.Info) rawCause
                       : null;
               return new hara.lang.base.Ex.Info(
                   (String) HaraBox.unwrap(values[0]),
                   (IMetadata) HaraBox.unwrap(values[1]),
                   cause);
-            }));
+            },
+            true));
     target.define(
         "ex-data",
         new UnaryBuiltin(
@@ -7821,13 +7820,28 @@ public final class HaraContext {
 
   @TruffleBoundary
   public Object invokeCallable(Object value, Object[] arguments) {
+    return invokeCallable(value, arguments, null);
+  }
+
+  @TruffleBoundary
+  public Object invokeCallable(
+      Object value, Object[] arguments, hara.lang.base.Ex.Info.Site creationSite) {
     Object function = HaraBox.unwrap(value);
     if (function instanceof HaraVar variable) {
       Object dereferenced = variable.deref();
       if (dereferenced == variable) {
         throw new HaraException("Var refers to itself: " + variable);
       }
-      return invokeCallable(dereferenced, arguments);
+      return invokeCallable(dereferenced, arguments, creationSite);
+    }
+    if (function instanceof HaraBuiltinFunction builtin) {
+      Object result = builtin.apply(arguments);
+      if (creationSite != null
+          && builtin.recordsExceptionCreation()
+          && result instanceof hara.lang.base.Ex.Info info) {
+        info.recordCreation(creationSite);
+      }
+      return HaraBox.unwrap(result);
     }
     if (function instanceof HaraFunction) {
       HaraFunction haraFunction = (HaraFunction) function;
@@ -8629,10 +8643,17 @@ public final class HaraContext {
       implements IFn<Object, Object, Object>, HaraBuiltinFunction {
     private final String name;
     private final Function<Object[], Object> implementation;
+    private final boolean recordsExceptionCreation;
 
     private VariadicBuiltin(String name, Function<Object[], Object> implementation) {
+      this(name, implementation, false);
+    }
+
+    private VariadicBuiltin(
+        String name, Function<Object[], Object> implementation, boolean recordsExceptionCreation) {
       this.name = name;
       this.implementation = implementation;
+      this.recordsExceptionCreation = recordsExceptionCreation;
     }
 
     @Override
@@ -8660,6 +8681,11 @@ public final class HaraContext {
     @SuppressWarnings({"rawtypes", "unchecked"})
     public Object apply(Object[] arguments) {
       return IFn.applyAsArray(this, arguments);
+    }
+
+    @Override
+    public boolean recordsExceptionCreation() {
+      return recordsExceptionCreation;
     }
 
     @Override

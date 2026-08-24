@@ -181,6 +181,7 @@ public final class HtaValueCodec {
       write(output, info.getMessage(), depth + 1);
       write(output, info.getData(), depth + 1);
       write(output, info.getCause(), depth + 1);
+      write(output, exceptionProvenance(info), depth + 1);
     } else if (value instanceof hara.lang.data.PriorityMap<?, ?>) {
       writeMap(output, ((IMapType<?, ?>) value).iterator(), depth, PRIORITY_MAP, false);
     } else if (value instanceof hara.lang.data.OrderedMap<?, ?>) {
@@ -319,6 +320,25 @@ public final class HtaValueCodec {
 
   private static HaraException malformed(String message) {
     return new HaraException("hta/value-malformed: " + message);
+  }
+
+  private static Map<Object, Object> exceptionProvenance(hara.lang.base.Ex.Info info) {
+    Map<Object, Object> provenance = new LinkedHashMap<>();
+    provenance.put(Keyword.create("ex/created-at"), siteValue(info.createdAt()));
+    List<Object> throwsAt = new ArrayList<>();
+    for (hara.lang.base.Ex.Info.Site site : info.throwsAt()) throwsAt.add(siteValue(site));
+    provenance.put(Keyword.create("ex/throws"), throwsAt);
+    return provenance;
+  }
+
+  private static Object siteValue(hara.lang.base.Ex.Info.Site site) {
+    if (site == null) return null;
+    Map<Object, Object> value = new LinkedHashMap<>();
+    value.put(Keyword.create("namespace"), site.namespace());
+    value.put(Keyword.create("resource"), site.resource());
+    value.put(Keyword.create("line"), site.line());
+    value.put(Keyword.create("column"), site.column());
+    return value;
   }
 
   private static final class Reader {
@@ -596,6 +616,7 @@ public final class HtaValueCodec {
       Object message = read(depth);
       Object data = read(depth);
       Object cause = read(depth);
+      Object provenance = read(depth);
       if (!(message instanceof String)) throw malformed("invalid exception message");
       if (!(data instanceof hara.lang.protocol.IMetadata)) {
         throw malformed("invalid exception data");
@@ -604,8 +625,98 @@ public final class HtaValueCodec {
       if (cause != HaraNull.SINGLETON && throwable == null) {
         throw malformed("invalid exception cause");
       }
+      Map<Object, Object> fields = mapEntries(provenance);
+      if (fields.size() != 2
+          || !hasField(fields, "ex/created-at")
+          || !hasField(fields, "ex/throws")) {
+        throw malformed("invalid exception provenance fields");
+      }
+      hara.lang.base.Ex.Info.Site createdAt = null;
+      Object created = field(fields, "ex/created-at");
+      if (created != null && created != HaraNull.SINGLETON) createdAt = site(created);
+      List<hara.lang.base.Ex.Info.Site> throwsAt = new ArrayList<>();
+      Object thrown = field(fields, "ex/throws");
+      if (thrown instanceof List<?> list) {
+        for (Object value : list) throwsAt.add(site(value));
+      } else if (thrown instanceof ILinearType<?> linear) {
+        Iterator<?> iterator = linear.iterator();
+        while (iterator.hasNext()) throwsAt.add(site(iterator.next()));
+      } else {
+        throw malformed("invalid exception throws provenance");
+      }
       return new hara.lang.base.Ex.Info(
-          (String) message, (hara.lang.protocol.IMetadata) data, throwable);
+          (String) message, (hara.lang.protocol.IMetadata) data, throwable, createdAt, throwsAt);
+    }
+
+    private Map<Object, Object> mapEntries(Object value) {
+      Map<Object, Object> entries = new LinkedHashMap<>();
+      if (value instanceof Map<?, ?> map) {
+        map.forEach(entries::put);
+      } else if (value instanceof IMapType<?, ?> map) {
+        Iterator<?> iterator = map.iterator();
+        while (iterator.hasNext()) {
+          Object item = iterator.next();
+          if (!(item instanceof Map.Entry<?, ?> entry)) throw malformed("invalid map entry");
+          entries.put(entry.getKey(), entry.getValue());
+        }
+      } else {
+        throw malformed("invalid exception provenance");
+      }
+      return entries;
+    }
+
+    private hara.lang.base.Ex.Info.Site site(Object value) {
+      Map<Object, Object> fields = mapEntries(value);
+      if (fields.size() != 4
+          || !hasField(fields, "namespace")
+          || !hasField(fields, "resource")
+          || !hasField(fields, "line")
+          || !hasField(fields, "column")) {
+        throw malformed("invalid exception provenance site");
+      }
+      Object namespace = field(fields, "namespace");
+      Object resource = field(fields, "resource");
+      Object line = field(fields, "line");
+      Object column = field(fields, "column");
+      if ((namespace != null && namespace != HaraNull.SINGLETON && !(namespace instanceof String))
+          || (resource != null && resource != HaraNull.SINGLETON && !(resource instanceof String))
+          || !(line instanceof Long)
+          || !(column instanceof Long)
+          || (line instanceof Long l && l < 0)
+          || (column instanceof Long l && l < 0)) {
+        throw malformed("invalid exception provenance site");
+      }
+      return new hara.lang.base.Ex.Info.Site(
+          namespace instanceof String ? (String) namespace : null,
+          resource instanceof String ? (String) resource : null,
+          (Long) line,
+          (Long) column);
+    }
+
+    private boolean hasField(Map<Object, Object> fields, String name) {
+      return fields.keySet().stream()
+          .anyMatch(
+              key ->
+                  (key instanceof Keyword && name.equals(keywordName((Keyword) key)))
+                      || (key instanceof String && name.equals(key)));
+    }
+
+    private Object field(Map<Object, Object> fields, String name) {
+      return fields.entrySet().stream()
+          .filter(
+              entry ->
+                  (entry.getKey() instanceof Keyword
+                          && name.equals(keywordName((Keyword) entry.getKey())))
+                      || (entry.getKey() instanceof String && name.equals(entry.getKey())))
+          .map(Map.Entry::getValue)
+          .findFirst()
+          .orElse(null);
+    }
+
+    private String keywordName(Keyword keyword) {
+      return keyword.getNamespace() == null
+          ? keyword.getName()
+          : keyword.getNamespace() + "/" + keyword.getName();
     }
 
     private Object set(int depth) {
