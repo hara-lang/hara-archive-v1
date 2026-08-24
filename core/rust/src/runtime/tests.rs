@@ -1956,7 +1956,7 @@ mod tests {
         assert_eq!(
             runtime
                 .eval_text(
-                    "(ns app (:config {:intrinsics {:exclude [bytes] :alias {string text}}})                       (:require [hara.lib.string :as s :refer [trim]]))                       (trim (s/trim (text/upper \" x \")))"
+                    "(ns app (:config {:rename {:exclude [bytes] :alias {string text}}})                       (:require [hara.lib.string :as s :refer [trim]]))                       (trim (s/trim (text/upper \" x \")))"
                 )
                 .unwrap(),
             "\"X\""
@@ -3055,6 +3055,65 @@ mod tests {
     }
 
     #[test]
+    fn set_global_imports_use_terminal_names_and_compact_protocols() {
+        let mut runtime = Runtime::core();
+        runtime
+            .eval_text(
+                "(ns demo.global (:config {:set-global [demo.global/value]})) \
+                 (def value 42)",
+            )
+            .unwrap();
+        assert_eq!(runtime.eval_text("(ns demo.consumer) value").unwrap(), "42");
+
+        runtime
+            .eval_text(
+                "(ns demo.protocol (:config {:set-global [IColl/start-string IMetadata/metatype]})) \
+                 (start-string [])",
+            )
+            .unwrap();
+        assert_eq!(runtime.eval_text("(start-string [1 2])").unwrap(), "\"[\"");
+        assert_eq!(runtime.eval_text("(metatype {:value 1})").unwrap(), ":map");
+    }
+
+    #[test]
+    fn foundation_resource_paths_load_root_before_children_and_rollback() {
+        let mut runtime = Runtime::core();
+        runtime.register_resource(
+            "std/foundation.hal",
+            "(ns std.foundation) (defn foundation-marker [] 41)",
+        );
+        runtime.register_resource(
+            "std/foundation/child.hal",
+            "(ns std.foundation.child) (defn child-marker [] (foundation-marker))",
+        );
+
+        assert_eq!(
+            runtime.require_resource("std/foundation/child.hal").unwrap(),
+            "41"
+        );
+        assert!(runtime.loaded_resources.contains("std.foundation"));
+        assert!(runtime.loaded_resources.contains("std.foundation.child"));
+        assert_eq!(
+            runtime
+                .eval_text("(std.foundation.child/child-marker)")
+                .unwrap(),
+            "41"
+        );
+
+        #[cfg(target_arch = "wasm32")]
+        {
+            let mut broken = Runtime::core();
+            broken.register_resource(
+                "std/foundation/broken.hal",
+                "(ns std.foundation.broken) (def broken-marker missing-symbol)",
+            );
+            assert!(broken.require_resource("std/foundation/broken.hal").is_err());
+            assert!(!broken.loaded_resources.contains("std.foundation"));
+            assert!(!broken.loaded_resources.contains("std.foundation.broken"));
+        }
+    }
+
+    #[test]
     fn vector_literals_are_values() {
         let mut runtime = Runtime::new();
         assert_eq!(runtime.eval_text("[1 2 3]").unwrap(), "[1 2 3]");
@@ -3640,7 +3699,7 @@ mod tests {
         assert!(runtime
             .eval_text("(ns role.invalid (:config {:role :unsupported}))")
             .unwrap_err()
-            .contains(":config :role expects :standard, :internal, or :facade"));
+            .contains(":config :role expects :default, :internal, or :facade"));
     }
 
     #[test]
@@ -4150,11 +4209,11 @@ mod tests {
     }
 
     #[test]
-    fn config_expose_selects_only_named_foundation_vars() {
+    fn config_only_selects_only_named_foundation_vars() {
         let mut runtime = Runtime::new();
         assert_eq!(
             runtime
-                .eval_text("(ns exposed (:config {:expose [identity]})) (identity 42)")
+                .eval_text("(ns exposed (:config {:only [identity]})) (identity 42)")
                 .unwrap(),
             "42"
         );

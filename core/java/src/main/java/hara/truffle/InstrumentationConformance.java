@@ -2,7 +2,7 @@ package hara.truffle;
 
 import hara.truffle.InstrumentationModel.Capability;
 import hara.truffle.InstrumentationModel.EventDelivery;
-import hara.truffle.InstrumentationModel.EventEnvelope;
+import hara.truffle.InstrumentationModel.DeliveredEvent;
 import hara.truffle.InstrumentationModel.EventKind;
 import hara.truffle.InstrumentationModel.EventLocation;
 import hara.truffle.InstrumentationModel.EventPhase;
@@ -187,7 +187,8 @@ public final class InstrumentationConformance {
     }
   }
 
-  private static Map<String, Object> eventValue(EventEnvelope event) {
+  private static Map<String, Object> eventValue(DeliveredEvent delivered) {
+    var event = delivered.envelope();
     return object(
         "event", eventName(event.event()),
         "phase", phaseName(event.phase()),

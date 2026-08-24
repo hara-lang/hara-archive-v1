@@ -180,11 +180,25 @@ public class FoundationFallbackDemandTest {
   @Test
   public void selectiveNamespacePolicySurvivesLaterFallbackUse() {
     try (Context context = Context.newBuilder(HaraLanguage.ID).build()) {
-      context.eval(HaraLanguage.ID, "(ns startup-selective (:config {:expose [inc]}))");
+      context.eval(HaraLanguage.ID, "(ns startup-selective (:config {:only [inc]}))");
       assertEquals(42L, context.eval(HaraLanguage.ID, "(inc 41)").asLong());
       PolyglotException missing =
           assertThrows(PolyglotException.class, () -> context.eval(HaraLanguage.ID, "map"));
       assertTrue(missing.getMessage().contains("Unbound symbol: map"));
+    }
+  }
+
+  @Test
+  public void foundationChildResourceLoadsAfterTheRootPath() {
+    try (Context context = Context.newBuilder(HaraLanguage.ID).build()) {
+      assertEquals(
+          80L,
+          context
+              .eval(
+                  HaraLanguage.ID,
+                  "(do (load-resource \"std/foundation/pretty.hal\") "
+                      + "(:width std.foundation.pretty/default-options))")
+              .asLong());
     }
   }
 }

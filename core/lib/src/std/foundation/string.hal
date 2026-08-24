@@ -6,7 +6,7 @@
 ;; ==========================================================================
 (ns std.foundation.string
   (:config {:override [repeat reverse insert-at]
-            :global-alias str}))
+            :set-global-alias str}))
 
 (defn string-like?
   "Returns true when value can round-trip through a string representation."

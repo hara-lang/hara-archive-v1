@@ -61,6 +61,7 @@ pub struct GeneratedNamespaceConfig {
     aliases: HashMap<String, String>,
     global_alias: Option<String>,
     global_aliases: HashMap<String, String>,
+    declared_global_imports: Vec<String>,
     lazy_aliases: HashMap<String, String>,
     refers: HashMap<String, String>,
     macro_refers: HashMap<String, String>,
@@ -84,6 +85,7 @@ impl GeneratedNamespaceConfig {
             aliases: HashMap::new(),
             global_alias: None,
             global_aliases: HashMap::new(),
+            declared_global_imports: Vec::new(),
             lazy_aliases: HashMap::new(),
             refers: HashMap::new(),
             macro_refers: HashMap::new(),
@@ -124,6 +126,7 @@ impl GeneratedNamespaceConfig {
         let mut native_imports = Vec::new();
         let mut role = "standard".to_owned();
         let mut global_alias = None;
+        let mut declared_global_imports = Vec::new();
 
         for clause in clauses {
             let values = list(clause, "ns clauses must be non-empty lists")?;
@@ -148,10 +151,13 @@ impl GeneratedNamespaceConfig {
                         &mut overrides,
                         &mut role,
                         &mut global_alias,
+                        &mut declared_global_imports,
                     )?;
                 }
                 "intrinsics" => {
-                    return Err(":intrinsics is valid only inside ns :config".into());
+                    return Err(
+                        ":intrinsics is not a namespace configuration option; use :rename for Foundation library aliases".into(),
+                    );
                 }
                 "require" => requires.extend(values[1..].iter().cloned()),
                 "use" => uses.extend(values[1..].iter().cloned()),
@@ -172,10 +178,10 @@ impl GeneratedNamespaceConfig {
             return Err(":config :blank true cannot be combined with :override".into());
         }
         if blank && exposed_foundation.is_some() {
-            return Err(":config :blank true cannot be combined with :expose".into());
+            return Err(":config :blank true cannot be combined with :only".into());
         }
         if override_seen && exposed_foundation.is_some() {
-            return Err(":config :override cannot be combined with :expose".into());
+            return Err(":config :override cannot be combined with :only".into());
         }
 
         for library in overrides.keys() {
@@ -191,6 +197,7 @@ impl GeneratedNamespaceConfig {
         config.excluded_foundation = excluded_foundation;
         config.exposed_foundation = exposed_foundation;
         config.global_alias = global_alias;
+        config.declared_global_imports = declared_global_imports;
         config.native_flavor = native_flavor;
         config.native_imports = native_imports;
         config.native_flavor_imports = native_flavor_imports;
@@ -276,6 +283,10 @@ impl GeneratedNamespaceConfig {
 
     pub fn global_alias(&self) -> Option<&str> {
         self.global_alias.as_deref()
+    }
+
+    pub fn declared_global_imports(&self) -> &[String] {
+        &self.declared_global_imports
     }
 
     pub fn set_global_aliases(&mut self, aliases: impl IntoIterator<Item = (String, String)>) {
@@ -532,6 +543,7 @@ fn parse_config(
     overrides: &mut HashMap<String, String>,
     role: &mut String,
     global_alias: &mut Option<String>,
+    declared_global_imports: &mut Vec<String>,
 ) -> Result<(), String> {
     let options = match form {
         Form::Map(options) => options,
@@ -565,49 +577,74 @@ fn parse_config(
                     }
                 }
             }
-            "expose" => {
+            "only" => {
                 let mut exposed = HashSet::new();
                 for item in vector(
                     value,
-                    ":config :expose expects a vector of unqualified symbols",
+                    ":config :only expects a vector of unqualified symbols",
                 )? {
                     let name = symbol(
                         item,
-                        ":config :expose expects a vector of unqualified symbols",
+                        ":config :only expects a vector of unqualified symbols",
                     )?;
                     if qualified_symbol(name) {
                         return Err(
-                            ":config :expose expects a vector of unqualified symbols".into()
+                            ":config :only expects a vector of unqualified symbols".into()
                         );
                     }
                     if !exposed.insert(name.into()) {
-                        return Err(format!("Duplicate Foundation exposure: {name}"));
+                        return Err(format!("Duplicate Foundation selection: {name}"));
                     }
                 }
                 *foundation_exposure = Some(exposed);
             }
-            "intrinsics" => {
-                parse_intrinsics(value, excluded, overrides)?;
+            "rename" => {
+                parse_rename(value, excluded, overrides)?;
             }
             "role" => {
                 let value = keyword(
                     value,
-                    ":config :role expects :standard, :internal, or :facade",
+                    ":config :role expects :default, :internal, or :facade",
                 )?;
-                if !matches!(value, "standard" | "internal" | "facade") {
-                    return Err(":config :role expects :standard, :internal, or :facade".into());
+                if !matches!(value, "default" | "internal" | "facade") {
+                    return Err(":config :role expects :default, :internal, or :facade".into());
                 }
-                *role = value.to_owned();
+                *role = if value == "default" {
+                    "standard".to_owned()
+                } else {
+                    value.to_owned()
+                };
             }
-            "global-alias" => {
-                let value = symbol(value, ":config :global-alias expects an unqualified symbol")?;
+            "set-global-alias" => {
+                let value = symbol(
+                    value,
+                    ":config :set-global-alias expects an unqualified symbol",
+                )?;
                 if qualified_symbol(value) {
-                    return Err(":config :global-alias expects an unqualified symbol".into());
+                    return Err(":config :set-global-alias expects an unqualified symbol".into());
                 }
                 if value == "-" {
-                    return Err(":config :global-alias is reserved: -".into());
+                    return Err(":config :set-global-alias is reserved: -".into());
                 }
                 *global_alias = Some(value.to_owned());
+            }
+            "set-global" => {
+                for item in vector(
+                    value,
+                    ":config :set-global expects a vector of qualified Vars",
+                )? {
+                    let name = symbol(
+                        item,
+                        ":config :set-global expects a vector of qualified Vars",
+                    )?;
+                    if !qualified_symbol(name) {
+                        return Err(":config :set-global expects qualified Vars".into());
+                    }
+                    if declared_global_imports.iter().any(|value| value == name) {
+                        return Err(format!("Duplicate global import: {name}"));
+                    }
+                    declared_global_imports.push(name.into());
+                }
             }
             other => return Err(format!("Unsupported :config option: :{other}")),
         }
@@ -615,7 +652,7 @@ fn parse_config(
     Ok(())
 }
 
-fn parse_intrinsics(
+fn parse_rename(
     form: &Form,
     excluded: &mut HashSet<String>,
     overrides: &mut HashMap<String, String>,
@@ -625,18 +662,18 @@ fn parse_intrinsics(
     }
     let options = match form {
         Form::Map(options) => options,
-        _ => return Err(":intrinsics expects :all or an options map".into()),
+        _ => return Err(":rename expects :all or an options map".into()),
     };
     for (key, value) in options {
-        match keyword(key, ":intrinsics option keys must be keywords")? {
+        match keyword(key, ":rename option keys must be keywords")? {
             "exclude" => {
                 for item in vector(
                     value,
-                    ":intrinsics :exclude expects a vector of library symbols",
+                    ":rename :exclude expects a vector of library symbols",
                 )? {
                     let library = library(symbol(
                         item,
-                        ":intrinsics :exclude expects unqualified library symbols",
+                        ":rename :exclude expects unqualified library symbols",
                     )?)?;
                     if !excluded.insert(library.into()) {
                         return Err(format!("Duplicate intrinsic exclusion: {library}"));
@@ -646,12 +683,12 @@ fn parse_intrinsics(
             "alias" => {
                 let aliases = match value {
                     Form::Map(aliases) => aliases,
-                    _ => return Err(":intrinsics :alias expects a map".into()),
+                    _ => return Err(":rename :alias expects a map".into()),
                 };
                 for (library_form, alias_form) in aliases {
                     let library = library(symbol(
                         library_form,
-                        ":intrinsics :alias expects library symbols",
+                        ":rename :alias expects library symbols",
                     )?)?;
                     let alias =
                         symbol(alias_form, "Intrinsic aliases must be unqualified symbols")?;
@@ -663,7 +700,7 @@ fn parse_intrinsics(
                     }
                 }
             }
-            other => return Err(format!("Unsupported :config :intrinsics option: :{other}")),
+            other => return Err(format!("Unsupported :config :rename option: :{other}")),
         }
     }
     Ok(())

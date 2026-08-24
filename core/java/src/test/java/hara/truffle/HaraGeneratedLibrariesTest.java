@@ -385,14 +385,14 @@ public class HaraGeneratedLibrariesTest {
   }
 
   @Test
-  public void intrinsicsCanExcludeAndRenameGeneratedAliases() {
+  public void renameCanExcludeAndRenameGeneratedAliases() {
     try (Context context = context()) {
       assertEquals(
           "HARA",
           context
               .eval(
                   HaraLanguage.ID,
-                  "(ns app (:config {:intrinsics {:exclude [bytes] :alias {string text}}})) "
+                  "(ns app (:config {:rename {:exclude [bytes] :alias {string text}}})) "
                       + "(text/upper \"hara\")")
               .asString());
       PolyglotException missing =
@@ -412,7 +412,7 @@ public class HaraGeneratedLibrariesTest {
           context
               .eval(
                   HaraLanguage.ID,
-                  "(ns demo.global (:config {:global-alias global})) "
+                  "(ns demo.global (:config {:set-global-alias global})) "
                       + "(defn value [] 42) "
                       + "(ns demo.consumer) "
                       + "[(global/value) (get (ns-alias-state 'global) :target)]")
@@ -428,7 +428,7 @@ public class HaraGeneratedLibrariesTest {
           context
               .eval(
                   HaraLanguage.ID,
-                  "(ns demo.global (:config {:global-alias global})) "
+                  "(ns demo.global (:config {:set-global-alias global})) "
                       + "(defn value [] 42) "
                       + "(ns demo.other) (defn value [] 7) "
                       + "(ns demo.consumer (:require [demo.other :as global])) "
@@ -442,16 +442,16 @@ public class HaraGeneratedLibrariesTest {
     try (Context context = context()) {
       assertErrorContains(
           context,
-          "(ns invalid.vector (:config {:global-alias [value]}))",
-          ":config :global-alias expects an unqualified symbol");
+          "(ns invalid.vector (:config {:set-global-alias [value]}))",
+          ":config :set-global-alias expects an unqualified symbol");
       assertErrorContains(
           context,
-          "(ns invalid.qualified (:config {:global-alias other/value}))",
-          ":config :global-alias expects an unqualified symbol");
+          "(ns invalid.qualified (:config {:set-global-alias other/value}))",
+          ":config :set-global-alias expects an unqualified symbol");
       assertErrorContains(
           context,
-          "(ns invalid.reserved (:config {:global-alias -}))",
-          ":config :global-alias is reserved: -");
+          "(ns invalid.reserved (:config {:set-global-alias -}))",
+          ":config :set-global-alias is reserved: -");
     }
   }
 
@@ -487,10 +487,10 @@ public class HaraGeneratedLibrariesTest {
     try (Context context = context()) {
       context.eval(
           HaraLanguage.ID,
-          "(ns demo.stable (:config {:global-alias shared})) (defn value [] 42)");
+          "(ns demo.stable (:config {:set-global-alias shared})) (defn value [] 42)");
       assertErrorContains(
           context,
-          "(ns demo.conflict (:config {:global-alias shared}))",
+          "(ns demo.conflict (:config {:set-global-alias shared}))",
           "Global namespace alias already refers to demo.stable: shared");
       assertEquals(
           "[42 demo.stable]",
@@ -504,6 +504,20 @@ public class HaraGeneratedLibrariesTest {
   }
 
   @Test
+  public void setGlobalImportsUseTerminalNamesAndCompactProtocolSymbols() {
+    try (Context context = context()) {
+      context.eval(
+          HaraLanguage.ID,
+          "(ns demo.global (:config {:set-global [demo.global/value]})) "
+              + "(def value 42) "
+              + "(ns demo.protocol (:config {:set-global [IColl/start-string IMetadata/metatype]}))");
+      assertEquals("42", context.eval(HaraLanguage.ID, "value").toString());
+      assertEquals("[", context.eval(HaraLanguage.ID, "(start-string [])").toString());
+      assertEquals("MAP", context.eval(HaraLanguage.ID, "(metatype {:value 1})").toString());
+    }
+  }
+
+  @Test
   public void generatedLibrariesAlsoSupportRequireAsAndRefer() {
     try (Context context = context()) {
       assertEquals(
@@ -511,7 +525,7 @@ public class HaraGeneratedLibrariesTest {
           context
               .eval(
                   HaraLanguage.ID,
-                  "(ns app (:config {:intrinsics {:exclude [string]}}) "
+                  "(ns app (:config {:rename {:exclude [string]}}) "
                       + "(:require [std.foundation.string :as text :refer [trim]])) "
                       + "(trim (text/trim \" x \"))")
               .asString());
@@ -592,20 +606,20 @@ public class HaraGeneratedLibrariesTest {
   }
 
   @Test
-  public void configExposeSelectsOnlyNamedFoundationVars() {
+  public void configOnlySelectsOnlyNamedFoundationVars() {
     try (Context context = context()) {
       assertEquals(
           42,
           context
               .eval(
                   HaraLanguage.ID,
-                  "(ns exposed (:config {:expose [identity]})) (identity 42)")
+                  "(ns exposed (:config {:only [identity]})) (identity 42)")
               .asLong());
       assertErrorContains(context, "(count [1 2])", "Unbound symbol: count");
       assertErrorContains(
           context,
-          "(ns mixed (:config {:override [map] :expose [inc]}))",
-          "cannot be combined with :expose");
+          "(ns mixed (:config {:override [map] :only [inc]}))",
+          "cannot be combined with :only");
     }
   }
 
@@ -635,7 +649,7 @@ public class HaraGeneratedLibrariesTest {
       assertErrorContains(
           context,
           "(ns role.invalid (:config {:role :unsupported}))",
-          ":config :role expects :standard, :internal, or :facade");
+          ":config :role expects :default, :internal, or :facade");
     }
   }
 
@@ -710,26 +724,26 @@ public class HaraGeneratedLibrariesTest {
   }
 
   @Test
-  public void intrinsicsRejectUnknownConflictingAndDuplicateConfiguration() {
+  public void renameRejectsUnknownConflictingAndDuplicateConfiguration() {
     try (Context context = context()) {
       assertErrorContains(
           context,
-          "(ns a (:config {:intrinsics {:exclude [unknown]}}))",
+          "(ns a (:config {:rename {:exclude [unknown]}}))",
           "Unknown intrinsic library");
       assertErrorContains(
           context,
-          "(ns b (:config {:intrinsics {:exclude [bytes] :alias {bytes data}}}))",
+          "(ns b (:config {:rename {:exclude [bytes] :alias {bytes data}}}))",
           "both excluded and aliased");
       assertErrorContains(
           context,
-          "(ns c (:config {:intrinsics {:alias {string data bytes data}}}))",
+          "(ns c (:config {:rename {:alias {string data bytes data}}}))",
           "Duplicate intrinsic alias target");
       assertErrorContains(
           context, "(ns d (:config {}) (:config {}))", "only one :config clause");
       assertErrorContains(
           context,
-          "(ns e (:config {:intrinsics {:unexpected true}}))",
-          "Unsupported :config :intrinsics option");
+          "(ns e (:config {:rename {:unexpected true}}))",
+          "Unsupported :config :rename option");
     }
   }
 

@@ -311,6 +311,12 @@ impl Runtime {
                         self.namespace_registry
                             .register_global_alias(alias, &name)?;
                     }
+                    for alias in config.declared_global_imports() {
+                        let canonical = core::canonical_intrinsic_symbol(alias)
+                            .unwrap_or_else(|| alias.clone());
+                        self.namespace_registry
+                            .register_global_import(alias, canonical)?;
+                    }
                     self.generated_configs.insert(name.clone(), config);
                     self.use_namespace(&name);
                     let config = self
@@ -625,6 +631,7 @@ impl Runtime {
                     .remove(&(name.to_owned(), excluded));
             }
         }
+        core::apply_global_imports(&self.namespace_registry, name);
         core::select_namespace_environment(
             &self.namespace_registry,
             self.evaluator.environment_mut(),
@@ -872,20 +879,21 @@ impl Runtime {
     /// Registers a host-supplied Hara resource. Resources are source text, not executable host code.
     pub fn register_resource(&mut self, name: &str, source: &str) {
         self.product_cache.borrow_mut().clear();
+        let name = canonical_resource_name(name);
         let changed = self
             .resources
-            .get(name)
+            .get(&name)
             .is_some_and(|existing| existing != source);
-        self.resources.insert(name.into(), source.into());
-        if !self.loaded_resources.contains(name) {
+        self.resources.insert(name.clone(), source.into());
+        if !self.loaded_resources.contains(&name) {
             self.namespace_registry
-                .set_load_state(name, kernel::NamespaceLoadState::Unloaded);
+                .set_load_state(&name, kernel::NamespaceLoadState::Unloaded);
         }
         if changed {
-            self.loaded_resources.remove(name);
+            self.loaded_resources.remove(&name);
             #[cfg(feature = "bytecode-vm")]
-            if self.bytecode_resources.contains_key(name) {
-                self.resource_overrides.insert(name.into());
+            if self.bytecode_resources.contains_key(&name) {
+                self.resource_overrides.insert(name);
             }
         }
     }
@@ -894,21 +902,22 @@ impl Runtime {
     /// values alive. Package providers use this to deactivate one generation.
     pub fn unregister_resource(&mut self, name: &str) -> Result<(), JsValue> {
         self.product_cache.borrow_mut().clear();
+        let name = canonical_resource_name(name);
         if self.namespace_registry.current().name().as_str() == name {
             return Err(JsValue::from_str("package/unload-current-namespace"));
         }
-        self.resources.remove(name);
-        self.resource_overrides.remove(name);
-        self.loaded_resources.remove(name);
+        self.resources.remove(&name);
+        self.resource_overrides.remove(&name);
+        self.loaded_resources.remove(&name);
         #[cfg(feature = "bytecode-vm")]
-        self.bytecode_resources.remove(name);
-        self.generated_configs.remove(name);
+        self.bytecode_resources.remove(&name);
+        self.generated_configs.remove(&name);
         self.macros
             .borrow_mut()
-            .retain(|(namespace, _), _| namespace != name);
+            .retain(|(namespace, _), _| namespace != &name);
         for namespace in self.namespace_registry.all() {
             for (symbol, var) in namespace.mappings() {
-                if var.symbol().get_namespace() == Some(name) {
+                if var.symbol().get_namespace() == Some(name.as_str()) {
                     namespace.unmap(&symbol);
                 }
             }
@@ -918,7 +927,7 @@ impl Runtime {
                 }
             }
         }
-        self.namespace_registry.remove(name);
+        self.namespace_registry.remove(&name);
         self.refresh_qualified_bindings();
         Ok(())
     }
@@ -990,7 +999,8 @@ impl Runtime {
 
     #[cfg(feature = "bytecode-vm")]
     fn has_bytecode_resource(&self, name: &str) -> bool {
-        self.bytecode_resources.contains_key(name)
+        self.bytecode_resources
+            .contains_key(&canonical_resource_name(name))
     }
 
     #[cfg(not(feature = "bytecode-vm"))]
@@ -1005,6 +1015,7 @@ impl Runtime {
         namespace_form: String,
         artifact: Vec<u8>,
     ) {
+        let name = canonical_resource_name(&name);
         self.bytecode_resources
             .insert(name.clone(), (namespace_form, artifact));
         self.loaded_resources.remove(&name);
@@ -1014,8 +1025,9 @@ impl Runtime {
 
     #[cfg(feature = "bytecode-vm")]
     pub(crate) fn load_bytecode_resource(&mut self, name: &str) -> Result<String, String> {
+        let name = canonical_resource_name(name);
         self.bytecode_resources
-            .get(name)
+            .get(&name)
             .ok_or("module/not-found")?;
         let namespace_source = self.namespace_source();
         core::with_macros(self.macros.clone(), || {
@@ -1025,7 +1037,7 @@ impl Runtime {
                         core::require_namespace(
                             &self.namespace_registry,
                             self.evaluator.environment_mut(),
-                            name,
+                            &name,
                         )
                     })
                 })
@@ -1038,9 +1050,30 @@ impl Runtime {
 
     /// Evaluates a registered resource in the current lexical namespace.
     pub fn load_resource(&mut self, name: &str) -> Result<String, JsValue> {
+        let snapshot = self.resource_snapshot();
+        let result = self.load_resource_inner(name);
+        if result.is_err() {
+            self.restore_resource_snapshot(snapshot);
+        }
+        result
+    }
+
+    fn load_resource_inner(&mut self, name: &str) -> Result<String, JsValue> {
+        let requested_bytecode = name
+            .strip_prefix("classpath:")
+            .unwrap_or(name)
+            .ends_with(".hbx");
+        let name = canonical_resource_name(name);
+        ensure_foundation_root(self, name.as_str())?;
+        #[cfg(feature = "bytecode-vm")]
+        if requested_bytecode && self.bytecode_resources.contains_key(&name) {
+            return self
+                .load_bytecode_resource(&name)
+                .map_err(|error| JsValue::from_str(&error));
+        }
         let source = self
             .resources
-            .get(name)
+            .get(&name)
             .cloned()
             .ok_or_else(|| JsValue::from_str("module/not-found"))?;
         self.eval_text(&source)
@@ -1049,40 +1082,86 @@ impl Runtime {
 
     /// Loads a resource once; subsequent requires return the current loaded marker.
     pub fn require_resource(&mut self, name: &str) -> Result<String, JsValue> {
-        if self.loaded_resources.contains(name) {
+        let snapshot = self.resource_snapshot();
+        let result = self.require_resource_inner(name);
+        if result.is_err() {
+            self.restore_resource_snapshot(snapshot);
+        }
+        result
+    }
+
+    fn require_resource_inner(&mut self, name: &str) -> Result<String, JsValue> {
+        let requested = name.to_owned();
+        let name = canonical_resource_name(name);
+        ensure_foundation_root(self, &requested)?;
+        if self.loaded_resources.contains(&name) {
+            self.refresh_loaded_resource_visibility();
             return Ok(":loaded".into());
         }
-        if self.resource_overrides.contains(name) && self.resources.contains_key(name) {
-            let result = self.load_resource(name)?;
-            self.loaded_resources.insert(name.into());
+        if self.resource_overrides.contains(&name) && self.resources.contains_key(&name) {
+            let result = self.load_resource(&name)?;
+            self.loaded_resources.insert(name.clone());
+            self.refresh_loaded_resource_visibility();
             return Ok(result);
         }
         #[cfg(feature = "bytecode-vm")]
-        if self.bytecode_resources.contains_key(name) {
+        if self.bytecode_resources.contains_key(&name) {
             let result = self
-                .load_bytecode_resource(name)
+                .load_bytecode_resource(&name)
                 .map_err(|error| JsValue::from_str(&error))?;
-            self.loaded_resources.insert(name.into());
+            self.loaded_resources.insert(name.clone());
+            self.refresh_loaded_resource_visibility();
             return Ok(result);
         }
-        if self.resources.contains_key(name) {
-            let result = self.load_resource(name)?;
-            self.loaded_resources.insert(name.into());
+        if self.resources.contains_key(&name) {
+            let result = self.load_resource(&name)?;
+            self.loaded_resources.insert(name.clone());
+            self.refresh_loaded_resource_visibility();
             return Ok(result);
         }
-        if self.extensions.contains(name) {
-            let result = self.require_extension(name)?;
-            self.loaded_resources.insert(name.into());
+        if self.extensions.contains(&name) {
+            let result = self.require_extension(&name)?;
+            self.loaded_resources.insert(name.clone());
+            self.refresh_loaded_resource_visibility();
             return Ok(result);
         }
-        if self.wasm_extensions.contains_key(name) {
+        if self.wasm_extensions.contains_key(&name) {
             let result = self
-                .load_wasm_extension_namespace(name)
+                .load_wasm_extension_namespace(&name)
                 .map_err(|error| JsValue::from_str(&error))?;
-            self.loaded_resources.insert(name.into());
+            self.loaded_resources.insert(name.clone());
+            self.refresh_loaded_resource_visibility();
             return Ok(result);
         }
         Err(JsValue::from_str("module/not-found"))
+    }
+
+    fn resource_snapshot(&self) -> ResourceSnapshot {
+        ResourceSnapshot {
+            namespace_registry: self.namespace_registry.snapshot(),
+            environment: self.evaluator.snapshot(),
+            protocols: self.protocols.snapshot(),
+            multimethods: core::snapshot_multimethods(),
+            macros: self.macros.borrow().clone(),
+            generated_configs: self.generated_configs.clone(),
+            loaded_resources: self.loaded_resources.clone(),
+        }
+    }
+
+    fn restore_resource_snapshot(&mut self, snapshot: ResourceSnapshot) {
+        self.namespace_registry.restore(snapshot.namespace_registry);
+        self.evaluator.restore(snapshot.environment);
+        self.protocols.restore(snapshot.protocols);
+        core::restore_multimethods(snapshot.multimethods);
+        *self.macros.borrow_mut() = snapshot.macros;
+        self.generated_configs = snapshot.generated_configs;
+        self.loaded_resources = snapshot.loaded_resources;
+        self.refresh_qualified_bindings();
+    }
+
+    fn refresh_loaded_resource_visibility(&mut self) {
+        let current = self.current_namespace();
+        self.use_namespace(&current);
     }
 
     pub fn file_supported(&self) -> bool {
@@ -1229,4 +1308,53 @@ impl Runtime {
     pub fn eval_native_traced(&mut self, source: &str) -> Result<String, String> {
         self.eval_text_mode(source, true)
     }
+}
+
+struct ResourceSnapshot {
+    namespace_registry: kernel::namespace::NamespaceRegistrySnapshot<core::Value>,
+    environment: HashMap<String, core::Value>,
+    protocols: core::ProtocolRegistrySnapshot,
+    multimethods: HashMap<String, core::MultiMethod>,
+    macros: HashMap<(String, String), Rc<core::Function>>,
+    generated_configs: HashMap<String, kernel::GeneratedNamespaceConfig>,
+    loaded_resources: HashSet<String>,
+}
+
+fn canonical_resource_name(name: &str) -> String {
+    foundation_resource_namespace(name).unwrap_or_else(|| name.to_owned())
+}
+
+fn foundation_resource_namespace(name: &str) -> Option<String> {
+    let resource = name.strip_prefix("classpath:").unwrap_or(name);
+    if resource == "std/foundation.hal" || resource == "std/foundation.hbx" {
+        return Some("std.foundation".into());
+    }
+    let child = resource.strip_prefix("std/foundation/")?;
+    let child = child
+        .strip_suffix(".hal")
+        .or_else(|| child.strip_suffix(".hbx"))?;
+    if child.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "std.foundation.{}",
+        child.replace('/', ".").replace('_', "-")
+    ))
+}
+
+fn ensure_foundation_root(runtime: &mut Runtime, name: &str) -> Result<(), JsValue> {
+    let Some(namespace) = foundation_namespace_for_request(name) else {
+        return Ok(());
+    };
+    if namespace != "std.foundation" && !runtime.loaded_resources.contains("std.foundation") {
+        runtime.require_resource("std.foundation")?;
+    }
+    Ok(())
+}
+
+fn foundation_namespace_for_request(name: &str) -> Option<String> {
+    foundation_resource_namespace(name).or_else(|| {
+        let namespace = name.strip_prefix("classpath:").unwrap_or(name);
+        (namespace.starts_with("std.foundation.")).then(|| namespace.to_owned())
+    })
 }

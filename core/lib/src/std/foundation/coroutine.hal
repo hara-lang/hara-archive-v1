@@ -35,7 +35,7 @@
 ;; ============================================================================
 (ns std.foundation.coroutine
   (:config {:blank true
-            :global-alias co})
+            :set-global-alias co})
   (:require [std.foundation]))
 
 (defn ^{:inline true :schema [:fn [:fn] :any]}

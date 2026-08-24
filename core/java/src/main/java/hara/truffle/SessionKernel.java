@@ -283,9 +283,16 @@ final class SessionKernel implements AutoCloseable {
                 Capability.EVENT_SUSPENSION,
                 Capability.EVENT_LIFECYCLE,
                 Capability.INSPECT_SOURCE_LOCATION,
+                Capability.INSPECT_CURRENT_FRAME,
+                Capability.INSPECT_FRAMES,
+                Capability.INSPECT_LOCALS,
+                Capability.INSPECT_STACK,
+                Capability.INSPECT_VALUE_PREVIEW,
+                Capability.INSPECT_SNAPSHOT,
                 Capability.CONTROL_PAUSE,
                 Capability.CONTROL_SINGLE_STEP,
                 Capability.CONTROL_RESUME,
+                Capability.CONTROL_SETTLE,
                 Capability.CONTROL_TERMINATE)));
   }
 

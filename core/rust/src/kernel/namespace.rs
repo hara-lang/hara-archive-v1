@@ -243,6 +243,7 @@ pub struct NamespaceRegistry<V> {
     loading_states: Rc<RefCell<HashMap<Symbol, NamespaceLoadState>>>,
     load_failures: Rc<RefCell<HashMap<Symbol, String>>>,
     global_aliases: Rc<RefCell<HashMap<Symbol, Symbol>>>,
+    global_imports: Rc<RefCell<HashMap<Symbol, Symbol>>>,
     module_revisions: Rc<RefCell<HashMap<Symbol, u64>>>,
     module_dependencies: Rc<RefCell<HashMap<Symbol, Vec<Symbol>>>>,
 }
@@ -253,6 +254,7 @@ pub struct NamespaceRegistrySnapshot<V> {
     loading_states: HashMap<Symbol, NamespaceLoadState>,
     load_failures: HashMap<Symbol, String>,
     global_aliases: HashMap<Symbol, Symbol>,
+    global_imports: HashMap<Symbol, Symbol>,
     module_revisions: HashMap<Symbol, u64>,
     module_dependencies: HashMap<Symbol, Vec<Symbol>>,
 }
@@ -264,6 +266,7 @@ pub struct NamespaceTransactionSnapshot<V> {
     loading_states: HashMap<Symbol, NamespaceLoadState>,
     load_failures: HashMap<Symbol, String>,
     global_aliases: HashMap<Symbol, Symbol>,
+    global_imports: HashMap<Symbol, Symbol>,
     module_revisions: HashMap<Symbol, u64>,
     module_dependencies: HashMap<Symbol, Vec<Symbol>>,
 }
@@ -326,6 +329,7 @@ impl<V: Clone> NamespaceRegistry<V> {
             loading_states: Rc::new(RefCell::new(loading_states)),
             load_failures: Rc::new(RefCell::new(HashMap::new())),
             global_aliases: Rc::new(RefCell::new(HashMap::new())),
+            global_imports: Rc::new(RefCell::new(HashMap::new())),
             module_revisions: Rc::new(RefCell::new(HashMap::new())),
             module_dependencies: Rc::new(RefCell::new(HashMap::new())),
         }
@@ -442,6 +446,38 @@ impl<V: Clone> NamespaceRegistry<V> {
             .map(|(alias, namespace)| (alias.clone(), namespace.clone()))
             .collect()
     }
+    pub fn register_global_import(
+        &self,
+        shorthand: impl AsRef<str>,
+        canonical: impl AsRef<str>,
+    ) -> Result<(), String> {
+        let shorthand = Symbol::parse(shorthand.as_ref());
+        let canonical = Symbol::parse(canonical.as_ref());
+        if shorthand.get_namespace().is_none() {
+            return Err(format!("Invalid global import Var: {shorthand}"));
+        }
+        let local = Symbol::create(None, shorthand.get_name());
+        if let Some(previous) = self.global_imports.borrow().get(&local) {
+            if previous != &canonical {
+                return Err(format!(
+                    "Global import already refers to {previous}: {}",
+                    local
+                ));
+            }
+            return Ok(());
+        }
+        self.global_imports
+            .borrow_mut()
+            .insert(local, canonical);
+        Ok(())
+    }
+    pub fn global_imports(&self) -> Vec<(Symbol, Symbol)> {
+        self.global_imports
+            .borrow()
+            .iter()
+            .map(|(shorthand, canonical)| (shorthand.clone(), canonical.clone()))
+            .collect()
+    }
     pub fn module_revision(&self, name: impl AsRef<str>) -> u64 {
         self.module_revisions
             .borrow()
@@ -492,6 +528,7 @@ impl<V: Clone> NamespaceRegistry<V> {
             loading_states: self.loading_states.borrow().clone(),
             load_failures: self.load_failures.borrow().clone(),
             global_aliases: self.global_aliases.borrow().clone(),
+            global_imports: self.global_imports.borrow().clone(),
             module_revisions: self.module_revisions.borrow().clone(),
             module_dependencies: self.module_dependencies.borrow().clone(),
         }
@@ -517,6 +554,7 @@ impl<V: Clone> NamespaceRegistry<V> {
             loading_states: self.loading_states.borrow().clone(),
             load_failures: self.load_failures.borrow().clone(),
             global_aliases: self.global_aliases.borrow().clone(),
+            global_imports: self.global_imports.borrow().clone(),
             module_revisions: self.module_revisions.borrow().clone(),
             module_dependencies: self.module_dependencies.borrow().clone(),
         }
@@ -549,6 +587,7 @@ impl<V: Clone> NamespaceRegistry<V> {
         *self.loading_states.borrow_mut() = snapshot.loading_states;
         *self.load_failures.borrow_mut() = snapshot.load_failures;
         *self.global_aliases.borrow_mut() = snapshot.global_aliases;
+        *self.global_imports.borrow_mut() = snapshot.global_imports;
         *self.module_revisions.borrow_mut() = snapshot.module_revisions;
         *self.module_dependencies.borrow_mut() = snapshot.module_dependencies;
     }
@@ -582,6 +621,7 @@ impl<V: Clone> NamespaceRegistry<V> {
         *self.loading_states.borrow_mut() = snapshot.loading_states;
         *self.load_failures.borrow_mut() = snapshot.load_failures;
         *self.global_aliases.borrow_mut() = snapshot.global_aliases;
+        *self.global_imports.borrow_mut() = snapshot.global_imports;
         *self.module_revisions.borrow_mut() = snapshot.module_revisions;
         *self.module_dependencies.borrow_mut() = snapshot.module_dependencies;
     }
@@ -630,6 +670,13 @@ impl<V: Clone> NamespaceRegistry<V> {
         let current = self.current();
         current
             .resolve(symbol)
+            .or_else(|| {
+                self.global_imports
+                    .borrow()
+                    .get(symbol)
+                    .cloned()
+                    .and_then(|canonical| self.resolve(&canonical))
+            })
             .or_else(|| {
                 self.find("std.foundation")
                     .filter(|_| current.foundation_visible(symbol))

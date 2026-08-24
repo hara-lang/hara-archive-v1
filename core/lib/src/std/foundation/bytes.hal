@@ -28,7 +28,7 @@
 ;; ==========================================================================
 (ns std.foundation.bytes
   (:config {:blank true
-            :global-alias bytes}))
+            :set-global-alias bytes}))
 
 (defn ^{:inline true :schema [:fn [:bytes] :int]}
   count

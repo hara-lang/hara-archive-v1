@@ -5,6 +5,7 @@ import hara.truffle.InstrumentationModel.Capability;
 import hara.truffle.InstrumentationModel.ControlLease;
 import hara.truffle.InstrumentationModel.EventBatch;
 import hara.truffle.InstrumentationModel.EventEnvelope;
+import hara.truffle.InstrumentationModel.EventProjection;
 import hara.truffle.InstrumentationModel.EventKind;
 import hara.truffle.InstrumentationModel.EventLocation;
 import hara.truffle.InstrumentationModel.EventPhase;
@@ -39,7 +40,8 @@ final class InstrumentationHub implements AutoCloseable {
   private static final class InstrumentState {
     final InstrumentHandle handle;
     final InstrumentRegistration registration;
-    final ArrayDeque<EventEnvelope> queue = new ArrayDeque<>();
+    final ArrayDeque<hara.truffle.InstrumentationModel.DeliveredEvent> queue =
+        new ArrayDeque<>();
     long droppedSinceDrain;
     long droppedTotal;
 
@@ -197,10 +199,21 @@ final class InstrumentationHub implements AutoCloseable {
       EventPhase phase,
       EventLocation location,
       Map<String, String> data) {
+    return publish(target, event, phase, location, data, InstrumentationEventAccess.none());
+  }
+
+  synchronized int publish(
+      TargetHandle target,
+      EventKind event,
+      EventPhase phase,
+      EventLocation location,
+      Map<String, String> data,
+      InstrumentationEventAccess access) {
     requireOpen();
     TargetState targetState = requireTarget(target);
     Objects.requireNonNull(event, "event");
     Objects.requireNonNull(phase, "phase");
+    Objects.requireNonNull(access, "access");
     if (!event.supports(targetState.descriptor.kind())) {
       throw failure(
           Code.EVENT_TARGET_MISMATCH,
@@ -217,6 +230,7 @@ final class InstrumentationHub implements AutoCloseable {
       if (!registration.filter().matches(targetState.descriptor)) continue;
       EventLocation projectedLocation =
           registration.projection().sourceLocation() ? location : null;
+      EventProjection projection = access.project(registration.projection());
       EventEnvelope envelope =
           new EventEnvelope(
               InstrumentationModel.EVENT_SCHEMA,
@@ -232,7 +246,7 @@ final class InstrumentationHub implements AutoCloseable {
               event,
               projectedLocation,
               data);
-      enqueue(instrumentState, envelope);
+      enqueue(instrumentState, envelope, projection);
       delivered++;
     }
     return delivered;
@@ -241,7 +255,8 @@ final class InstrumentationHub implements AutoCloseable {
   synchronized EventBatch drain(InstrumentHandle handle) {
     requireOpen();
     InstrumentState state = requireInstrument(handle);
-    ArrayList<EventEnvelope> events = new ArrayList<>(state.queue);
+    ArrayList<hara.truffle.InstrumentationModel.DeliveredEvent> events =
+        new ArrayList<>(state.queue);
     state.queue.clear();
     EventBatch batch =
         new EventBatch(events, state.droppedSinceDrain, state.droppedTotal);
@@ -442,6 +457,15 @@ final class InstrumentationHub implements AutoCloseable {
           return false;
         }
       }
+      InstrumentationModel.ProjectionRequest projection = registration.projection();
+      if (projection.currentFrame() != null
+          || projection.frames() != null
+          || projection.locals() != null
+          || projection.stack() != null
+          || projection.valuePreview() != null
+          || projection.machineSnapshot() != null) {
+        return false;
+      }
     }
     return true;
   }
@@ -539,14 +563,19 @@ final class InstrumentationHub implements AutoCloseable {
     return evidence;
   }
 
-  private void enqueue(InstrumentState state, EventEnvelope envelope) {
+  private void enqueue(
+      InstrumentState state,
+      EventEnvelope envelope,
+      EventProjection projection) {
     int capacity = state.registration.delivery().capacity();
     if (state.queue.size() == capacity) {
       state.queue.removeFirst();
       state.droppedSinceDrain++;
       state.droppedTotal++;
     }
-    state.queue.addLast(envelope);
+    state.queue.addLast(
+        new hara.truffle.InstrumentationModel.DeliveredEvent(
+            envelope, projection, state.droppedTotal));
   }
 
   private InstrumentState requireInstrument(InstrumentHandle handle) {

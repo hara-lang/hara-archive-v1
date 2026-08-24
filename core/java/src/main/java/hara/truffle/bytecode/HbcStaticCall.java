@@ -1,6 +1,7 @@
 package hara.truffle.bytecode;
 
 import com.oracle.truffle.api.RootCallTarget;
+import hara.truffle.HaraContext;
 import hara.truffle.HaraLanguage;
 
 /** Static-call identity and lazily compiled target carried by a generated HBC operation. */
@@ -23,6 +24,8 @@ public final class HbcStaticCall {
   }
 
   public RootCallTarget nativeTarget(HaraLanguage language) {
+    HaraContext context = HaraLanguage.currentContext();
+    if (context != null && !context.hbcNativeExecutionAllowed()) return null;
     RootCallTarget target = nativeTarget;
     if (target != null) return target;
     target = HbcBytecodeRootNode.compileFunction(language, program, functionIndex);

@@ -89,6 +89,7 @@ public final class HaraContext {
   private final Map<String, Map<String, HaraMacro>> macros = new ConcurrentHashMap<>();
   private final Map<String, Map<String, String>> aliases = new ConcurrentHashMap<>();
   private final Map<String, String> globalAliases = new ConcurrentHashMap<>();
+  private final Map<String, String> globalImports = new ConcurrentHashMap<>();
   private final Map<String, NamespaceLoadState> namespaceStates = new ConcurrentHashMap<>();
   private final Map<String, String> namespaceFailures = new ConcurrentHashMap<>();
   private final Map<String, String> nativeFlavors = new ConcurrentHashMap<>();
@@ -122,6 +123,7 @@ public final class HaraContext {
   private boolean collectingBuiltins;
   private String collectingBuiltinNamespace;
   private HaraProtocol ifnProtocol;
+  private Map<String, HaraProtocol> protocolDeclarations = Map.of();
   private final AtomicLong gensymCounter = new AtomicLong();
   HaraContext(TruffleLanguage.Env environment) {
     this.environment = environment;
@@ -162,6 +164,7 @@ public final class HaraContext {
           installNativeTypeDescriptors();
           installNativeResultBuiltins();
           HaraProtocolDeclarations.Registry registry = HaraProtocolDeclarations.install(this);
+          protocolDeclarations = registry.protocols();
           ifnProtocol = registry.protocols().get("IFn");
           if (ifnProtocol == null) throw new HaraException("Missing injected IFn protocol");
           HaraProtocolRuntime.install(this, registry);
@@ -211,12 +214,36 @@ public final class HaraContext {
         event, instructionPointer, function, sourceId, data);
   }
 
+  void publishHbcEvent(
+      InstrumentationModel.EventKind event,
+      int instructionPointer,
+      String function,
+      String sourceId,
+      hara.truffle.bytecode.HbcProgram.Position position,
+      java.util.Map<String, String> data,
+      InstrumentationEventAccess access) {
+    instrumentationRuntime.publishHbcEvent(
+        event, instructionPointer, function, sourceId, position, data, access);
+  }
+
   boolean hbcInstrumentationEnabled(InstrumentationModel.EventKind event) {
     return instrumentationRuntime.hbcInstrumentationEnabled(event);
   }
 
   public boolean hbcNativeExecutionAllowed() {
     return instrumentationRuntime.hbcNativeExecutionAllowed();
+  }
+
+  boolean hbcPromisePending(Object value) {
+    Object unwrapped = HaraBox.unwrap(value);
+    return unwrapped instanceof IPromise promise
+        && Keyword.create("pending").equals(promise.state());
+  }
+
+  Object hbcPromiseValue(Object value) {
+    Object unwrapped = HaraBox.unwrap(value);
+    if (unwrapped instanceof IPromise promise) return HaraBox.unwrap(promise.value());
+    return HaraBox.unwrap(value);
   }
 
   InstrumentationModel.InstrumentDirective pollHbcDirective() {
@@ -813,6 +840,9 @@ public final class HaraContext {
   private void applyNamespaceDeclaration(HaraNamespaceDeclaration declaration) {
     currentNamespace = namespace(declaration.name.getName());
     registerGlobalAlias(declaration.globalAlias, currentNamespace.name());
+    for (String imported : declaration.globalImports) {
+      registerGlobalImport(imported);
+    }
     currentNamespace.role = declaration.role;
     if (declaration.blank) {
       blankNamespaces.add(currentNamespace.name());
@@ -830,6 +860,7 @@ public final class HaraContext {
     applyNamespaceRequires(declaration.structuralClauses);
     applyNamespaceUses(declaration.structuralClauses);
     configureGlobalAliases(declaration);
+    configureGlobalImports();
     if (declaration.selectiveFoundation) {
       for (String name : namespace(FOUNDATION_NAMESPACE).vars.keySet()) {
         if (!declaration.exposedFoundation.contains(name)) removeFoundationRefer(name);
@@ -884,6 +915,33 @@ public final class HaraContext {
     if (previous != null && !previous.equals(namespace)) {
       throw new HaraException(
           "Global namespace alias already refers to " + previous + ": " + alias);
+    }
+  }
+
+  private void registerGlobalImport(String shorthand) {
+    String canonical = canonicalGlobalImport(shorthand);
+    int separator = shorthand.lastIndexOf('/');
+    String local = separator < 0 ? shorthand : shorthand.substring(separator + 1);
+    String previous = globalImports.putIfAbsent(local, canonical);
+    if (previous != null && !previous.equals(canonical)) {
+      throw new HaraException(
+          "Global import already refers to " + previous + ": " + local);
+    }
+  }
+
+  private String canonicalGlobalImport(String shorthand) {
+    int separator = shorthand.lastIndexOf('/');
+    if (separator <= 0 || separator == shorthand.length() - 1) return shorthand;
+    String protocolName = shorthand.substring(0, separator);
+    if (!protocolDeclarations.containsKey(protocolName)) return shorthand;
+    return builtinProtocolNamespace(protocolName) + shorthand.substring(separator);
+  }
+
+  private void configureGlobalImports() {
+    for (Map.Entry<String, String> entry : globalImports.entrySet()) {
+      if (currentNamespace.lookup(entry.getKey()) != null) continue;
+      HaraVar imported = resolve(Symbol.create(entry.getValue()));
+      if (imported != null) currentNamespace.refer(entry.getKey(), imported);
     }
   }
 
@@ -1305,8 +1363,9 @@ public final class HaraContext {
     }
 
     ContextSnapshot snapshot = snapshot();
-    namespaceStates.put(target, NamespaceLoadState.LOADING);
     try {
+      ensureFoundationRoot(target);
+      namespaceStates.put(target, NamespaceLoadState.LOADING);
       HaraNamespace loaded = null;
       if (projectSource != null) {
         requireResolvedSource(projectSource.toString(), false);
@@ -1452,6 +1511,7 @@ public final class HaraContext {
   }
 
   private HaraNamespace requireSourceNamespace(String target, boolean reload) {
+    ensureFoundationRoot(target);
     String resourceName = namespaceResource(target);
     Path source = resolveProjectSource(target);
     if (source != null) {
@@ -1522,6 +1582,36 @@ public final class HaraContext {
     return namespace.replace('.', '/').replace('-', '_') + ".hal";
   }
 
+  private void ensureFoundationRoot(String target) {
+    if (!target.startsWith(FOUNDATION_NAMESPACE + ".")
+        || FOUNDATION_NAMESPACE.equals(target)
+        || eagerFallbacksLoading) {
+      return;
+    }
+    if (namespaceStates.get(FOUNDATION_NAMESPACE) != NamespaceLoadState.LOADED) {
+      requiredNamespace(FOUNDATION_NAMESPACE);
+    }
+  }
+
+  private void ensureFoundationResource(String path) {
+    String target = foundationResourceNamespace(path);
+    if (target != null && !FOUNDATION_NAMESPACE.equals(target)) ensureFoundationRoot(target);
+  }
+
+  private static String foundationResourceNamespace(String path) {
+    String resource = path.startsWith("classpath:") ? path.substring(10) : path;
+    if ("std/foundation.hal".equals(resource) || "std/foundation.hbx".equals(resource)) {
+      return FOUNDATION_NAMESPACE;
+    }
+    if (!resource.startsWith("std/foundation/")
+        || !(resource.endsWith(".hal") || resource.endsWith(".hbx"))) {
+      return null;
+    }
+    String child = resource.substring("std/foundation/".length());
+    child = child.substring(0, child.lastIndexOf('.')).replace('/', '.').replace('_', '-');
+    return child.isEmpty() ? null : FOUNDATION_NAMESPACE + "." + child;
+  }
+
   private HaraNamespace installExtension(HaraExtensionPackage extensionPackage) {
     HaraExtensionManifest manifest = extensionPackage.manifest();
     HaraExtensionRuntime extension =
@@ -1571,6 +1661,12 @@ public final class HaraContext {
     HaraNamespace namespace =
         namespaceName == null ? currentNamespace : namespaces.get(namespaceName);
     HaraVar variable = namespace == null ? null : namespace.lookup(symbol.getName());
+    if (variable == null && namespaceName == null) {
+      String canonical = globalImports.get(symbol.getName());
+      if (canonical != null && !canonical.equals(symbol.display())) {
+        variable = resolve(Symbol.create(canonical));
+      }
+    }
     if (variable == null
         && namespaceName == null
         && symbol.getName().startsWith(PROTOCOL_NAMESPACE_PREFIX)) {
@@ -6585,8 +6681,11 @@ public final class HaraContext {
 
   private void requireHalPath(String path, String operation) {
     String sourcePath = path.startsWith("classpath:") ? path.substring(10) : path;
-    if (!sourcePath.endsWith(".hal") && !sourcePath.endsWith(".hrl")) {
-      throw new HaraException(operation + " accepts only .hal or .hrl executable source files");
+    if (!sourcePath.endsWith(".hal")
+        && !sourcePath.endsWith(".hrl")
+        && !sourcePath.endsWith(".hbx")) {
+      throw new HaraException(
+          operation + " accepts only .hal, .hrl, or .hbx executable resources");
     }
   }
 
@@ -6856,27 +6955,33 @@ public final class HaraContext {
     if (!(value instanceof String) || ((String) value).isEmpty()) {
       throw new HaraException("load-resource expects a non-empty resource name");
     }
-    requireHalPath((String) value, "load-resource");
+    String resourceName = (String) value;
+    requireHalPath(resourceName, "load-resource");
     ContextSnapshot snapshot = snapshot();
     try {
-      FoundationHalcLoader.Attempt hir = FoundationHalcLoader.load((String) value);
+      ensureFoundationResource(resourceName);
+      String foundationNamespace = foundationResourceNamespace(resourceName);
+      if (resourceName.endsWith(".hbx") && foundationNamespace != null) {
+        if (FOUNDATION_NAMESPACE.equals(foundationNamespace)) ensureEagerFallbacks();
+        else requiredNamespace(foundationNamespace);
+        return null;
+      }
+      FoundationHalcLoader.Attempt hir = FoundationHalcLoader.load(resourceName);
       if (hir.loaded) return hir.value;
+      try (InputStream input =
+          HaraContext.class.getClassLoader().getResourceAsStream(resourceName)) {
+        if (input == null) {
+          throw new HaraException("Unable to find Hara resource: " + value);
+        }
+        return parseAndExecute(
+            new String(input.readAllBytes(), StandardCharsets.UTF_8), "classpath:" + resourceName);
+      } catch (IOException error) {
+        throw HaraException.withCause(
+            "Unable to load Hara resource: " + value + " (" + error.getMessage() + ")", error);
+      }
     } catch (RuntimeException error) {
       restore(snapshot);
       throw error;
-    }
-    try (InputStream input =
-        HaraContext.class.getClassLoader().getResourceAsStream((String) value)) {
-      if (input == null) {
-        throw new HaraException("Unable to find Hara resource: " + value);
-      }
-      return parseAndExecute(
-          new String(input.readAllBytes(), StandardCharsets.UTF_8), "classpath:" + value);
-    } catch (IOException | RuntimeException error) {
-      restore(snapshot);
-      if (error instanceof HaraException) throw (HaraException) error;
-      throw HaraException.withCause(
-          "Unable to load Hara resource: " + value + " (" + error.getMessage() + ")", error);
     }
   }
 
@@ -8051,6 +8156,7 @@ public final class HaraContext {
       aliasValues.put(entry.getKey(), new LinkedHashMap<>(entry.getValue()));
     }
     Map<String, String> globalAliasValues = new LinkedHashMap<>(globalAliases);
+    Map<String, String> globalImportValues = new LinkedHashMap<>(globalImports);
     Map<String, Set<String>> dependencyValues = new LinkedHashMap<>();
     for (Map.Entry<String, Set<String>> entry : moduleDependencies.entrySet()) {
       dependencyValues.put(entry.getKey(), new LinkedHashSet<>(entry.getValue()));
@@ -8065,6 +8171,7 @@ public final class HaraContext {
         macroValues,
         aliasValues,
         globalAliasValues,
+        globalImportValues,
         new LinkedHashMap<>(modules),
         dependencyValues,
         new LinkedHashMap<>(namespaceStates),
@@ -8100,6 +8207,8 @@ public final class HaraContext {
     }
     globalAliases.clear();
     globalAliases.putAll(snapshot.globalAliases);
+    globalImports.clear();
+    globalImports.putAll(snapshot.globalImports);
     modules.clear();
     modules.putAll(snapshot.modules);
     moduleDependencies.clear();
@@ -8144,6 +8253,7 @@ public final class HaraContext {
     private final Map<String, Map<String, HaraMacro>> macros;
     private final Map<String, Map<String, String>> aliases;
     private final Map<String, String> globalAliases;
+    private final Map<String, String> globalImports;
     private final Map<String, ModuleRecord> modules;
     private final Map<String, Set<String>> moduleDependencies;
     private final Map<String, NamespaceLoadState> namespaceStates;
@@ -8159,6 +8269,7 @@ public final class HaraContext {
         Map<String, Map<String, HaraMacro>> macros,
         Map<String, Map<String, String>> aliases,
         Map<String, String> globalAliases,
+        Map<String, String> globalImports,
         Map<String, ModuleRecord> modules,
         Map<String, Set<String>> moduleDependencies,
         Map<String, NamespaceLoadState> namespaceStates,
@@ -8172,6 +8283,7 @@ public final class HaraContext {
       this.macros = macros;
       this.aliases = aliases;
       this.globalAliases = globalAliases;
+      this.globalImports = globalImports;
       this.modules = modules;
       this.moduleDependencies = moduleDependencies;
       this.namespaceStates = namespaceStates;

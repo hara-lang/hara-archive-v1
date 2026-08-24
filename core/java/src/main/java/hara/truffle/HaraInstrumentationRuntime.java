@@ -55,17 +55,49 @@ final class HaraInstrumentationRuntime implements AutoCloseable {
       String function,
       String sourceId,
       Map<String, String> data) {
+    publishHbcEvent(
+        event,
+        instructionPointer,
+        function,
+        sourceId,
+        null,
+        data,
+        InstrumentationEventAccess.none());
+  }
+
+  void publishHbcEvent(
+      EventKind event,
+      int instructionPointer,
+      String function,
+      String sourceId,
+      HbcProgram.Position position,
+      Map<String, String> data,
+      InstrumentationEventAccess access) {
     TargetHandle target = target(InstrumentationModel.TargetKind.HBC);
     if (target == null || !sessionKernel.instrumentationHub().hasSubscribers(target, event)) return;
     EventLocation location = null;
     if (sessionKernel.instrumentationHub().hasSourceLocationSubscribers(target, event)) {
       location =
           new EventLocation(
-              sourceId, java.util.List.of(), null, function, instructionPointer);
+              sourceId,
+              java.util.List.of(),
+              position == null ? null : sourceSpan(position),
+              function,
+              instructionPointer);
     }
     sessionKernel
         .instrumentationHub()
-        .publish(target, event, EventPhase.LIVE, location, data);
+        .publish(target, event, EventPhase.LIVE, location, data, access);
+  }
+
+  private static InstrumentationModel.SourceSpan sourceSpan(HbcProgram.Position position) {
+    int offset = boundedOffset(position.offset());
+    return new InstrumentationModel.SourceSpan(offset, offset);
+  }
+
+  private static int boundedOffset(long offset) {
+    if (offset <= 0) return 0;
+    return offset >= Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) offset;
   }
 
   boolean hbcInstrumentationEnabled(EventKind event) {

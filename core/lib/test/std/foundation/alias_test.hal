@@ -11,8 +11,8 @@
    (fact "promise? source-declared alias works"
      (promise? (promise/new (fn [resolve reject] (resolve 1))))
      => true)
-   (fact ":config {:intrinsics :all} preserves loaded source aliases"
-     (do (ns app (:config {:intrinsics :all}))
+   (fact ":config {:rename :all} preserves loaded source aliases"
+     (do (ns app (:config {:rename :all}))
                    (let [result (bytes/count (str/encode-utf8 "x"))]
                      (ns std.foundation.alias-test
                        (:use code.test))

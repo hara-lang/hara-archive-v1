@@ -1258,6 +1258,17 @@ pub fn apply_global_aliases(registry: &NamespaceRegistry<Value>, namespace: &str
     }
 }
 
+pub fn apply_global_imports(registry: &NamespaceRegistry<Value>, namespace: &str) {
+    let target = registry.find_or_create(namespace);
+    for (local, canonical) in registry.global_imports() {
+        if target.resolve(&local).is_none() {
+            if let Some(var) = registry.resolve(&canonical) {
+                target.map_var(local, var);
+            }
+        }
+    }
+}
+
 /// Runs an evaluation with a registry available to protocol dispatch.
 pub fn with_protocols<R>(registry: &ProtocolRegistry, operation: impl FnOnce() -> R) -> R {
     ACTIVE_PROTOCOLS.with(|active| {

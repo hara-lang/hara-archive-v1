@@ -887,7 +887,13 @@ pub(crate) fn protocol_declarations() -> &'static [crate::lang::protocol::Protoc
 pub fn builtin_protocol_namespace(protocol: &str) -> String {
     let simple = protocol.strip_prefix("std.foundation/").unwrap_or(protocol);
     crate::lang::protocol::find_protocol(simple)
-        .map(|declaration| declaration.namespace.to_owned())
+        .map(|declaration| {
+            if declaration.namespace.ends_with(&format!(".{}", declaration.name)) {
+                declaration.namespace.to_owned()
+            } else {
+                format!("{}.{}", declaration.namespace, declaration.name)
+            }
+        })
         .unwrap_or_else(|| {
             if simple.starts_with("std.protocol.") {
                 simple.to_owned()

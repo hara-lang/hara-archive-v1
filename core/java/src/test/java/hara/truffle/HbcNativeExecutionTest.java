@@ -1,6 +1,7 @@
 package hara.truffle;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 import hara.truffle.InstrumentationModel.Capability;
 import hara.truffle.InstrumentationModel.EventDelivery;
@@ -8,6 +9,7 @@ import hara.truffle.InstrumentationModel.EventKind;
 import hara.truffle.InstrumentationModel.InstrumentFilter;
 import hara.truffle.InstrumentationModel.InstrumentMode;
 import hara.truffle.InstrumentationModel.InstrumentRegistration;
+import hara.truffle.InstrumentationModel.ProjectionLimits;
 import hara.truffle.InstrumentationModel.ProjectionRequest;
 import hara.truffle.bytecode.HbcProgram;
 import hara.truffle.bytecode.HbcProgram.Function;
@@ -18,6 +20,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
 import org.junit.Test;
 
 public class HbcNativeExecutionTest {
@@ -51,7 +54,7 @@ public class HbcNativeExecutionTest {
       assertEquals(
           1,
           events.stream().filter(event -> event.event() == EventKind.EXECUTION_TERMINAL).count());
-      assertEquals("return", events.get(events.size() - 1).data().get("status"));
+      assertEquals("returned", events.get(events.size() - 1).data().get("status"));
     }
   }
 
@@ -103,6 +106,143 @@ public class HbcNativeExecutionTest {
               .filter(event -> event.event() == EventKind.INSTRUCTION_EXECUTE)
               .map(event -> event.data().get("opcode"))
               .toList());
+    }
+  }
+
+  @Test
+  public void richHbcProjectionUsesThePortableMachineAndIsBounded() {
+    SessionModel.SessionId sessionId = SessionModel.SessionId.parse("hbc-projection");
+    try (SessionKernel kernel = new SessionKernel(false, false)) {
+      SessionKernel.Session session = kernel.create(sessionId);
+      NativeInstrumentation service = kernel.instrumentation(sessionId);
+      NativeInstrumentation.NativeTargetHandle target =
+          service.bindTargetIdentity(sessionId.value() + "/hbc", 0);
+      NativeInstrumentation.NativeInstrumentHandle inspect =
+          service.register(
+              new InstrumentRegistration(
+                  "hbc-stack-inspector",
+                  sessionId.value(),
+                  InstrumentMode.PASSIVE,
+                  Set.of(Capability.EVENT_INSTRUCTION, Capability.INSPECT_STACK),
+                  Set.of(EventKind.INSTRUCTION_EXECUTE),
+                  new InstrumentFilter(sessionId.value(), Set.of(), Set.of(), Set.of()),
+                  new ProjectionRequest(
+                      false,
+                      null,
+                      null,
+                      null,
+                      new ProjectionLimits(4, 4, 128),
+                      null,
+                      null),
+                  EventDelivery.queue(16)));
+      service.attach(inspect, target);
+
+      assertEquals(42L, session.executeHbc(arithmeticProgram()));
+      var events = service.drainEvents(inspect).events();
+      var returnInstruction =
+          events.stream()
+              .filter(
+                  event ->
+                      event.event() == EventKind.INSTRUCTION_EXECUTE
+                          && "RETURN".equals(event.data().get("opcode")))
+              .findFirst()
+              .orElseThrow();
+      assertEquals("42", returnInstruction.projection().stack().fields().get("stack/0"));
+      assertEquals(0L, returnInstruction.droppedBefore());
+    }
+  }
+
+  @Test
+  public void generatedHbcLocationsPreserveSourceMapOffsets() {
+    SessionModel.SessionId sessionId = SessionModel.SessionId.parse("hbc-source-map");
+    try (SessionKernel kernel = new SessionKernel(false, false)) {
+      SessionKernel.Session session = kernel.create(sessionId);
+      NativeInstrumentation service = kernel.instrumentation(sessionId);
+      NativeInstrumentation.NativeTargetHandle target =
+          service.bindTargetIdentity(sessionId.value() + "/hbc", 0);
+      NativeInstrumentation.NativeInstrumentHandle trace =
+          service.register(
+              new InstrumentRegistration(
+                  "hbc-source-map-trace",
+                  sessionId.value(),
+                  InstrumentMode.PASSIVE,
+                  Set.of(Capability.EVENT_INSTRUCTION, Capability.INSPECT_SOURCE_LOCATION),
+                  Set.of(EventKind.INSTRUCTION_EXECUTE),
+                  new InstrumentFilter(sessionId.value(), Set.of(), Set.of(), Set.of()),
+                  new ProjectionRequest(true, null, null, null, null, null, null),
+                  EventDelivery.queue(8)));
+      service.attach(trace, target);
+      Function entry =
+          new Function(
+              "source-entry",
+              false,
+              0,
+              false,
+              0,
+              0,
+              1,
+              List.of(
+                  new Instruction(HbcProgram.Opcode.CONSTANT, 0, 0, 0),
+                  Instruction.of(HbcProgram.Opcode.RETURN)),
+              List.of(new HbcProgram.Position(41, 3, 2), new HbcProgram.Position(43, 3, 4)),
+              List.of());
+      HbcProgram program =
+          new HbcProgram(
+              "hbc-source-map",
+              List.of(9L),
+              List.of(),
+              Map.of(),
+              Map.of(),
+              Map.of(),
+              List.of(entry),
+              0);
+
+      assertEquals(9L, session.executeHbc(program));
+      var first = service.drainEvents(trace).events().get(0);
+      assertEquals(41, first.location().span().start());
+      assertEquals(41, first.location().span().end());
+    }
+  }
+
+  @Test
+  public void portableMachineRetainsExactAwaitContinuationUntilSettlement() throws Exception {
+    try (Context polyglot = Context.newBuilder(HaraLanguage.ID).build()) {
+      polyglot.eval(HaraLanguage.ID, "nil");
+      polyglot.enter();
+      try {
+        HaraContext context = HaraLanguage.currentContext();
+        CountDownLatch release = new CountDownLatch(1);
+        Object promise =
+            context.hbcAsync(
+                () -> {
+                  try {
+                    release.await();
+                    return 7L;
+                  } catch (InterruptedException error) {
+                    Thread.currentThread().interrupt();
+                    throw new HaraException("await test interrupted");
+                  }
+                });
+        HbcProgram program = awaitingProgram(promise);
+
+        Object suspended = HbcMachine.execute(program, context);
+        assertTrue(suspended instanceof HbcMachine.HbcSuspension);
+        assertEquals(
+            HbcMachine.SuspensionKind.AWAIT,
+            ((HbcMachine.HbcSuspension) suspended).kind());
+
+        release.countDown();
+        Object result = suspended;
+        for (int attempt = 0;
+            attempt < 100 && result instanceof HbcMachine.HbcSuspension;
+            attempt++) {
+          Thread.sleep(5);
+          result = HbcMachine.execute(program, context);
+        }
+        assertEquals(7L, result);
+      } finally {
+        polyglot.leave();
+      }
     }
   }
 
@@ -288,6 +428,33 @@ public class HbcNativeExecutionTest {
     return new HbcProgram(
         "native-arithmetic",
         List.of(19L, 23L),
+        List.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        List.of(entry),
+        0);
+  }
+
+  private static HbcProgram awaitingProgram(Object promise) {
+    Function entry =
+        new Function(
+            "awaiting",
+            false,
+            0,
+            false,
+            0,
+            0,
+            1,
+            List.of(
+                new Instruction(HbcProgram.Opcode.CONSTANT, 0, 0, 0),
+                Instruction.of(HbcProgram.Opcode.AWAIT),
+                Instruction.of(HbcProgram.Opcode.RETURN)),
+            Arrays.asList(null, null, null),
+            List.of());
+    return new HbcProgram(
+        "awaiting",
+        List.of(promise),
         List.of(),
         Map.of(),
         Map.of(),

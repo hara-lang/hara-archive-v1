@@ -37,7 +37,7 @@
 ;; ============================================================================
 (ns std.foundation.promise
   (:config {:blank true
-            :global-alias promise}))
+            :set-global-alias promise}))
 
 (defn ^{:inline true :schema [:fn [:fn] :promise]}
   run

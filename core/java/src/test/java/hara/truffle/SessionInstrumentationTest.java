@@ -8,7 +8,7 @@ import static org.junit.Assert.assertTrue;
 import hara.truffle.InstrumentationException.Code;
 import hara.truffle.InstrumentationModel.Capability;
 import hara.truffle.InstrumentationModel.EventDelivery;
-import hara.truffle.InstrumentationModel.EventEnvelope;
+import hara.truffle.InstrumentationModel.DeliveredEvent;
 import hara.truffle.InstrumentationModel.EventKind;
 import hara.truffle.InstrumentationModel.EventPhase;
 import hara.truffle.InstrumentationModel.InstrumentFilter;
@@ -251,7 +251,7 @@ public class SessionInstrumentationTest {
           failure.stream()
               .filter(event -> event.event() == EventKind.EXECUTION_TERMINAL)
               .count());
-      EventEnvelope terminal =
+      DeliveredEvent terminal =
           failure.stream()
               .filter(event -> event.event() == EventKind.EXECUTION_TERMINAL)
               .findFirst()
@@ -367,6 +367,20 @@ public class SessionInstrumentationTest {
       assertTrue(events.stream().anyMatch(event -> event.event() == EventKind.INSTRUCTION_EXECUTE));
       assertTrue(events.stream().anyMatch(event -> event.event() == EventKind.CALL_ENTER));
       assertTrue(events.stream().anyMatch(event -> event.event() == EventKind.CALL_RETURN));
+      DeliveredEvent callEnter =
+          events.stream()
+              .filter(event -> event.event() == EventKind.CALL_ENTER)
+              .findFirst()
+              .orElseThrow();
+      assertEquals("0", callEnter.data().get("from/function"));
+      assertEquals("1", callEnter.data().get("to/function"));
+      DeliveredEvent callReturn =
+          events.stream()
+              .filter(event -> event.event() == EventKind.CALL_RETURN)
+              .findFirst()
+              .orElseThrow();
+      assertEquals("1", callReturn.data().get("from/function"));
+      assertEquals("0", callReturn.data().get("to/function"));
       assertEquals(
           1,
           events.stream()
@@ -422,6 +436,12 @@ public class SessionInstrumentationTest {
       Object suspended = session.executeHbc(program);
       assertTrue(suspended instanceof HbcMachine.HbcSuspension);
       assertEquals(0, ((HbcMachine.HbcSuspension) suspended).instructionPointer());
+      assertEquals(
+          HbcMachine.SuspensionKind.CONTROL_PAUSE,
+          ((HbcMachine.HbcSuspension) suspended).kind());
+      assertTrue(
+          service.drainEvents(controller).events().stream()
+              .noneMatch(event -> event.event() == EventKind.MACHINE_SUSPEND));
       Object retained = session.executeHbc(program);
       assertEquals(suspended, retained);
 
@@ -429,6 +449,9 @@ public class SessionInstrumentationTest {
       suspended = session.executeHbc(program);
       assertTrue(suspended instanceof HbcMachine.HbcSuspension);
       assertEquals(1, ((HbcMachine.HbcSuspension) suspended).instructionPointer());
+      assertTrue(
+          service.drainEvents(controller).events().stream()
+              .noneMatch(event -> event.event() == EventKind.MACHINE_SUSPEND));
 
       service.issueDirective(lease, InstrumentationModel.InstrumentDirective.CONTINUE);
       assertEquals(42L, session.executeHbc(program));
@@ -445,7 +468,7 @@ public class SessionInstrumentationTest {
       assertTrue(session.executeHbc(program) instanceof HbcMachine.HbcSuspension);
       service.issueDirective(lease, InstrumentationModel.InstrumentDirective.TERMINATE);
       assertThrows(HaraException.class, () -> session.executeHbc(program));
-      List<EventEnvelope> terminalEvents = service.drainEvents(controller).events();
+      List<DeliveredEvent> terminalEvents = service.drainEvents(controller).events();
       assertEquals(
           1,
           terminalEvents.stream()
@@ -491,7 +514,9 @@ public class SessionInstrumentationTest {
       HbcProgram program =
           new HbcProgram(
               "demo.unwind",
-              List.of("caught"),
+              List.of(
+                  new hara.lang.base.Ex.Info(
+                      "caught", hara.lang.data.Map.Standard.from(null))),
               List.of(),
               Map.of(),
               Map.of(),
@@ -527,14 +552,14 @@ public class SessionInstrumentationTest {
                               null,
                               null)))),
                   0);
-      assertEquals("caught", session.executeHbc(program));
+      assertTrue(HaraBox.unwrap(session.executeHbc(program)) instanceof hara.lang.protocol.IExInfo);
 
-      List<EventEnvelope> events = service.drainEvents(trace).events();
+      List<DeliveredEvent> events = service.drainEvents(trace).events();
       assertEquals(2, events.size());
       assertEquals(EventKind.EXCEPTION_UNWIND, events.get(0).event());
       assertEquals(EventKind.EXECUTION_TERMINAL, events.get(1).event());
       assertEquals("1", Integer.toString(events.get(0).location().instructionPointer()));
-      assertEquals("return", events.get(1).data().get("status"));
+      assertEquals("returned", events.get(1).data().get("status"));
     }
   }
 

@@ -25,6 +25,7 @@ import java.util.ArrayList;
 import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.Iterator;
+import java.util.Map;
 
 /** Executes a validated portable HBC0 program using the ordinary Hara runtime boundaries. */
 public final class HbcMachine {
@@ -32,13 +33,29 @@ public final class HbcMachine {
 
   public static Object execute(HbcProgram program, HaraContext context) {
     HbcContinuation continuation = context.hbcContinuation(program);
-    if (context.hbcInstrumentationEnabled(InstrumentationModel.EventKind.MACHINE_RESUME)) {
-      context.publishHbcEvent(
+    if (continuation != null
+        && continuation.pendingAwait == null
+        && context.hbcInstrumentationEnabled(InstrumentationModel.EventKind.MACHINE_RESUME)) {
+      HbcBoundary.Transition resume =
+          new HbcBoundary.Transition(
+              HbcBoundary.TransitionKind.MACHINE_RESUME,
+              continuation.functionIndex,
+              continuation.instructionPointer,
+              continuation.functionIndex,
+              continuation.instructionPointer,
+              continuation.stack == null ? 0 : continuation.stack.size(),
+              continuation.calls == null ? 0 : continuation.calls.size());
+      HbcInstrumentationBridge.machineEvent(
+          context,
           InstrumentationModel.EventKind.MACHINE_RESUME,
-          continuation == null ? 0 : continuation.instructionPointer,
-          continuation == null ? null : continuation.function.name(),
-          program.namespace(),
-          java.util.Map.of());
+          program,
+          continuation.functionIndex,
+          continuation.function,
+          continuation.instructionPointer,
+          HbcInstrumentationBridge.transitionData(resume),
+          continuation.locals,
+          continuation.stack,
+          new ArrayList<>(continuation.calls));
     }
     if (continuation == null) continuation = new HbcContinuation(program);
     try {
@@ -101,6 +118,47 @@ public final class HbcMachine {
       ip = continuation.instructionPointer;
       stepAfterInstruction = continuation.stepAfterInstruction;
     }
+    if (continuation.initialized && continuation.pendingAwait != null) {
+      if (context.hbcPromisePending(continuation.pendingAwait)) {
+        throw suspend(
+            continuation,
+            program,
+            functionIndex,
+            function,
+            locals,
+            stack,
+            calls,
+            ip,
+            false,
+            false);
+      }
+      Object resumed = context.hbcPromiseValue(continuation.pendingAwait);
+      continuation.pendingAwait = null;
+      if (stack.isEmpty()) throw new HaraException("HBC await continuation stack underflow");
+      pop(stack);
+      HbcBoundary.Transition resume =
+          new HbcBoundary.Transition(
+              HbcBoundary.TransitionKind.MACHINE_RESUME,
+              functionIndex,
+              ip,
+              functionIndex,
+              ip + 1,
+              stack.size(),
+              calls.size());
+      HbcInstrumentationBridge.machineEvent(
+          context,
+          InstrumentationModel.EventKind.MACHINE_RESUME,
+          program,
+          functionIndex,
+          function,
+          ip,
+          HbcInstrumentationBridge.transitionData(resume),
+          locals,
+          stack,
+          new ArrayList<>(calls));
+      stack.add(resumed);
+      ip++;
+    }
     while (true) {
       if (stepAfterInstruction) {
         throw suspend(
@@ -112,7 +170,8 @@ public final class HbcMachine {
             stack,
             calls,
             ip,
-            true);
+            true,
+            false);
       }
       Instruction instruction = function.code().get(ip);
       InstrumentationModel.InstrumentDirective directive = context.pollHbcDirective();
@@ -127,7 +186,8 @@ public final class HbcMachine {
               stack,
               calls,
               ip,
-              true);
+              true,
+              false);
         }
         if (directive == InstrumentationModel.InstrumentDirective.CONTINUE) {
           continuation.paused = false;
@@ -144,9 +204,10 @@ public final class HbcMachine {
               stack,
               calls,
               ip,
-              true);
+              true,
+              false);
         } else if (directive == InstrumentationModel.InstrumentDirective.TERMINATE) {
-          terminate(context, program, function, ip);
+          terminate(context, program, functionIndex, function, ip, locals, stack, calls);
         }
       }
       if (directive == InstrumentationModel.InstrumentDirective.SUSPEND) {
@@ -159,23 +220,27 @@ public final class HbcMachine {
             stack,
             calls,
             ip,
-            true);
+            true,
+            false);
       }
       if (directive == InstrumentationModel.InstrumentDirective.STEP_NEXT) {
         stepAfterInstruction = true;
       }
       if (directive == InstrumentationModel.InstrumentDirective.TERMINATE) {
-        terminate(context, program, function, ip);
+        terminate(context, program, functionIndex, function, ip, locals, stack, calls);
       }
-      if (context.hbcInstrumentationEnabled(
-          InstrumentationModel.EventKind.INSTRUCTION_EXECUTE)) {
-        context.publishHbcEvent(
-            InstrumentationModel.EventKind.INSTRUCTION_EXECUTE,
-            ip,
-            function.name(),
-            program.namespace(),
-            java.util.Map.of("opcode", instruction.opcode().name()));
-      }
+      HbcInstrumentationBridge.machineEvent(
+          context,
+          InstrumentationModel.EventKind.INSTRUCTION_EXECUTE,
+          program,
+          functionIndex,
+          function,
+          ip,
+          HbcInstrumentationBridge.instructionData(
+              instruction.opcode(), stack.size(), calls.size()),
+          locals,
+          stack,
+          new ArrayList<>(calls));
       try {
         switch (instruction.opcode()) {
         case CONSTANT -> stack.add(program.constants().get(index(instruction.first())));
@@ -240,14 +305,33 @@ public final class HbcMachine {
           Object[] args = popArguments(stack, index(instruction.first()));
           Object callee = HaraBox.unwrap(pop(stack));
           HbcClosure closure = selectClosure(callee, args.length);
-          if (context.hbcInstrumentationEnabled(InstrumentationModel.EventKind.CALL_ENTER)) {
-            context.publishHbcEvent(
-                InstrumentationModel.EventKind.CALL_ENTER,
-                ip,
-                function.name(),
-                program.namespace(),
-                java.util.Map.of("arity", Integer.toString(args.length)));
-          }
+          int targetFunctionIndex =
+              closure != null
+                      && closure.program == program
+                      && closure.context == context
+                      && !program.functions().get(closure.prototype).asyncFunction()
+                  ? closure.prototype
+                  : -1;
+          HbcBoundary.Transition callEnter =
+              new HbcBoundary.Transition(
+                  HbcBoundary.TransitionKind.CALL_ENTER,
+                  functionIndex,
+                  ip,
+                  targetFunctionIndex,
+                  0,
+                  stack.size(),
+                  calls.size());
+          HbcInstrumentationBridge.machineEvent(
+              context,
+              InstrumentationModel.EventKind.CALL_ENTER,
+              program,
+              functionIndex,
+              function,
+              ip,
+              HbcInstrumentationBridge.callData(callEnter),
+              locals,
+              stack,
+              new ArrayList<>(calls));
           if (closure != null
               && closure.program == program
               && closure.context == context
@@ -270,14 +354,6 @@ public final class HbcMachine {
                         null,
                         sourcePosition(function, ip).line(),
                         sourcePosition(function, ip).column())));
-            if (context.hbcInstrumentationEnabled(InstrumentationModel.EventKind.CALL_RETURN)) {
-              context.publishHbcEvent(
-                  InstrumentationModel.EventKind.CALL_RETURN,
-                  ip,
-                  function.name(),
-                  program.namespace(),
-                  java.util.Map.of());
-            }
           } catch (RuntimeException failure) {
             if (Boolean.getBoolean("hara.hbc.trace")) {
               System.err.println(
@@ -300,15 +376,27 @@ public final class HbcMachine {
         }
         case CALL_STATIC -> {
           Object[] args = popArguments(stack, index(instruction.second()));
-          if (context.hbcInstrumentationEnabled(InstrumentationModel.EventKind.CALL_ENTER)) {
-            context.publishHbcEvent(
-                InstrumentationModel.EventKind.CALL_ENTER,
-                ip,
-                function.name(),
-                program.namespace(),
-                java.util.Map.of("arity", Integer.toString(args.length)));
-          }
           Function target = program.functions().get(index(instruction.first()));
+          HbcBoundary.Transition callEnter =
+              new HbcBoundary.Transition(
+                  HbcBoundary.TransitionKind.CALL_ENTER,
+                  functionIndex,
+                  ip,
+                  index(instruction.first()),
+                  0,
+                  stack.size(),
+                  calls.size());
+          HbcInstrumentationBridge.machineEvent(
+              context,
+              InstrumentationModel.EventKind.CALL_ENTER,
+              program,
+              functionIndex,
+              function,
+              ip,
+              HbcInstrumentationBridge.callData(callEnter),
+              locals,
+              stack,
+              new ArrayList<>(calls));
           int currentCaptureBase = function.arity() + (function.variadic() ? 1 : 0);
           Object[] inherited =
               Arrays.copyOfRange(
@@ -492,37 +580,121 @@ public final class HbcMachine {
               context.invokeMarkerMethod(
                   receiver, stringConstant(program, instruction.first()), methodArguments));
         }
-        case AWAIT ->
-            stack.add(
-                invokeGlobal(
-                    context, "std.foundation.coroutine/await", new Object[] {pop(stack)}));
-        case YIELD ->
-            stack.add(
-                invokeGlobal(
-                    context, "std.foundation.coroutine/yield", new Object[] {pop(stack)}));
+        case AWAIT -> {
+          Object awaitable = peek(stack);
+          if (context.hbcPromisePending(awaitable)) {
+            continuation.pendingAwait = awaitable;
+            throw suspend(
+                continuation,
+                program,
+                functionIndex,
+                function,
+                locals,
+                stack,
+                calls,
+                ip,
+                false,
+                true);
+          }
+          pop(stack);
+          stack.add(
+              invokeGlobal(
+                  context, "std.foundation.coroutine/await", new Object[] {awaitable}));
+        }
+        case YIELD -> {
+          StdFoundationCoroutine.requireYieldContext();
+          Object yielded = pop(stack);
+          HbcBoundary.Transition suspend =
+              new HbcBoundary.Transition(
+                  HbcBoundary.TransitionKind.MACHINE_SUSPEND,
+                  functionIndex,
+                  ip,
+                  functionIndex,
+                  ip,
+                  stack.size(),
+                  calls.size());
+          HbcInstrumentationBridge.machineEvent(
+              context,
+              InstrumentationModel.EventKind.MACHINE_SUSPEND,
+              program,
+              functionIndex,
+              function,
+              ip,
+              HbcInstrumentationBridge.transitionData(suspend),
+              locals,
+              stack,
+              new ArrayList<>(calls));
+          Object resumed =
+              invokeGlobal(context, "std.foundation.coroutine/yield", new Object[] {yielded});
+          HbcBoundary.Transition resume =
+              new HbcBoundary.Transition(
+                  HbcBoundary.TransitionKind.MACHINE_RESUME,
+                  functionIndex,
+                  ip,
+                  functionIndex,
+                  ip + 1,
+                  stack.size(),
+                  calls.size());
+          HbcInstrumentationBridge.machineEvent(
+              context,
+              InstrumentationModel.EventKind.MACHINE_RESUME,
+              program,
+              functionIndex,
+              function,
+              ip,
+              HbcInstrumentationBridge.transitionData(resume),
+              locals,
+              stack,
+              new ArrayList<>(calls));
+          stack.add(resumed);
+        }
         case RETURN -> {
           Object result = pop(stack);
           if (calls.isEmpty()) {
-            if (context.hbcInstrumentationEnabled(
-                InstrumentationModel.EventKind.EXECUTION_TERMINAL)) {
-              context.publishHbcEvent(
-                  InstrumentationModel.EventKind.EXECUTION_TERMINAL,
-                  ip,
-                  function.name(),
-                  program.namespace(),
-                  java.util.Map.of("status", "return"));
-            }
+            HbcBoundary.Terminal terminal =
+                new HbcBoundary.Terminal(
+                    HbcBoundary.TerminalKind.RETURN,
+                    functionIndex,
+                    ip,
+                    stack.size(),
+                    calls.size());
+            HbcInstrumentationBridge.machineTerminal(
+                context,
+                program,
+                functionIndex,
+                function,
+                ip,
+                HbcInstrumentationBridge.terminalData(terminal, "returned"),
+                locals,
+                stack,
+                new ArrayList<>(calls),
+                "returned",
+                result,
+                null);
             return result;
           }
-          if (context.hbcInstrumentationEnabled(InstrumentationModel.EventKind.CALL_RETURN)) {
-            context.publishHbcEvent(
-                InstrumentationModel.EventKind.CALL_RETURN,
-                ip,
-                function.name(),
-                program.namespace(),
-                java.util.Map.of());
-          }
-          CallFrame caller = calls.pop();
+          CallFrame caller = calls.peek();
+          HbcBoundary.Transition callReturn =
+              new HbcBoundary.Transition(
+                  HbcBoundary.TransitionKind.CALL_RETURN,
+                  functionIndex,
+                  ip,
+                  caller.functionIndex,
+                  caller.returnIp,
+                  stack.size(),
+                  calls.size());
+          HbcInstrumentationBridge.machineEvent(
+              context,
+              InstrumentationModel.EventKind.CALL_RETURN,
+              program,
+              functionIndex,
+              function,
+              ip,
+              HbcInstrumentationBridge.transitionData(callReturn),
+              locals,
+              stack,
+              new ArrayList<>(calls));
+          caller = calls.pop();
           functionIndex = caller.functionIndex;
           function = caller.function;
           locals = caller.locals;
@@ -535,6 +707,9 @@ public final class HbcMachine {
         case RETHROW -> throwValue(program, function, ip, pop(stack));
         }
       } catch (RuntimeException failure) {
+        int fromFunctionIndex = functionIndex;
+        int fromInstructionPointer = ip;
+        Function fromFunction = function;
         Integer target = routeFailure(function, ip, failure, locals, stack);
         while (target == null && !calls.isEmpty()) {
           CallFrame caller = calls.pop();
@@ -544,24 +719,50 @@ public final class HbcMachine {
           stack = caller.stack;
           target = routeFailure(function, caller.returnIp - 1, failure, locals, stack);
         }
-        if (context.hbcInstrumentationEnabled(
-            InstrumentationModel.EventKind.EXCEPTION_UNWIND)) {
-          context.publishHbcEvent(
-              InstrumentationModel.EventKind.EXCEPTION_UNWIND,
-              ip,
-              function.name(),
-              program.namespace(),
-              java.util.Map.of("type", failure.getClass().getName()));
-        }
-        if (target == null
-            && context.hbcInstrumentationEnabled(
-                InstrumentationModel.EventKind.EXECUTION_TERMINAL)) {
-          context.publishHbcEvent(
-              InstrumentationModel.EventKind.EXECUTION_TERMINAL,
-              ip,
-              function.name(),
-              program.namespace(),
-              java.util.Map.of("status", "failure"));
+        int toInstructionPointer = target == null ? ip : target;
+        HbcBoundary.Transition unwind =
+            new HbcBoundary.Transition(
+                HbcBoundary.TransitionKind.EXCEPTION_UNWIND,
+                fromFunctionIndex,
+                fromInstructionPointer,
+                functionIndex,
+                toInstructionPointer,
+                stack.size(),
+                calls.size());
+        HbcInstrumentationBridge.machineEventAt(
+            context,
+            InstrumentationModel.EventKind.EXCEPTION_UNWIND,
+            program,
+            functionIndex,
+            function,
+            toInstructionPointer,
+            fromFunction,
+            fromInstructionPointer,
+            HbcInstrumentationBridge.transitionData(unwind),
+            locals,
+            stack,
+            new ArrayList<>(calls));
+        if (target == null) {
+          HbcBoundary.Terminal terminal =
+              new HbcBoundary.Terminal(
+                  HbcBoundary.TerminalKind.FAIL,
+                  functionIndex,
+                  toInstructionPointer,
+                  stack.size(),
+                  calls.size());
+          HbcInstrumentationBridge.machineTerminal(
+              context,
+              program,
+              functionIndex,
+              function,
+              toInstructionPointer,
+                HbcInstrumentationBridge.terminalData(terminal, "failed"),
+              locals,
+              stack,
+              new ArrayList<>(calls),
+              "failed",
+              null,
+              failure.getClass().getName());
         }
         if (target == null) throw failure;
         ip = target;
@@ -580,17 +781,31 @@ public final class HbcMachine {
       ArrayList<Object> stack,
       ArrayDeque<CallFrame> calls,
       int instructionPointer,
-      boolean paused) {
+      boolean paused,
+      boolean guestSuspension) {
     continuation.capture(
         functionIndex, function, locals, stack, calls, instructionPointer, paused);
-    if (continuation.context.hbcInstrumentationEnabled(
-        InstrumentationModel.EventKind.MACHINE_SUSPEND)) {
-      continuation.context.publishHbcEvent(
+    if (guestSuspension) {
+      HbcBoundary.Transition transition =
+          new HbcBoundary.Transition(
+              HbcBoundary.TransitionKind.MACHINE_SUSPEND,
+              functionIndex,
+              instructionPointer,
+              functionIndex,
+              instructionPointer,
+              stack.size(),
+              calls.size());
+      HbcInstrumentationBridge.machineEvent(
+          continuation.context,
           InstrumentationModel.EventKind.MACHINE_SUSPEND,
+          program,
+          functionIndex,
+          function,
           instructionPointer,
-          function.name(),
-          program.namespace(),
-          java.util.Map.of());
+          HbcInstrumentationBridge.transitionData(transition),
+          locals,
+          stack,
+          new ArrayList<>(calls));
     }
     return new HbcSuspended(
         continuation,
@@ -598,20 +813,39 @@ public final class HbcMachine {
             continuation.id,
             program.namespace(),
             function.name(),
-            instructionPointer));
+            instructionPointer,
+            guestSuspension ? SuspensionKind.AWAIT : SuspensionKind.CONTROL_PAUSE));
   }
 
   private static void terminate(
-      HaraContext context, HbcProgram program, Function function, int instructionPointer) {
-    if (context.hbcInstrumentationEnabled(
-        InstrumentationModel.EventKind.EXECUTION_TERMINAL)) {
-      context.publishHbcEvent(
-          InstrumentationModel.EventKind.EXECUTION_TERMINAL,
-          instructionPointer,
-          function.name(),
-          program.namespace(),
-          java.util.Map.of("status", "cancelled"));
-    }
+      HaraContext context,
+      HbcProgram program,
+      int functionIndex,
+      Function function,
+      int instructionPointer,
+      Object[] locals,
+      ArrayList<Object> stack,
+      ArrayDeque<CallFrame> calls) {
+    HbcInstrumentationBridge.machineTerminal(
+        context,
+        program,
+        functionIndex,
+        function,
+        instructionPointer,
+        HbcInstrumentationBridge.terminalData(
+            new HbcBoundary.Terminal(
+                HbcBoundary.TerminalKind.FAIL,
+                functionIndex,
+                instructionPointer,
+                stack.size(),
+                calls.size()),
+            "cancelled"),
+        locals,
+        stack,
+        new ArrayList<>(calls),
+        "cancelled",
+        null,
+        "cancelled");
     throw new HaraException("HBC execution terminated by instrumentation");
   }
 
@@ -994,12 +1228,14 @@ public final class HbcMachine {
     @TruffleBoundary
     Object invoke(Object[] arguments) {
       Function function = program.functions().get(prototype);
-      RootCallTarget target = nativeTarget;
+      RootCallTarget target = context.hbcNativeExecutionAllowed() ? nativeTarget : null;
       if (target == null) {
-        target =
-            HbcBytecodeRootNode.compileFunction(
-                HaraLanguage.currentLanguage(), program, prototype);
-        if (target != null) nativeTarget = target;
+        if (context.hbcNativeExecutionAllowed()) {
+          target =
+              HbcBytecodeRootNode.compileFunction(
+                  HaraLanguage.currentLanguage(), program, prototype);
+          if (target != null) nativeTarget = target;
+        }
       }
       if (target != null) return target.call(arguments);
       if (function.asyncFunction()) {
@@ -1106,7 +1342,17 @@ public final class HbcMachine {
     }
   }
 
-  public record HbcSuspension(long id, String namespace, String function, int instructionPointer) {}
+  public enum SuspensionKind {
+    CONTROL_PAUSE,
+    AWAIT
+  }
+
+  public record HbcSuspension(
+      long id,
+      String namespace,
+      String function,
+      int instructionPointer,
+      SuspensionKind kind) {}
 
   private static final class HbcSuspended extends RuntimeException {
     final HbcContinuation continuation;
@@ -1135,6 +1381,7 @@ public final class HbcMachine {
     boolean initialized;
     boolean paused;
     boolean stepAfterInstruction;
+    Object pendingAwait;
 
     HbcContinuation(HbcProgram program) {
       this(program, program.entry(), new Object[0], new Object[0]);
@@ -1176,7 +1423,7 @@ public final class HbcMachine {
     }
   }
 
-  private record CallFrame(
+  static record CallFrame(
       int functionIndex,
       Function function,
       Object[] locals,

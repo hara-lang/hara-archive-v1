@@ -504,14 +504,21 @@ fn eval_namespace_form(fs: &[Form], env: &mut HashMap<String, Value>) -> Result<
         (name, &fs[2..])
     };
     // Namespace configuration is normally consumed by the generated-runtime
-    // orchestration layer.  The raw HTA evaluator executes forms directly in
-    // an EvalFiber, so the core special form must still honor the one setting
-    // that changes namespace construction itself.
+    // orchestration layer. The raw HTA evaluator executes forms directly in
+    // an EvalFiber, so the core special form must still honor namespace
+    // construction settings, including global aliases and imports. Native
+    // runtime intrinsics remain distinct from Foundation library `:rename`.
     let config = crate::kernel::GeneratedNamespaceConfig::configure_with(clauses, |_| true)?;
     if let Some(alias) = config.global_alias() {
         registry.register_global_alias(alias, &name)?;
     }
+    for alias in config.declared_global_imports() {
+        let canonical = crate::core::canonical_intrinsic_symbol(alias)
+            .unwrap_or_else(|| alias.clone());
+        registry.register_global_import(alias, canonical)?;
+    }
     apply_global_aliases(&registry, &name);
+    crate::core::apply_global_imports(&registry, &name);
     select_namespace_environment(&registry, env, &name);
     let destination = registry.current();
     destination.set_role(config.role());
@@ -613,15 +620,12 @@ fn eval_namespace_form(fs: &[Form], env: &mut HashMap<String, Value>) -> Result<
                 eval_require_specs(&registry, env, &specs)?;
             }
             Form::List(clause_forms)
-                if matches!(
-                    clause_forms.first(),
-                    Some(Form::Keyword(k)) if k == "config" || k == "intrinsics"
-                ) =>
+                if matches!(clause_forms.first(), Some(Form::Keyword(k)) if k == "config") =>
             {
-                // :config and :intrinsics are processed by the generated-namespace
-                // machinery for top-level ns forms. For ns forms loaded from source
-                // files (e.g. runtime-library activation declarations), they are
-                // metadata-only and can be ignored here.
+                // :config is processed by the generated-namespace machinery for
+                // top-level ns forms. For ns forms loaded from source files (e.g.
+                // runtime-library activation declarations), it is metadata-only
+                // and can be ignored here.
             }
             Form::List(clause_forms) if matches!(clause_forms.first(), Some(Form::Keyword(k)) if k == "flavor" || k == "import") =>
                 {}

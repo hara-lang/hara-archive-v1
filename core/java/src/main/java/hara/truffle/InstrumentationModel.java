@@ -388,7 +388,79 @@ final class InstrumentationModel {
     }
   }
 
-  record EventBatch(List<EventEnvelope> events, long droppedSinceDrain, long droppedTotal) {
+  record PortableProjection(String kind, Map<String, String> fields) {
+    PortableProjection {
+      kind = requiredId(kind, "projection kind");
+      fields = immutableMap(fields);
+    }
+  }
+
+  record EventProjection(
+      PortableProjection currentFrame,
+      PortableProjection frames,
+      PortableProjection locals,
+      PortableProjection stack,
+      PortableProjection valuePreview,
+      PortableProjection machineSnapshot) {
+    static EventProjection none() {
+      return new EventProjection(null, null, null, null, null, null);
+    }
+  }
+
+  /** One delivered event plus the projections requested by that instrument. */
+  record DeliveredEvent(EventEnvelope envelope, EventProjection projection, long droppedBefore) {
+    DeliveredEvent {
+      envelope = Objects.requireNonNull(envelope, "envelope");
+      projection = projection == null ? EventProjection.none() : projection;
+      if (droppedBefore < 0) throw new IllegalArgumentException("INVALID_EVENT_DROPPED_BEFORE");
+    }
+
+    String instrumentId() {
+      return envelope.instrumentId();
+    }
+
+    RuntimeBackend runtime() {
+      return envelope.runtime();
+    }
+
+    String sessionId() {
+      return envelope.sessionId();
+    }
+
+    String targetId() {
+      return envelope.targetId();
+    }
+
+    TargetKind targetKind() {
+      return envelope.targetKind();
+    }
+
+    long generation() {
+      return envelope.generation();
+    }
+
+    long sequence() {
+      return envelope.sequence();
+    }
+
+    EventPhase phase() {
+      return envelope.phase();
+    }
+
+    EventKind event() {
+      return envelope.event();
+    }
+
+    EventLocation location() {
+      return envelope.location();
+    }
+
+    Map<String, String> data() {
+      return envelope.data();
+    }
+  }
+
+  record EventBatch(List<DeliveredEvent> events, long droppedSinceDrain, long droppedTotal) {
     EventBatch {
       events = events == null ? List.of() : List.copyOf(events);
       if (droppedSinceDrain < 0 || droppedTotal < droppedSinceDrain) {

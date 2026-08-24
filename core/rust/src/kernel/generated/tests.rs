@@ -4,7 +4,7 @@ use crate::kernel::parse_forms;
 #[test]
 fn configures_defaults_exclusions_aliases_and_requires_without_sources() {
     let forms = parse_forms(
-        "(:config {:intrinsics {:exclude [bytes] :alias {string text}}}) \
+        "(:config {:rename {:exclude [bytes] :alias {string text}}}) \
              (:require [hara.lib.string :as s :refer [trim]])",
     )
     .unwrap();
@@ -30,7 +30,7 @@ fn rejects_standalone_intrinsics_clause() {
     let forms = parse_forms("(:intrinsics :all)").unwrap();
     assert!(GeneratedNamespaceConfig::configure(&forms)
         .unwrap_err()
-        .contains(":intrinsics is valid only inside ns :config"));
+        .contains(":intrinsics is not a namespace configuration option"));
 }
 
 #[test]
@@ -44,23 +44,23 @@ fn rejects_removed_builtins_config_option() {
 #[test]
 fn config_role_defaults_validates_and_is_retained() {
     assert_eq!(GeneratedNamespaceConfig::defaults().role(), "standard");
-    for role in ["standard", "internal", "facade"] {
+    for role in ["default", "internal", "facade"] {
         let config = GeneratedNamespaceConfig::configure(
             &parse_forms(&format!("(:config {{:role :{role}}})")).unwrap(),
         )
         .unwrap();
-        assert_eq!(config.role(), role);
+        assert_eq!(config.role(), if role == "default" { "standard" } else { role });
     }
     assert!(GeneratedNamespaceConfig::configure(
         &parse_forms("(:config {:role \"internal\"})").unwrap()
     )
     .unwrap_err()
-    .contains(":config :role expects :standard, :internal, or :facade"));
+    .contains(":config :role expects :default, :internal, or :facade"));
     assert!(GeneratedNamespaceConfig::configure(
         &parse_forms("(:config {:role :unsupported})").unwrap()
     )
     .unwrap_err()
-    .contains(":config :role expects :standard, :internal, or :facade"));
+    .contains(":config :role expects :default, :internal, or :facade"));
 }
 
 #[test]
@@ -138,21 +138,21 @@ fn config_override_omits_selected_foundation_vars() {
 }
 
 #[test]
-fn config_expose_selects_an_exact_foundation_surface() {
+fn config_only_selects_an_exact_foundation_surface() {
     let config = GeneratedNamespaceConfig::configure(
-        &parse_forms("(:config {:expose [map reduce]})").unwrap(),
+        &parse_forms("(:config {:only [map reduce]})").unwrap(),
     )
     .unwrap();
     let exposed = config.exposed_foundation().unwrap();
     assert!(exposed.contains("map"));
     assert!(exposed.contains("reduce"));
     assert!(GeneratedNamespaceConfig::configure(
-        &parse_forms("(:config {:override [map] :expose [reduce]})").unwrap()
+        &parse_forms("(:config {:override [map] :only [reduce]})").unwrap()
     )
     .unwrap_err()
     .contains("cannot be combined"));
     assert!(GeneratedNamespaceConfig::configure(
-        &parse_forms("(:config {:blank true :expose []})").unwrap()
+        &parse_forms("(:config {:blank true :only []})").unwrap()
     )
     .unwrap_err()
     .contains("cannot be combined"));
@@ -228,7 +228,7 @@ fn foundation_aliases_are_source_declared_not_runtime_defaults() {
     assert_eq!(config.global_alias(), None);
 
     let declared =
-        GeneratedNamespaceConfig::configure(&parse_forms("(:config {:global-alias str})").unwrap())
+        GeneratedNamespaceConfig::configure(&parse_forms("(:config {:set-global-alias str})").unwrap())
             .unwrap();
     assert_eq!(declared.global_alias(), Some("str"));
 
@@ -240,6 +240,23 @@ fn foundation_aliases_are_source_declared_not_runtime_defaults() {
     assert!(rebound
         .aliases()
         .contains(&("kernel".into(), "demo.kernel".into())));
+}
+
+#[test]
+fn set_global_records_qualified_vars_and_rejects_unqualified_vars() {
+    let config = GeneratedNamespaceConfig::configure(
+        &parse_forms("(:config {:set-global [demo.global/value IColl/start-string]})").unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        config.declared_global_imports(),
+        &["demo.global/value".to_owned(), "IColl/start-string".to_owned()]
+    );
+    assert!(GeneratedNamespaceConfig::configure(
+        &parse_forms("(:config {:set-global [value]})").unwrap()
+    )
+    .unwrap_err()
+    .contains(":config :set-global expects qualified Vars"));
 }
 
 #[test]

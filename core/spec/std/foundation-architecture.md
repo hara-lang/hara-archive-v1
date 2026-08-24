@@ -30,10 +30,12 @@ The five child namespaces provide separately aliased portable/native-backed libr
 | `std.foundation.pretty` | `pretty` | document and pretty rendering |
 
 These are source-owned global aliases. Each Foundation namespace declares its
-alias with `(:config {:global-alias alias})`; the Rust runtime records and
+alias with `(:config {:set-global-alias alias})`; the Rust runtime records and
 applies those declarations but does not seed `str`, `bytes`, `promise`, `co`,
 or `pretty` as native defaults. Explicit `:require` aliases remain available
-for local naming.
+for local naming. Use `:set-global` for qualified Vars imported by terminal
+name. `:intrinsics` remains reserved for native/runtime intrinsic symbols;
+Foundation library aliasing belongs under `:rename`.
 
 ## Native static objects
 
