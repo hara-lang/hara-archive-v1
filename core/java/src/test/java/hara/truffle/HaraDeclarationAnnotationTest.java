@@ -69,7 +69,7 @@ public class HaraDeclarationAnnotationTest {
 
     assertEquals("std.protocol.iassoc", processor.protocol.get("namespace"));
     assertEquals("IAssoc", processor.protocol.get("name"));
-    assertEquals("assoc", processor.method.get("name"));
+    assertEquals("assoc", processor.method.get("value"));
     assertEquals("3", processor.method.get("arity"));
     assertEquals("std.native", processor.nativeBinding.get("namespace"));
     assertEquals("Bytes", processor.nativeBinding.get("name"));
