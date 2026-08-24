@@ -2,12 +2,15 @@ package hara.lang.protocol;
 
 import hara.lang.base.Ex;
 import hara.lang.data.types.ILinearType;
+import hara.lang.declaration.HaraMethod;
+import hara.lang.declaration.HaraProtocolBinding;
 
 import java.util.Iterator;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
+@HaraProtocolBinding(namespace = "std.protocol.ifn", name = "IFn")
 public interface IFn<R, T1, T2> extends Function<Object, R> {
 
   @SuppressWarnings("rawtypes")
@@ -92,6 +95,7 @@ public interface IFn<R, T1, T2> extends Function<Object, R> {
     return getArg2().apply(a1, a2);
   }
 
+  @HaraMethod(value = "invoke", arity = -1, variadic = true)
   default R invoke(Object... vargs) {
     return getArgN().apply(vargs);
   }

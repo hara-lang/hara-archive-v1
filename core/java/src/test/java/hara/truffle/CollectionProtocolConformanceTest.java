@@ -72,7 +72,7 @@ public class CollectionProtocolConformanceTest {
   @Test
   public void lookupPreservesMissingAndPresentNullValues() {
     HaraProtocol lookup = new HaraProtocol("ILookup", java.util.Map.of("lookup", -1));
-    HaraJavaAdapters.installLookup(lookup);
+    HaraJavaAdapters.registerLookup(lookup);
     Map.Standard<String, String> map = Map.Standard.from(null, "present", null);
 
     assertEquals(null, lookup.invoke("lookup", map, new Object[] {"present"}));
@@ -82,7 +82,7 @@ public class CollectionProtocolConformanceTest {
   @Test
   public void countAndIterationCoverPersistentMutableAndOrderedShapes() {
     HaraProtocol count = new HaraProtocol("ICount", java.util.Map.of("count", 1));
-    HaraJavaAdapters.installCount(count);
+    HaraJavaAdapters.registerCount(count);
     HaraProtocol collection =
         new HaraProtocol(
             "IColl",
@@ -115,7 +115,7 @@ public class CollectionProtocolConformanceTest {
   @Test
   public void mapInvocationAndSetInvocationUseNotFoundArguments() {
     HaraProtocol ifn = new HaraProtocol("IFn", java.util.Map.of("invoke", -1));
-    HaraJavaAdapters.installIFn(ifn);
+    HaraJavaAdapters.registerIFn(ifn);
 
     Map.Standard<String, String> map = Map.Standard.from(null, "key", "value");
     assertEquals("value", ifn.invoke("invoke", map, new Object[] {"key"}));
@@ -129,9 +129,9 @@ public class CollectionProtocolConformanceTest {
   @Test
   public void persistentUpdatesDoNotMutateTheOriginalValue() {
     HaraProtocol assoc = new HaraProtocol("IAssoc", java.util.Map.of("assoc", 3));
-    HaraJavaAdapters.installAssoc(assoc);
+    HaraJavaAdapters.registerAssoc(assoc);
     HaraProtocol lookup = new HaraProtocol("ILookup", java.util.Map.of("lookup", -1));
-    HaraJavaAdapters.installLookup(lookup);
+    HaraJavaAdapters.registerLookup(lookup);
 
     Vector.Standard<String> original = Vector.Standard.from(null, "old");
     Object updated = assoc.invoke("assoc", original, new Object[] {0, "new"});
@@ -142,11 +142,11 @@ public class CollectionProtocolConformanceTest {
   @Test
   public void emptyAndConsRemainProtocolOperations() {
     HaraProtocol empty = new HaraProtocol("IEmpty", java.util.Map.of("empty", 1));
-    HaraJavaAdapters.installEmpty(empty);
+    HaraJavaAdapters.registerEmpty(empty);
     HaraProtocol cons = new HaraProtocol("ICons", java.util.Map.of("cons", 2));
-    HaraJavaAdapters.installCons(cons);
+    HaraJavaAdapters.registerCons(cons);
     HaraProtocol count = new HaraProtocol("ICount", java.util.Map.of("count", 1));
-    HaraJavaAdapters.installCount(count);
+    HaraJavaAdapters.registerCount(count);
 
     List.Standard<String> list = List.Standard.from(null, "tail");
     Object emptyList = empty.invoke("empty", list, new Object[0]);
@@ -159,17 +159,17 @@ public class CollectionProtocolConformanceTest {
   @Test
   public void updateAndNavigationProtocolsPreserveCollectionFamilies() {
     HaraProtocol lookup = new HaraProtocol("ILookup", java.util.Map.of("lookup", -1));
-    HaraJavaAdapters.installLookup(lookup);
+    HaraJavaAdapters.registerLookup(lookup);
     HaraProtocol assoc = new HaraProtocol("IAssoc", java.util.Map.of("assoc", 3));
-    HaraJavaAdapters.installAssoc(assoc);
+    HaraJavaAdapters.registerAssoc(assoc);
     HaraProtocol dissoc = new HaraProtocol("IDissoc", java.util.Map.of("dissoc", 2));
     HaraJavaAdapters.installDissoc(dissoc);
     HaraProtocol conj = new HaraProtocol("IConj", java.util.Map.of("conj", 2));
-    HaraJavaAdapters.installConj(conj);
+    HaraJavaAdapters.registerConj(conj);
     HaraProtocol cons = new HaraProtocol("ICons", java.util.Map.of("cons", 2));
-    HaraJavaAdapters.installCons(cons);
+    HaraJavaAdapters.registerCons(cons);
     HaraProtocol nth = new HaraProtocol("INth", java.util.Map.of("nth", 2));
-    HaraJavaAdapters.installNth(nth);
+    HaraJavaAdapters.registerNth(nth);
     HaraProtocol peekFirst =
         new HaraProtocol("IPeekFirst", java.util.Map.of("peek-first", 1));
     HaraJavaAdapters.installPeekFirst(peekFirst);
@@ -220,9 +220,9 @@ public class CollectionProtocolConformanceTest {
   @Test
   public void emptyPreservesEverySupportedCollectionFamily() {
     HaraProtocol empty = new HaraProtocol("IEmpty", java.util.Map.of("empty", 1));
-    HaraJavaAdapters.installEmpty(empty);
+    HaraJavaAdapters.registerEmpty(empty);
     HaraProtocol count = new HaraProtocol("ICount", java.util.Map.of("count", 1));
-    HaraJavaAdapters.installCount(count);
+    HaraJavaAdapters.registerCount(count);
 
     Object[] persistent = {
       Map.Standard.from(null, "a", 1),

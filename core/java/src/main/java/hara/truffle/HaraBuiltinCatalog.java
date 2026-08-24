@@ -1,5 +1,7 @@
 package hara.truffle;
 
+import hara.lang.declaration.HaraAvailability;
+import hara.lang.declaration.HaraNativeBinding;
 import java.util.Map;
 import java.util.Set;
 
@@ -9,6 +11,53 @@ import java.util.Set;
  * <p>The catalog is deliberately separate from {@link HaraContext}: these values describe the
  * language/native surface, but do not own context state or runtime behavior.
  */
+@HaraNativeBinding(namespace = "std.native", name = "Maths")
+@HaraNativeBinding(namespace = "std.native", name = "Num")
+@HaraNativeBinding(namespace = "std.native", name = "Bits")
+@HaraNativeBinding(
+    namespace = "std.native", name = "Kernel", availability = HaraAvailability.CAPABILITY_GATED,
+    capability = "native-runtime")
+@HaraNativeBinding(
+    namespace = "std.native", name = "Sandbox", availability = HaraAvailability.CAPABILITY_GATED,
+    capability = "native-runtime")
+@HaraNativeBinding(
+    namespace = "std.native", name = "Package", availability = HaraAvailability.CAPABILITY_GATED,
+    capability = "native-runtime")
+@HaraNativeBinding(namespace = "std.native", name = "String")
+@HaraNativeBinding(namespace = "std.native", name = "Bytes")
+@HaraNativeBinding(namespace = "std.native", name = "Crypto")
+@HaraNativeBinding(namespace = "std.native", name = "OS")
+@HaraNativeBinding(
+    namespace = "std.native", name = "Process", availability = HaraAvailability.CAPABILITY_GATED,
+    capability = "native-runtime")
+@HaraNativeBinding(
+    namespace = "std.native", name = "File", availability = HaraAvailability.CAPABILITY_GATED,
+    capability = "native-runtime")
+@HaraNativeBinding(
+    namespace = "std.native", name = "Socket", availability = HaraAvailability.CAPABILITY_GATED,
+    capability = "native-runtime")
+@HaraNativeBinding(namespace = "std.native", name = "Promise")
+@HaraNativeBinding(namespace = "std.native", name = "Coroutine")
+@HaraNativeBinding(namespace = "std.native", name = "Stream")
+@HaraNativeBinding(namespace = "std.native", name = "Arr")
+@HaraNativeBinding(namespace = "std.native", name = "Obj")
+@HaraNativeBinding(namespace = "std.native", name = "Runtime")
+@HaraNativeBinding(namespace = "std.native", name = "Printer")
+@HaraNativeBinding(namespace = "std.native", name = "Document")
+@HaraNativeBinding(namespace = "std.native", name = "Edn")
+@HaraNativeBinding(namespace = "std.native", name = "Json")
+@HaraNativeBinding(
+    namespace = "std.native", name = "Host", availability = HaraAvailability.CAPABILITY_GATED,
+    capability = "native-runtime")
+@HaraNativeBinding(namespace = "std.native", name = "Test")
+@HaraNativeBinding(namespace = "std.native", name = "RegExp")
+@HaraNativeBinding(namespace = "std.native", name = "UUID")
+@HaraNativeBinding(namespace = "std.native", name = "Result")
+@HaraNativeBinding(namespace = "std.native", name = "Schema")
+@HaraNativeBinding(namespace = "std.native", name = "Error")
+@HaraNativeBinding(namespace = "std.native", name = "Base")
+@HaraNativeBinding(namespace = "std.native", name = "Algo")
+@HaraNativeBinding(namespace = "std.native", name = "Iter")
 final class HaraBuiltinCatalog {
   /** Closed accounting inventory for forms; this is not a std.native type. */
   static final Map<String, java.util.List<String>> LANGUAGE_BUILTINS =
@@ -100,12 +149,12 @@ final class HaraBuiltinCatalog {
           "vals",
           "pairs");
 
-  static final Map<String, java.util.List<String>> NATIVE_TYPES =
+  static final Map<String, java.util.List<String>> NATIVE_METHODS =
       Map.ofEntries(
           Map.entry("Maths", java.util.List.of("abs", "acos", "acosh", "asin", "asinh", "atan", "atan2", "atanh", "ceil", "cos", "cosh", "exp", "floor", "pow", "sin", "sinh", "sqrt", "tan", "tanh")),
           Map.entry("Num", java.util.List.of("long", "double", "parse-long", "parse-double")),
           Map.entry("Bits", java.util.List.of("and", "or", "xor", "not", "shift-left", "shift-right")),
-          Map.entry("Kernel", java.util.List.of("session-create", "session-close", "session-list", "session-info", "session-eval", "session-namespace", "session-complete", "resource-register", "resource-remove", "resource-list", "filesystem-create", "filesystem-attach", "filesystem-detach", "filesystem-info", "filesystem-close", "capabilities")),
+          Map.entry("Kernel", java.util.List.of("session-create", "session-close", "session-list", "session-info", "session-eval", "session-namespace", "session-complete", "resource-register", "resource-remove", "resource-list", "filesystem-create", "filesystem-attach", "filesystem-detach", "filesystem-info", "filesystem-close", "capabilities", "package-build", "package-inspect", "package-install", "package-publish", "package-registry-verify", "tap-config-root", "tap-add", "tap-bootstrap", "tap-remove", "tap-list", "tap-mirror-add", "tap-initialize", "tap-verify", "snapshot-build", "snapshot-verify", "snapshot-inspect", "snapshot-diff")),
           Map.entry("Sandbox", java.util.List.of("open", "eval", "call", "cancel", "status", "close")),
           Map.entry("Package", java.util.List.of("catalog", "find", "ensure", "load", "unload", "state")),
           Map.entry("String", java.util.List.of("length", "blank?", "includes?", "starts-with?", "ends-with?", "char-at", "slice", "index-of", "last-index-of", "join", "split", "split-lines", "repeat", "replace", "replace-first", "trim", "trim-left", "trim-right", "upper", "lower", "capitalize", "decapitalize", "pad-left", "pad-right", "reverse", "encode-utf8", "decode-utf8", "to-fixed")),
@@ -190,13 +239,6 @@ final class HaraBuiltinCatalog {
                   "iter-cycle", "iter-partition-pair", "iter-partition-all",
                   "iter-partition", "iter-range", "iter-constantly",
                   "iter-repeatedly", "iter-iterate")));
-
-  static final Map<String, String> NATIVE_LIBRARY_SOURCES =
-      Map.ofEntries(
-          Map.entry("std.native.String", "std.native.String"),
-          Map.entry("std.native.Bytes", "std.native.Bytes"),
-          Map.entry("std.native.Promise", "std.native.Promise"),
-          Map.entry("std.native.Coroutine", "std.native.Coroutine"));
 
   private HaraBuiltinCatalog() {}
 }

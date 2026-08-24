@@ -1,0 +1,32 @@
+{
+  "schema": "hara.declaration-compatibility.v1",
+  "protocolNamespace": "std.protocol.<ascii-lowercase-name>",
+  "protocolCount": 70,
+  "portableProtocolCount": 55,
+  "capabilityProtocolCount": 15,
+  "declaredMethodCount": 125,
+  "nativeTypeCount": 33,
+  "protocols": [
+    "IApplicable", "IAssoc", "ICas", "IClose", "IComponent", "IConj", "ICons",
+    "IContext", "ICoroutine", "IStream", "IContextLifeCycle", "ICount", "IDeref",
+    "IDerefTimeout", "IDeps", "IDisplay", "IDissoc", "IEmpty", "IEncodable", "IEncode",
+    "IEncodeVisitor", "IEquality", "IExInfo", "IFind", "IFn", "IHash", "IHashCached",
+    "IIndexed", "IIndexedKV", "IInvokeIn", "IIter", "IIterator", "ILookup", "IMutable",
+    "INamespaced", "INth", "IOFn", "IObjType", "IPair", "IPeekFirst", "IPeekLast",
+    "IPersistent", "IPromise", "IPointer", "IPopFirst", "IPopLast", "IPushFirst",
+    "IPushLast", "IRealize", "IReduce", "IReset", "ISpace", "IToMutable", "IToPersistent",
+    "IWatch", "IStreamWrite", "IAbort", "IStreamPoll", "IStreamOffer", "IClosed", "IFlush",
+    "IStreamDuplex", "IWork", "IWorkExecutor", "IWorkStore", "IWorkRef", "IWorkHost",
+    "IWorkRun", "IMatch", "IStringLike"
+  ],
+  "nativeTypes": [
+    "Maths", "Num", "Bits", "Kernel", "Sandbox", "Package", "String", "Bytes", "Crypto",
+    "OS", "Process", "File", "Socket", "Promise", "Coroutine", "Stream", "Arr", "Obj",
+    "Runtime", "Printer", "Document", "Edn", "Json", "Host", "Test", "RegExp", "UUID",
+    "Result", "Schema", "Error", "Base", "Algo", "Iter"
+  ],
+  "authority": {
+    "protocols": "01-lang/001-language/draft/conformance/protocols.edn",
+    "nativeTypes": "01-lang/001-language/draft/conformance/native.edn"
+  }
+}

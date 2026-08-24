@@ -1,7 +1,6 @@
 package hara.truffle;
 
 import hara.lang.base.Reduced;
-import hara.lang.protocol.IDeps;
 import hara.lang.data.types.ISequentialLookupType;
 import hara.lang.data.types.ISequentialType;
 import hara.lang.data.types.ILinearType;
@@ -15,6 +14,7 @@ import hara.lang.data.TaggedLiteral;
 import hara.lang.data.Tuple;
 import hara.lang.protocol.*;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -25,168 +25,56 @@ import java.util.function.Consumer;
 public final class HaraJavaAdapters {
   private HaraJavaAdapters() {}
 
-  public static void install(HaraContext context) {
-    installIFn(context, context.ifnProtocol());
-    HaraProtocol find = context.defineProtocol("IFind", Map.of("find", 2));
-    installFind(find);
-    installLookup(
-        context.defineProtocol("ILookup", Map.of("lookup", -1), java.util.List.of(find)));
-    context.defineProtocol("IMatch", Map.of("match-value", 2));
-    installStringLike(
-        context.defineProtocol(
-            "IStringLike", Map.of("to-string", 1, "from-string", 2)));
-    installAssoc(context.defineProtocol("IAssoc", Map.of("assoc", 3)));
-    installCount(context.defineProtocol("ICount", Map.of("count", 1)));
-    installDeps(
-        context.defineProtocol(
-            "IDeps", Map.of("dep-get", 2, "dep-entries", 2, "dep-keys", 1)));
-    installConj(context.defineProtocol("IConj", Map.of("conj", 2)));
-    installEquality(context.defineProtocol("IEquality", Map.of("equality", 2)));
-    HaraProtocol hash = context.defineProtocol("IHash", Map.of("hash", 1));
-    installHash(hash);
-    HaraProtocol display = context.defineProtocol("IDisplay", Map.of("display", 1));
-    installDisplay(display);
-    installMetadata(
-        context.defineProtocol(
-            "IObjType", metadataMethods(), java.util.List.of(hash, display)));
-    HaraProtocol deref = context.defineProtocol("IDeref", Map.of("deref", 1));
-    installDeref(deref);
-    HaraProtocol derefTimeout =
-        context.defineProtocol("IDerefTimeout", Map.of("deref-timeout", 3));
-    installDerefTimeout(derefTimeout);
-    installNth(context.defineProtocol("INth", Map.of("nth", 2)));
-    installEmpty(context.defineProtocol("IEmpty", Map.of("empty", 1)));
-    installEncodable(context, context.defineProtocol("IEncodable", Map.of("encode-with", 2)));
-    context.defineProtocol("IEncode", Map.of("encode", 2));
-    context.defineProtocol(
-        "IEncodeVisitor",
-        Map.ofEntries(
-            Map.entry("visit-nil", 1),
-            Map.entry("visit-boolean", 2),
-            Map.entry("visit-number", 2),
-            Map.entry("visit-character", 2),
-            Map.entry("visit-string", 2),
-            Map.entry("visit-keyword", 2),
-            Map.entry("visit-symbol", 2),
-            Map.entry("visit-seq", 2),
-            Map.entry("visit-vector", 2),
-            Map.entry("visit-map", 2),
-            Map.entry("visit-set", 2),
-            Map.entry("visit-tagged", 3),
-            Map.entry("visit-unknown", 2)));
-    installCons(context.defineProtocol("ICons", Map.of("cons", 2)));
-    installDissoc(context.defineProtocol("IDissoc", Map.of("dissoc", 2)));
-    installIndexed(context.defineProtocol("IIndexed", Map.of("index-of", 2)));
-    installIndexedKV(
-        context.defineProtocol("IIndexedKV", Map.of("index-of-key", 2, "index-of-val", 2)));
-    installPeekFirst(context.defineProtocol("IPeekFirst", Map.of("peek-first", 1)));
-    installPeekLast(context.defineProtocol("IPeekLast", Map.of("peek-last", 1)));
-    installPopFirst(context.defineProtocol("IPopFirst", Map.of("pop-first", 1)));
-    installPopLast(context.defineProtocol("IPopLast", Map.of("pop-last", 1)));
-    installPushFirst(context.defineProtocol("IPushFirst", Map.of("push-first", 2)));
-    installPushLast(context.defineProtocol("IPushLast", Map.of("push-last", 2)));
-    installRealize(context.defineProtocol("IRealize", Map.of("realized?", 1, "realize", 1)));
-    installReset(context.defineProtocol("IReset", Map.of("reset", 2)));
-    HaraProtocol mutable = context.defineProtocol("IMutable", Map.of());
-    HaraProtocol persistent = context.defineProtocol("IPersistent", Map.of());
-    installConversion(
-        context.defineProtocol(
-            "IToMutable", Map.of("to-mutable", 1), java.util.List.of(persistent)),
-        context.defineProtocol(
-            "IToPersistent", Map.of("to-persistent", 1), java.util.List.of(mutable)));
-    installWatch(
-        context.defineProtocol(
-            "IWatch", Map.of("watch-add", 3, "watch-remove", 2, "watch-list", 1)));
-    installNamespaced(context.defineProtocol("INamespaced", Map.of("name", 1, "namespace", 1)));
-    installContext(context.defineProtocol("IContext", Map.of("call", -1)));
-    installApplicable(
-        context.defineProtocol(
-            "IApplicable",
-            Map.of("apply-in", 3, "apply-default", 1, "transform-in", 3, "transform-out", 4)));
-    installPointer(
-        context.defineProtocol("IPointer", Map.of("ptr-context", 1)));
-    installSpace(
-        context.defineProtocol(
-            "ISpace",
-            Map.of(
-                "context-set", 4,
-                "context-unset", 2,
-                "context-list", 1,
-                "context-get", 2,
-                "rt-active", 1,
-                "rt-get", 2,
-                "rt-start", 2,
-                "rt-started?", 2,
-                "rt-stopped?", 2,
-                "rt-stop", 2)));
-    installInvokeIn(context.defineProtocol("IInvokeIn", Map.of("invoke-in", -1)));
-    installExceptionInfo(context.defineProtocol("IExInfo", Map.of("data", 1)));
-    installPair(context.defineProtocol("IPair", Map.of("key", 1, "value", 1)));
-    installComponent(context.defineProtocol("IComponent", componentMethods()));
-    installContextLifeCycle(
-        context.defineProtocol(
-            "IContextLifeCycle",
-            Map.of(
-                "has-module?", 2,
-                "setup-module", 2,
-                "teardown-module", 2,
-                "has-pointer?", 2,
-                "setup-pointer", 2,
-                "teardown-pointer", 2)));
-    installHashCached(
-        context.defineProtocol(
-            "IHashCached",
-            Map.of("hash-current", 1, "hash-put", 2),
-            java.util.List.of(hash)));
-    context.defineProtocol("IOFn", Map.of(), java.util.List.of(context.ifnProtocol()));
-    HaraProtocol iter = context.defineProtocol("IIter", Map.of("iter", 1));
-    installIter(iter);
-    installIterator(
-        context.defineProtocol(
-            "IIterator",
-            Map.of("iter-next?", 1, "iter-next", 1),
-            java.util.List.of(iter)));
-    HaraProtocol close = context.defineProtocol("IClose", Map.of("close", 1));
-    installClose(close);
-    installCas(context.defineProtocol("ICas", Map.of("cas", 3)));
-    installReduce(context, context.defineProtocol("IReduce", Map.of("reduce", -1)));
-    installPromise(
-        context.defineProtocol(
-            "IPromise",
-            Map.of(
-                "state", 1,
-                "value", 1,
-                "then", 2,
-                "catch", 2,
-                "finally", 2,
-                "cancel", 1),
-            java.util.List.of(deref, derefTimeout)));
-    installCoroutine(
-        context.defineProtocol(
-            "ICoroutine", Map.of("status", 1, "resume", -1), java.util.List.of(close)));
-    HaraProtocol stream = context.defineProtocol("IStream", Map.of("next", 1), java.util.List.of(close));
-    installStream(stream);
-    HaraProtocol streamWrite = context.defineProtocol("IStreamWrite", Map.of("write", 2));
-    streamWrite.extend(IStreamWrite.class, "write", (receiver, arguments) -> ((IStreamWrite) receiver).write(arguments[0]));
-    HaraProtocol abort = context.defineProtocol("IAbort", Map.of("abort", 2));
-    abort.extend(IAbort.class, "abort", (receiver, arguments) -> ((IAbort) receiver).abort(arguments[0]));
-    HaraProtocol streamPoll = context.defineProtocol("IStreamPoll", Map.of("poll", 1));
-    streamPoll.extend(IStreamPoll.class, "poll", (receiver, arguments) -> ((IStreamPoll) receiver).poll());
-    HaraProtocol streamOffer = context.defineProtocol("IStreamOffer", Map.of("offer", 2));
-    streamOffer.extend(IStreamOffer.class, "offer", (receiver, arguments) -> ((IStreamOffer) receiver).offer(arguments[0]));
-    HaraProtocol closed = context.defineProtocol("IClosed", Map.of("closed?", 1));
-    closed.extend(IClosed.class, "closed?", (receiver, arguments) -> ((IClosed) receiver).closed());
-    HaraProtocol flush = context.defineProtocol("IFlush", Map.of("flush", 1));
-    flush.extend(IFlush.class, "flush", (receiver, arguments) -> ((IFlush) receiver).flush());
-    context.defineProtocol("IStreamDuplex", Map.of(), java.util.List.of(stream, streamWrite, abort));
+  private interface ProtocolInstaller {
+    void register(HaraContext context, HaraProtocol protocol);
   }
 
-  public static void installIFn(HaraProtocol protocol) {
+  private static final Map<String, ProtocolInstaller> SEMANTIC_ADAPTERS = semanticAdapters();
+
+  static void install(HaraContext context, HaraProtocolDeclarations.Registry registry) {
+    HaraProtocolInterfaceAdapters.install(registry);
+    for (String name : SEMANTIC_ADAPTERS.keySet()) {
+      if (!registry.protocols().containsKey(name)) {
+        throw new HaraException("Missing injected protocol for semantic adapter: " + name);
+      }
+    }
+    for (Map.Entry<String, HaraProtocol> protocol : registry.protocols().entrySet()) {
+      ProtocolInstaller installer = SEMANTIC_ADAPTERS.get(protocol.getKey());
+      if (installer != null) installer.register(context, protocol.getValue());
+    }
+  }
+
+  private static Map<String, ProtocolInstaller> semanticAdapters() {
+    Map<String, ProtocolInstaller> adapters = new LinkedHashMap<>();
+    adapters.put("IFn", HaraJavaAdapters::registerIFn);
+    adapters.put("IStringLike", (context, protocol) -> registerStringLike(protocol));
+    adapters.put("ILookup", (context, protocol) -> registerLookup(protocol));
+    adapters.put("IAssoc", (context, protocol) -> registerAssoc(protocol));
+    adapters.put("ICount", (context, protocol) -> registerCount(protocol));
+    adapters.put("IConj", (context, protocol) -> registerConj(protocol));
+    adapters.put("IFind", (context, protocol) -> registerFind(protocol));
+    adapters.put("IEquality", (context, protocol) -> registerEquality(protocol));
+    adapters.put("IHash", (context, protocol) -> registerHash(protocol));
+    adapters.put("IDerefTimeout", (context, protocol) -> registerDerefTimeout(protocol));
+    adapters.put("INth", (context, protocol) -> registerNth(protocol));
+    adapters.put("IEmpty", (context, protocol) -> registerEmpty(protocol));
+    adapters.put("IEncodable", HaraJavaAdapters::registerEncodable);
+    adapters.put("ICons", (context, protocol) -> registerCons(protocol));
+    adapters.put("IIter", (context, protocol) -> registerIter(protocol));
+    adapters.put("IIterator", (context, protocol) -> registerIterator(protocol));
+    adapters.put("IClose", (context, protocol) -> registerClose(protocol));
+    adapters.put("ICas", (context, protocol) -> registerCas(protocol));
+    adapters.put("IReduce", HaraJavaAdapters::registerReduce);
+    adapters.put("IWatch", (context, protocol) -> registerWatch(protocol));
+    return Collections.unmodifiableMap(adapters);
+  }
+
+  public static void registerIFn(HaraProtocol protocol) {
     protocol.extend(IFn.class, "invoke", HaraJavaAdapters::invokeFunction);
   }
 
-  public static void installIFn(HaraContext context, HaraProtocol protocol) {
-    installIFn(protocol);
+  public static void registerIFn(HaraContext context, HaraProtocol protocol) {
+    registerIFn(protocol);
     HaraProtocolInvoker callable =
         (receiver, arguments) ->
             context.invokeCallable(
@@ -203,7 +91,7 @@ public final class HaraJavaAdapters {
     protocol.extend(HbcMachine.HbcNativeCallable.class, "invoke", callable);
   }
 
-  public static void installStringLike(HaraProtocol protocol) {
+  public static void registerStringLike(HaraProtocol protocol) {
     protocol.extend(String.class, "to-string", (receiver, arguments) -> receiver);
     protocol.extend(
         String.class, "from-string", (receiver, arguments) -> String.valueOf(arguments[0]));
@@ -334,7 +222,7 @@ public final class HaraJavaAdapters {
     return unwrapped == HaraNull.SINGLETON ? null : unwrapped;
   }
 
-  public static void installLookup(HaraProtocol protocol) {
+  public static void registerLookup(HaraProtocol protocol) {
     protocol.extendIntrinsic(
         ILookup.class,
         "lookup",
@@ -366,7 +254,7 @@ public final class HaraJavaAdapters {
         });
   }
 
-  public static void installAssoc(HaraProtocol protocol) {
+  public static void registerAssoc(HaraProtocol protocol) {
     protocol.extendIntrinsic(
         IAssoc.class,
         "assoc",
@@ -377,7 +265,7 @@ public final class HaraJavaAdapters {
     protocol.extendIntrinsic(Tuple.Tup1.class, "assoc", HaraJavaAdapters::assocTuple);
   }
 
-  public static void installCount(HaraProtocol protocol) {
+  public static void registerCount(HaraProtocol protocol) {
     protocol.extend(ICount.class, "count", (receiver, arguments) -> ((ICount) receiver).count());
     protocol.extend(
         String.class,
@@ -390,36 +278,13 @@ public final class HaraJavaAdapters {
     protocol.extendNil("count", (receiver, arguments) -> 0L);
   }
 
-  @SuppressWarnings({"rawtypes", "unchecked"})
-  public static void installDeps(HaraProtocol protocol) {
-    protocol.extend(
-        IDeps.class,
-        "dep-get",
-        (receiver, arguments) ->
-            ((IDeps) receiver)
-                .depGet(receiver instanceof IContext ? (IContext) receiver : null, arguments[0]));
-    protocol.extend(
-        IDeps.class,
-        "dep-entries",
-        (receiver, arguments) ->
-            ((IDeps) receiver)
-                .depEntries(
-                    receiver instanceof IContext ? (IContext) receiver : null, arguments[0]));
-    protocol.extend(
-        IDeps.class,
-        "dep-keys",
-        (receiver, arguments) ->
-            ((IDeps) receiver)
-                .depKeys(receiver instanceof IContext ? (IContext) receiver : null));
-  }
-
-  public static void installConj(HaraProtocol protocol) {
+  public static void registerConj(HaraProtocol protocol) {
     protocol.extend(
         IConj.class, "conj", (receiver, arguments) -> conjValue((IConj<?>) receiver, arguments[0]));
     protocol.extendNil("conj", (receiver, arguments) -> List.Standard.from(null, arguments[0]));
   }
 
-  public static void installFind(HaraProtocol protocol) {
+  public static void registerFind(HaraProtocol protocol) {
     protocol.extend(
         IFind.class,
         "find",
@@ -428,7 +293,7 @@ public final class HaraJavaAdapters {
     protocol.extendIntrinsic(Tuple.Tup1.class, "find", HaraJavaAdapters::findTuple);
   }
 
-  public static void installEquality(HaraProtocol protocol) {
+  public static void registerEquality(HaraProtocol protocol) {
     protocol.extend(
         IEquality.class,
         "equality",
@@ -442,7 +307,7 @@ public final class HaraJavaAdapters {
                 && Arrays.equals((byte[]) receiver, (byte[]) arguments[0]));
   }
 
-  public static void installHash(HaraProtocol protocol) {
+  public static void registerHash(HaraProtocol protocol) {
     protocol.extend(IHash.class, "hash", (receiver, arguments) -> ((IHash) receiver).hashGet());
     protocol.extend(
         byte[].class, "hash", (receiver, arguments) -> (long) Arrays.hashCode((byte[]) receiver));
@@ -461,7 +326,7 @@ public final class HaraJavaAdapters {
     protocol.extend(IDeref.class, "deref", (receiver, arguments) -> ((IDeref<?>) receiver).deref());
   }
 
-  public static void installDerefTimeout(HaraProtocol protocol) {
+  public static void registerDerefTimeout(HaraProtocol protocol) {
     protocol.extend(
         IDerefTimeout.class,
         "deref-timeout",
@@ -469,7 +334,7 @@ public final class HaraJavaAdapters {
             derefTimeoutValue((IDerefTimeout<?>) receiver, arguments[0], arguments[1]));
   }
 
-  public static void installNth(HaraProtocol protocol) {
+  public static void registerNth(HaraProtocol protocol) {
     protocol.extendIntrinsic(
         INth.class,
         "nth",
@@ -509,7 +374,7 @@ public final class HaraJavaAdapters {
     protocol.extend(Tuple.Tup1.class, "nth", HaraJavaAdapters::nthTuple);
   }
 
-  public static void installEmpty(HaraProtocol protocol) {
+  public static void registerEmpty(HaraProtocol protocol) {
     protocol.extend(IEmpty.class, "empty", (receiver, arguments) -> ((IEmpty) receiver).empty());
     protocol.extendNil("empty", (receiver, arguments) -> null);
   }
@@ -519,7 +384,7 @@ public final class HaraJavaAdapters {
         IDisplay.class, "display", (receiver, arguments) -> ((IDisplay) receiver).display());
   }
 
-  public static void installEncodable(HaraContext context, HaraProtocol protocol) {
+  public static void registerEncodable(HaraContext context, HaraProtocol protocol) {
     protocol.extendNil(
         "encode-with",
         (receiver, arguments) ->
@@ -571,7 +436,7 @@ public final class HaraJavaAdapters {
         IColl.class, "iterator", (receiver, arguments) -> ((IColl<?>) receiver).iterator());
   }
 
-  public static void installCons(HaraProtocol protocol) {
+  public static void registerCons(HaraProtocol protocol) {
     protocol.extend(
         hara.lang.data.Seq.class,
         "cons",
@@ -731,7 +596,7 @@ public final class HaraJavaAdapters {
         });
   }
 
-  public static void installIter(HaraProtocol protocol) {
+  public static void registerIter(HaraProtocol protocol) {
     protocol.extend(
         IIter.class, "iter", (receiver, arguments) -> ((IIter<?>) receiver).iter());
     protocol.extend(
@@ -762,7 +627,7 @@ public final class HaraJavaAdapters {
     protocol.extend(type, "iter", (receiver, arguments) -> hara.lang.base.Iter.iter(receiver));
   }
 
-  public static void installIterator(HaraProtocol protocol) {
+  public static void registerIterator(HaraProtocol protocol) {
     protocol.extend(
         Iterator.class,
         "iter-next?",
@@ -779,7 +644,7 @@ public final class HaraJavaAdapters {
         });
   }
 
-  public static void installClose(HaraProtocol protocol) {
+  public static void registerClose(HaraProtocol protocol) {
     protocol.extend(
         Iterator.class,
         "close",
@@ -800,7 +665,7 @@ public final class HaraJavaAdapters {
         });
   }
 
-  public static void installCas(HaraProtocol protocol) {
+  public static void registerCas(HaraProtocol protocol) {
     protocol.extend(
         ICas.class,
         "cas",
@@ -817,7 +682,7 @@ public final class HaraJavaAdapters {
         });
   }
 
-  public static void installReduce(HaraContext context, HaraProtocol protocol) {
+  public static void registerReduce(HaraContext context, HaraProtocol protocol) {
     protocol.extend(
         IReduce.class,
         "reduce",
@@ -943,7 +808,7 @@ public final class HaraJavaAdapters {
         (receiver, arguments) -> ((IToPersistent) receiver).toPersistent());
   }
 
-  public static void installWatch(HaraProtocol protocol) {
+  public static void registerWatch(HaraProtocol protocol) {
     protocol.extend(
         IWatch.class,
         "watch-add",
@@ -1028,13 +893,6 @@ public final class HaraJavaAdapters {
         IComponent.class, "remote?", (receiver, arguments) -> ((IComponent) receiver).isRemote());
   }
 
-  private static Map<String, Integer> metadataMethods() {
-    Map<String, Integer> methods = new LinkedHashMap<>();
-    methods.put("meta", 1);
-    methods.put("with-meta", 2);
-    return methods;
-  }
-
   private static Map<String, Integer> navigationMethods() {
     Map<String, Integer> methods = new LinkedHashMap<>();
     methods.put("peek-first", 1);
@@ -1043,19 +901,6 @@ public final class HaraJavaAdapters {
     methods.put("pop-last", 1);
     methods.put("push-first", 2);
     methods.put("push-last", 2);
-    return methods;
-  }
-
-  private static Map<String, Integer> componentMethods() {
-    Map<String, Integer> methods = new LinkedHashMap<>();
-    methods.put("props", 1);
-    methods.put("status", 1);
-    methods.put("started?", 1);
-    methods.put("stopped?", 1);
-    methods.put("start", 1);
-    methods.put("stop", 1);
-    methods.put("kill", 1);
-    methods.put("remote?", 1);
     return methods;
   }
 

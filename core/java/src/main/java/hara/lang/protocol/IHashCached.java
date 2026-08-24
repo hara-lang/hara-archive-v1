@@ -1,7 +1,13 @@
 package hara.lang.protocol;
 
+import hara.lang.declaration.HaraMethod;
+import hara.lang.declaration.HaraProtocolBinding;
+
+@HaraProtocolBinding(
+    namespace = "std.protocol.ihashcached", name = "IHashCached", parents = {"IHash"})
 public interface IHashCached extends IHash {
 
+  @HaraMethod(value = "hash-current", arity = 1)
   long hashCurrent();
 
   @Override
@@ -19,5 +25,6 @@ public interface IHashCached extends IHash {
     return (hashType() == t) ? hashGet() : hashCalc(t);
   }
 
+  @HaraMethod(value = "hash-put", arity = 2)
   void hashPut(long hash);
 }

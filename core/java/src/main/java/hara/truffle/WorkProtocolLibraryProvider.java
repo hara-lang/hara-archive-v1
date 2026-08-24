@@ -7,8 +7,6 @@ import hara.lang.protocol.IWorkHost;
 import hara.lang.protocol.IWorkRef;
 import hara.lang.protocol.IWorkRun;
 import hara.lang.protocol.IWorkStore;
-import java.util.List;
-import java.util.Map;
 
 /** Installs the native work protocol identities and current-run helpers. */
 public final class WorkProtocolLibraryProvider implements HaraLibraryProvider {
@@ -29,32 +27,12 @@ public final class WorkProtocolLibraryProvider implements HaraLibraryProvider {
 
   @Override
   public void install(HaraContext context) {
-    HaraProtocol component = requireProtocol(context, "IComponent");
-    HaraProtocol closed = requireProtocol(context, "IClosed");
-
-    installWork(context.defineProtocol("IWork", Map.of("work-spec", 1)));
-    installWorkExecutor(
-        context.defineProtocol("IWorkExecutor", Map.of("work-execute", 2)));
-    installWorkStore(
-        context.defineProtocol(
-            "IWorkStore", Map.of("work-query", 2, "work-transact", 2)));
-    HaraProtocol workRef = context.defineProtocol("IWorkRef", Map.of("work-id", 1));
-    installWorkRef(workRef);
-    installWorkHost(
-        context.defineProtocol(
-            "IWorkHost",
-            Map.of("work-submit", 4, "work-resolve", 2),
-            List.of(component)));
-    installWorkRun(
-        context.defineProtocol(
-            "IWorkRun",
-            Map.of(
-                "work-status", 1,
-                "work-result", 1,
-                "work-events", 2,
-                "work-cancel", 2),
-            List.of(workRef, closed)));
-
+    requireProtocol(context, "IWork");
+    requireProtocol(context, "IWorkExecutor");
+    requireProtocol(context, "IWorkStore");
+    requireProtocol(context, "IWorkRef");
+    requireProtocol(context, "IWorkHost");
+    requireProtocol(context, "IWorkRun");
     context.defineLibraryValue(namespace(), "default-host", HaraWorkHost.instance(), null);
     context.defineLibraryFunction(
         namespace(),
@@ -203,11 +181,11 @@ public final class WorkProtocolLibraryProvider implements HaraLibraryProvider {
     }
   }
 
-  private static HaraProtocol requireProtocol(HaraContext context, String name) {
+  private static void requireProtocol(HaraContext context, String name) {
     HaraVar variable = context.resolve(Symbol.create("std.foundation", name));
-    if (variable == null || !(variable.get() instanceof HaraProtocol protocol)) {
-      throw new HaraException("Native work protocol parent is unavailable: " + name);
+    if (variable == null || !(variable.get() instanceof HaraProtocol)) {
+      throw new HaraException("Native work protocol is unavailable: " + name);
     }
-    return protocol;
   }
+
 }

@@ -121,7 +121,7 @@ public final class HaraContext {
   private final Map<String, Map<String, BuiltinExport>> builtinCatalogs = new ConcurrentHashMap<>();
   private boolean collectingBuiltins;
   private String collectingBuiltinNamespace;
-  private final HaraProtocol ifnProtocol;
+  private HaraProtocol ifnProtocol;
   private final AtomicLong gensymCounter = new AtomicLong();
   HaraContext(TruffleLanguage.Env environment) {
     this.environment = environment;
@@ -156,15 +156,15 @@ public final class HaraContext {
     }
 
     currentNamespace = namespace(INTRINSIC_NAMESPACE);
-    Map<String, Integer> ifnMethods = new LinkedHashMap<>();
-    ifnMethods.put("invoke", -1);
-    ifnProtocol = defineProtocol("IFn", ifnMethods, HaraVar.Origin.RUNTIME_PRIMITIVE);
     withDefinitionOrigin(
         HaraVar.Origin.RUNTIME_PRIMITIVE,
         () -> {
           installNativeTypeDescriptors();
           installNativeResultBuiltins();
-          HaraJavaAdapters.install(this);
+          HaraProtocolDeclarations.Registry registry = HaraProtocolDeclarations.install(this);
+          ifnProtocol = registry.protocols().get("IFn");
+          if (ifnProtocol == null) throw new HaraException("Missing injected IFn protocol");
+          HaraJavaAdapters.install(this, registry);
           installNativeStreamBuiltins();
           collectBuiltins(
               FOUNDATION_NAMESPACE,
@@ -386,27 +386,29 @@ public final class HaraContext {
     namespace("std.native");
     HaraNamespace intrinsic = namespace(INTRINSIC_NAMESPACE);
     HaraNamespace foundation = namespace(FOUNDATION_NAMESPACE);
-    HaraBuiltinCatalog.NATIVE_TYPES.forEach(
-        (name, methods) -> {
-          if (sandboxRestricted && sandboxForbiddenNamespace("std.native." + name)) return;
-          String canonicalName = "std.native." + name;
-          HaraVar descriptor =
-              intrinsic.define(canonicalName, new HaraNativeType(name, methods));
-          intrinsic.refer(name, descriptor);
-          foundation.refer(name, descriptor);
-        });
+    for (hara.lang.declaration.HaraNativeBinding binding : HaraNativeDeclarations.bindings()) {
+      String name = binding.name();
+      if (sandboxRestricted && sandboxForbiddenNamespace(HaraNativeDeclarations.namespace(name))) {
+        continue;
+      }
+      String canonicalName = HaraNativeDeclarations.namespace(name);
+      HaraVar descriptor =
+          intrinsic.define(canonicalName, new HaraNativeType(name, HaraNativeDeclarations.methods(name)));
+      intrinsic.refer(name, descriptor);
+      foundation.refer(name, descriptor);
+    }
   }
 
   private void installNativeExports(String sourceNamespace) {
     Map<String, BuiltinExport> exports = builtinCatalogs.getOrDefault(sourceNamespace, Map.of());
     if (exports.isEmpty()) return;
     if (FOUNDATION_NAMESPACE.equals(sourceNamespace)) {
-      installNativeExportGroup("Maths", exports, HaraBuiltinCatalog.NATIVE_TYPES.get("Maths"), Map.of());
-      installNativeExportGroup("Num", exports, HaraBuiltinCatalog.NATIVE_TYPES.get("Num"), Map.of());
+      installNativeExportGroup("Maths", exports, HaraNativeDeclarations.methods("Maths"), Map.of());
+      installNativeExportGroup("Num", exports, HaraNativeDeclarations.methods("Num"), Map.of());
       installNativeExportGroup(
           "Bits",
           exports,
-          HaraBuiltinCatalog.NATIVE_TYPES.get("Bits"),
+          HaraNativeDeclarations.methods("Bits"),
           Map.of(
               "and", "bit-and",
               "or", "bit-or",
@@ -414,7 +416,7 @@ public final class HaraContext {
               "not", "bit-not",
               "shift-left", "bit-shift-left",
               "shift-right", "bit-shift-right"));
-      installNativeExportGroup("Crypto", exports, HaraBuiltinCatalog.NATIVE_TYPES.get("Crypto"), Map.of());
+      installNativeExportGroup("Crypto", exports, HaraNativeDeclarations.methods("Crypto"), Map.of());
       installNativeExportGroup(
           "Arr", exports, java.util.List.of("new", "instance?"),
           Map.of("new", "array", "instance?", "array?"));
@@ -427,11 +429,11 @@ public final class HaraContext {
           java.util.List.of("load-string", "macroexpand-1", "gensym"),
           Map.of());
       installNativeExportGroup(
-          "Printer", exports, HaraBuiltinCatalog.NATIVE_TYPES.get("Printer"), Map.of());
+          "Printer", exports, HaraNativeDeclarations.methods("Printer"), Map.of());
       installNativeExportGroup(
           "RegExp",
           exports,
-          HaraBuiltinCatalog.NATIVE_TYPES.get("RegExp"),
+          HaraNativeDeclarations.methods("RegExp"),
           Map.of(
               "instance?", "regexp?",
               "compile", "regexp",
@@ -441,11 +443,11 @@ public final class HaraContext {
               "replace", "re-replace",
               "split", "re-split"));
       installNativeExportGroup(
-          "UUID", exports, HaraBuiltinCatalog.NATIVE_TYPES.get("UUID"), Map.of("instance?", "uuid?"));
+          "UUID", exports, HaraNativeDeclarations.methods("UUID"), Map.of("instance?", "uuid?"));
       installNativeExportGroup(
           "Error",
           exports,
-          HaraBuiltinCatalog.NATIVE_TYPES.get("Error"),
+          HaraNativeDeclarations.methods("Error"),
           Map.of(
               "new", "ex-info",
               "message", "ex-message"));
@@ -455,8 +457,8 @@ public final class HaraContext {
               new UnaryBuiltin(
                   "std.native.Error/class", value -> portableType(value).getName()));
       installNativeExportGroup(
-          "Base", exports, HaraBuiltinCatalog.NATIVE_TYPES.get("Base"), Map.of("tuple", "tup"));
-      installNativeExportGroup("Iter", exports, HaraBuiltinCatalog.NATIVE_TYPES.get("Iter"), Map.of());
+          "Base", exports, HaraNativeDeclarations.methods("Base"), Map.of("tuple", "tup"));
+      installNativeExportGroup("Iter", exports, HaraNativeDeclarations.methods("Iter"), Map.of());
       return;
     }
     String type =
@@ -470,7 +472,7 @@ public final class HaraContext {
     if (type != null) {
       Map<String, String> sourceNames =
           "Coroutine".equals(type) ? Map.of("instance?", "coroutine?") : Map.of();
-      installNativeExportGroup(type, exports, HaraBuiltinCatalog.NATIVE_TYPES.get(type), sourceNames);
+      installNativeExportGroup(type, exports, HaraNativeDeclarations.methods(type), sourceNames);
     }
   }
 
@@ -896,23 +898,25 @@ public final class HaraContext {
   private void configureNativeAliases(HaraNamespace target) {
     Map<String, String> namespaceAliases =
         aliases.computeIfAbsent(target.name(), ignored -> new ConcurrentHashMap<>());
-    HaraBuiltinCatalog.NATIVE_TYPES.keySet().forEach(
-        name -> {
-          if (!sandboxRestricted || !sandboxForbiddenNamespace("std.native." + name)) {
-            putAlias(namespaceAliases, name, "std.native." + name);
-          }
-        });
+    for (hara.lang.declaration.HaraNativeBinding binding : HaraNativeDeclarations.bindings()) {
+      String name = binding.name();
+      String namespace = HaraNativeDeclarations.namespace(name);
+      if (!sandboxRestricted || !sandboxForbiddenNamespace(namespace)) {
+        putAlias(namespaceAliases, name, namespace);
+      }
+    }
   }
 
   private void referNativeTypeDescriptors(HaraNamespace target) {
     HaraNamespace intrinsic = namespace(INTRINSIC_NAMESPACE);
-    for (String name : HaraBuiltinCatalog.NATIVE_TYPES.keySet()) {
-      if (sandboxRestricted && sandboxForbiddenNamespace("std.native." + name)) continue;
+    for (hara.lang.declaration.HaraNativeBinding binding : HaraNativeDeclarations.bindings()) {
+      String name = binding.name();
+      String namespace = HaraNativeDeclarations.namespace(name);
+      if (sandboxRestricted && sandboxForbiddenNamespace(namespace)) continue;
       HaraVar descriptor = intrinsic.lookup(name);
       if (descriptor == null) continue;
       if (target.lookup(name) == null) target.refer(name, descriptor);
-      String canonicalName = "std.native." + name;
-      if (target.lookup(canonicalName) == null) target.refer(canonicalName, descriptor);
+      if (target.lookup(namespace) == null) target.refer(namespace, descriptor);
     }
   }
 
@@ -1554,8 +1558,7 @@ public final class HaraContext {
           aliases.getOrDefault(currentNamespace.name(), Map.of());
       boolean alias = currentAliases.containsKey(namespaceName);
       namespaceName = currentAliases.getOrDefault(namespaceName, namespaceName);
-      String nativeSource = HaraBuiltinCatalog.NATIVE_LIBRARY_SOURCES.get(namespaceName);
-      if (nativeSource != null) libraryLoader.ensure(this, nativeSource);
+      libraryLoader.ensure(this, namespaceName);
       if (alias) {
         HaraNamespace required = requiredNamespace(namespaceName);
         if (required == null) return null;
@@ -1796,12 +1799,10 @@ public final class HaraContext {
     return ifnProtocol;
   }
 
-  HaraProtocol defineProtocol(String name, Map<String, Integer> methodArities) {
-    return defineProtocol(name, methodArities, definitionOrigin);
-  }
-
-  HaraProtocol defineProtocol(
+  HaraProtocol defineInjectedProtocol(
       String name, Map<String, Integer> methodArities, java.util.List<HaraProtocol> parents) {
+    HaraProtocol existing = protocol(name);
+    if (existing != null) return existing;
     String canonicalNamespace = builtinProtocolNamespace(name);
     HaraProtocol protocol =
         new HaraProtocol(canonicalNamespace, methodArities, parents);
@@ -1811,13 +1812,9 @@ public final class HaraContext {
     return protocol;
   }
 
-  private HaraProtocol defineProtocol(
-      String name, Map<String, Integer> methodArities, HaraVar.Origin origin) {
-    String canonicalNamespace = builtinProtocolNamespace(name);
-    HaraProtocol protocol = new HaraProtocol(canonicalNamespace, methodArities);
-    namespace(canonicalNamespace).define(name, protocol, null, origin);
-    namespace(FOUNDATION_NAMESPACE).define(name, protocol, null, origin);
-    defineBuiltinProtocolMethods(canonicalNamespace, protocol, origin);
+  HaraProtocol protocol(String name) {
+    HaraVar variable = namespace(builtinProtocolNamespace(name)).lookup(name);
+    if (variable == null || !(variable.get() instanceof HaraProtocol protocol)) return null;
     return protocol;
   }
 
@@ -4029,7 +4026,7 @@ public final class HaraContext {
   private void installNativeLibraries() {
     NativeCrypto.install(this, "std.native.Crypto");
     HaraNamespace document = namespace("std.native.Document");
-    for (String method : HaraBuiltinCatalog.NATIVE_TYPES.get("Document")) {
+    for (String method : HaraNativeDeclarations.methods("Document")) {
       document.define(
           method,
           new VariadicBuiltin(
@@ -4165,7 +4162,7 @@ public final class HaraContext {
               return hara.lang.data.Vector.Standard.from(null, (Object[]) parts);
             }));
     HaraNamespace kernel = namespace("std.native.Kernel");
-    for (String method : HaraBuiltinCatalog.NATIVE_TYPES.get("Kernel")) {
+    for (String method : HaraNativeDeclarations.methods("Kernel")) {
       kernel.define(
           method,
           new VariadicBuiltin(
@@ -4245,7 +4242,7 @@ public final class HaraContext {
   private void installNativeSandboxBuiltins() {
     HaraNamespace sandbox = namespace("std.native.Sandbox");
     if (sessionKernel == null) {
-      for (String method : HaraBuiltinCatalog.NATIVE_TYPES.get("Sandbox")) {
+      for (String method : HaraNativeDeclarations.methods("Sandbox")) {
         sandbox.define(
             method,
             new VariadicBuiltin(
@@ -8223,7 +8220,7 @@ public final class HaraContext {
   }
 
   private static final class HaraObject extends LinkedHashMap<String, Object>
-      implements IEmpty, IConj<Object> {
+      implements ICount, IEmpty, IConj<Object> {
     private HaraObject() {}
 
     private HaraObject(Object[] values) {
@@ -8237,6 +8234,11 @@ public final class HaraContext {
 
     private HaraObject(HaraObject source) {
       super(source);
+    }
+
+    @Override
+    public long count() {
+      return size();
     }
 
     @Override

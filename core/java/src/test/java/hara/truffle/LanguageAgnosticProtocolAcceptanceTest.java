@@ -35,7 +35,7 @@ public class LanguageAgnosticProtocolAcceptanceTest {
   @Test
   public void adaptsFunctionStateAndMetadataProtocolsThroughTheSameBoundary() {
     HaraProtocol ifn = new HaraProtocol("IFn", java.util.Map.of("invoke", -1));
-    HaraJavaAdapters.installIFn(ifn);
+    HaraJavaAdapters.registerIFn(ifn);
     Map.Standard<String, String> map = Map.Standard.from(null, "key", "value");
     assertEquals("value", ifn.invoke("invoke", map, new Object[] {"key"}));
 
@@ -63,7 +63,7 @@ public class LanguageAgnosticProtocolAcceptanceTest {
     HaraStruct value = new HaraStruct(type, new Object[] {41L});
 
     HaraProtocol ifn = new HaraProtocol("IFn", java.util.Map.of("invoke", -1));
-    HaraJavaAdapters.installIFn(ifn);
+    HaraJavaAdapters.registerIFn(ifn);
     ifn.extend(type, "invoke", (receiver, arguments) -> 41L + ((Number) arguments[0]).longValue());
     assertEquals(43L, ifn.invoke("invoke", value, new Object[] {2L}));
 

@@ -1,16 +1,21 @@
 package hara.lang.protocol;
 
 import hara.lang.data.Tuple;
+import hara.lang.declaration.HaraMethod;
+import hara.lang.declaration.HaraProtocolBinding;
 
 import java.util.Iterator;
 import java.util.Map;
 import java.util.function.Consumer;
 
+@HaraProtocolBinding(namespace = "std.protocol.iwatch", name = "IWatch")
 public interface IWatch<R, V> {
+  @HaraMethod(value = "watch-add", arity = 3)
   default void addWatch(Object key, Consumer<WatchEntry<R, V>> f) {
     throw new UnsupportedOperationException("Not Supported");
   }
 
+  @HaraMethod(value = "watch-list", arity = 1)
   default Iterator<Map.Entry<Object, Consumer<WatchEntry<R, V>>>> getWatches() {
     return null;
   }
@@ -23,6 +28,7 @@ public interface IWatch<R, V> {
     }
   }
 
+  @HaraMethod(value = "watch-remove", arity = 2)
   default void removeWatch(Object key) {
     throw new UnsupportedOperationException("Not Supported");
   }

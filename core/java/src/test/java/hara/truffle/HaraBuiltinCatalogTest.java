@@ -22,19 +22,20 @@ public class HaraBuiltinCatalogTest {
         "std.foundation.string", HaraBuiltinCatalog.GENERATED_LIBRARIES.get("string"));
     assertEquals("str", HaraBuiltinCatalog.DEFAULT_LIBRARY_ALIASES.get("string"));
     assertTrue(HaraBuiltinCatalog.MARKER_METHOD_NAMES.contains("get"));
-    assertTrue(HaraBuiltinCatalog.NATIVE_TYPES.containsKey("Kernel"));
-    assertEquals(
-        "std.native.String", HaraBuiltinCatalog.NATIVE_LIBRARY_SOURCES.get("std.native.String"));
+    assertTrue(HaraBuiltinCatalog.NATIVE_METHODS.containsKey("Kernel"));
+    assertTrue(
+        HaraNativeDeclarations.bindings().stream()
+            .anyMatch(binding -> binding.name().equals("String")));
   }
 
   @Test
   public void catalogMapsAndMethodListsCannotBeMutated() {
     assertThrows(
         UnsupportedOperationException.class,
-        () -> HaraBuiltinCatalog.NATIVE_TYPES.put("Unexpected", List.of("method")));
+        () -> HaraBuiltinCatalog.NATIVE_METHODS.put("Unexpected", List.of("method")));
     assertThrows(
         UnsupportedOperationException.class,
-        () -> HaraBuiltinCatalog.NATIVE_TYPES.get("Kernel").add("unexpected"));
+        () -> HaraBuiltinCatalog.NATIVE_METHODS.get("Kernel").add("unexpected"));
     assertThrows(
         UnsupportedOperationException.class,
         () -> HaraBuiltinCatalog.LANGUAGE_BUILTINS.put("unexpected", List.of("form")));
@@ -42,8 +43,8 @@ public class HaraBuiltinCatalogTest {
 
   @Test
   public void eachNativeTypeHasOneEntryPerMethodName() {
-    assertTrue(HaraBuiltinCatalog.NATIVE_TYPES.size() > 0);
-    HaraBuiltinCatalog.NATIVE_TYPES.forEach(
+    assertTrue(HaraBuiltinCatalog.NATIVE_METHODS.size() > 0);
+    HaraBuiltinCatalog.NATIVE_METHODS.forEach(
         (type, methods) -> {
           assertTrue(type + " must have native methods", !methods.isEmpty());
           assertEquals(type + " contains duplicate methods", methods.size(), Set.copyOf(methods).size());

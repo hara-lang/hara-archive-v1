@@ -123,6 +123,7 @@ public class HaraLanguageTest {
   public void exposesOrdinaryProtocolBackedCollectionFunctions() {
     try (Context context = context()) {
       assertEquals(3, context.eval(HaraLanguage.ID, "(count [1 2 3])").asLong());
+      assertEquals(2, context.eval(HaraLanguage.ID, "(count (object \"a\" 1 \"b\" 2))").asLong());
       assertEquals(1, context.eval(HaraLanguage.ID, "(get {:a 1} :a)").asLong());
       assertEquals(7, context.eval(HaraLanguage.ID, "(get {} :missing 7)").asLong());
       assertTrue(context.eval(HaraLanguage.ID, "(nil? (get '(1) 1))").asBoolean());

@@ -1,13 +1,19 @@
 package hara.lang.protocol;
 
 import hara.lang.data.types.ISetType;
+import hara.lang.declaration.HaraMethod;
+import hara.lang.declaration.HaraProtocolBinding;
 import java.util.Iterator;
 
-/** Context-aware dependency lookup for books, snapshots, and similar stores. */
+/** Dependency lookup for books, snapshots, and similar stores. */
+@HaraProtocolBinding(namespace = "std.protocol.ideps", name = "IDeps")
 public interface IDeps<K, E> {
-  E depGet(IContext context, K key);
+  @HaraMethod(value = "dep-get", arity = 2)
+  E depGet(K key);
 
-  ISetType<K> depEntries(IContext context, K key);
+  @HaraMethod(value = "dep-entries", arity = 2)
+  ISetType<K> depEntries(K key);
 
-  Iterator<K> depKeys(IContext context);
+  @HaraMethod(value = "dep-keys", arity = 1)
+  Iterator<K> depKeys();
 }

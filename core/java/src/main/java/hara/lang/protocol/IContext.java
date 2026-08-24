@@ -1,7 +1,12 @@
 package hara.lang.protocol;
 
+import hara.lang.declaration.HaraMethod;
+import hara.lang.declaration.HaraProtocolBinding;
+
 /** Callable root context with optional context-runtime operations. */
+@HaraProtocolBinding(namespace = "std.protocol.icontext", name = "IContext")
 public interface IContext {
+  @HaraMethod(value = "call", arity = -1, variadic = true)
   Object call(Object... args);
 
   default Object rawEval(String source) {

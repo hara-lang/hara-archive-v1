@@ -6,7 +6,6 @@ import static org.junit.Assert.assertTrue;
 import hara.lang.data.Atom;
 import hara.lang.protocol.IDeps;
 import hara.lang.data.types.ISetType;
-import hara.lang.protocol.IContext;
 import hara.lang.data.List;
 import hara.lang.data.Keyword;
 import hara.lang.data.Queue;
@@ -24,13 +23,13 @@ public class HaraJavaAdaptersTest {
   @Test
   public void adaptsPersistentCollectionsWithoutChangingTheirInterfaces() {
     HaraProtocol lookup = new HaraProtocol("ILookup", Map.of("lookup", -1));
-    HaraJavaAdapters.installLookup(lookup);
+    HaraJavaAdapters.registerLookup(lookup);
     Vector.Standard<String> vector = Vector.Standard.from(null, "zero", "one");
 
     assertEquals("one", lookup.invoke("lookup", vector, new Object[] {1L}));
 
     HaraProtocol assoc = new HaraProtocol("IAssoc", Map.of("assoc", 3));
-    HaraJavaAdapters.installAssoc(assoc);
+    HaraJavaAdapters.registerAssoc(assoc);
     assertEquals(
         "value",
         lookup.invoke(
@@ -40,13 +39,13 @@ public class HaraJavaAdaptersTest {
   @Test
   public void adaptsMapsFunctionsAndStatefulValues() {
     HaraProtocol lookup = new HaraProtocol("ILookup", Map.of("lookup", -1));
-    HaraJavaAdapters.installLookup(lookup);
+    HaraJavaAdapters.registerLookup(lookup);
     hara.lang.data.Map.Standard<String, String> map =
         hara.lang.data.Map.Standard.from(null, "key", "value");
     assertEquals("value", lookup.invoke("lookup", map, new Object[] {"key"}));
 
     HaraProtocol ifn = new HaraProtocol("IFn", Map.of("invoke", -1));
-    HaraJavaAdapters.installIFn(ifn);
+    HaraJavaAdapters.registerIFn(ifn);
     assertEquals("value", ifn.invoke("invoke", map, new Object[] {"key"}));
 
     HaraProtocol deref = new HaraProtocol("IDeref", Map.of("deref", 1));
@@ -56,27 +55,21 @@ public class HaraJavaAdaptersTest {
   }
 
 @Test
-public void bridgesTheContextAwareDependencyContract() {
-  class DependencyFixture implements IDeps<String, String>, IContext {
+public void bridgesTheDependencyContractThroughTheGenericAdapter() {
+  class DependencyFixture implements IDeps<String, String> {
     @Override
-    public Object call(Object... arguments) {
-      return null;
+    public String depGet(String id) {
+      return "entry:" + id;
     }
 
     @Override
-    public String depGet(IContext context, String id) {
-      return context == this ? "entry:" + id : "wrong-context";
+    public ISetType<String> depEntries(String id) {
+      return Set.Standard.from(null, "base:" + id);
     }
 
     @Override
-    public ISetType<String> depEntries(IContext context, String id) {
-      return Set.Standard.from(null, (context == this ? "base:" : "wrong-context:") + id);
-    }
-
-    @Override
-    public Iterator<String> depKeys(IContext context) {
-      return (context == this ? java.util.List.of("a", "b") : java.util.List.of("wrong-context"))
-          .iterator();
+    public Iterator<String> depKeys() {
+      return java.util.List.of("a", "b").iterator();
     }
   }
 
@@ -84,7 +77,7 @@ public void bridgesTheContextAwareDependencyContract() {
   HaraProtocol deps =
       new HaraProtocol(
           "IDeps", Map.of("dep-get", 2, "dep-entries", 2, "dep-keys", 1));
-  HaraJavaAdapters.installDeps(deps);
+  HaraProtocolInterfaceAdapters.install(deps, IDeps.class);
 
   assertEquals("entry:a", deps.invoke("dep-get", fixture, new Object[] {"a"}));
   @SuppressWarnings("unchecked")
@@ -114,7 +107,7 @@ public void bridgesTheContextAwareDependencyContract() {
             new Object[0]));
 
     HaraProtocol cons = new HaraProtocol("ICons", Map.of("cons", 2));
-    HaraJavaAdapters.installCons(cons);
+    HaraJavaAdapters.registerCons(cons);
     assertEquals(
         "zero",
         peekFirst.invoke(
@@ -171,12 +164,12 @@ public void bridgesTheContextAwareDependencyContract() {
   @Test
   public void adaptsJavaIterablesAndIteratorsThroughIIter() {
     HaraProtocol iter = new HaraProtocol("IIter", Map.of("iter", 1));
-    HaraJavaAdapters.installIter(iter);
+    HaraJavaAdapters.registerIter(iter);
     HaraProtocol iterator =
         new HaraProtocol("IIterator", Map.of("iter-next?", 1, "iter-next", 1));
-    HaraJavaAdapters.installIterator(iterator);
+    HaraJavaAdapters.registerIterator(iterator);
     HaraProtocol close = new HaraProtocol("IClose", Map.of("close", 1));
-    HaraJavaAdapters.installClose(close);
+    HaraJavaAdapters.registerClose(close);
 
     Object cursor =
         iter.invoke(
@@ -196,7 +189,7 @@ public void bridgesTheContextAwareDependencyContract() {
     HaraJavaAdapters.installCollection(collection);
 
     HaraProtocol count = new HaraProtocol("ICount", Map.of("count", 1));
-    HaraJavaAdapters.installCount(count);
+    HaraJavaAdapters.registerCount(count);
 
     Object[][] values = {
       {Vector.Standard.from(null, "one", "two"), 2L, "one"},
@@ -221,12 +214,12 @@ public void bridgesTheContextAwareDependencyContract() {
   @Test
   public void adaptsIndexedSetAndPairInvocationSemantics() {
     HaraProtocol nth = new HaraProtocol("INth", Map.of("nth", 2));
-    HaraJavaAdapters.installNth(nth);
+    HaraJavaAdapters.registerNth(nth);
     Queue.Standard<String> queue = Queue.Standard.from(null, "zero", "one");
     assertEquals("one", nth.invoke("nth", queue, new Object[] {1L}));
 
     HaraProtocol ifn = new HaraProtocol("IFn", Map.of("invoke", -1));
-    HaraJavaAdapters.installIFn(ifn);
+    HaraJavaAdapters.registerIFn(ifn);
     Set.Standard<String> set = Set.Standard.from(null, "present");
     assertEquals("present", ifn.invoke("invoke", set, new Object[] {"present"}));
     assertEquals("missing", ifn.invoke("invoke", set, new Object[] {"missing", "missing"}));

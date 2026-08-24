@@ -41,7 +41,7 @@ public class NativeMethodParityTest {
     assertEquals("Native method count must be derived", null, inventory.lookup(keyword("method-count")));
     assertNotNull("Native count derivation policy is required", inventory.lookup(keyword("counting")));
 
-    Map<String, List<String>> runtimeTypes = HaraBuiltinCatalog.NATIVE_TYPES;
+    Map<String, List<String>> runtimeTypes = HaraBuiltinCatalog.NATIVE_METHODS;
     Map<String, List<String>> specifiedTypes = new LinkedHashMap<>();
     types.forEach((name, type) -> specifiedTypes.put(name, type.methods));
     assertEquals("Truffle native inventory differs from native.edn", specifiedTypes, runtimeTypes);
@@ -65,7 +65,9 @@ public class NativeMethodParityTest {
           classified);
       if (!type.halWrappers.isEmpty()) {
         assertNotNull("HAL wrappers require a source: " + type.name, type.wrapperSource);
-        String source = Files.readString(Path.of(type.wrapperSource));
+        Path wrapperSource = Path.of(type.wrapperSource);
+        if (!Files.isRegularFile(wrapperSource)) wrapperSource = Path.of("core").resolve(wrapperSource);
+        String source = Files.readString(wrapperSource);
         for (String method : type.halWrappers) {
           assertTrue(
               "Missing HAL wrapper call " + type.name + "/" + method,
@@ -207,9 +209,11 @@ public class NativeMethodParityTest {
 
   private static Path specsRegistry() {
     String override = System.getenv("HARA_SPECS_REGISTRY");
-    return override == null || override.isBlank()
-        ? Path.of("../hara-specs-registry")
-        : Path.of(override);
+    if (override != null && !override.isBlank()) return Path.of(override);
+    for (Path candidate : List.of(Path.of("../../hara-specs-registry"), Path.of("../hara-specs-registry"))) {
+      if (Files.isDirectory(candidate)) return candidate;
+    }
+    return Path.of("../../hara-specs-registry");
   }
 
   private record NativeTypeSpec(
