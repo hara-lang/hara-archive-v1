@@ -45,16 +45,26 @@ fn canonical_peek_first_protocol_is_available_without_legacy_aliases() {
             .unwrap(),
         "40"
     );
-    assert!(runtime
-        .eval_native("std.protocol.ipeekfirst/peek-first")
-        .is_err());
-    assert!(runtime.eval_native("std.foundation/IPeekFirst").is_err());
-
-    #[cfg(feature = "bytecode-vm")]
     assert_eq!(
-        runtime
-            .eval_bytecode_native("(std.protocol.ipeekfirst.IPeekFirst/peek-first [40 42])")
-            .unwrap(),
+        runtime.eval_native("(std.protocol.ipeekfirst/peek-first [40 42])").unwrap(),
         "40"
     );
+    assert!(runtime.eval_native("std.foundation/IPeekFirst").is_err());
+    assert!(runtime.eval_native("peek-first").is_err());
+
+    #[cfg(feature = "bytecode-vm")]
+    {
+        assert_eq!(
+            runtime
+                .eval_bytecode_native("(std.protocol.ipeekfirst.IPeekFirst/peek-first [40 42])")
+                .unwrap(),
+            "40"
+        );
+        assert_eq!(
+            runtime
+                .eval_bytecode_native("(std.protocol.ipeekfirst/peek-first [40 42])")
+                .unwrap(),
+            "40"
+        );
+    }
 }

@@ -713,10 +713,47 @@ public final class HaraContext {
         .define(symbolName, value, metadata, HaraVar.Origin.JAVA_LIBRARY);
   }
 
-/** Maps one existing runtime Var into another generated namespace product. */
-void referLibraryVar(String namespaceName, String name, HaraVar variable) {
-  namespace(namespaceName).refer(name, variable);
-}
+  /**
+   * Publishes one prepared library declaration only after every generated product has proved either
+   * absent or already mapped to the same runtime Var.
+   */
+  synchronized void publishLibraryVarProducts(
+      String productKind, Map<Symbol, HaraVar> products) {
+    for (Map.Entry<Symbol, HaraVar> entry : products.entrySet()) {
+      Symbol target = entry.getKey();
+      if (target.getNamespace() == null) {
+        throw new HaraException(productKind + " target must be namespace-qualified: " + target);
+      }
+      HaraVar existing = resolve(target);
+      if (existing != null && existing != entry.getValue()) {
+        throw libraryVarProductCollision(productKind, target, existing, entry.getValue());
+      }
+    }
+    for (Map.Entry<Symbol, HaraVar> entry : products.entrySet()) {
+      Symbol target = entry.getKey();
+      if (resolve(target) == null) {
+        namespace(target.getNamespace()).refer(target.getName(), entry.getValue());
+      }
+    }
+    for (Map.Entry<Symbol, HaraVar> entry : products.entrySet()) {
+      if (resolve(entry.getKey()) != entry.getValue()) {
+        throw new HaraException(
+            productKind + " did not preserve Var identity: " + entry.getKey().display());
+      }
+    }
+  }
+
+  private static HaraException libraryVarProductCollision(
+      String productKind, Symbol target, HaraVar existing, HaraVar requested) {
+    return new HaraException(
+        productKind
+            + " collision at "
+            + target.display()
+            + ": existing "
+            + existing
+            + " is not "
+            + requested);
+  }
 
   void defineLibraryMacro(
       String namespaceName,

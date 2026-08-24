@@ -63,47 +63,23 @@ public final class ProtocolProductLibraryProvider implements HaraLibraryProvider
   static void publishProducts(
       HaraContext context, String protocolName, HaraProtocol protocol) {
     ProductNamespaces products = ProductNamespaces.from(protocol.name(), protocolName);
-
-    synchronized (context) {
-      Map<ProductTarget, HaraVar> projections = new LinkedHashMap<>();
-      HaraVar descriptor = requireSourceProduct(context, products, protocolName);
-      if (descriptor.get() != protocol) {
-        throw new HaraException(
-            "Protocol descriptor does not contain its declared protocol: " + protocol.name());
-      }
-      addProjections(projections, products, protocolName, descriptor);
-
-      for (String methodName : protocol.methods().keySet()) {
-        addProjections(
-            projections,
-            products,
-            methodName,
-            requireSourceProduct(context, products, methodName));
-      }
-
-      // No product is written until every target has proved either absent or already mapped to
-      // the same Var. The publication phase below is therefore a sequence of non-failing map puts.
-      for (Map.Entry<ProductTarget, HaraVar> projection : projections.entrySet()) {
-        HaraVar existing = resolveTarget(context, projection.getKey());
-        if (existing != null && existing != projection.getValue()) {
-          throw productCollision(projection.getKey(), existing, projection.getValue());
-        }
-      }
-
-      for (Map.Entry<ProductTarget, HaraVar> projection : projections.entrySet()) {
-        ProductTarget target = projection.getKey();
-        if (resolveTarget(context, target) == null) {
-          context.referLibraryVar(target.namespace(), target.name(), projection.getValue());
-        }
-      }
-
-      for (Map.Entry<ProductTarget, HaraVar> projection : projections.entrySet()) {
-        if (resolveTarget(context, projection.getKey()) != projection.getValue()) {
-          throw new HaraException(
-              "Protocol product did not preserve Var identity: " + projection.getKey().display());
-        }
-      }
+    Map<Symbol, HaraVar> projections = new LinkedHashMap<>();
+    HaraVar descriptor = requireSourceProduct(context, products, protocolName);
+    if (descriptor.get() != protocol) {
+      throw new HaraException(
+          "Protocol descriptor does not contain its declared protocol: " + protocol.name());
     }
+    addProjections(projections, products, protocolName, descriptor);
+
+    for (String methodName : protocol.methods().keySet()) {
+      addProjections(
+          projections,
+          products,
+          methodName,
+          requireSourceProduct(context, products, methodName));
+    }
+
+    context.publishLibraryVarProducts("Protocol product", projections);
   }
 
   private static HaraVar requireSourceProduct(
@@ -129,20 +105,25 @@ public final class ProtocolProductLibraryProvider implements HaraLibraryProvider
   }
 
   private static void addProjections(
-      Map<ProductTarget, HaraVar> projections,
+      Map<Symbol, HaraVar> projections,
       ProductNamespaces products,
       String localName,
       HaraVar source) {
-    addProjection(
-        projections, new ProductTarget(products.interfaceNamespace(), localName), source);
-    addProjection(projections, new ProductTarget(products.ownerNamespace(), localName), source);
+    addProjection(projections, Symbol.create(products.interfaceNamespace(), localName), source);
+    addProjection(projections, Symbol.create(products.ownerNamespace(), localName), source);
   }
 
   private static void addProjection(
-      Map<ProductTarget, HaraVar> projections, ProductTarget target, HaraVar source) {
+      Map<Symbol, HaraVar> projections, Symbol target, HaraVar source) {
     HaraVar previous = projections.putIfAbsent(target, source);
     if (previous != null && previous != source) {
-      throw productCollision(target, previous, source);
+      throw new HaraException(
+          "Protocol product collision at "
+              + target.display()
+              + ": existing "
+              + previous
+              + " is not "
+              + source);
     }
   }
 
