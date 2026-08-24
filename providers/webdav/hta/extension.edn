@@ -1,0 +1,26 @@
+{:namespace "fs.webdav.wasm.hta"
+ :identity "hara/filesystem-webdav"
+ :provider :hta
+ :abi :hta.v1
+ :targets
+ {:browser
+  {:module "browser/worker.mjs"
+   :runtime :web-worker}}
+ :capabilities [:filesystem :network]
+ :host-calls
+ {"filesystem.webdav"
+  {:methods ["open" "request" "cancel" "close"]
+   :capabilities [:filesystem :network]}}
+ :exports
+ {"describe" {:args []}
+  "open" {:args [:options]}
+  "descriptor" {:args [:filesystem]}
+  "stat" {:args [:filesystem :path]}
+  "read" {:args [:filesystem :path]}
+  "write" {:args [:filesystem :path :bytes :options :mutation]}
+  "entries-page" {:args [:filesystem :path :request]}
+  "mkdir" {:args [:filesystem :path :options :mutation]}
+  "delete" {:args [:filesystem :path :options :mutation]}
+  "copy" {:args [:filesystem :source :target :options :mutation]}
+  "move" {:args [:filesystem :source :target :options :mutation]}
+  "close" {:args [:filesystem]}}}
