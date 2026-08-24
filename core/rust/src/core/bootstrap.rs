@@ -43,9 +43,11 @@ pub fn minimal_namespace_registry() -> NamespaceRegistry<Value> {
         namespace.map_var(Symbol::parse(&name), var);
     }
     for (namespace, name, method) in builtin_protocol_method_values() {
-        namespaces
-            .find_or_create(namespace)
-            .intern_with_origin(name, method, VarOrigin::RuntimePrimitive);
+        namespaces.find_or_create(namespace).intern_with_origin(
+            name,
+            method,
+            VarOrigin::RuntimePrimitive,
+        );
     }
 
     namespaces

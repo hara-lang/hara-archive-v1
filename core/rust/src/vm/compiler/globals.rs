@@ -272,8 +272,7 @@ impl Compiler {
             return false;
         }
         let bootstrap_callable = |candidate: &str| {
-            crate::core::foundation_bootstrap_callable_names()
-                .any(|callable| callable == candidate)
+            crate::core::foundation_bootstrap_callable_names().any(|callable| callable == candidate)
                 || candidate
                     .strip_prefix("std.foundation/")
                     .is_some_and(|local| {
