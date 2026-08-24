@@ -132,7 +132,7 @@ pub fn eval_bytecode_bundle(runtime: &mut Runtime, bytes: &[u8]) -> Result<(), S
             .map_err(|error| format!("{}: invalid bytecode artifact: {error}", module.resource))?;
     }
     let namespaces_before = runtime.namespace_registry.snapshot();
-    let environment_before = runtime.evaluator.snapshot();
+    let environment_before = runtime.execution.snapshot();
     let macros_before = runtime.macros.borrow().clone();
     let protocols_before = runtime.protocols.snapshot();
     let multimethods_before = core::snapshot_multimethods();
@@ -177,7 +177,7 @@ pub fn eval_bytecode_bundle(runtime: &mut Runtime, bytes: &[u8]) -> Result<(), S
     })();
     if let Err(error) = loaded {
         runtime.namespace_registry.restore(namespaces_before);
-        runtime.evaluator.restore(environment_before);
+        runtime.execution.restore(environment_before);
         *runtime.macros.borrow_mut() = macros_before;
         runtime.protocols.restore(protocols_before);
         core::restore_multimethods(multimethods_before);

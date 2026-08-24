@@ -176,6 +176,7 @@ pub(crate) use fiber::Cont;
 pub use fiber::{EvalFiber, EvalFiberState, Step};
 
 include!("core/registry.rs");
+include!("core/native_declarations.rs");
 include!("core/value.rs");
 include!("core/vm_tool.rs");
 #[cfg(all(feature = "bytecode-vm", not(feature = "raw-wasm")))]
@@ -194,5 +195,9 @@ include!("core/protocol.rs");
 include!("core/operation.rs");
 include!("core/form.rs");
 include!("core/namespace.rs");
-include!("core/evaluator.rs");
+// Synchronous declaration and compatibility forms remain isolated from the
+// fiber execution target. Runtime source evaluation enters through EvalFiber;
+// this module is only the small compatibility seam used by namespace and
+// bytecode declaration machinery.
+include!("core/special_forms.rs");
 include!("core/bootstrap.rs");

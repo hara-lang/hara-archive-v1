@@ -4,10 +4,12 @@ import hara.lang.declaration.HaraNativeBinding;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /** Runtime view of the annotated native type surface. */
 final class HaraNativeDeclarations {
   private static final Map<String, HaraNativeBinding> BINDINGS = bindingsByName();
+  static final Map<String, List<String>> METHODS = methodInventory();
 
   private HaraNativeDeclarations() {}
 
@@ -27,9 +29,15 @@ final class HaraNativeDeclarations {
   }
 
   static List<String> methods(String name) {
-    List<String> methods = HaraBuiltinCatalog.NATIVE_METHODS.get(name);
-    if (methods == null) throw new HaraException("Native annotation has no catalog entry: " + name);
-    return methods;
+    return List.of(binding(name).methods());
+  }
+
+  private static Map<String, List<String>> methodInventory() {
+    Map<String, List<String>> methods = new LinkedHashMap<>();
+    for (HaraNativeBinding binding : BINDINGS.values()) {
+      methods.put(binding.name(), List.of(binding.methods()));
+    }
+    return Map.copyOf(methods);
   }
 
   private static Map<String, HaraNativeBinding> bindingsByName() {
@@ -42,12 +50,23 @@ final class HaraNativeDeclarations {
       if (bindings.put(binding.name(), binding) != null) {
         throw new HaraException("Duplicate annotated native type: " + binding.name());
       }
-      if (!HaraBuiltinCatalog.NATIVE_METHODS.containsKey(binding.name())) {
-        throw new HaraException("Native annotation has no catalog entry: " + binding.name());
+      if (binding.methods().length == 0) {
+        throw new HaraException("Native binding has no methods: " + binding.name());
       }
-    }
-    if (!bindings.keySet().equals(HaraBuiltinCatalog.NATIVE_METHODS.keySet())) {
-      throw new HaraException("Native type catalog is not closed by annotations");
+      if (binding.availability() == hara.lang.declaration.HaraAvailability.CAPABILITY_GATED
+          && binding.capability().isBlank()) {
+        throw new HaraException("Capability-gated native binding has no capability: " + binding.name());
+      }
+      if (binding.availability() != hara.lang.declaration.HaraAvailability.CAPABILITY_GATED
+          && !binding.capability().isBlank()) {
+        throw new HaraException("Portable native binding declares a capability: " + binding.name());
+      }
+      Set<String> methods = new java.util.HashSet<>();
+      for (String method : binding.methods()) {
+        if (!methods.add(method)) {
+          throw new HaraException("Duplicate annotated native method: " + binding.name() + "/" + method);
+        }
+      }
     }
     return Map.copyOf(bindings);
   }

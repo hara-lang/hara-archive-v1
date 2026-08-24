@@ -1935,6 +1935,16 @@ impl StackTraceGuard {
     }
 }
 
+/// Runs an execution boundary with Hara stack collection enabled.
+///
+/// Stack collection belongs to callable invocation, not to a second tree
+/// evaluator. Fiber, bytecode, and other execution targets can share this
+/// boundary while retaining the same opt-in error contract.
+pub(crate) fn with_stack_trace<R>(operation: impl FnOnce() -> R) -> R {
+    let _guard = StackTraceGuard::enable();
+    operation()
+}
+
 impl Drop for StackTraceGuard {
     fn drop(&mut self) {
         TRACE_STACK.with(|stack| stack.borrow_mut().clear());

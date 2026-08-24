@@ -110,15 +110,15 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
               .build();
       opened = Context.newBuilder("wasm").allowAllAccess(false).build();
       ProxyObject libraryImports = null;
-      if (libraryBytes != null) {
+      if (isHta && libraryBytes != null) {
         Source librarySource =
-        Source.newBuilder(
+            Source.newBuilder(
                     "wasm",
                     ByteSequence.create(libraryBytes),
                     "hara/library")
                 .build();
         Value libraryModule = opened.eval(librarySource);
-        WasmImportState libraryImportState = new WasmImportState();
+        HtaWasmImportState libraryImportState = new HtaWasmImportState();
         Value libraryInstance =
             libraryModule.canInstantiate()
                 ? libraryModule.newInstance(libraryImportState.imports(null))
@@ -132,10 +132,11 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
       }
       Value instance;
       Value module = opened.eval(source);
-      WasmImportState importState = new WasmImportState();
       instance =
           module.canInstantiate()
-              ? module.newInstance(importState.imports(libraryImports))
+              ? isHta
+                  ? module.newInstance(new HtaWasmImportState().imports(libraryImports))
+                  : module.newInstance()
               : module;
       Value members = instance.hasMember("exports") ? instance.getMember("exports") : instance;
       Value memoryValue = members.hasMember("memory") ? members.getMember("memory") : null;
@@ -218,7 +219,7 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
     return ProxyObject.fromMap(exports);
   }
 
-  private static final class WasmImportState {
+  private static final class HtaWasmImportState {
     private Value memory;
 
     private ProxyObject imports(ProxyObject libraryImports) {

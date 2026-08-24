@@ -111,7 +111,7 @@ public class NativeBehavioralConformanceTest {
   }
 
   private static Set<String> liveMethods() {
-    Map<String, List<String>> runtimeTypes = HaraBuiltinCatalog.NATIVE_METHODS;
+    Map<String, List<String>> runtimeTypes = HaraNativeDeclarations.METHODS;
     Set<String> methods = new LinkedHashSet<>();
     for (Map.Entry<String, List<String>> type : runtimeTypes.entrySet()) {
       for (String method : type.getValue()) {

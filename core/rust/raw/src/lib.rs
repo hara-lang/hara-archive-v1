@@ -393,10 +393,9 @@ impl Session {
                     core::with_namespace_source(provider, || {
                         core::with_protocols(&protocols, || {
                             let forms = kernel::parse_forms(source)?;
-                            let mut value = Value::Nil;
-                            for form in forms {
-                                value = core::eval_traced(&form, &mut environment)?;
-                            }
+                            let mut fiber = EvalFiber::start_forms(forms, environment.clone())?;
+                            let value = fiber.drive_sync()?;
+                            environment = fiber.environment();
                             Ok(value)
                         })
                     })
@@ -2339,12 +2338,18 @@ fn one_shot_environment() -> HashMap<String, Value> {
 }
 
 fn evaluate(source: &str) -> Result<i64, i32> {
-    kernel::parse_forms(source).map_err(|_| 1)?;
+    let forms = kernel::parse_forms(source).map_err(|_| 1)?;
     let mut env = one_shot_environment();
     let namespaces = kernel::NamespaceRegistry::new("user");
     let protocols = core::ProtocolRegistry::core();
     let value = core::with_namespace_registry(&namespaces, || {
-        core::with_protocols(&protocols, || core::eval_text(source, &mut env))
+        core::with_protocols(&protocols, || {
+            let forms = forms;
+            let mut fiber = EvalFiber::start_forms(forms, env.clone())?;
+            let value = fiber.drive_sync()?;
+            env = fiber.environment();
+            Ok::<String, String>(value.display())
+        })
     })
     .map_err(|error| error_code(&error))?;
     value.parse::<i64>().map_err(|_| 4)
@@ -2363,14 +2368,21 @@ pub extern "C" fn eval_i64(source_ptr: *const u8, source_len: usize) -> i64 {
 pub extern "C" fn eval_error_code(source_ptr: *const u8, source_len: usize) -> i32 {
     match source_text(source_ptr, source_len) {
         Ok(source) => {
-            if kernel::parse_forms(source).is_err() {
-                return 1;
-            }
+            let forms = match kernel::parse_forms(source) {
+                Ok(forms) => forms,
+                Err(_) => return 1,
+            };
             let mut env = one_shot_environment();
             let namespaces = kernel::NamespaceRegistry::new("user");
             let protocols = core::ProtocolRegistry::core();
             match core::with_namespace_registry(&namespaces, || {
-                core::with_protocols(&protocols, || core::eval_text(source, &mut env))
+                core::with_protocols(&protocols, || {
+                    let forms = forms;
+                    let mut fiber = EvalFiber::start_forms(forms, env.clone())?;
+                    let value = fiber.drive_sync()?;
+                    env = fiber.environment();
+                    Ok::<Value, String>(value)
+                })
             }) {
                 Ok(_) => 0,
                 Err(error) => error_code(&error),

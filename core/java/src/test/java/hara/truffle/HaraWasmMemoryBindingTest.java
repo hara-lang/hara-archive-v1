@@ -18,6 +18,13 @@ public class HaraWasmMemoryBindingTest {
               + "020005616c6c6f630000046672656500010a6563686f5f627974657300020d"
               + "72656c656173655f636f756e7400030a230405004180080b0900230041016a"
               + "24000b0c002001ad4220862000ad840b040023000b");
+  private static final byte[] MEMORY_ENV_MODULE =
+      hex(
+          "0061736d0100000001180560017f017f60017f0060027f7f017e6000017f6000017e"
+              + "02140103656e760c686172615f74696d655f6d730004030504000102030504010101"
+              + "100606017f0141000b073605066d656d6f7279020005616c6c6f6300010466726565"
+              + "00020a6563686f5f627974657300030d72656c656173655f636f756e7400040a230405"
+              + "004180080b0900230041016a24000b0c002001ad4220862000ad840b040023000b");
 
   @Test
   public void executesBytesAndUtf8ThroughTheCanonicalPlan() throws Exception {
@@ -77,6 +84,18 @@ public class HaraWasmMemoryBindingTest {
               () -> extension.invoke("echo", new Object[] {new byte[] {(byte) 0xff}}));
       assertTrue(error.getMessage().startsWith("extension/utf8-invalid"));
       assertEquals(1L, extension.invoke("release-count", new Object[] {}));
+    } finally {
+      deleteTree(root);
+    }
+  }
+
+  @Test
+  public void memoryWasmRejectsHtaEnvironmentImports() throws Exception {
+    Path root = packageRoot("bytes", "borrowed", "bytes", "caller", MEMORY_ENV_MODULE);
+    try {
+      HaraException error =
+          assertThrows(HaraException.class, () -> extension(root));
+      assertTrue(error.getMessage().startsWith("extension/module-invalid"));
     } finally {
       deleteTree(root);
     }

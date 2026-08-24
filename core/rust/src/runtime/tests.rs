@@ -460,13 +460,13 @@ mod tests {
     #[test]
     fn evaluator_owns_lexical_state_without_owning_namespace_state() {
         let registry = kernel::NamespaceRegistry::<core::Value>::new("user");
-        let mut evaluator = Evaluator::new();
+        let mut execution = RuntimeExecutionState::new();
         evaluator
             .environment_mut()
             .insert("local".into(), core::Value::Number(42));
 
         assert_eq!(
-            evaluator.environment().get("local"),
+            execution.environment().get("local"),
             Some(&core::Value::Number(42))
         );
         assert!(registry.current().mappings().is_empty());
@@ -1721,12 +1721,12 @@ mod tests {
         runtime
             .eval_text("(def ^{:dynamic true} answer 41)")
             .unwrap();
-        let local = match runtime.evaluator.environment().get("answer").unwrap() {
+        let local = match runtime.execution.environment().get("answer").unwrap() {
             core::Value::Var(var) => var.clone(),
             _ => panic!("definition must be a Var"),
         };
         assert_eq!(local.symbol().as_str(), "alpha/answer");
-        let qualified = match runtime.evaluator.environment().get("alpha/answer").unwrap() {
+        let qualified = match runtime.execution.environment().get("alpha/answer").unwrap() {
             core::Value::Var(var) => var.clone(),
             _ => panic!("qualified definition must be a Var"),
         };
@@ -1734,7 +1734,7 @@ mod tests {
         assert!(qualified.is_dynamic());
         runtime.use_namespace("user");
         runtime.alias_namespace("a", "alpha");
-        let alias = match runtime.evaluator.environment().get("a/answer").unwrap() {
+        let alias = match runtime.execution.environment().get("a/answer").unwrap() {
             core::Value::Var(var) => var.clone(),
             _ => panic!("alias must resolve to a Var"),
         };

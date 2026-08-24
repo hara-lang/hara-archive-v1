@@ -43,7 +43,7 @@ public class NativeMethodParityTest {
     assertEquals("Native method count must be derived", null, inventory.lookup(keyword("method-count")));
     assertNotNull("Native count derivation policy is required", inventory.lookup(keyword("counting")));
 
-    Map<String, List<String>> runtimeTypes = HaraBuiltinCatalog.NATIVE_METHODS;
+    Map<String, List<String>> runtimeTypes = HaraNativeDeclarations.METHODS;
     Map<String, List<String>> specifiedTypes = new LinkedHashMap<>();
     types.forEach((name, type) -> specifiedTypes.put(name, type.methods));
     assertEquals("Truffle native inventory differs from native.edn", specifiedTypes, runtimeTypes);

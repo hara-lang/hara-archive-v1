@@ -334,14 +334,14 @@ fn event_envelopes_preserve_backend_semantics() {
 #[test]
 fn runtime_owns_a_private_empty_hub_without_a_hara_namespace() {
     let runtime = crate::Runtime::new();
-    assert_eq!(runtime.evaluator.instrumentation.registration_count(), 0);
+    assert_eq!(runtime.execution.instrumentation.registration_count(), 0);
     assert!(runtime
         .namespace_registry
         .find("std.native.Instrumentation")
         .is_none());
 
     let sandbox = crate::Runtime::sandbox();
-    assert_eq!(sandbox.evaluator.instrumentation.registration_count(), 0);
+    assert_eq!(sandbox.execution.instrumentation.registration_count(), 0);
     assert!(sandbox
         .namespace_registry
         .find("std.native.Instrumentation")

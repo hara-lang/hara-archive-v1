@@ -18,8 +18,7 @@ const TRUE: u8 = 2;
 const LONG: u8 = 3;
 const DOUBLE: u8 = 4;
 const BIG_INTEGER: u8 = 5;
-const DECIMAL: u8 = 6;
-const STRING: u8 = 7;
+const STRING: u8 = 6;
 const CHARACTER: u8 = 8;
 const SYMBOL: u8 = 9;
 const KEYWORD: u8 = 10;
@@ -244,17 +243,6 @@ impl<'a> ByteReader<'a> {
                     Some(value) => Form::Number(value),
                     None => Form::BigInteger(value),
                 })
-            }
-            DECIMAL => {
-                let value = self.read_string()?;
-                // Early shared goldens used opcode 6 for strings before the
-                // decimal slot was assigned. Preserve those artifacts while
-                // accepting the v1 decimal spelling mandated by the format.
-                match value.parse::<f64>() {
-                    Ok(value) if value.is_finite() => Ok(Form::Float(value)),
-                    Ok(_) => Err("non-finite number".into()),
-                    Err(_) => Ok(Form::String(value)),
-                }
             }
             STRING => Ok(Form::String(self.read_string()?)),
             CHARACTER => Ok(Form::Character(
@@ -1053,32 +1041,29 @@ mod tests {
         // compatibility boundary, rather than a Rust encoder/decoder
         // round-trip.
         let bytes = hex_bytes(concat!(
-            "48414c43000100010000014b7640e14591506ea3c5e004467edc15b2ea8bb319",
-            "3b48a4596d99c242ca5531a000000001740000000174e3b0c44298fc1c149afb",
-            "f4c8996fb92427ae41e4649b934ca495991b7852b85500000012000102030000",
-            "00000000002a044004000000000000050000001e313233343536373839303132",
-            "3334353637383930313233343536373839300600000007332e31343135390700",
-            "00000668c3a172c3a008000000780901000000056d792e6e73000000066d792d",
-            "73796d000a00000000026b77000b000000020300000000000000010700000001",
-            "61000c00000002030000000000000001070000000161000d0000000203000000",
-            "0000000001070000000161030000000000000002070000000162000e00000002",
-            "030000000000000001030000000000000002000f000000020300000000000000",
-            "0207000000016203000000000000000107000000016100100000000203000000",
-            "0000000002030000000000000001001100000003612b62",
+            "48414c43000100010000013f57211e103028689092d59627fbba64015c289acd1bc5b2e7be27ec53d8bf4c35",
+            "00000001740000000174e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "0000001100010203000000000000002a044004000000000000050000001e313233343536373839303132",
+            "333435363738393031323334353637383930060000000668c3a172c3a008000000780901000000056d792e6e73",
+            "000000066d792d73796d000a00000000026b77000b00000002030000000000000001060000000161000c00000002",
+            "030000000000000001060000000161000d00000002030000000000000001060000000161030000000000000002",
+            "060000000162000e00000002030000000000000001030000000000000002000f00000002030000000000000002",
+            "060000000162030000000000000001060000000161001000000002030000000000000002030000000000000001",
+            "001100000003612b62",
         ));
 
         let module = decode_halc(&bytes).unwrap();
         assert_eq!(module.origin, HalcOrigin::Halc);
         assert_eq!(module.namespace, "t");
         assert_eq!(module.resource, "t");
-        assert_eq!(module.forms.len(), 18);
+        assert_eq!(module.forms.len(), 17);
         assert_eq!(module.forms[0], Form::Nil);
         assert_eq!(module.forms[3], Form::Number(42));
-        assert_eq!(module.forms[7], Form::String("hárà".into()));
-        assert_eq!(module.forms[8], Form::Character('x'));
-        assert_eq!(module.forms[9], Form::Symbol("my.ns/my-sym".into()));
-        assert_eq!(module.forms[10], Form::Keyword("kw".into()));
-        assert_eq!(module.forms[17], Form::Regex("a+b".into()));
+        assert_eq!(module.forms[6], Form::String("hárà".into()));
+        assert_eq!(module.forms[7], Form::Character('x'));
+        assert_eq!(module.forms[8], Form::Symbol("my.ns/my-sym".into()));
+        assert_eq!(module.forms[9], Form::Keyword("kw".into()));
+        assert_eq!(module.forms[16], Form::Regex("a+b".into()));
     }
 
     #[test]

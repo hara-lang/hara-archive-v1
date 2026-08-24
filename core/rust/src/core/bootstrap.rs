@@ -17,12 +17,12 @@ pub fn minimal_namespace_registry() -> NamespaceRegistry<Value> {
         );
         namespace.map_var(Symbol::parse(&name), var);
     }
-    for (native_type, methods) in NATIVE_TYPES {
-        let namespace = namespaces.find_or_create(format!("std.native.{native_type}"));
-        for method in *methods {
+    for declaration in NATIVE_DECLARATIONS {
+        let namespace = namespaces.find_or_create(declaration.qualified_name());
+        for method in declaration.methods {
             namespace.intern_with_origin(
-                *method,
-                native_type_function_value(native_type, method)
+                method,
+                native_type_function_value(declaration.name, method)
                     .unwrap_or_else(|error| panic!("{error}")),
                 VarOrigin::RuntimePrimitive,
             );

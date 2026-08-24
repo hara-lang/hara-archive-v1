@@ -27,7 +27,7 @@ impl SessionKernel {
         })?;
         Ok(instrumentation::NativeInstrumentation::new(
             id.to_string(),
-            runtime.evaluator.instrumentation_handle(),
+            runtime.execution.instrumentation_handle(),
         ))
     }
 }

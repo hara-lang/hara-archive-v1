@@ -161,7 +161,7 @@ impl PromiseHandle {
 
 #[cfg_attr(not(feature = "raw-wasm"), wasm_bindgen)]
 pub struct Runtime {
-    evaluator: Evaluator,
+    execution: RuntimeExecutionState,
     test_runner: String,
     protocols: core::ProtocolRegistry,
     extensions: core::ExtensionRegistry,
@@ -214,7 +214,7 @@ impl Drop for Runtime {
                 }
             }
         }
-        self.evaluator.clear();
+        self.execution.clear();
         #[cfg(not(target_arch = "wasm32"))]
         self.native_wasm_imports.clear();
         self.wasm_extensions.clear();

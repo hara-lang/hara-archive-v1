@@ -1,17 +1,5 @@
 thread_local! {
     static PRINTER_CAPTURES: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
-    #[cfg(test)]
-    static EVALUATOR_INVOCATIONS: Cell<usize> = const { Cell::new(0) };
-}
-
-#[cfg(test)]
-pub(crate) fn with_evaluator_invocation_count<R>(operation: impl FnOnce() -> R) -> (R, usize) {
-    EVALUATOR_INVOCATIONS.with(|count| {
-        let previous = count.replace(0);
-        let result = operation();
-        let invocations = count.replace(previous);
-        (result, invocations)
-    })
 }
 
 fn printer_write(text: &str) -> Result<(), String> {
@@ -38,8 +26,6 @@ fn printer_write(text: &str) -> Result<(), String> {
 // stack-safe execution path for ordinary evaluation.
 #[inline(never)]
 pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, String> {
-    #[cfg(test)]
-    EVALUATOR_INVOCATIONS.with(|count| count.set(count.get() + 1));
     check_evaluation_interrupt()?;
     match form {
         Form::Number(v) => Ok(Value::Number(*v)),
