@@ -5,15 +5,15 @@ import hara.lang.data.types.IMapType;
 import java.util.Map;
 
 /**
- * Publishes the interface-qualified products of every live built-in protocol declaration.
+ * Publishes both namespace- and interface-qualified products of every live built-in protocol.
  *
- * <p>The slash-qualified protocol and method Vars remain the declaration owners. The generated
- * dotted products reuse the same protocol descriptor and method callable values, so both source
- * spellings observe one protocol dispatch registry rather than independent implementations.
+ * <p>The registrar derives the declaration set from runtime Vars rather than repeating a protocol
+ * inventory or scanning the classpath. Missing products reuse the existing protocol descriptor and
+ * method callable values, so both source spellings observe one {@link HaraProtocol} dispatch
+ * registry.
  */
 public final class ProtocolProductLibraryProvider implements HaraLibraryProvider {
   private static final String FOUNDATION_NAMESPACE = "std.foundation";
-  private static final String INTRINSIC_NAMESPACE = "hara.lang.intrinsic";
 
   @Override
   public String namespace() {
@@ -60,30 +60,59 @@ public final class ProtocolProductLibraryProvider implements HaraLibraryProvider
 
   private static void publishProducts(
       HaraContext context, String protocolName, HaraVar protocolVar, HaraProtocol protocol) {
-    String declaration = protocol.name();
-    int separator = declaration.lastIndexOf('/');
-    if (separator <= 0 || !declaration.substring(separator + 1).equals(protocolName)) {
-      throw new HaraException("Malformed built-in protocol declaration: " + declaration);
+    ProductNamespaces products = ProductNamespaces.from(protocol.name(), protocolName);
+
+    HaraVar interfaceDescriptor = context.resolve(Symbol.create(products.interfaceNamespace()));
+    HaraVar ownerDescriptor =
+        context.resolve(Symbol.create(products.ownerNamespace(), protocolName));
+    if (interfaceDescriptor == null && ownerDescriptor == null) {
+      throw new HaraException("Protocol declaration has no registered descriptor: " + protocol.name());
+    }
+    if (interfaceDescriptor == null) {
+      context.defineLibraryValue(
+          products.interfaceNamespace(), protocolName, protocol, protocolVar.meta());
+    }
+    if (ownerDescriptor == null) {
+      context.defineLibraryValue(
+          products.ownerNamespace(), protocolName, protocol, protocolVar.meta());
     }
 
-    String ownerNamespace = declaration.substring(0, separator);
-    String interfaceNamespace = ownerNamespace + "." + protocolName;
-
-    // Dotted type/interface identities follow the same intrinsic publication model as
-    // std.native.<Type>: they are visible in fresh and subsequently declared namespaces.
-    context.defineLibraryValue(
-        INTRINSIC_NAMESPACE, interfaceNamespace, protocol, protocolVar.meta());
-    context.defineLibraryValue(
-        interfaceNamespace, protocolName, protocol, protocolVar.meta());
-
     for (String methodName : protocol.methods().keySet()) {
-      HaraVar methodVar = context.resolve(Symbol.create(ownerNamespace, methodName));
-      if (methodVar == null) {
+      HaraVar interfaceMethod =
+          context.resolve(Symbol.create(products.interfaceNamespace(), methodName));
+      HaraVar ownerMethod =
+          context.resolve(Symbol.create(products.ownerNamespace(), methodName));
+      HaraVar source = interfaceMethod != null ? interfaceMethod : ownerMethod;
+      if (source == null) {
         throw new HaraException(
-            "Missing built-in protocol method Var: " + ownerNamespace + "/" + methodName);
+            "Missing built-in protocol method Var: " + protocol.name() + "/" + methodName);
       }
-      context.defineLibraryValue(
-          interfaceNamespace, methodName, methodVar.get(), methodVar.meta());
+      if (interfaceMethod == null) {
+        context.defineLibraryValue(
+            products.interfaceNamespace(), methodName, source.get(), source.meta());
+      }
+      if (ownerMethod == null) {
+        context.defineLibraryValue(
+            products.ownerNamespace(), methodName, source.get(), source.meta());
+      }
+    }
+  }
+
+  private record ProductNamespaces(String ownerNamespace, String interfaceNamespace) {
+    private static ProductNamespaces from(String declaration, String protocolName) {
+      String dottedSuffix = "." + protocolName;
+      if (declaration.endsWith(dottedSuffix)) {
+        return new ProductNamespaces(
+            declaration.substring(0, declaration.length() - dottedSuffix.length()), declaration);
+      }
+
+      String slashSuffix = "/" + protocolName;
+      if (declaration.endsWith(slashSuffix)) {
+        String owner = declaration.substring(0, declaration.length() - slashSuffix.length());
+        return new ProductNamespaces(owner, owner + dottedSuffix);
+      }
+
+      throw new HaraException("Malformed built-in protocol declaration: " + declaration);
     }
   }
 }
