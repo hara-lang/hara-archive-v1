@@ -1,0 +1,64 @@
+name: Patch issue 1108 protocol product regression
+
+on:
+  push:
+    branches:
+      - agent/1108-named-declaration-registration
+    paths:
+      - .github/workflows/patch-1108-protocol-test.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out implementation branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/1108-named-declaration-registration
+          fetch-depth: 0
+
+      - name: Replace the obsolete negative protocol assertion
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          test = Path("core/java/src/test/java/hara/truffle/HaraLanguageTest.java")
+          source = test.read_text()
+          old = '''      PolyglotException legacyProtocolMethod =
+                    assertThrows(
+                        PolyglotException.class,
+                        () -> context.eval(HaraLanguage.ID, "std.protocol.ipeekfirst/peek-first"));
+                assertTrue(legacyProtocolMethod.getMessage().contains("Unbound symbol"));
+          '''
+          new = '''      assertTrue(
+                    context
+                        .eval(
+                            HaraLanguage.ID,
+                            "(= std.protocol.ipeekfirst.IPeekFirst "
+                                + "std.protocol.ipeekfirst/IPeekFirst)")
+                        .asBoolean());
+                assertEquals(
+                    1L,
+                    context
+                        .eval(HaraLanguage.ID, "(std.protocol.ipeekfirst/peek-first [1])")
+                        .asLong());
+          '''
+          if source.count(old) != 1:
+              raise SystemExit("expected exactly one obsolete protocol assertion")
+          test.write_text(source.replace(old, new, 1))
+          Path(".github/workflows/patch-1108-protocol-test.yml").unlink()
+          PY
+
+      - name: Commit the focused regression update
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add core/java/src/test/java/hara/truffle/HaraLanguageTest.java \
+                  .github/workflows/patch-1108-protocol-test.yml
+          git commit -m "test(protocols): accept dual named products (#1108)"
+          git push origin HEAD:agent/1108-named-declaration-registration
