@@ -182,6 +182,18 @@ public class S3FilesystemTest {
       } catch (FilesystemException error) {
         assertEquals("conflict", error.code());
       }
+      try {
+        join(
+            filesystem.move(
+                IFilesystem.CallContext.create(),
+                "/README.md",
+                "/README.md",
+                new IFilesystem.MoveOptions(false, false, false),
+                new IFilesystem.MutationContext(readme.revision(), null)));
+        fail("expected same-path revision conflict");
+      } catch (FilesystemException error) {
+        assertEquals("conflict", error.code());
+      }
       join(filesystem.close(IFilesystem.CallContext.create()));
     }
   }

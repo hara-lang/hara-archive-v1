@@ -8,7 +8,7 @@
             [tool.migrate.common.rules :as declarations]))
 
 (def task-id :tool.migrate/clojure)
-(def task-version 1)
+(def task-version 2)
 
 (defn source-path
   [unit]
@@ -166,16 +166,589 @@
     dependency-entry-name
     (rest (nav/code-children clause)))))
 
+(defn dependency-occurrences
+  "Returns dependency entries in source order, retaining parser evidence."
+  [input]
+  (vec
+   (mapcat
+    (fn [clause]
+      (keep
+       (fn [entry]
+         (let [name (dependency-entry-name (nav/current entry))]
+           (if name
+             {:dependency/name name
+              :dependency/evidence (nav/evidence entry)}
+             nil)))
+       (rest (nav/code-child-locations clause))))
+    (filter dependency-clause?
+            (nav/namespace-clause-locations (nav/block-input input))))))
+
 (defn dependencies
   [input]
   (unique-sorted
-   (reduce
-    (fn [output clause]
-      (if (dependency-clause? clause)
-        (into output (clause-dependencies clause))
-        output))
-    []
-    (nav/namespace-clauses input))))
+   (map :dependency/name
+        (dependency-occurrences input))))
+
+(defn namespace-aliases
+  [input]
+  (reduce
+   (fn [output clause]
+     (reduce
+      (fn [output entry]
+        (let [values (vec (nav/code-children entry))]
+          (if (and (vector? values)
+                   (<= 3 (count values))
+                   (= ":as" (block/string (nth values 1))))
+            (assoc output
+                   (block/string (nth values 2))
+                   (block/string (first values)))
+            output)))
+      output
+      (rest (nav/code-children clause))))
+   {}
+   (filter dependency-clause?
+           (nav/namespace-clauses (nav/block-input input)))))
+
+(defn namespace-refers
+  "Returns unqualified symbols imported by dependency :refer clauses."
+  [input]
+  (reduce
+   (fn [output clause]
+     (reduce
+      (fn [output entry]
+        (let [values (vec (nav/code-children entry))
+              namespace (if (empty? values)
+                          nil
+                          (block/string (first values)))]
+          (if (nil? namespace)
+            output
+            (loop [remaining (vec (rest values))
+                   output output]
+              (if (or (empty? remaining)
+                      (= 1 (count remaining)))
+                output
+                (if (has? #{":refer" ":only"}
+                          (block/string (first remaining)))
+                  (let [refer (block/value (second remaining))]
+                    (reduce
+                     (fn [output symbol]
+                       (assoc output (str symbol) namespace))
+                     output
+                     (if (vector? refer) refer [])))
+                  (recur (vec (drop 2 remaining)) output)))))))
+      output
+      (rest (nav/code-children clause))))
+   {}
+   (filter dependency-clause?
+           (nav/namespace-clauses (nav/block-input input)))))
+
+(def +clojure-core-special-forms+
+  #{"." "catch" "def" "do" "finally" "fn" "fn*" "if" "let" "letfn"
+    "loop" "monitor-enter" "monitor-exit" "new" "quote" "recur" "set!"
+    "throw" "try" "var"})
+
+(def +clojure-core-macros+
+  #{"->" "->>" "as->" "assert" "binding" "case" "comment" "cond" "cond->"
+    "cond->>" "condp" "declare" "definline" "definterface" "defmacro"
+    "defmethod" "defmulti" "defn" "defn-" "defonce" "defprotocol"
+    "defrecord" "defstruct" "deftype" "doto" "doseq" "dotimes"
+    "extend-protocol" "extend-type" "for" "future" "if-let" "if-not"
+    "if-some" "lazy-cat" "lazy-seq" "locking" "ns" "time" "when"
+    "when-first" "when-let" "when-not" "when-some" "while" "with-bindings"
+    "with-bindings*" "with-in-str" "with-loading-context" "with-local-vars"
+    "with-meta" "with-open" "with-out-str" "with-precision"})
+
+(def +clojure-core-intrinsics+
+  #{"*" "+" "-" "/" "<" "<=" "=" ">" ">=" "==" "and" "or" "not" "recur"})
+
+;; This observed inventory covers the public core names used by the pinned
+;; Foundation source/test graph; unobserved Clojure core names are not emitted.
+(def +clojure-core-symbols+
+  (into
+   #{"*1" "*2" "*3" "*assert*" "*in*" "*out*" "abs" "aget" "alength"
+     "all-ns" "alter-meta!" "alter-var-root" "ancestors" "any?" "apply"
+     "array-map" "assoc" "assoc-in" "associative?" "atom" "await" "boolean"
+     "boolean?" "butlast" "bytes?" "char" "char?" "class" "coll?" "comp"
+     "compare" "complement" "concat" "conj" "cons" "constantly" "contains?"
+     "count" "counted?" "create-ns" "cycle" "dec" "deref" "derive"
+     "descendants" "dissoc" "distinct" "doall" "dorun" "drop" "drop-last"
+     "drop-while" "empty" "empty?" "ensure" "even?" "every?" "ex-data"
+     "ex-info" "ex-message" "false?" "ffirst" "filter" "filterv" "find"
+     "find-ns" "find-var" "first" "flatten" "float" "float?" "flush" "fn?"
+     "fnext" "fnil" "frequencies" "future-call" "get" "get-in" "get-method"
+     "get-validator" "group-by" "hash-map" "hash-set" "identical?" "identity"
+     "ifn?" "inc" "indexed?" "instance?" "int" "integer?" "interleave"
+     "interpose" "into" "iterate" "juxt" "keep" "keep-indexed" "key"
+     "keys" "keyword" "keyword?" "last" "lazy-seq" "list" "list*" "list?"
+     "load" "load-file" "load-reader" "load-string" "map" "map-entry?"
+     "map-indexed" "map?" "mapcat" "mapv" "max" "max-key" "merge"
+     "merge-with" "meta" "min" "min-key" "mod" "name" "namespace" "neg?"
+     "next" "nfirst" "nil?" "nnext" "not-any?" "not-empty" "not-every?"
+     "not=" "ns" "ns-aliases" "ns-imports" "ns-interns" "ns-map" "ns-name"
+     "ns-publics" "ns-refers" "ns-resolve" "ns-unalias" "ns-unmap" "nth"
+     "nthnext" "nthrest" "number?" "odd?" "partial" "partition"
+     "partition-all" "partition-by" "peek" "persistent!" "pop" "pr" "pr-str"
+     "print" "print-str" "printf" "println" "println-str" "prn" "prn-str"
+     "promise" "quot" "range" "read" "read-line" "read-string" "realized?"
+     "record?" "reduce" "reduce-kv" "reductions" "ref" "refer" "refer-clojure"
+     "remove" "repeat" "repeatedly" "replace" "require" "reset!" "resolve"
+     "rest" "reverse" "rseq" "run!" "second" "select-keys" "seq" "seq?"
+     "seqable?" "sequential?" "set" "set?" "slurp" "some" "some->" "some->>"
+     "sort" "sort-by" "sorted-map" "sorted-set" "split-at" "split-with"
+     "spit" "str" "string?" "subs" "subvec" "symbol" "symbol?" "take"
+     "take-last" "take-nth" "take-while" "throw" "to-array" "transduce"
+     "transient" "tree-seq" "true?" "type" "update" "update-in" "val" "vals"
+     "var-get" "var-set" "var?" "vec" "vector" "vector?" "when" "with-meta"
+     "with-redefs" "zero?"
+     "*'" "*clojure-version*" "*e" "*err*" "*file*" "*ns*" "*print-length*"
+     "*print-level*" "*print-meta*" "*warn-on-reflection*" "+'" "-reset-methods"
+     ".." "Throwable->map" "accessor" "add-watch" "agent" "agent-error"
+     "alias" "alter" "aset" "aset-byte" "aset-double" "aset-float" "aset-int"
+     "aset-long" "aset-short" "assoc!" "bases" "bigdec" "bigint"
+     "biginteger" "bit-and" "bit-not" "bit-or" "bit-set" "bit-shift-left"
+     "bit-shift-right" "bit-test" "bit-xor" "boolean-array" "bound-fn"
+     "bound?" "byte" "byte-array" "bytes" "cast" "cat" "char-array" "chars"
+     "chunk" "class?" "clojure-version" "compile" "conj!" "declare" "dedupe"
+     "definterface" "defstruct" "delay" "deliver" "denominator" "destructure"
+     "disj" "dosync" "double" "double-array" "double?" "eduction"
+     "enumeration-seq" "eval" "every-pred" "extend" "extend-protocol"
+     "extend-type" "extends?" "file-seq" "float-array" "force" "format"
+     "future-cancel" "future-done?" "future?" "gensym" "hash" "import"
+     "init-proxy" "inst-ms" "inst?" "int-array" "int?" "intern" "into-array"
+     "ints" "isa?" "iterator-seq"      "loaded-libs" "long" "long-array" "macroexpand"
+     "macroexpand-1" "make-array" "make-hierarchy" "memoize" "methods" "munge"
+     "nat-int?" "neg-int?" "newline" "num" "numerator" "object-array" "parents"
+     "parse-double" "parse-long" "pmap" "pos-int?" "pos?" "prefer-method"
+     "print-method" "proxy" "rand" "rand-int" "rand-nth" "random-sample"
+     "re-find" "re-groups" "re-matcher" "re-matches" "re-pattern" "re-seq"
+     "reduced" "reify" "rem" "remove-method" "remove-ns" "remove-watch"
+     "ratio?"
+     "requiring-resolve" "satisfies?" "send" "sequence" "short" "short-array"
+     "shuffle" "shutdown-agents" "some?" "special-symbol?" "struct" "supers"
+     "swap!" "sync" "tagged-literal" "tagged-literal?" "test" "the-ns"
+     "unchecked-add" "unchecked-byte" "unchecked-dec" "unchecked-divide-int"
+     "unchecked-double" "unchecked-float" "unchecked-inc" "unchecked-int"
+     "unchecked-long" "unchecked-multiply" "unchecked-short"
+     "unquote" "unquote-splicing" "unsigned-bit-shift-right" "update-vals"
+     "uri?" "use" "uuid?" "vary-meta" "volatile!" "volatile?" "vreset!"
+     "vswap!" "while" "with-bindings" "with-bindings*" "with-in-str"
+     "with-precision" "with-redefs-fn" "zipmap"}
+   (into
+    (into +clojure-core-special-forms+ +clojure-core-macros+)
+    +clojure-core-intrinsics+)))
+
+(defn dependency-idiom
+  "Classifies a dependency by the observable behavior it contributes."
+  [namespace]
+  (cond
+    (str/starts-with? namespace "clojure.string") :text
+    (str/starts-with? namespace "clojure.set") :collection
+    (str/starts-with? namespace "clojure.edn") :serialization
+    (str/starts-with? namespace "clojure.java.io") :host-io
+    (str/starts-with? namespace "clojure.pprint") :formatting
+    (str/starts-with? namespace "clojure.tools.reader") :reader
+    (str/starts-with? namespace "clojure.lang") :runtime-type
+    (str/starts-with? namespace "clojure.zip") :tree
+    (= namespace "clojure.core") :core
+    :else :namespace))
+
+(defn dependency-operation
+  "Classifies a dependency reference by its call-site operation."
+  [namespace name]
+  (cond
+    (and (str/starts-with? namespace "clojure.set")
+         (has? #{"difference" "intersection" "union" "select"
+                 "subset?" "superset?" "index" "join" "map-invert"}
+               name))
+    :set-algebra
+
+    (and (str/starts-with? namespace "clojure.string")
+         (has? #{"trim" "triml" "trimr"} name))
+    :string-trimming
+
+    (and (str/starts-with? namespace "clojure.string")
+         (has? #{"join" "capitalize" "lower-case" "upper-case"
+                 "reverse" "escape"}
+               name))
+    :string-aggregation
+
+    (and (str/starts-with? namespace "clojure.string")
+         (has? #{"split" "split-lines" "replace" "replace-first"} name))
+    :string-rewrite
+
+    (and (str/starts-with? namespace "clojure.core")
+         (has? #{"subs" "subvec"} name))
+    :string-slice
+
+    (and (str/starts-with? namespace "clojure.core")
+         (has? #{"map" "mapcat" "mapv" "filter" "filterv" "reduce"
+                 "reduce-kv" "keep" "keep-indexed" "remove" "take"
+                 "drop" "into" "conj" "assoc" "update" "get" "get-in"
+                 "merge" "select-keys" "seq" "first" "rest" "next"}
+               name))
+    :collection-operation
+
+    (and (str/starts-with? namespace "clojure.tools.reader.reader-types")
+         (not (empty? name)))
+    :reader-state
+
+    (str/starts-with? namespace "clojure.tools.reader")
+    :reader-consumption
+
+    (str/starts-with? namespace "clojure.edn")
+    :edn-reading
+
+    (str/starts-with? namespace "clojure.java.io")
+    :host-io
+
+    (str/starts-with? namespace "clojure.pprint")
+    :pretty-printing
+
+    (str/starts-with? namespace "clojure.lang")
+    :persistent-collection-type
+
+    (str/starts-with? namespace "clojure.zip")
+    :tree-navigation
+
+    (= namespace "clojure.core")
+    :core-operation
+
+    :else :namespace-operation))
+
+(defn namespace-clause-option
+  [input clause-head option]
+  (let [clause (nav/namespace-clause-location input clause-head)
+        children (if clause
+                   (vec (rest (nav/code-child-locations clause)))
+                   [])]
+    (loop [remaining children]
+      (if (or (empty? remaining)
+              (= 1 (count remaining)))
+        nil
+        (if (= option (block/string (nav/current (first remaining))))
+          (block/value (nav/current (second remaining)))
+          (recur (vec (drop 2 remaining))))))))
+
+(defn core-reference-options
+  "Returns the effective :refer-clojure controls for one source namespace."
+  [input]
+  (let [only (namespace-clause-option input ":refer-clojure" ":only")
+        exclude (namespace-clause-option input ":refer-clojure" ":exclude")
+        rename (namespace-clause-option input ":refer-clojure" ":rename")]
+    {:only (if (vector? only) (set (map str only)) nil)
+     :exclude (if (vector? exclude) (set (map str exclude)) #{})
+     :rename (if (map? rename)
+               (reduce-kv (fn [output source local]
+                            (assoc output (str local) (str source)))
+                          {}
+                          rename)
+               {})}))
+
+(defn core-reference-name
+  [name options]
+  (if (get (:rename options) name)
+    (get (:rename options) name)
+    (if (some (fn [source]
+                (= source name))
+              (vals (:rename options)))
+      nil
+      name)))
+
+(defn core-reference-enabled?
+  [name options core-symbols]
+  (and (has? core-symbols name)
+       (not (has? (:exclude options) name))
+       (or (nil? (:only options))
+           (has? (:only options) name))))
+
+(defn binding-pattern-symbols
+  [value]
+  (cond
+    (symbol? value)
+    (if (= "&" (str value)) #{} #{(str value)})
+
+    (vector? value)
+    (reduce
+     (fn [output child]
+       (into output (binding-pattern-symbols child)))
+     #{}
+     value)
+
+    (map? value)
+    (reduce
+     (fn [output child]
+       (into output (binding-pattern-symbols child)))
+     #{}
+     (vals value))
+
+    (set? value)
+    (reduce
+     (fn [output child]
+       (into output (binding-pattern-symbols child)))
+     #{}
+     value)
+
+    :else #{}))
+
+(defn binding-vector-symbols
+  [value]
+  (if (vector? value)
+    (loop [remaining value
+           output #{}]
+      (if (empty? remaining)
+        output
+        (recur (vec (drop 2 remaining))
+               (into output (binding-pattern-symbols (first remaining))))))
+    #{}))
+
+(defn function-binding-symbols
+  [tail]
+  (let [tail (if (and (not (empty? tail))
+                      (symbol? (first tail)))
+               (vec (rest tail))
+               tail)
+        parameter-vectors
+        (if (vector? (first tail))
+          [(first tail)]
+          (keep
+           (fn [arity]
+             (if (and (list? arity)
+                      (vector? (first arity)))
+               (first arity)
+               nil))
+           tail))]
+    (reduce
+     (fn [output parameters]
+       (into output (binding-pattern-symbols parameters)))
+     #{}
+     parameter-vectors)))
+
+(defn lexical-bindings
+  [value]
+  (let [form (block/value value)
+        head (if (list? form) (str (first form)) nil)
+        tail (if (list? form) (vec (rest form)) [])]
+    (cond
+      (has? #{"let" "loop" "for" "doseq" "with-open"
+              "with-local-vars" "binding"} head)
+      (binding-vector-symbols (first tail))
+
+      (has? #{"letfn"} head)
+      (binding-pattern-symbols (first tail))
+
+      (has? #{"fn" "fn*" "defn" "defn-" "defmacro"} head)
+      (function-binding-symbols tail)
+
+      :else #{})))
+
+(defn ancestor-locations
+  [location]
+  (loop [parent (:parent location)
+         output []]
+    (if (nil? parent)
+      output
+      (recur (:parent parent) (conj output parent)))))
+
+(defn namespace-defined-symbols
+  [input]
+  (unique-sorted
+   (keep
+    nav/definition-name
+    (nav/definition-locations (nav/block-input input)))))
+
+(defn core-reference-context
+  [location namespace-symbols]
+  (let [ancestors (ancestor-locations location)
+        quoted?
+        (loop [remaining ancestors]
+          (if (empty? remaining)
+            false
+            (let [ancestor (first remaining)
+                  value (nav/current ancestor)
+                  tag (block/tag value)]
+              (cond
+                (has? #{:unquote :unquote-splice} tag) false
+                (has? #{:quote :syntax} tag) true
+                (has? #{"quote" "syntax-quote"}
+                      (nav/form-head ancestor)) true
+                :else (recur (rest remaining))))))
+        binding? (some (fn [ancestor]
+                         (has? (lexical-bindings (nav/current ancestor))
+                               (block/string (nav/current location))))
+                       ancestors)
+        namespace-shadow? (has? namespace-symbols
+                                 (block/string (nav/current location)))]
+    (cond
+      quoted? {:status :skipped :reason :quoted-data}
+      binding? {:status :shadowed :reason :lexical-binding}
+      namespace-shadow? {:status :shadowed :reason :namespace-binding}
+      :else {:status :derived :reason nil})))
+
+(defn core-reference-kind
+  [name]
+  (cond
+    (has? +clojure-core-special-forms+ name) :special-form
+    (has? +clojure-core-macros+ name) :macro
+    (has? +clojure-core-intrinsics+ name) :intrinsic
+    :else :var))
+
+(declare dependency-symbol-references dependency-operation)
+
+(defn core-reference-record
+  ([location source-name core-name namespace-symbols]
+   (core-reference-record
+    location source-name core-name namespace-symbols {}))
+  ([location source-name core-name namespace-symbols options]
+   (let [context (core-reference-context location namespace-symbols)
+         status (:status context)]
+     {:source/symbol source-name
+      :resolved/symbol (if (= :derived status)
+                         (str "clojure.core/" core-name)
+                         nil)
+      :reference/namespace "clojure.core"
+      :reference/name core-name
+      :reference/local-name source-name
+      :reference/idiom :core
+      :reference/operation (dependency-operation "clojure.core" core-name)
+      :reference/kind (core-reference-kind core-name)
+      :reference/status status
+      :reference/reason (:reason context)
+      :reference/options options
+      :reference/evidence (nav/evidence location)})))
+
+(defn core-symbol-references
+  "Collects implicit and qualified clojure.core references with resolution
+   controls and lexical-shadowing evidence."
+  ([input]
+   (core-symbol-references input +clojure-core-symbols+))
+  ([input core-symbols]
+   (let [root (nav/block-input input)
+         options (core-reference-options root)
+         namespace-refers-value (namespace-refers root)
+         namespace-symbols
+         (set
+          (concat
+           (namespace-defined-symbols root)
+           (keep
+            (fn [entry]
+              (if (= "clojure.core" (second entry))
+                nil
+                (first entry)))
+            (vec namespace-refers-value))))
+         qualified
+         (vec
+          (map
+           (fn [reference]
+             (let [location
+                   (nav/location-at
+                    root
+                    (get-in reference [:reference/evidence :path]))]
+               (let [record
+                     (merge
+                      reference
+                      (core-reference-record
+                       location
+                       (:source/symbol reference)
+                       (:reference/name reference)
+                       namespace-symbols
+                       options))]
+                 (if (has? core-symbols (:reference/name reference))
+                   record
+                   (merge
+                    record
+                    {:resolved/symbol nil
+                     :reference/status :manual-review
+                     :reference/reason :unknown-core-symbol})))))
+           (filter
+            (fn [reference]
+              (= "clojure.core" (:reference/namespace reference)))
+            (dependency-symbol-references root ["clojure.core"]))))
+         implicit
+         (keep
+          (fn [location]
+            (let [value (nav/current location)
+                  token (if (block/token? value) (block/string value) nil)
+                  qualified? (< 0 (or (str/index-of token "/") -1))
+                  core-name (if token
+                              (core-reference-name token options)
+                              nil)]
+              (if (and token
+                       (symbol? (block/value value))
+                       (not qualified?)
+                       core-name
+                       (core-reference-enabled? core-name
+                                                options
+                                                core-symbols)
+                       (not (some nav/namespace-form?
+                                  (ancestor-locations location))))
+                (core-reference-record location
+                                       token
+                                       core-name
+                                       namespace-symbols
+                                       options)
+                nil)))
+          (nav/walk-locations root))]
+     (vec
+      (sort-by
+       (fn [reference]
+         [(:reference/status reference)
+          (:resolved/symbol reference)
+          (:source/symbol reference)
+          (get-in reference [:reference/evidence :path])])
+       (concat qualified implicit))))))
+
+(defn dependency-symbol-references
+  "Collects qualified and explicitly referred tokens with deterministic
+   namespace and call-site resolution."
+  [input dependencies]
+  (let [aliases (namespace-aliases input)
+        refers (namespace-refers input)
+        dependency-index
+        (reduce (fn [output dependency]
+                  (assoc output dependency true))
+                {"clojure.core" true}
+                dependencies)]
+    (vec
+     (sort-by
+      (fn [reference]
+        [(:resolved/symbol reference) (:source/symbol reference)])
+      (keep
+       (fn [location]
+         (let [value (nav/current location)]
+           (if (block/token? value)
+             (let [text (block/string value)
+                   separator (or (str/index-of text "/") -1)]
+               (if (< 0 separator)
+                 (let [alias (str/slice text 0 separator)
+                       name (str/slice text (inc separator) (count text))
+                       namespace (or (get aliases alias) alias)]
+                   (if (has? dependency-index namespace)
+                     {:source/symbol text
+                      :resolved/symbol (str namespace "/" name)
+                      :reference/namespace namespace
+                      :reference/name name
+                      :reference/idiom (dependency-idiom namespace)
+                      :reference/operation
+                      (dependency-operation namespace name)
+                      :reference/evidence (nav/evidence location)}
+                     nil))
+                 (let [namespace (get refers text)
+                       enabled? (and namespace
+                                     (has? dependency-index namespace)
+                                     (not (some nav/namespace-form?
+                                                (ancestor-locations location))))]
+                   (if enabled?
+                      {:source/symbol text
+                       :resolved/symbol (str namespace "/" text)
+                       :reference/namespace namespace
+                       :reference/name text
+                       :reference/idiom (dependency-idiom namespace)
+                       :reference/operation
+                       (dependency-operation namespace text)
+                       :reference/evidence (nav/evidence location)}
+                      nil))))
+             nil)))
+       (nav/walk-locations (nav/block-input input)))))))
 
 (def +non-binding-definitions+
   #{"defmethod" "defimpl" "defimpl.xt"})
@@ -200,7 +773,8 @@
   (let [root (nav/block-input input)]
     {:namespace (nav/namespace-name root)
      :dependencies (dependencies root)
-     :public-symbols (public-symbols root)}))
+     :public-symbols (public-symbols root)
+     :core/symbols (core-symbol-references root)}))
 
 (defn namespace-shape
   "Returns the stable namespace, dependency, and public-binding shape for

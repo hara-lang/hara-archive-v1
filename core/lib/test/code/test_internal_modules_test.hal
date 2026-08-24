@@ -48,7 +48,7 @@
    (test-check
     "checker and work ownership remain first-class without code.test"
     [(Test/passed?
-      (std.protocol.imatch/match-value (common/exactly 42) 42))
+      (std.protocol.imatch.IMatch/match-value (common/exactly 42) 42))
      (:op (work/work-spec test-work/+runner-work+))]
     [true :chain])])
 

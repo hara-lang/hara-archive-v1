@@ -13,7 +13,6 @@ lines src/lang/data/map.rs 1192
 lines src/lang/data/sorted_map.rs 1238
 lines src/lang/data/vector.rs 1409
 lines src/native_cli.rs 775
-lines src/numeric.rs 857
 lines src/project.rs 975
 lines src/vm/artifact.rs 962
 lines src/vm/bundle.rs 796

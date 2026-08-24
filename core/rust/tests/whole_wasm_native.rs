@@ -146,12 +146,16 @@ fn native_and_fallback_functions_share_one_hnw0_module() {
     assert!(decoded.capabilities[usize::from(entry)]);
     assert!(!decoded.capabilities[usize::from(unsupported)]);
 
+    let expected = execute_program(Rc::new(unsupported_program))
+        .expect_err("the fallback function must throw")
+        .to_string();
+    assert!(
+        expected.starts_with("throw expects an Exception value created by ex"),
+        "invalid throw values must retain the canonical Exception-only diagnostic: {expected}"
+    );
     let mut native = NativeModule::load(&artifact).expect("mixed HNW0 must instantiate");
     assert_eq!(native.call_entry_i64(), Ok(42));
-    assert_eq!(
-        native.call_value(unsupported, &[]),
-        Err("thrown: nil [line 1, column 1] (instruction 0001)".into())
-    );
+    assert_eq!(native.call_value(unsupported, &[]), Err(expected));
 }
 
 #[test]

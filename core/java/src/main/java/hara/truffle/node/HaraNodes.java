@@ -14,6 +14,7 @@ import com.oracle.truffle.api.nodes.ControlFlowException;
 import com.oracle.truffle.api.nodes.DirectCallNode;
 import com.oracle.truffle.api.nodes.IndirectCallNode;
 import com.oracle.truffle.api.nodes.LoopNode;
+import com.oracle.truffle.api.source.SourceSection;
 import hara.kernel.builtin.BuiltinStruct;
 import hara.lang.base.Eq;
 import hara.lang.base.Ex;
@@ -2272,7 +2273,17 @@ public final class HaraNodes {
     @TruffleBoundary
     private Object invokeBuiltin(HaraBuiltinFunction target, Object[] values) {
       try {
-        return target.apply(values);
+        Object result = target.apply(values);
+        if (target.recordsExceptionCreation() && result instanceof Ex.Info info) {
+          SourceSection source = getSourceSection();
+          info.recordCreation(
+              new Ex.Info.Site(
+                  HaraLanguage.currentContext(this).currentNamespaceName(),
+                  source == null ? null : source.getSource().getName(),
+                  source == null ? 0 : source.getStartLine(),
+                  source == null ? 0 : source.getStartColumn()));
+        }
+        return result;
       } catch (HaraException error) {
         if (error.haraLocation() != null) throw error;
         throw new HaraException(error.getMessage(), this);

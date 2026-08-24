@@ -271,10 +271,10 @@ fn random(operation: &str, size: usize) -> Result<Vec<u8>, String> {
     }
     #[cfg(not(feature = "raw-wasm"))]
     {
-    let mut output = vec![0_u8; size];
-    getrandom::getrandom(&mut output)
-        .map_err(|_| error(operation, "secure randomness is unavailable"))?;
-    Ok(output)
+        let mut output = vec![0_u8; size];
+        getrandom::getrandom(&mut output)
+            .map_err(|_| error(operation, "secure randomness is unavailable"))?;
+        Ok(output)
     }
 }
 

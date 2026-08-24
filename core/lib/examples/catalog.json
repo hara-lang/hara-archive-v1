@@ -6,82 +6,213 @@
   },
   "core": {
     "repository": "hara-lang/hara",
-    "baseCommit": "408c2fdcdc9531f7cb6799d041bceca03514fbc3"
+    "baseCommit": "00459d47320e7022a89639d816bcb566c0710501"
+  },
+  "excludedPaths": {
+    "catalog.json": "The catalog is the machine-readable inventory itself, not an executable example."
   },
   "entries": [
     {
       "path": "answer-42.hal",
       "kind": "extension-demo",
       "status": "capability-dependent",
+      "purpose": "Calls the paired WASM extension's version and integer addition exports.",
       "entry": "example.answer-42",
       "governingSpecs": ["01-lang/005-foundation-annex", "02-platform/000006-package"],
       "capabilities": ["extension/wasm"],
+      "supportedRuntimes": ["rust", "wasm"],
       "validation": {"mode": "deferred", "reason": "Requires the paired demo.000-answer-42 WASM extension fixture."}
     },
     {
-      "path": "cluster",
-      "kind": "demo-family",
-      "status": "pending-runtime-matrix",
-      "governingSpecs": [],
-      "capabilities": [],
-      "validation": {"mode": "inventory-only", "reason": "Capability-heavy cluster examples are a follow-up slice of #940."}
+      "path": "cluster/project.edn",
+      "kind": "cluster-manifest",
+      "status": "non-normative",
+      "purpose": "Declares the source layout and capabilities for the cluster example project.",
+      "governingSpecs": ["02-platform/000006-package"],
+      "capabilities": ["cluster/runtime"],
+      "supportedRuntimes": ["rust"],
+      "validation": {"mode": "inventory-only", "reason": "Manifest validation belongs to the cluster project boundary, not standalone example evaluation."}
     },
     {
-      "path": "code-test",
-      "kind": "implementation-fixture-family",
-      "status": "non-normative",
+      "path": "cluster/setup.hal",
+      "kind": "cluster-configuration",
+      "status": "capability-dependent",
+      "purpose": "Describes the three-node cluster topology used by the cluster example.",
       "governingSpecs": [],
-      "capabilities": [],
-      "validation": {"mode": "inventory-only", "reason": "Implementation fixtures are catalogued but are not user-facing normative examples."}
+      "capabilities": ["cluster/runtime"],
+      "supportedRuntimes": ["rust"],
+      "validation": {"mode": "deferred", "reason": "Requires the cluster host to materialize and supervise the declared node runtimes."}
+    },
+    {
+      "path": "cluster/src/node.hal",
+      "kind": "cluster-demo",
+      "status": "capability-dependent",
+      "purpose": "Boots one cluster node and reports its online state.",
+      "governingSpecs": ["01-lang/004-foundation"],
+      "capabilities": ["cluster/runtime"],
+      "supportedRuntimes": ["rust", "truffle"],
+      "validation": {"mode": "deferred", "reason": "Requires the cluster host's node output and lifecycle capability."}
     },
     {
       "path": "coroutine-promise.hal",
       "kind": "language-demo",
-      "status": "pending-runtime-matrix",
+      "status": "deterministic",
+      "purpose": "Contrasts yielding a promise with yielding its awaited value.",
       "entry": "example.coroutine-promise",
       "governingSpecs": ["01-lang/005-foundation-annex"],
       "capabilities": ["coroutine", "promise"],
-      "validation": {"mode": "inventory-only", "reason": "Cross-runtime coroutine/promise assertions are deferred to the runtime-matrix slice."}
+      "supportedRuntimes": ["rust"],
+      "validation": {"mode": "native-smoke", "expectedStdout": "[42 42]"}
     },
     {
-      "path": "extensions",
-      "kind": "demo-family",
-      "status": "pending-runtime-matrix",
+      "path": "extensions/crypto/hash/sha256/project.edn",
+      "kind": "extension-manifest",
+      "status": "capability-dependent",
+      "purpose": "Declares the asynchronous SHA-256 WASM extension interface.",
       "governingSpecs": ["02-platform/000006-package"],
-      "capabilities": ["extension/provider"],
-      "validation": {"mode": "inventory-only", "reason": "Extension/provider examples require explicit host/runtime capability validation."}
+      "capabilities": ["extension/wasm", "crypto"],
+      "supportedRuntimes": ["rust", "wasm"],
+      "validation": {"mode": "deferred", "reason": "Requires a reviewed sha256.wasm module and extension host installation."}
+    },
+    {
+      "path": "extensions/demo/000-answer-42/project.edn",
+      "kind": "extension-manifest",
+      "status": "capability-dependent",
+      "purpose": "Declares the demo answer-42 WASM extension exports.",
+      "governingSpecs": ["02-platform/000006-package"],
+      "capabilities": ["extension/wasm"],
+      "supportedRuntimes": ["rust", "wasm"],
+      "validation": {"mode": "deferred", "reason": "Requires the paired answer-42.wasm module and extension host installation."}
+    },
+    {
+      "path": "extensions/hara/runtime/wasm/project.edn",
+      "kind": "extension-manifest",
+      "status": "capability-dependent",
+      "purpose": "Declares the Hara runtime WASM extension and its host-call bridge.",
+      "governingSpecs": ["02-platform/000006-package"],
+      "capabilities": ["extension/wasm", "host/calls"],
+      "supportedRuntimes": ["rust", "wasm"],
+      "validation": {"mode": "deferred", "reason": "Requires the reviewed hara.wasm module and host-call capability."}
+    },
+    {
+      "path": "code-test/README.md",
+      "kind": "implementation-fixture-documentation",
+      "status": "non-normative",
+      "purpose": "Documents how the code.test fixture files are run.",
+      "governingSpecs": ["02-platform/000006-package"],
+      "capabilities": [],
+      "supportedRuntimes": [],
+      "validation": {"mode": "inventory-only", "reason": "Documentation is catalogued for completeness but has no executable entry point."}
+    },
+    {
+      "path": "code-test/advanced.hal",
+      "kind": "implementation-fixture",
+      "status": "non-normative",
+      "purpose": "Demonstrates code.test matchers, fixtures, and expected failures.",
+      "governingSpecs": [],
+      "capabilities": ["library/code.test"],
+      "supportedRuntimes": ["truffle"],
+      "validation": {"mode": "inventory-only", "reason": "Implementation fixture coverage is owned by the code.test library tests."}
+    },
+    {
+      "path": "code-test/basic.hal",
+      "kind": "implementation-fixture",
+      "status": "non-normative",
+      "purpose": "Demonstrates basic code.test facts and exact matcher results.",
+      "governingSpecs": [],
+      "capabilities": ["library/code.test"],
+      "supportedRuntimes": ["truffle"],
+      "validation": {"mode": "inventory-only", "reason": "Implementation fixture coverage is owned by the code.test library tests."}
+    },
+    {
+      "path": "code-test/tasks.hal",
+      "kind": "implementation-fixture",
+      "status": "non-normative",
+      "purpose": "Demonstrates code.test integration with a work.flow task command.",
+      "governingSpecs": [],
+      "capabilities": ["library/code.test", "work/runtime"],
+      "supportedRuntimes": ["truffle"],
+      "validation": {"mode": "inventory-only", "reason": "Implementation fixture coverage is owned by the code.test and Work library tests."}
     },
     {
       "path": "hello.hal",
       "kind": "user-facing-example",
       "status": "deterministic",
+      "purpose": "Evaluates a small pure function and returns its greeting.",
       "governingSpecs": ["01-lang/004-foundation"],
       "capabilities": [],
+      "supportedRuntimes": ["rust"],
       "validation": {"mode": "native-smoke", "expectedStdout": "\"hello, Ada\""}
     },
     {
-      "path": "ledger",
-      "kind": "demo-family",
-      "status": "pending-runtime-matrix",
+      "path": "ledger/chain_demo.hal",
+      "kind": "ledger-demo",
+      "status": "capability-dependent",
+      "purpose": "Builds and validates a deterministic executable ledger chain.",
       "governingSpecs": [],
-      "capabilities": ["storage"],
-      "validation": {"mode": "inventory-only", "reason": "Ledger examples are capability-heavy and belong in a later #940 slice."}
+      "capabilities": ["storage", "ledger/replay"],
+      "supportedRuntimes": ["rust"],
+      "validation": {"mode": "deferred", "reason": "Requires the db.ledger.chain runtime boundary and its replay evaluator."}
     },
     {
-      "path": "services",
-      "kind": "demo-family",
-      "status": "pending-runtime-matrix",
+      "path": "services/project.edn",
+      "kind": "service-manifest",
+      "status": "non-normative",
+      "purpose": "Declares the source and test roots for the service example project.",
+      "governingSpecs": ["02-platform/000006-package"],
+      "capabilities": ["service/provider"],
+      "supportedRuntimes": ["rust"],
+      "validation": {"mode": "inventory-only", "reason": "Manifest validation belongs to the service project boundary, not standalone example evaluation."}
+    },
+    {
+      "path": "services/run.hal",
+      "kind": "service-demo",
+      "status": "capability-dependent",
+      "purpose": "Dispatches a normalized service request to the worker namespace.",
       "governingSpecs": [],
       "capabilities": ["service/provider"],
-      "validation": {"mode": "inventory-only", "reason": "Service examples require provider/runtime boundary validation."}
+      "supportedRuntimes": ["rust", "truffle"],
+      "validation": {"mode": "deferred", "reason": "Requires the service project source path and provider boundary."}
     },
     {
-      "path": "work",
-      "kind": "demo-family",
-      "status": "pending-runtime-matrix",
+      "path": "services/src/services/api.hal",
+      "kind": "service-implementation",
+      "status": "capability-dependent",
+      "purpose": "Defines the service route normalization and worker dispatch API.",
       "governingSpecs": [],
-      "capabilities": ["work/runtime"],
-      "validation": {"mode": "inventory-only", "reason": "Work examples require current std.work/runtime capability mapping."}
+      "capabilities": ["service/provider"],
+      "supportedRuntimes": ["rust", "truffle"],
+      "validation": {"mode": "deferred", "reason": "Source is executable only when loaded through the service project."}
+    },
+    {
+      "path": "services/src/services/worker.hal",
+      "kind": "service-implementation",
+      "status": "capability-dependent",
+      "purpose": "Defines the immutable worker response for one service job.",
+      "governingSpecs": [],
+      "capabilities": ["service/provider"],
+      "supportedRuntimes": ["rust", "truffle"],
+      "validation": {"mode": "deferred", "reason": "Source is executable only when loaded through the service project."}
+    },
+    {
+      "path": "services/test/services/api_test.hal",
+      "kind": "implementation-test",
+      "status": "non-normative",
+      "purpose": "Tests service route normalization, selected Vars, and persistent response data.",
+      "governingSpecs": [],
+      "capabilities": ["service/provider", "library/code.test"],
+      "supportedRuntimes": ["truffle"],
+      "validation": {"mode": "inventory-only", "reason": "Implementation tests are catalogued but are not user-facing normative examples."}
+    },
+    {
+      "path": "work/basic.hal",
+      "kind": "work-demo",
+      "status": "capability-dependent",
+      "purpose": "Demonstrates pure Work, ephemeral submission, references, graphs, lazy outputs, and bind.",
+      "governingSpecs": [],
+      "capabilities": ["work/runtime", "work/provider"],
+      "supportedRuntimes": ["rust", "truffle"],
+      "validation": {"mode": "deferred", "reason": "Requires the current Work protocol and provider runtime boundary."}
     }
   ]
 }

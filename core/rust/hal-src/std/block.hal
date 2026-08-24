@@ -1,123 +1,72 @@
 (ns std.block
-  (:config {:override [empty type]})
+  (:config {:role :facade :override [empty type]})
   (:require [std.block.base :as base]
             [std.block.construct :as construct]
-            [std.block.parse :as parse]
-            [std.block.type :as type]
-            [std.block.value :as block-value]
+            [std.block.heal :as block-heal]
             [std.block.layout :as layout]
-            [std.lib.zip :as zip]))
+            [std.block.parse :as parse]
+            [std.block.source :as source]
+            [std.block.type :as type]
+            [std.block.value :as block-value]))
 
-(def block? base/block?)
-(def expression? base/expression?)
-(def type base/block-type)
-(def tag base/block-tag)
-(def string base/block-string)
-(def length base/block-length)
-(def width base/block-width)
-(def height base/block-height)
-(def prefixed base/block-prefixed)
-(def suffixed base/block-suffixed)
-(def verify base/block-verify)
-(def value base/block-value)
-(def value-string base/block-value-string)
-(def children base/block-children)
-(def replace-children base/replace-children)
-(def info base/block-info)
-
-(def block construct/block)
-(def void construct/void)
-(def space construct/space)
-(def spaces construct/spaces)
-(def newline construct/newline)
-(def newlines construct/newlines)
-(def tab construct/tab)
-(def tabs construct/tabs)
-(def comment construct/comment)
-(def error construct/error)
-(def token construct/token-from-string)
-(def uneval construct/uneval)
-(def cursor construct/cursor)
-(def contents construct/contents)
-(def container construct/container)
-(def root construct/root)
-(def max-width construct/max-width)
-(def add-child construct/add-child)
-(def empty construct/empty)
-(def line-width construct/line-width)
-(def get-lines construct/get-lines)
-(def rep construct/rep)
-(def indent-body construct/indent-body)
-(def child-values block-value/child-values)
-(def root-value block-value/root-value)
-(def layout layout/layout-main)
-
-(def parse-string parse/parse-string)
-(def parse-root parse/parse-root)
-(def parse-first parse/parse-first)
-(def parse-source parse/parse-source)
-
-(def void? type/void-block?)
-(def code? type/code-block?)
-(def space? type/space-block?)
-(def linebreak? type/linebreak-block?)
-(def linespace? type/linespace-block?)
-(def eof? type/eof-block?)
-(def comment? type/comment-block?)
-(def token? type/token-block?)
-(def container? type/container-block?)
-(def modifier? type/modifier-block?)
-(def error? type/error-block?)
-
-(defn block-context
-  "Returns the persistent zipper operations for portable blocks."
-  []
-  (merge zip/+base+
-         {:cursor '|
-          :create-container (fn [] (construct/container :list []))
-          :create-element construct/block
-          :is-container? base/container?
-          :is-empty-container?
-          (fn [block] (empty? (base/block-children block)))
-          :is-element? base/block?
-          :list-elements base/block-children
-          :update-elements base/replace-children
-          :add-element construct/add-child}))
-
-(defn block-zip
-  "Creates a persistent zipper over a portable block tree."
-  ([block] (block-zip block {}))
-  ([block options]
-   (zip/zipper block (merge (block-context) options) options)))
-
-(defn namespace-name
-  "Returns the declared top-level ns or ns+ name from source."
-  [source]
-  (let [root (parse/parse-ranges source)]
-    (loop [remaining (base/block-children root)]
-      (if (empty? remaining)
-        nil
-        (let [form (first remaining)
-              value (if (base/expression? form)
-                      (base/block-value form)
-                      nil)]
-          (if (and (list? value)
-                   (or (= 'ns (first value)) (= 'ns+ (first value)))
-                   (< 1 (count value)))
-            (str (nth value 1))
-            (recur (rest remaining))))))))
-
-(defn grep-source
-  "Returns one-based line records containing needle."
-  [source needle]
-  (loop [index 0
-         lines (str/split-lines source)
-         output []]
-    (if (= index (count lines))
-      output
-      (let [line (nth lines index)]
-        (recur (inc index)
-               lines
-               (if (str/includes? line needle)
-                 (conj output {:line (inc index) :column 1 :text line})
-                 output))))))
+(intern-in
+ [block? base/block?]
+ [expression? base/expression?]
+ [type base/block-type]
+ [tag base/block-tag]
+ [string base/block-string]
+ [length base/block-length]
+ [width base/block-width]
+ [height base/block-height]
+ [prefixed base/block-prefixed]
+ [suffixed base/block-suffixed]
+ [verify base/block-verify]
+ [value base/block-value]
+ [value-string base/block-value-string]
+ [children base/block-children]
+ [replace-children base/replace-children]
+ [info base/block-info]
+ [block construct/block]
+ [void construct/void]
+ [space construct/space]
+ [spaces construct/spaces]
+ [newline construct/newline]
+ [newlines construct/newlines]
+ [tab construct/tab]
+ [tabs construct/tabs]
+ [comment construct/comment]
+ [error construct/error]
+ [token construct/token-from-string]
+ [uneval construct/uneval]
+ [cursor construct/cursor]
+ [contents construct/contents]
+ [container construct/container]
+ [root construct/root]
+ [max-width construct/max-width]
+ [add-child construct/add-child]
+ [empty construct/empty]
+ [line-width construct/line-width]
+ [get-lines construct/get-lines]
+ [rep construct/rep]
+ [indent-body construct/indent-body]
+ [child-values block-value/child-values]
+ [root-value block-value/root-value]
+ [layout layout/layout-main]
+ [parse-string parse/parse-string]
+ [parse-root parse/parse-root]
+ [parse-first parse/parse-first]
+ [parse-source parse/parse-source]
+ [heal block-heal/heal]
+ [void? type/void-block?]
+ [code? type/code-block?]
+ [space? type/space-block?]
+ [linebreak? type/linebreak-block?]
+ [linespace? type/linespace-block?]
+ [eof? type/eof-block?]
+ [comment? type/comment-block?]
+ [token? type/token-block?]
+ [container? type/container-block?]
+ [modifier? type/modifier-block?]
+ [error? type/error-block?]
+ [namespace-name source/namespace-name]
+ [grep-source source/grep-source])

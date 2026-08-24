@@ -93,7 +93,7 @@
 (defn- run-command [config command]
   (let [directory (make-dir config)
         started (OS/time-ms)
-        result (sh/run ["make" (string/tag command)] {:cwd directory})
+        _ (sh/run ["make" (string/tag command)] {:cwd directory})
         elapsed (- (OS/time-ms) started)]
     [elapsed true]))
 

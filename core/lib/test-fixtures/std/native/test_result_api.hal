@@ -1,12 +1,17 @@
-(Test/run
+(std.native.Test/run
  [{:name "compares and exposes canonical mismatch data"
    :test (fn []
-           (let [result (Test/result "different" 7 8 (Test/compare 7 8))]
-             [(Test/passed? result)
-              (Test/actual result)
-              (Test/expected result)
-              (Test/failure-count result)
-              (Test/failure? (Test/failure result 0))]))
+           (let [result (std.native.Test/result
+                         "different"
+                         7
+                         8
+                         (std.native.Test/compare 7 8))]
+             [(std.native.Test/passed? result)
+              (std.native.Test/actual result)
+              (std.native.Test/expected result)
+              (std.native.Test/failure-count result)
+              (std.native.Test/failure?
+               (std.native.Test/failure result 0))]))
    :expected [false 7 8 1 true]}
   {:name "traverses strict Failure leaves depth first"
    :test (fn []
@@ -29,18 +34,30 @@
                          :failure/message "parent"
                          :failure/context {}
                          :failure/children [left right]}
-                 result (Result/create :success false {:failures [parent]})]
-             [(vec (map :failure/code (Test/failure-seq result)))
-              (Test/failure-count result)
-              (:failure/code (Test/failure result 1))
-              (Test/failure? parent)
-              (Test/failure? (assoc parent :failure/children [{}]))]))
+                 result (std.native.Result/create
+                         :success
+                         false
+                         {:failures [parent]})]
+             [(vec (map :failure/code
+                        (std.native.Test/failure-seq result)))
+              (std.native.Test/failure-count result)
+              (:failure/code (std.native.Test/failure result 1))
+              (std.native.Test/failure? parent)
+              (std.native.Test/failure?
+               (assoc parent :failure/children [{}]))]))
    :expected [[:left :right] 2 :right true false]}
   {:name "enriches without recomputing comparison data"
    :test (fn []
-           (let [comparison (Result/create :success false {:failures []})
-                 result (Test/result "preserved" 1 1 comparison)]
-             [(Result/data result)
-              (Test/passed? result)
-              (get-in (Result/context result) [:test :name])]))
+           (let [comparison (std.native.Result/create
+                             :success
+                             false
+                             {:failures []})
+                 result (std.native.Test/result
+                         "preserved"
+                         1
+                         1
+                         comparison)]
+             [(std.native.Result/data result)
+              (std.native.Test/passed? result)
+              (get-in (std.native.Result/context result) [:test :name])]))
    :expected [false false "preserved"]}])

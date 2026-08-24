@@ -505,6 +505,14 @@ final class S3Filesystem implements IFilesystem {
           requireRevisionSupport(mutation, "move", sourceLogical, targetLogical);
           if (sourceLogical.equals(targetLogical)) {
             Resolved same = resolve(sourceLogical, "move", targetLogical);
+            checkExpected(
+                same.object(), mutation.expectedRevision(), "move", sourceLogical, targetLogical);
+            checkExpected(
+                same.object(),
+                mutation.expectedTargetRevision(),
+                "move",
+                sourceLogical,
+                targetLogical);
             return same.type() == EntryType.FILE ? mutation(targetLogical, same.object()) : Mutation.path(targetLogical);
           }
           Resolved sourceValue = resolve(sourceLogical, "move", targetLogical);
@@ -707,7 +715,7 @@ final class S3Filesystem implements IFilesystem {
   private static void checkExpected(
       ObjectInfo object, String expected, String operation, String path, String target) {
     if (expected == null) return;
-    if (object.revision() == null || !expected.equals(object.revision())) {
+    if (object == null || object.revision() == null || !expected.equals(object.revision())) {
       throw conflict(operation, path, target);
     }
   }

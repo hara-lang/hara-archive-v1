@@ -381,7 +381,22 @@ impl Machine {
                     .map(|value| Self::into_value(program.clone(), value))
                     .collect();
                 self.free_args.push(args);
-                let value = call_value(callee, runtime_args)?;
+                let value = if let Some(position) = program.functions[self.function]
+                    .source_map
+                    .position(self.ip)
+                {
+                    crate::core::with_exception_site(
+                        crate::core::ExceptionSite {
+                            namespace: program.namespace.clone(),
+                            resource: None,
+                            line: position.line,
+                            column: position.column,
+                        },
+                        || call_value(callee, runtime_args),
+                    )?
+                } else {
+                    call_value(callee, runtime_args)?
+                };
                 self.stack.push(value.into());
                 self.ip += 1;
                 Ok(())
@@ -755,7 +770,7 @@ impl Machine {
                     self.stack.truncate(depth);
                     if !self
                         .frame
-                        .store(value_slot, Value::String(message.clone()).into())
+                        .store(value_slot, crate::core::caught_error(&message).into())
                         || !self.frame.store(flag_slot, Value::Bool(true).into())
                     {
                         return Err(self.error(function, "pending slot out of range"));

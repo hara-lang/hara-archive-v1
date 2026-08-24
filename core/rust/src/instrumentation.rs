@@ -5,9 +5,9 @@
 //! implementation or an ambient Hara-level authority. Producer probes attach
 //! to the authoritative evaluator and HBC machine in this module family.
 
+pub mod conformance;
 #[cfg(all(feature = "bytecode-vm", feature = "bytecode-instrumentation"))]
 mod hbc;
-pub mod conformance;
 mod hub;
 mod interpreter;
 mod model;

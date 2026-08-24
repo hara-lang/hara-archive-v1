@@ -356,6 +356,30 @@ pub enum Step {
     Continue(Box<dyn FnOnce() -> Step>),
 }
 
+fn with_exception_site_step(site: ExceptionSite, step: Step) -> Step {
+    match step {
+        Step::Continue(next) => Step::Continue(Box::new(move || {
+            let step = with_exception_site(site.clone(), next);
+            with_exception_site_step(site, step)
+        })),
+        Step::Wait(promise, resume) => Step::Wait(
+            promise,
+            Box::new(move |state| {
+                let step = with_exception_site(site.clone(), || resume(state));
+                with_exception_site_step(site, step)
+            }),
+        ),
+        Step::Yield(value, resume) => Step::Yield(
+            value,
+            Box::new(move |value| {
+                let step = with_exception_site(site.clone(), || resume(value));
+                with_exception_site_step(site, step)
+            }),
+        ),
+        Step::Done(result) => with_exception_site(site, || Step::Done(result)),
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum EvalFiberState {
     Running,
@@ -373,7 +397,11 @@ pub struct EvalFiber {
 }
 impl EvalFiber {
     pub fn start(source: &str, env: HashMap<String, Value>) -> Result<Self, String> {
-        let forms = parse_forms(source)?;
+        let forms = crate::kernel::read_forms(source)
+            .map_err(|error| error.to_string())?
+            .iter()
+            .map(crate::core::exception_located_form)
+            .collect();
         Self::start_forms(forms, env)
     }
     pub fn start_forms(forms: Vec<Form>, env: HashMap<String, Value>) -> Result<Self, String> {
@@ -685,10 +713,27 @@ fn list(v: Vec<Form>, env: Rc<RefCell<HashMap<String, Value>>>, k: Cont) -> Step
                 value.clone(),
                 env,
                 Box::new(move |result| match result {
-                    Ok(value) => k(Err(thrown_error_at(value, site.clone()))),
+                    Ok(value) if matches!(value, Value::ExceptionInfo(_)) => {
+                        k(Err(thrown_error_at(value, site.clone())))
+                    }
+                    Ok(_) => k(Err("throw expects an Exception value created by ex".into())),
                     Err(error) => k(Err(error)),
                 }),
             )
+        }
+        Some("__ex-at") => {
+            let [_, Form::Number(line), Form::Number(column), rest @ ..] = v.as_slice() else {
+                return k(Err("internal exception location marker is malformed".into()));
+            };
+            if rest.is_empty() {
+                return k(Err("internal exception location marker is malformed".into()));
+            }
+            let expression = Form::List(rest.to_vec());
+            let site = exception_site_at(*line as usize, *column as usize)
+                .expect("exception site always exists");
+            with_exception_site(site.clone(), || {
+                with_exception_site_step(site, one(expression, env, k))
+            })
         }
         Some("throw") => {
             if v.len() != 2 {
@@ -698,7 +743,8 @@ fn list(v: Vec<Form>, env: Rc<RefCell<HashMap<String, Value>>>, k: Cont) -> Step
                 v[1].clone(),
                 env,
                 Box::new(move |r| match r {
-                    Ok(x) => k(Err(thrown_error(x))),
+                    Ok(x) if matches!(x, Value::ExceptionInfo(_)) => k(Err(thrown_error(x))),
+                    Ok(_) => k(Err("throw expects an Exception value created by ex".into())),
                     Err(x) => k(Err(x)),
                 }),
             )
@@ -712,7 +758,9 @@ fn list(v: Vec<Form>, env: Rc<RefCell<HashMap<String, Value>>>, k: Cont) -> Step
         Some("std.foundation.coroutine/status") => coroutine::status_form(v, env, k),
         Some("std.foundation.coroutine/close") => coroutine::close_form(v, env, k),
         Some("std.foundation.coroutine/resume") => coroutine::resume_form(v, env, k),
-        Some("std.protocol.icoroutine/resume") => coroutine::resume_protocol_form(v, env, k),
+        Some("std.protocol.icoroutine.ICoroutine/resume") => {
+            coroutine::resume_protocol_form(v, env, k)
+        }
         Some("std.foundation.coroutine/yield")
         | Some("std.native.Coroutine/yield")
         | Some("Coroutine/yield") => coroutine::yield_form(v, env, k),
@@ -1402,9 +1450,7 @@ fn call(f: Rc<Function>, args: Vec<Value>, k: Cont) -> Step {
         return k(crate::core::call_function(&f, args));
     }
     if f.variadic.is_none() && f.params.len() != args.len() {
-        if f.namespace.as_deref() == Some("std.foundation")
-            && f.name.as_deref() == Some("type")
-        {
+        if f.namespace.as_deref() == Some("std.foundation") && f.name.as_deref() == Some("type") {
             return k(Err("type expects one value".into()));
         }
         return k(Err(format!(
@@ -1437,10 +1483,10 @@ fn call(f: Rc<Function>, args: Vec<Value>, k: Cont) -> Step {
             .then_some(())
             .and_then(|_| f.namespace.as_ref())
             .map(|namespace| {
-            let previous = registry.current().name().as_str().to_owned();
-            registry.set_current(namespace);
-            (registry, previous)
-        })
+                let previous = registry.current().name().as_str().to_owned();
+                registry.set_current(namespace);
+                (registry, previous)
+            })
     });
     let mut env = f.captured.borrow().clone();
     for (n, x) in f.params.iter().zip(args.iter()) {

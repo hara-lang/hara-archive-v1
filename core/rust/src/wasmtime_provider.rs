@@ -1,7 +1,7 @@
 #![cfg(not(target_arch = "wasm32"))]
 
 use std::cell::RefCell;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::rc::Rc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -95,9 +95,7 @@ impl WasmtimeExtensionProvider {
 
     pub fn compile_hta_with_host_handler(
         bytes: &[u8],
-        host_handler: Option<
-            Rc<dyn Fn(String, String, Vec<Value>) -> Result<Value, String>>,
-        >,
+        host_handler: Option<Rc<dyn Fn(String, String, Vec<Value>) -> Result<Value, String>>>,
     ) -> Result<Self, String> {
         Self::compile_hta_parts(bytes, None, host_handler)
     }
@@ -105,9 +103,7 @@ impl WasmtimeExtensionProvider {
     pub fn compile_hta_with_library(
         bytes: &[u8],
         library_bytes: &[u8],
-        host_handler: Option<
-            Rc<dyn Fn(String, String, Vec<Value>) -> Result<Value, String>>,
-        >,
+        host_handler: Option<Rc<dyn Fn(String, String, Vec<Value>) -> Result<Value, String>>>,
     ) -> Result<Self, String> {
         Self::compile_hta_parts(bytes, Some(library_bytes), host_handler)
     }
@@ -115,9 +111,7 @@ impl WasmtimeExtensionProvider {
     fn compile_hta_parts(
         bytes: &[u8],
         library_bytes: Option<&[u8]>,
-        host_handler: Option<
-            Rc<dyn Fn(String, String, Vec<Value>) -> Result<Value, String>>,
-        >,
+        host_handler: Option<Rc<dyn Fn(String, String, Vec<Value>) -> Result<Value, String>>>,
     ) -> Result<Self, String> {
         let (engine, module) = compile_hta_module(bytes, library_bytes.is_some())?;
         let library = library_bytes
@@ -149,11 +143,18 @@ impl WasmExtensionProvider for WasmtimeExtensionProvider {
         )
     }
 
+    fn capabilities(&self) -> Vec<String> {
+        if matches!(&self.mode, ProviderMode::Hta(_)) {
+            return hta_capabilities();
+        }
+        Vec::new()
+    }
+
     fn start(&self, manifest: &ExtensionManifest) -> Result<(), String> {
         if let ProviderMode::Hta(state) = &self.mode {
             return state.start(manifest);
         }
-        if !manifest.capabilities.is_empty() {
+        if !manifest.capabilities.is_empty() || !manifest.host_call_capabilities.is_empty() {
             return Err(format!(
                 "extension/capability-denied: {:?} for {}",
                 manifest.capabilities, manifest.namespace
@@ -276,6 +277,13 @@ impl WasmExtensionProvider for WasmtimeExtensionProvider {
         Err("extension/cancel-unsupported: core.v1 calls are synchronous".into())
     }
 
+    fn release(&self, manifest: &ExtensionManifest, handle: &Value) -> Result<(), String> {
+        if let ProviderMode::Hta(state) = &self.mode {
+            return state.release(manifest, handle);
+        }
+        Err("extension/release-unsupported: provider has no HTA handle boundary".into())
+    }
+
     fn shutdown(&self, manifest: &ExtensionManifest) {
         match &self.mode {
             ProviderMode::Direct { session, .. } => {
@@ -289,6 +297,15 @@ impl WasmExtensionProvider for WasmtimeExtensionProvider {
 
 const MAX_HTA_FRAME_BYTES: usize = 64 * 1024 * 1024;
 const DEFAULT_HTA_TIMEOUT: Duration = Duration::from_secs(120);
+
+fn hta_capabilities() -> Vec<String> {
+    std::env::var("HARA_HTA_CAPABILITIES")
+        .unwrap_or_default()
+        .split([',', ' ', '\n', '\t'])
+        .filter(|capability| !capability.is_empty())
+        .map(str::to_owned)
+        .collect()
+}
 
 struct HtaPending {
     promise: Promise,
@@ -305,8 +322,11 @@ struct HtaSession {
     deliver: Func,
     cancel: Func,
     drop_task: Func,
+    release: Func,
     pending: HashMap<u64, HtaPending>,
     host_promises: HashMap<u64, Promise>,
+    host_calls_seen: HashSet<u64>,
+    handles: HashSet<(String, String, u64)>,
     deliveries: VecDeque<(u64, bool, Value)>,
 }
 
@@ -322,9 +342,17 @@ struct HtaProviderState {
 impl HtaProviderState {
     fn start(&self, manifest: &ExtensionManifest) -> Result<(), String> {
         if manifest.provider != "wasm" || manifest.abi != WasmAbi::HtaV1 {
-            return Err("extension/manifest-mismatch: HTA Wasm provider requires :wasm/:hta.v1".into());
+            return Err(
+                "extension/manifest-mismatch: HTA Wasm provider requires :wasm/:hta.v1".into(),
+            );
         }
-        if !manifest.capabilities.is_empty() {
+        let capabilities = hta_capabilities();
+        if manifest
+            .capabilities
+            .iter()
+            .chain(manifest.host_call_capabilities.values().flatten())
+            .any(|capability| !capabilities.contains(capability))
+        {
             return Err(format!(
                 "extension/capability-denied: {:?} for {}",
                 manifest.capabilities, manifest.namespace
@@ -337,7 +365,10 @@ impl HtaProviderState {
             ));
         }
         if self.session.borrow().is_some() {
-            return Err(format!("extension/start: session already exists for {}", manifest.namespace));
+            return Err(format!(
+                "extension/start: session already exists for {}",
+                manifest.namespace
+            ));
         }
 
         let mut linker = Linker::new(&self.engine);
@@ -496,7 +527,10 @@ impl HtaProviderState {
         )?;
         let version = call_i32(&mut store, &abi_version, &[], "hta_abi_version")?;
         if !(1..=4).contains(&version) {
-            return Err(format!("extension/abi-version-unsupported: {}", manifest.namespace));
+            return Err(format!(
+                "extension/abi-version-unsupported: {}",
+                manifest.namespace
+            ));
         }
         *self.session.borrow_mut() = Some(HtaSession {
             store,
@@ -508,8 +542,11 @@ impl HtaProviderState {
             deliver,
             cancel,
             drop_task,
+            release,
             pending: HashMap::new(),
             host_promises: HashMap::new(),
+            host_calls_seen: HashSet::new(),
+            handles: HashSet::new(),
             deliveries: VecDeque::new(),
         });
         Ok(())
@@ -527,9 +564,17 @@ impl HtaProviderState {
             let session = session_ref
                 .as_mut()
                 .ok_or_else(|| "hta/session-closed".to_owned())?;
+            let operation = manifest
+                .operations
+                .get(export)
+                .cloned()
+                .unwrap_or_else(|| export.to_owned());
+            let arguments_value = Value::Vector(arguments.to_vec().into());
+            validate_handles_in_value(&arguments_value, manifest)?;
+            validate_live_handles(&arguments_value, &session.handles)?;
             let request = hta::encode(&Value::Vector(
                 vec![
-                    Value::String(export.to_owned()),
+                    Value::String(operation),
                     Value::Vector(arguments.to_vec().into()),
                 ]
                 .into(),
@@ -537,6 +582,11 @@ impl HtaProviderState {
             let task = execute_start(session, &request)?;
             if task <= 0 {
                 return Err(format!("hta/start-failed: {}", manifest.namespace));
+            }
+            if session.pending.contains_key(&(task as u64)) {
+                let _ = cancel_task_on_session(session, task as u64);
+                let _ = drop_task_on_session(session, task as u64);
+                return Err(format!("hta/task-duplicate: {}", task));
             }
             session.pending.insert(
                 task as u64,
@@ -585,8 +635,39 @@ impl HtaProviderState {
                 let _ = state.cancel(task);
             }
         }));
-        self.pump(manifest)?;
+        if let Err(error) = self.pump(manifest) {
+            self.fail_all(error.clone());
+            return Err(error);
+        }
         Ok(Value::Promise(promise))
+    }
+
+    fn release(&self, manifest: &ExtensionManifest, handle: &Value) -> Result<(), String> {
+        validate_handles_in_value(handle, manifest)?;
+        let Value::Extension(handle_value) = handle else {
+            return Err("hta/handle-invalid: release expects an opaque handle".into());
+        };
+        let key = (
+            handle_value.provider.clone(),
+            handle_value.type_name.clone(),
+            handle_value.handle,
+        );
+        let frame = hta::encode(handle)?;
+        let mut session_ref = self.session.borrow_mut();
+        let session = session_ref
+            .as_mut()
+            .ok_or_else(|| "hta/session-closed".to_owned())?;
+        if !session.handles.remove(&key) {
+            return Err(format!(
+                "hta/handle-stale: {}:{}",
+                handle_value.type_name, handle_value.handle
+            ));
+        }
+        if let Err(error) = execute_release(session, &frame) {
+            session.handles.insert(key);
+            return Err(error);
+        }
+        Ok(())
     }
 
     fn pump(self: &Rc<Self>, manifest: &ExtensionManifest) -> Result<(), String> {
@@ -609,7 +690,12 @@ impl HtaProviderState {
         let session = session_ref
             .as_mut()
             .ok_or_else(|| "hta/session-closed".to_owned())?;
-        let packed = call_i64(&mut session.store, &session.next_event, &[], "hta_next_event")?;
+        let packed = call_i64(
+            &mut session.store,
+            &session.next_event,
+            &[],
+            "hta_next_event",
+        )?;
         if packed == 0 {
             return Ok(None);
         }
@@ -638,7 +724,11 @@ impl HtaProviderState {
             .map_err(|error| format!("hta/event-malformed: {error}"))
     }
 
-    fn handle_event(self: &Rc<Self>, manifest: &ExtensionManifest, event: Value) -> Result<(), String> {
+    fn handle_event(
+        self: &Rc<Self>,
+        manifest: &ExtensionManifest,
+        event: Value,
+    ) -> Result<(), String> {
         let values = match event {
             Value::Vector(values) => values.iter().cloned().collect::<Vec<_>>(),
             Value::List(values) => values.iter().cloned().collect::<Vec<_>>(),
@@ -652,13 +742,31 @@ impl HtaProviderState {
                     .get(2)
                     .cloned()
                     .ok_or_else(|| "hta/event-malformed: payload".to_owned())?;
-                let pending = self
-                    .session
-                    .borrow_mut()
-                    .as_mut()
-                    .and_then(|session| session.pending.remove(&task));
-                if let Some(pending) = pending {
+                validate_handles_in_value(&payload, manifest)?;
+                {
+                    let session_ref = self.session.borrow();
+                    let session = session_ref
+                        .as_ref()
+                        .ok_or_else(|| "hta/session-closed".to_owned())?;
+                    if kind == 1 {
+                        validate_live_handles(&payload, &session.handles)?;
+                    }
+                }
+                if self.is_pending(task) {
                     self.drop_task(task)?;
+                    let pending = self
+                        .session
+                        .borrow_mut()
+                        .as_mut()
+                        .and_then(|session| session.pending.remove(&task));
+                    let Some(pending) = pending else {
+                        return Ok(());
+                    };
+                    if kind == 0 {
+                        if let Some(session) = self.session.borrow_mut().as_mut() {
+                            collect_handles(&payload, &mut session.handles);
+                        }
+                    }
                     if kind == 0 {
                         pending.promise.resolve(payload);
                     } else {
@@ -681,6 +789,20 @@ impl HtaProviderState {
             return Err("hta/host-call-malformed".into());
         }
         let call = number(values, 1, "call")?;
+        let task = number(values, 2, "task")?;
+        if !self.is_pending(task) {
+            return Ok(());
+        }
+        if !self
+            .session
+            .borrow_mut()
+            .as_mut()
+            .ok_or_else(|| "hta/session-closed".to_owned())?
+            .host_calls_seen
+            .insert(call)
+        {
+            return Ok(());
+        }
         let service_index = if values.len() == 8 { 5 } else { 3 };
         let service = string_value(values, service_index, "service")?;
         let method = string_value(values, service_index + 1, "method")?;
@@ -689,12 +811,36 @@ impl HtaProviderState {
             Some(Value::List(arguments)) => arguments.iter().cloned().collect::<Vec<_>>(),
             _ => return Err("hta/host-call-malformed: arguments".into()),
         };
+        validate_handles_in_value(&Value::Vector(arguments.clone().into()), manifest)?;
+        if let Some(session) = self.session.borrow().as_ref() {
+            validate_live_handles(&Value::Vector(arguments.clone().into()), &session.handles)?;
+        }
         if !manifest.permits_host_call(&service, &method) {
-            self.queue_delivery(call, false, host_error("hta/host-call-denied", &service, &method));
+            self.queue_delivery(
+                call,
+                false,
+                host_error("hta/host-call-denied", &service, &method),
+            );
+            return Ok(());
+        }
+        if manifest
+            .host_call_capabilities(&service, &method)
+            .iter()
+            .any(|capability| !hta_capabilities().contains(capability))
+        {
+            self.queue_delivery(
+                call,
+                false,
+                host_error("hta/capability-denied", &service, &method),
+            );
             return Ok(());
         }
         let Some(handler) = self.host_handler.clone() else {
-            self.queue_delivery(call, false, host_error("host/unavailable", &service, &method));
+            self.queue_delivery(
+                call,
+                false,
+                host_error("host/unavailable", &service, &method),
+            );
             return Ok(());
         };
         match handler(service.clone(), method.clone(), arguments) {
@@ -715,7 +861,7 @@ impl HtaProviderState {
                             PromiseState::Rejected(error) => state_owner.queue_delivery(
                                 call,
                                 false,
-                                Value::String(error.message()),
+                                host_failure("hta/host-call-failed", &error.message()),
                             ),
                             PromiseState::Pending => {}
                         }
@@ -723,7 +869,9 @@ impl HtaProviderState {
                 }));
             }
             Ok(value) => self.queue_delivery(call, true, value),
-            Err(error) => self.queue_delivery(call, false, Value::String(error)),
+            Err(error) => {
+                self.queue_delivery(call, false, host_failure("hta/host-call-failed", &error))
+            }
         }
         Ok(())
     }
@@ -760,7 +908,7 @@ impl HtaProviderState {
                 vec![
                     Value::Number(call as i64),
                     Value::Number(if fulfilled { 0 } else { 1 }),
-                    value,
+                    value.clone(),
                 ]
                 .into(),
             ))?;
@@ -769,6 +917,9 @@ impl HtaProviderState {
                 .as_mut()
                 .ok_or_else(|| "hta/session-closed".to_owned())?;
             execute_deliver(session, &frame)?;
+            if fulfilled {
+                collect_handles(&value, &mut session.handles);
+            }
             session.host_promises.remove(&call);
         }
     }
@@ -791,16 +942,20 @@ impl HtaProviderState {
     }
 
     fn cancel(&self, task: u64) -> Result<(), String> {
-        if !self.is_pending(task) {
-            return Ok(());
-        }
-        self.cancel_task(task)?;
-        self.session
+        let pending = self
+            .session
             .borrow_mut()
             .as_mut()
             .ok_or_else(|| "hta/session-closed".to_owned())?
             .pending
             .remove(&task);
+        if pending.is_none() {
+            return Ok(());
+        }
+        if let Err(error) = self.cancel_task(task) {
+            let _ = self.drop_task(task);
+            return Err(error);
+        }
         Ok(())
     }
 
@@ -818,12 +973,15 @@ impl HtaProviderState {
         if status != 0 {
             return Err(format!("hta/cancel-failed: {status}"));
         }
-        let _ = call_i32(
+        let drop_status = call_i32(
             &mut session.store,
             &session.drop_task,
             &[Val::I64(task as i64)],
             "hta_drop_task",
         )?;
+        if drop_status != 0 {
+            return Err(format!("hta/drop-task-failed: {drop_status}"));
+        }
         Ok(())
     }
 
@@ -868,7 +1026,9 @@ impl HtaProviderState {
 
     fn timeout(&self, task: u64) {
         if self.is_pending(task) {
-            let _ = self.cancel_task(task);
+            if self.cancel_task(task).is_err() {
+                let _ = self.drop_task(task);
+            }
             let pending = self
                 .session
                 .borrow_mut()
@@ -890,25 +1050,237 @@ impl HtaProviderState {
                 session
                     .pending
                     .drain()
-                    .map(|(_, pending)| pending.promise)
+                    .map(|(task, pending)| (task, pending.promise))
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
-        for promise in pending {
+        for (task, promise) in pending {
+            if let Some(session) = self.session.borrow_mut().as_mut() {
+                let _ = cancel_task_on_session(session, task);
+                let _ = drop_task_on_session(session, task);
+            }
             promise.reject(error.clone());
+        }
+        if let Some(session) = self.session.borrow_mut().as_mut() {
+            session.host_promises.clear();
+            session.deliveries.clear();
         }
     }
 
     fn shutdown(&self, _manifest: &ExtensionManifest) {
-        let pending = self
-            .session
-            .borrow_mut()
-            .take()
-            .map(|session| session.pending.into_values().map(|pending| pending.promise).collect::<Vec<_>>())
-            .unwrap_or_default();
-        for promise in pending {
+        let Some(mut session) = self.session.borrow_mut().take() else {
+            return;
+        };
+        let pending = session
+            .pending
+            .drain()
+            .map(|(task, pending)| (task, pending.promise))
+            .collect::<Vec<_>>();
+        for (task, promise) in pending {
+            let _ = cancel_task_on_session(&mut session, task);
+            let _ = drop_task_on_session(&mut session, task);
             promise.reject("hta/session-closed");
         }
+        session.host_promises.clear();
+        session.deliveries.clear();
+    }
+}
+
+fn validate_handles_in_value(value: &Value, manifest: &ExtensionManifest) -> Result<(), String> {
+    match value {
+        Value::Extension(handle) => {
+            if manifest.handle_tags.is_empty() {
+                return Ok(());
+            }
+            let Some(owner) = manifest.handle_tags.get(&handle.type_name) else {
+                return Err(format!("hta/handle-type-denied: {}", handle.type_name));
+            };
+            if handle.provider != manifest.namespace
+                && manifest.identity.as_deref() != Some(handle.provider.as_str())
+                && handle.provider != *owner
+            {
+                return Err(format!(
+                    "hta/handle-owner-mismatch: {}:{}",
+                    handle.provider, handle.handle
+                ));
+            }
+        }
+        Value::Tagged(value) => validate_handles_in_value(value.form(), manifest)?,
+        Value::Vector(values) => validate_handles_iter(values.iter(), manifest)?,
+        Value::List(values) => validate_handles_iter(values.iter(), manifest)?,
+        Value::Tuple(values) => validate_handles_iter(values.iter(), manifest)?,
+        Value::Map(values) => validate_handles_map(values.iter(), manifest)?,
+        Value::SortedMap(values) => validate_handles_map(values.iter(), manifest)?,
+        Value::OrderedMap(values) => {
+            for (key, value) in values.iter() {
+                validate_handles_in_value(key, manifest)?;
+                validate_handles_in_value(value, manifest)?;
+            }
+        }
+        Value::PriorityMap(values) => {
+            for (key, value) in values.iter() {
+                validate_handles_in_value(&key, manifest)?;
+                validate_handles_in_value(&value, manifest)?;
+            }
+        }
+        Value::Set(values) => validate_handles_iter(values.iter(), manifest)?,
+        Value::OrderedSet(values) => validate_handles_iter(values.iter(), manifest)?,
+        Value::SortedSet(values) => validate_handles_iter(values.iter(), manifest)?,
+        Value::Struct(value) => {
+            for value in value.ordered_values() {
+                validate_handles_in_value(value, manifest)?;
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn validate_handles_iter<'a>(
+    values: impl Iterator<Item = &'a Value>,
+    manifest: &ExtensionManifest,
+) -> Result<(), String> {
+    for value in values {
+        validate_handles_in_value(value, manifest)?;
+    }
+    Ok(())
+}
+
+fn validate_handles_map<'a>(
+    values: impl Iterator<Item = (&'a Value, &'a Value)>,
+    manifest: &ExtensionManifest,
+) -> Result<(), String> {
+    for (key, value) in values {
+        validate_handles_in_value(key, manifest)?;
+        validate_handles_in_value(value, manifest)?;
+    }
+    Ok(())
+}
+
+fn validate_live_handles(
+    value: &Value,
+    handles: &HashSet<(String, String, u64)>,
+) -> Result<(), String> {
+    match value {
+        Value::Extension(handle)
+            if !handles.contains(&(
+                handle.provider.clone(),
+                handle.type_name.clone(),
+                handle.handle,
+            )) =>
+        {
+            return Err(format!(
+                "hta/handle-stale: {}:{}",
+                handle.type_name, handle.handle
+            ));
+        }
+        Value::Vector(values) => validate_live_iter(values.iter(), handles)?,
+        Value::List(values) => validate_live_iter(values.iter(), handles)?,
+        Value::Tuple(values) => validate_live_iter(values.iter(), handles)?,
+        Value::Map(values) => validate_live_map(values.iter(), handles)?,
+        Value::SortedMap(values) => validate_live_map(values.iter(), handles)?,
+        Value::OrderedMap(values) => {
+            for (key, value) in values.iter() {
+                validate_live_handles(key, handles)?;
+                validate_live_handles(value, handles)?;
+            }
+        }
+        Value::PriorityMap(values) => {
+            for (key, value) in values.iter() {
+                validate_live_handles(&key, handles)?;
+                validate_live_handles(&value, handles)?;
+            }
+        }
+        Value::Set(values) => validate_live_iter(values.iter(), handles)?,
+        Value::OrderedSet(values) => validate_live_iter(values.iter(), handles)?,
+        Value::SortedSet(values) => validate_live_iter(values.iter(), handles)?,
+        Value::Tagged(value) => validate_live_handles(value.form(), handles)?,
+        Value::Struct(value) => {
+            for value in value.ordered_values() {
+                validate_live_handles(value, handles)?;
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn validate_live_iter<'a>(
+    values: impl Iterator<Item = &'a Value>,
+    handles: &HashSet<(String, String, u64)>,
+) -> Result<(), String> {
+    for value in values {
+        validate_live_handles(value, handles)?;
+    }
+    Ok(())
+}
+
+fn validate_live_map<'a>(
+    values: impl Iterator<Item = (&'a Value, &'a Value)>,
+    handles: &HashSet<(String, String, u64)>,
+) -> Result<(), String> {
+    for (key, value) in values {
+        validate_live_handles(key, handles)?;
+        validate_live_handles(value, handles)?;
+    }
+    Ok(())
+}
+
+fn collect_handles(value: &Value, handles: &mut HashSet<(String, String, u64)>) {
+    match value {
+        Value::Extension(handle) => {
+            handles.insert((
+                handle.provider.clone(),
+                handle.type_name.clone(),
+                handle.handle,
+            ));
+        }
+        Value::Vector(values) => collect_iter(values.iter(), handles),
+        Value::List(values) => collect_iter(values.iter(), handles),
+        Value::Tuple(values) => collect_iter(values.iter(), handles),
+        Value::Map(values) => collect_map(values.iter(), handles),
+        Value::SortedMap(values) => collect_map(values.iter(), handles),
+        Value::OrderedMap(values) => {
+            for (key, value) in values.iter() {
+                collect_handles(key, handles);
+                collect_handles(value, handles);
+            }
+        }
+        Value::PriorityMap(values) => {
+            for (key, value) in values.iter() {
+                collect_handles(&key, handles);
+                collect_handles(&value, handles);
+            }
+        }
+        Value::Set(values) => collect_iter(values.iter(), handles),
+        Value::OrderedSet(values) => collect_iter(values.iter(), handles),
+        Value::SortedSet(values) => collect_iter(values.iter(), handles),
+        Value::Tagged(value) => collect_handles(value.form(), handles),
+        Value::Struct(value) => {
+            for value in value.ordered_values() {
+                collect_handles(value, handles);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn collect_iter<'a>(
+    values: impl Iterator<Item = &'a Value>,
+    handles: &mut HashSet<(String, String, u64)>,
+) {
+    for value in values {
+        collect_handles(value, handles);
+    }
+}
+
+fn collect_map<'a>(
+    values: impl Iterator<Item = (&'a Value, &'a Value)>,
+    handles: &mut HashSet<(String, String, u64)>,
+) {
+    for (key, value) in values {
+        collect_handles(key, handles);
+        collect_handles(value, handles);
     }
 }
 
@@ -917,8 +1289,8 @@ fn compile_hta_module(bytes: &[u8], allow_library: bool) -> Result<(Engine, Modu
     config.consume_fuel(true);
     let engine =
         Engine::new(&config).map_err(|error| format!("extension/engine-unavailable: {error}"))?;
-    let module =
-        Module::new(&engine, bytes).map_err(|error| format!("extension/module-invalid: {error}"))?;
+    let module = Module::new(&engine, bytes)
+        .map_err(|error| format!("extension/module-invalid: {error}"))?;
     for import in module.imports() {
         let supported_env = import.module() == "env"
             && matches!(
@@ -958,7 +1330,9 @@ fn expect_signature(
     let actual_parameters = ty.params().collect::<Vec<_>>();
     let actual_results = ty.results().collect::<Vec<_>>();
     if actual_parameters != parameters || actual_results != results {
-        return Err(format!("extension/abi-type-unsupported: {name} has an invalid signature"));
+        return Err(format!(
+            "extension/abi-type-unsupported: {name} has an invalid signature"
+        ));
     }
     Ok(())
 }
@@ -1077,6 +1451,65 @@ fn execute_deliver(session: &mut HtaSession, frame: &[u8]) -> Result<(), String>
     Ok(())
 }
 
+fn execute_release(session: &mut HtaSession, frame: &[u8]) -> Result<(), String> {
+    let pointer = call_i32(
+        &mut session.store,
+        &session.allocator,
+        &[Val::I32(frame.len() as i32)],
+        "hta_alloc",
+    )?;
+    if pointer < 0 {
+        return Err("hta/memory-unavailable".into());
+    }
+    session
+        .memory
+        .write(&mut session.store, pointer as usize, frame)
+        .map_err(|error| format!("hta/memory-write-failed: {error}"))?;
+    let status = call_i32(
+        &mut session.store,
+        &session.release,
+        &[Val::I32(pointer), Val::I32(frame.len() as i32)],
+        "hta_release",
+    );
+    call_void(
+        &mut session.store,
+        &session.deallocator,
+        &[Val::I32(pointer), Val::I32(frame.len() as i32)],
+        "hta_dealloc",
+    )?;
+    let status = status?;
+    if status != 0 {
+        return Err(format!("hta/handle-release-failed: {status}"));
+    }
+    Ok(())
+}
+
+fn drop_task_on_session(session: &mut HtaSession, task: u64) -> Result<(), String> {
+    let status = call_i32(
+        &mut session.store,
+        &session.drop_task,
+        &[Val::I64(task as i64)],
+        "hta_drop_task",
+    )?;
+    if status != 0 {
+        return Err(format!("hta/drop-task-failed: {status}"));
+    }
+    Ok(())
+}
+
+fn cancel_task_on_session(session: &mut HtaSession, task: u64) -> Result<(), String> {
+    let status = call_i32(
+        &mut session.store,
+        &session.cancel,
+        &[Val::I64(task as i64)],
+        "hta_cancel",
+    )?;
+    if status != 0 {
+        return Err(format!("hta/cancel-failed: {status}"));
+    }
+    Ok(())
+}
+
 fn hta_timeout() -> Option<Duration> {
     match std::env::var("HARA_HTA_TIMEOUT_MS") {
         Ok(value) => match value.parse::<u64>() {
@@ -1103,15 +1536,16 @@ fn string_value(values: &[Value], index: usize, field: &str) -> Result<String, S
 }
 
 fn host_error(code: &str, service: &str, method: &str) -> Value {
+    host_failure(code, &format!("{service}/{method}"))
+}
+
+fn host_failure(code: &str, message: &str) -> Value {
     Value::Map(
         [
-            (
-                Value::Keyword("code".into()),
-                Value::Keyword(code.into()),
-            ),
+            (Value::Keyword("code".into()), Value::Keyword(code.into())),
             (
                 Value::Keyword("message".into()),
-                Value::String(format!("{service}/{method}")),
+                Value::String(message.into()),
             ),
             (
                 Value::Keyword("origin".into()),

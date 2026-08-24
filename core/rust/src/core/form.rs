@@ -815,6 +815,7 @@ fn deref_binding_value(name: &str, value: Value) -> Value {
     match value {
         Value::Var(var)
             if name.starts_with("std.native.")
+                || name.starts_with("std.protocol.")
                 || var.symbol().get_name() == Symbol::parse(name).get_name() =>
         {
             var.deref_value()
@@ -828,9 +829,14 @@ fn binding_value(env: &HashMap<String, Value>, name: &str) -> Option<Value> {
         .cloned()
         .map(|value| deref_binding_value(name, value))
         .or_else(|| {
-            namespace_registry()
-                .ok()?
+            let registry = namespace_registry().ok()?;
+            registry
                 .resolve(&crate::lang::data::Symbol::parse(name))
+                .or_else(|| {
+                    crate::core::canonical_intrinsic_symbol(name).and_then(|canonical| {
+                        registry.resolve(&crate::lang::data::Symbol::parse(&canonical))
+                    })
+                })
                 .map(|var| var.deref_value())
         })
         .or_else(|| {
@@ -872,7 +878,7 @@ fn foundation_fallback_omitted(env: &HashMap<String, Value>, name: &str) -> bool
         return false;
     };
     let local = crate::lang::data::Symbol::parse(name);
-    registry.current().resolve(&local).is_none()
+    registry.resolve(&local).is_none()
         && registry
             .find("std.foundation")
             .and_then(|foundation| foundation.resolve(&local))
@@ -915,7 +921,7 @@ pub(crate) fn call_value(callable: Value, arguments: Vec<Value>) -> Result<Value
             let mut protocol_arguments = Vec::with_capacity(arguments.len() + 1);
             protocol_arguments.push(value);
             protocol_arguments.extend(arguments);
-            protocol_call("std.protocol.ifn/IFn", "invoke", &protocol_arguments)
+            protocol_call("std.protocol.ifn.IFn", "invoke", &protocol_arguments)
         }
         Value::Pointer(pointer) => pointer_context_call(
             &pointer,

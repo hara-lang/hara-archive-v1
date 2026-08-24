@@ -42,40 +42,40 @@
   create
   "Creates a suspended coroutine from function."
   [function]
-  (Coroutine/create function))
+  (std.native.Coroutine/create function))
 
 (defn ^{:inline true :schema [:fn [:any] :bool]}
   coroutine?
   "Returns true when value is a coroutine."
   [value]
-  (Coroutine/instance? value))
+  (std.native.Coroutine/instance? value))
 
 (defn ^{:inline true :schema [:fn [:any] :keyword]}
   status
   "Returns coroutine's scheduler state."
   [coroutine]
-  (ICoroutine/status coroutine))
+  (std.protocol.icoroutine.ICoroutine/status coroutine))
 
 (defn ^{:schema [:fn [:any & :any] :any]}
   resume
   "Advances coroutine, supplying optional resume arguments."
   [coroutine & arguments]
-  (std.foundation/apply ICoroutine/resume coroutine arguments))
+  (std.foundation/apply std.protocol.icoroutine.ICoroutine/resume coroutine arguments))
 
 (defn ^{:inline true :schema [:fn [:any] :any]}
   close
   "Closes coroutine and releases its scheduler state."
   [coroutine]
-  (IClose/close coroutine))
+  (std.protocol.iclose.IClose/close coroutine))
 
 (defn ^{:inline true :schema [:fn [:any] :any]}
   yield
   "Suspends the current coroutine with value."
   [value]
-  (Coroutine/yield value))
+  (std.native.Coroutine/yield value))
 
 (defn ^{:inline true :schema [:fn [:promise] :any]}
   await
   "Suspends until promise settles, then returns or throws its result."
   [promise]
-  (Coroutine/await promise))
+  (std.native.Coroutine/await promise))

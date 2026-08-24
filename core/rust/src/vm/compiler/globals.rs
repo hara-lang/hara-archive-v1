@@ -196,36 +196,19 @@ impl Compiler {
                 } else if !name.contains('/') && self.globals.iter().any(|global| global == name) {
                     Some(format!("{}/{}", self.namespace, name))
                 } else if let Some((alias, local)) = name.split_once('/') {
-                    crate::core::NATIVE_TYPES
-                        .iter()
-                        .any(|(native_type, _)| *native_type == alias)
-                        .then(|| format!("std.native.{alias}/{local}"))
-                        .or_else(|| {
-                            crate::core::FOUNDATION_PROTOCOLS
-                                .iter()
-                                .any(|(protocol, _)| *protocol == alias)
-                                .then(|| {
-                                    format!(
-                                        "{}/{local}",
-                                        crate::core::builtin_protocol_namespace(alias)
-                                    )
-                                })
-                        })
-                        .or_else(|| {
-                            current
-                                .lazy_target(alias)
-                                .map(|target| format!("{}/{}", target.as_str(), local))
-                        })
-                        .or_else(|| {
-                            (if registry.find(alias).is_some() {
-                                registry.resolve(&crate::lang::data::Symbol::parse(name))
-                            } else {
-                                current.resolve(&crate::lang::data::Symbol::parse(name))
-                            })
-                            .map(|var| var.symbol().as_str().to_owned())
-                        })
+                    (if registry.find(alias).is_some() {
+                        registry.resolve(&crate::lang::data::Symbol::parse(name))
+                    } else {
+                        current.resolve(&crate::lang::data::Symbol::parse(name))
+                    })
+                    .map(|var| var.symbol().as_str().to_owned())
+                    .or_else(|| {
+                        current
+                            .lazy_target(alias)
+                            .map(|target| format!("{}/{}", target.as_str(), local))
+                    })
                 } else {
-                    current
+                    registry
                         .resolve(&crate::lang::data::Symbol::parse(name))
                         .map(|var| var.symbol().as_str().to_owned())
                 }
@@ -271,7 +254,8 @@ impl Compiler {
                             .split_once('/')
                             .and_then(|(namespace, _)| registry.find(namespace))
                             .and_then(|_| registry.resolve(&crate::lang::data::Symbol::parse(name)))
-                            .or_else(|| current.resolve(&crate::lang::data::Symbol::parse(name))))
+                            .or_else(|| current.resolve(&crate::lang::data::Symbol::parse(name)))
+                            .or_else(|| registry.resolve(&crate::lang::data::Symbol::parse(name))))
                         .is_some_and(|var| {
                             crate::core::Primitive::from_symbol(name).is_none()
                                 || var.symbol().get_namespace() != Some("std.foundation")
@@ -287,6 +271,15 @@ impl Compiler {
         if self.excluded_intrinsic_symbol(name) || !crate::core::is_bytecode_callable(name) {
             return false;
         }
+        let bootstrap_callable = |candidate: &str| {
+            crate::core::foundation_bootstrap_callable_names().any(|callable| callable == candidate)
+                || candidate
+                    .strip_prefix("std.foundation/")
+                    .is_some_and(|local| {
+                        crate::core::foundation_bootstrap_callable_names()
+                            .any(|callable| callable == local)
+                    })
+        };
         crate::core::namespace_registry()
             .map(|registry| {
                 let current = registry
@@ -296,6 +289,7 @@ impl Compiler {
                     .resolve(&crate::lang::data::Symbol::parse(name))
                     .or_else(|| current.resolve(&crate::lang::data::Symbol::parse(name)))
                     .is_some()
+                    || bootstrap_callable(name)
             })
             .unwrap_or(true)
     }

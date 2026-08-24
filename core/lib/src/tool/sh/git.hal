@@ -32,9 +32,10 @@
   ([args]
    (git-result args {}))
   ([args options]
-   ((execution-runner options)
-    (command args options)
-    (execution-options options))))
+   (sh/result-record
+    ((execution-runner options)
+     (command args options)
+     (execution-options options)))))
 
 (defn git-run
   "Runs Git and optionally rejects non-zero results."

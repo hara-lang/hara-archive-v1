@@ -1,0 +1,324 @@
+(ns tool.migrate.common.clojure-test
+  (:use code.test)
+  (:require [tool.migrate.common.clojure :as clj]
+            [std.block :as block]
+            [code.framework.navigation :as nav]))
+
+(def source
+  "(ns demo.core
+     (:require [clojure.string :as string]
+               [clojure.tools.reader :as reader]
+               [demo.local :as local]))
+   (defn run [value]
+     (string/join \",\" (reader/read-string value) (local/value value))))")
+
+(def refer-source
+  "(ns demo.core
+     (:require [clojure.string :refer [join]]))
+   (defn run [value] (join \",\" value))")
+
+(def shadowed-refer-source
+  "(ns demo.core
+     (:require [demo.local :refer [map]]))
+   (defn run [value] (map value))")
+
+(def core-source
+  "(ns demo.core
+     (:refer-clojure :exclude [map]
+                     :rename {reduce fold}))
+   (defn run [value]
+     (let [inc value]
+       (inc value)
+       (quote (str value))
+       (clojure.core/reverse value)
+       (fold value))))")
+
+^{:refer tool.migrate.common.clojure/core-reference-options}
+(fact "refer-clojure controls expose excludes, renames, and unrestricted defaults"
+  [(clj/core-reference-options "(ns demo.core)")
+   (clj/core-reference-options
+    "(ns demo.core
+       (:refer-clojure :only [map reduce]
+                       :exclude [map]
+                       :rename {reduce fold}))")]
+  => [[(symbol "map")]
+      {:only nil :exclude #{} :rename {}}
+      {:only #{"map" "reduce"} :exclude #{"map"} :rename {"fold" "reduce"}}])
+
+^{:refer tool.migrate.common.clojure/namespace-clause-option}
+(fact "namespace clause options return the selected raw value"
+  (clj/namespace-clause-option
+   "(ns demo.core (:refer-clojure :only [map]))"
+   ":refer-clojure"
+   ":only")
+  => [(symbol "map")])
+
+^{:refer tool.migrate.common.clojure/core-reference-name}
+(fact "renamed core references resolve only from the local spelling"
+  [(clj/core-reference-name
+    "fold"
+    {:rename {"fold" "reduce"}})
+   (clj/core-reference-name
+    "reduce"
+    {:rename {"fold" "reduce"}})
+   (clj/core-reference-name "map" {:rename {}})]
+  => ["reduce" nil "map"])
+
+^{:refer tool.migrate.common.clojure/core-reference-enabled?}
+(fact "core reference controls apply exclusions and restricted refer lists"
+  [(clj/core-reference-enabled?
+    "map"
+    {:only nil :exclude #{}}
+    #{"map"})
+   (clj/core-reference-enabled?
+    "map"
+    {:only #{"reduce"} :exclude #{}}
+    #{"map" "reduce"})
+   (clj/core-reference-enabled?
+    "map"
+    {:only nil :exclude #{"map"}}
+    #{"map"})]
+  => [true false false])
+
+^{:refer tool.migrate.common.clojure/binding-pattern-symbols}
+(fact "binding patterns include names but not variadic markers"
+  (clj/binding-pattern-symbols
+   [(symbol "value") "&" (symbol "rest")])
+  => #{"value" "rest"})
+
+^{:refer tool.migrate.common.clojure/binding-vector-symbols}
+(fact "binding vectors inspect binding positions only"
+  (clj/binding-vector-symbols
+   [(symbol "value") 1 (symbol "other") 2])
+  => #{"value" "other"})
+
+^{:refer tool.migrate.common.clojure/function-binding-symbols}
+(fact "function bindings cover named and multi-arity parameter vectors"
+  [(clj/function-binding-symbols
+    [(symbol "run") [(symbol "value")] :body])
+   (clj/function-binding-symbols
+    [(symbol "run")
+     (list [(symbol "value")] (symbol "value"))
+     (list [(symbol "left") (symbol "right")] (symbol "left"))])]
+  => [#{"value"} #{"value" "left" "right"}])
+
+^{:refer tool.migrate.common.clojure/ancestor-locations}
+(fact "ancestor locations walk from the immediate parent outward"
+  (clj/ancestor-locations
+   {:parent {:id :parent
+             :parent {:id :root}}})
+  => [{:id :parent :parent {:id :root}}
+      {:id :root}])
+
+^{:refer tool.migrate.common.clojure/lexical-bindings}
+(fact "lexical binding extraction identifies let bindings"
+  [(clj/lexical-bindings
+    (block/parse-first "(let [value 1] value)"))
+   (clj/lexical-bindings
+    (block/parse-first "(defn run [map] (map 1))"))
+   (clj/lexical-bindings
+    (block/parse-first "(defn run ([value] value) ([left right] left))"))]
+  => [#{"value"} #{"map"} #{"value" "left" "right"}])
+
+^{:refer tool.migrate.common.clojure/namespace-defined-symbols}
+(fact "namespace definitions identify locally shadowing names"
+  (clj/namespace-defined-symbols core-source)
+  => ["run"])
+
+^{:refer tool.migrate.common.clojure/core-reference-kind}
+(fact "core reference kinds separate syntax, macros, intrinsics, and Vars"
+  [(clj/core-reference-kind "let")
+   (clj/core-reference-kind "defn")
+   (clj/core-reference-kind "+")
+   (clj/core-reference-kind "map")]
+  => [:special-form :macro :intrinsic :var])
+
+^{:refer tool.migrate.common.clojure/core-reference-context}
+(fact "core reference context marks ordinary and lexically shadowed locations"
+  (let [root (nav/block-input (block/parse-string "(map 1)"))
+     location (first
+               (filter
+                (fn [location]
+                  (and (block/token? (nav/current location))
+                       (= "map" (block/string (nav/current location)))))
+                (nav/walk-locations root)))]
+    (clj/core-reference-context location #{}))
+  => {:status :derived :reason nil})
+
+^{:refer tool.migrate.common.clojure/core-reference-record}
+(fact "core reference records add the resolved namespace and operation"
+  (let [root (nav/block-input (block/parse-string "(map 1)"))
+     location (first
+               (filter
+                (fn [location]
+                  (and (block/token? (nav/current location))
+                       (= "map" (block/string (nav/current location)))))
+                (nav/walk-locations root)))]
+    (select-keys
+     (clj/core-reference-record location "map" "map" #{})
+     [:resolved/symbol :reference/namespace :reference/name
+   :reference/idiom :reference/operation :reference/status]))
+  => {:resolved/symbol "clojure.core/map"
+   :reference/namespace "clojure.core"
+   :reference/name "map"
+   :reference/idiom :core
+   :reference/operation :collection-operation
+   :reference/status :derived})
+
+^{:refer tool.migrate.common.clojure/core-symbol-references}
+(fact "core references retain executable, quoted, renamed, and shadowed evidence"
+  (let [references (clj/core-symbol-references core-source)
+        selected (fn [status]
+                   (set
+                    (map
+                     (fn [reference]
+                       [(:source/symbol reference)
+                        (:reference/name reference)
+                        (:reference/kind reference)
+                        (:reference/status reference)
+                        (:reference/reason reference)
+                        (:resolved/symbol reference)])
+                     (filter (fn [reference]
+                               (= status (:reference/status reference)))
+                             references))))]
+    [(selected :derived)
+     (selected :skipped)
+     (selected :shadowed)
+     (some (fn [reference]
+             (and (= "fold" (:source/symbol reference))
+                  (= "reduce" (:reference/name reference))))
+           references)
+     (some (fn [reference]
+             (= "map" (:source/symbol reference)))
+           references)])
+  => [#{["clojure.core/reverse" "reverse" :var :derived nil
+         "clojure.core/reverse"]
+        ["defn" "defn" :macro :derived nil "clojure.core/defn"]
+        ["let" "let" :special-form :derived nil "clojure.core/let"]
+        ["quote" "quote" :special-form :derived nil "clojure.core/quote"]
+        ["fold" "reduce" :var :derived nil "clojure.core/reduce"]}
+      #{["str" "str" :var :skipped :quoted-data nil]}
+      #{["inc" "inc" :var :shadowed :lexical-binding nil]}
+      true
+      false])
+
+^{:refer tool.migrate.common.clojure/core-symbol-references}
+(fact "unknown qualified core references remain explicit manual review"
+  (select-keys
+   (first
+    (clj/core-symbol-references
+     "(ns demo.core) (clojure.core/not-a-core-var value)"))
+   [:source/symbol :resolved/symbol :reference/status :reference/reason])
+  => {:source/symbol "clojure.core/not-a-core-var"
+      :resolved/symbol nil
+      :reference/status :manual-review
+      :reference/reason :unknown-core-symbol})
+
+^{:refer tool.migrate.common.clojure/core-symbol-references}
+(fact "referred non-core symbols shadow the same core spelling"
+  (select-keys
+   (first
+    (filter (fn [reference]
+              (= "map" (:source/symbol reference)))
+            (clj/core-symbol-references shadowed-refer-source)))
+   [:source/symbol :reference/status :reference/reason])
+  => {:source/symbol "map"
+      :reference/status :shadowed
+      :reference/reason :namespace-binding})
+
+^{:refer tool.migrate.common.clojure/dependency-idiom}
+(fact "dependency idioms classify behavior families rather than target Vars"
+  [(clj/dependency-idiom "clojure.string")
+   (clj/dependency-idiom "clojure.set")
+   (clj/dependency-idiom "clojure.tools.reader.reader-types")
+   (clj/dependency-idiom "clojure.lang.IPersistentVector")
+   (clj/dependency-idiom "demo.local")]
+  => [:text :collection :reader :runtime-type :namespace])
+
+^{:refer tool.migrate.common.clojure/dependency-operation}
+(fact "dependency operations identify collection and runtime idioms"
+  [(clj/dependency-operation "clojure.set" "difference")
+   (clj/dependency-operation "clojure.string" "trimr")
+   (clj/dependency-operation "clojure.core" "subs")
+   (clj/dependency-operation "clojure.lang" "IPersistentVector")
+   (clj/dependency-operation "clojure.tools.reader.reader-types"
+                              "IndexingPushbackReader")]
+  => [:set-algebra :string-trimming :string-slice
+      :persistent-collection-type :reader-state])
+
+^{:refer tool.migrate.common.clojure/dependency-occurrences}
+(fact "dependency occurrences preserve source order and parser evidence"
+  (let [occurrences (clj/dependency-occurrences source)]
+    [(mapv :dependency/name occurrences)
+     (select-keys (:dependency/evidence (first occurrences))
+                  [:tag :source])
+     (vector? (:path (:dependency/evidence (first occurrences))))])
+  => [["clojure.string" "clojure.tools.reader" "demo.local"]
+      {:tag :vector :source "[clojure.string :as string]"}
+      true])
+
+^{:refer tool.migrate.common.clojure/dependencies}
+(fact "dependencies remain unique and sorted for compatibility"
+  (clj/dependencies
+   "(ns demo.core (:require [zeta.core] [clojure.string] [zeta.core]))")
+  => ["clojure.string" "zeta.core"])
+
+^{:refer tool.migrate.common.clojure/namespace-aliases}
+(fact "namespace aliases resolve to their declared dependency namespaces"
+  (clj/namespace-aliases source)
+  => {"local" "demo.local" "reader" "clojure.tools.reader"
+      "string" "clojure.string"})
+
+^{:refer tool.migrate.common.clojure/namespace-refers}
+(fact "namespace refers resolve unqualified dependency symbols"
+  (clj/namespace-refers refer-source)
+  => {"join" "clojure.string"})
+
+^{:refer tool.migrate.common.clojure/dependency-symbol-references}
+(fact "qualified references resolve aliases and exclude local namespaces"
+  (mapv
+   (fn [reference]
+     (select-keys reference
+                  [:source/symbol :resolved/symbol
+                   :reference/namespace :reference/name
+                   :reference/idiom :reference/operation]))
+   (clj/dependency-symbol-references
+    source
+    ["clojure.string" "clojure.tools.reader" "demo.local"]))
+  => [{:source/symbol "string/join"
+       :resolved/symbol "clojure.string/join"
+       :reference/namespace "clojure.string"
+       :reference/name "join"
+       :reference/idiom :text
+       :reference/operation :string-aggregation}
+      {:source/symbol "reader/read-string"
+       :resolved/symbol "clojure.tools.reader/read-string"
+       :reference/namespace "clojure.tools.reader"
+       :reference/name "read-string"
+       :reference/idiom :reader
+       :reference/operation :reader-consumption}])
+
+^{:refer tool.migrate.common.clojure/dependency-symbol-references}
+(fact "dependency references include explicit unqualified :refer imports"
+  (mapv
+   (fn [reference]
+     (select-keys reference
+                  [:source/symbol :resolved/symbol :reference/namespace]))
+   (clj/dependency-symbol-references refer-source ["clojure.string"]))
+  => [{:source/symbol "join"
+       :resolved/symbol "clojure.string/join"
+       :reference/namespace "clojure.string"}])
+
+^{:refer tool.migrate.common.clojure/dependency-symbol-references}
+(fact "qualified references retain exact source evidence for idiom review"
+  (let [reference (first (clj/dependency-symbol-references
+                          source
+                          ["clojure.string"
+                           "clojure.tools.reader"
+                           "demo.local"]))]
+    [(map? (:reference/evidence reference))
+     (:source/symbol (:reference/evidence reference))
+     (vector? (:path (:reference/evidence reference)))]
+    => [true "string/join" true]))
+
+(pr-str (run {:namespace "tool.migrate.common.clojure-test"}))

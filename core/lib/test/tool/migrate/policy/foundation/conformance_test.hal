@@ -1,0 +1,326 @@
+(ns tool.migrate.policy.foundation.conformance-test
+  (:use code.test)
+  (:require [tool.migrate.policy.foundation.conformance :as conformance]))
+
+(def descriptor
+  {:family/id :demo
+   :family/name "demo"
+   :source/test-prefixes ["test/demo"]
+   :source/test-count 1
+   :target/namespace "demo.core"
+   :target/metadata-path "demo/metadata.edn"
+   :mapping [{:source/namespace "demo.core"
+              :target/namespaces ["demo.core"]
+              :status :retained}]
+   :output/path "demo/conformance.edn"
+   :review/status :unreviewed})
+
+(def observation
+  {:external/id "demo/src/demo/core.clj#source-0"
+   :external/namespace "clojure.string"
+   :dependency/rank -1
+   :source/namespace "demo.core"
+   :source/path "src/demo/core.clj"
+   :source/blob "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   :observation/kind :source
+   :observation/path "src/demo/core.clj"
+   :observation/blob "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   :observation/index 0
+   :form/location {:path [0 2 1] :tag :vector}
+   :referenced/symbols []
+   :referenced/source-symbols []
+   :referenced/evidence []
+   :referenced/idioms []
+   :referenced/operations []
+   :referenced/status :manual-review
+   :referenced/reason :no-qualified-symbol-evidence
+   :capability {:kind :portable :status :portable :reason nil}
+   :extraction/status :emitted
+   :candidate/matches []
+   :review/disposition :pending
+   :review/evidence []})
+
+(def core-observation
+  {:core/id "demo/src/demo/core.clj#source-0"
+   :family/id :demo
+   :core/namespace "clojure.core"
+   :core/name "map"
+   :core/local-name "map"
+   :core/symbol "clojure.core/map"
+   :core/kind :var
+   :core/operation :core-operation
+   :core/status :derived
+   :core/reason nil
+   :source/namespace "demo.core"
+   :source/path "src/demo/core.clj"
+   :source/blob "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   :observation/kind :source
+   :observation/path "src/demo/core.clj"
+   :observation/index 0
+   :reference/options {:only nil :exclude #{} :rename {}}
+   :reference/evidence {:path [0 2 1]}
+   :extraction/status :emitted
+   :review/disposition :pending
+   :review/evidence []})
+
+(def origin
+  (conformance/generated-origin-document
+   conformance/+baseline+
+   descriptor
+   []
+   [observation]
+   [core-observation]))
+
+(def contract
+  (conformance/contract-from-origin
+   conformance/+baseline+
+   descriptor
+   origin))
+
+(def foundation-baseline
+  (assoc conformance/+baseline+
+         :foundation/source-roots ["src"]))
+
+(def metadata
+  (conformance/generated-metadata-document
+   conformance/+baseline+
+   descriptor
+   {:document/type :foundation-library-conformance-metadata
+    :family/id :demo}
+   [{:source/path "src/demo/core.clj"
+     :test/path "test/demo/core_test.clj"}]
+   [{:source/path "lib/src/demo/core.hal"
+     :test/path "lib/test/demo/core_test.hal"}]
+   origin
+   [observation]))
+
+^{:refer tool.migrate.policy.foundation.conformance/validate-core-observations}
+(fact "core observation validation requires complete deterministic evidence"
+  [(conformance/validate-core-observations
+    origin
+    [core-observation]
+    {:discovered 1 :emitted 1 :skipped 0 :manual-review 0 :complete? true})
+   (conformance/validate-core-observations
+    origin
+    [(assoc core-observation :core/id "")]
+    {:discovered 1 :emitted 1 :skipped 0 :manual-review 0 :complete? true})]
+  => [[] [{:type :conformance/core-missing-provenance
+           :id ""}]])
+
+^{:refer tool.migrate.policy.foundation.conformance/core-observation-errors}
+(fact "core observation errors reject incomplete provenance and resolution"
+  [(conformance/core-observation-errors core-observation)
+   (conformance/core-observation-errors
+    (assoc
+     (assoc core-observation :core/status :unknown)
+     :core/reason nil))]
+  => [[] [{:type :conformance/core-invalid-resolution
+           :id "demo/src/demo/core.clj#source-0"}]])
+
+^{:refer tool.migrate.policy.foundation.conformance/core-observation-errors}
+(fact "core resolution status matches extraction status and resolved symbol"
+  [(conformance/core-observation-errors
+    (assoc
+     (assoc core-observation :core/status :derived)
+     :core/symbol nil))
+   (conformance/core-observation-errors
+    (assoc
+     (assoc
+      (assoc
+       (assoc core-observation :core/status :shadowed)
+       :extraction/status :emitted)
+      :core/reason :lexical-binding)
+     :core/symbol nil))]
+  => [[{:type :conformance/core-invalid-resolution
+        :id "demo/src/demo/core.clj#source-0"}]
+      [{:type :conformance/core-invalid-resolution
+        :id "demo/src/demo/core.clj#source-0"}]])
+
+^{:refer tool.migrate.policy.foundation.conformance/foundation-core-references}
+(fact "Foundation core extraction keeps only the selected family source pair"
+  (let [runner
+        (fn [argv input]
+          (cond
+            (= "ls-tree" (first argv))
+            {:exit 0
+             :stdout "src/demo/core.clj\ntest/demo/core_test.clj\n"}
+
+            (= "rev-parse" (first argv))
+            {:exit 0
+             :stdout "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n"}
+
+            (= "cat-file" (first argv))
+            {:exit 0
+             :stdout "(ns demo.core) (defn run [value] (map inc value))"}
+
+            :else
+            {:exit 1 :stderr "unexpected git command"}))
+        references (conformance/foundation-core-references
+                    runner
+                    conformance/+baseline+
+                    descriptor)]
+    [(empty? references)
+     (every? (fn [reference]
+               (= "src/demo/core.clj" (:source/path reference)))
+             references)
+     (every? (fn [reference]
+               (= :demo (:family/id reference)))
+             references)])
+  => [false true true])
+
+^{:refer tool.migrate.policy.foundation.conformance/generated-origin-document}
+(fact "generated origins publish core references and independent accounting"
+  [(mapv :core/id (:origin/core-references origin))
+   (:origin/core-accounting origin)]
+  => [["demo/src/demo/core.clj#source-0"]
+      {:discovered 1 :emitted 1 :skipped 0 :manual-review 0 :complete? true}])
+
+^{:refer tool.migrate.policy.foundation.conformance/contract-from-origin}
+(fact "reviewable contracts carry pending core observations forward"
+  [(mapv :review/disposition (:conformance/core-references contract))
+   (:core/accounting contract)]
+  => [[:pending]
+      {:discovered 1 :emitted 1 :skipped 0 :manual-review 0 :complete? true}])
+
+^{:refer tool.migrate.policy.foundation.conformance/external-summary}
+(fact "external summaries are derived from family contract publications"
+  (conformance/external-summary [contract])
+  => [{:external/namespace "clojure.string"
+       :families [:demo]
+       :observation-count 1
+       :accounting {:emitted 1 :skipped 0 :manual-review 0
+                    :discovered 1 :complete? true}}])
+
+^{:refer tool.migrate.policy.foundation.conformance/foundation-source-path?}
+(fact "Foundation source selection follows the pinned source roots"
+  [(conformance/foundation-source-path? foundation-baseline "src/demo/core.clj")
+   (conformance/foundation-source-path? foundation-baseline "test/demo/core_test.clj")
+   (conformance/foundation-source-path? foundation-baseline "src/demo/core.hal")]
+  => [true false false])
+
+^{:refer tool.migrate.policy.foundation.conformance/foundation-source-path-for-test}
+(fact "Foundation test roots map to matching source roots"
+  [(conformance/foundation-source-path-for-test "test/demo/core_test.clj")
+   (conformance/foundation-source-path-for-test "test-java/demo/core_test.clj")
+   (conformance/foundation-source-path-for-test "test-lang/demo/core_test.clj")]
+  => ["src/demo/core.clj"
+      "src-java/demo/core.clj"
+      "src-lang/demo/core.clj"])
+
+^{:refer tool.migrate.policy.foundation.conformance/validate-origin-document}
+(fact "origin validation requires pinned external evidence and accounting"
+  (conformance/validate-origin-document origin)
+  => [])
+
+^{:refer tool.migrate.policy.foundation.conformance/validate-metadata-document}
+(fact "metadata validation detects complete generated origin identity"
+  (conformance/validate-metadata-document
+   conformance/+baseline+
+   descriptor
+   metadata)
+  => [])
+
+^{:refer tool.migrate.policy.foundation.conformance/validate-contract-document}
+(fact "contract validation keeps external observations separate from pairs"
+  (conformance/validate-contract-document contract)
+  => [])
+
+^{:refer tool.migrate.policy.foundation.conformance/validate-family-artifacts}
+(fact "family validation joins metadata, origin, and contract evidence"
+  (conformance/validate-family-artifacts
+   conformance/+baseline+
+   descriptor
+   metadata
+   origin
+   contract)
+  => [])
+
+^{:refer tool.migrate.policy.foundation.conformance/validate-family-artifacts}
+(fact "family validation rejects stale core metadata and contract IDs"
+  [(conformance/validate-family-artifacts
+    conformance/+baseline+
+    descriptor
+    (assoc-in metadata
+              [:generated/core :count]
+              0)
+    origin
+    contract)
+   (conformance/validate-family-artifacts
+    conformance/+baseline+
+    descriptor
+    metadata
+    origin
+    (assoc
+     (assoc contract
+            :conformance/core-references
+            [])
+     :core/accounting
+     {:discovered 0
+      :emitted 0
+      :skipped 0
+      :manual-review 0
+      :complete? true}))]
+  => [[{:type :conformance/stale-core-metadata
+        :family/id :demo}]
+      [{:type :conformance/core-contract-drift
+        :family/id :demo}]])
+
+^{:refer tool.migrate.policy.foundation.conformance/registry-document}
+(fact "registry documents derive a cross-family dependency summary"
+  (let [document (conformance/registry-document
+                  conformance/+baseline+
+                  [descriptor]
+                  [contract])]
+    [(mapv :family/id (:conformance/families document))
+     (get-in document
+             [:conformance/external-summary 0 :external/namespace])])
+  => [[:demo] "clojure.string"])
+
+^{:refer tool.migrate.policy.foundation.conformance/validate-registry-index}
+(fact "registry index validation rejects stale family locators"
+  (let [document (conformance/registry-document
+                  conformance/+baseline+
+                  [descriptor]
+                  [contract])]
+    [(conformance/validate-registry-index
+      conformance/+baseline+
+      [descriptor]
+      document)
+     (empty?
+      (conformance/validate-registry-index
+       conformance/+baseline+
+       [descriptor]
+       (assoc document :conformance/families [])))])
+  => [[] false])
+
+^{:refer tool.migrate.policy.foundation.conformance/origin-write-state}
+(fact "origin writes remain immutable only after the current generator"
+  [(conformance/origin-write-state nil "generated")
+   (conformance/origin-write-state "legacy" "generated")
+   (conformance/origin-write-state
+    (str ":origin/generator \"" conformance/+origin-generator+ "\"")
+    "generated")]
+  => [:create :replace-legacy :immutable-conflict])
+
+^{:refer tool.migrate.policy.foundation.conformance/conformance-write-state}
+(fact "reviewed contracts are preserved during evidence regeneration"
+  (conformance/conformance-write-state
+   ":contract/status :reviewed"
+   "generated")
+  => :preserve-reviewed)
+
+^{:refer tool.migrate.policy.foundation.conformance/value-boundary}
+(fact "value boundaries distinguish portable data from closures"
+  [(conformance/value-boundary {:a [1 :b]})
+   (conformance/value-boundary (fn [value] value))]
+  => [{:status :portable :reason nil}
+      {:status :manual-review :reason :closure}])
+
+^{:refer tool.migrate.policy.foundation.conformance/normalize-value}
+(fact "non-portable expectations remain explicit manual evidence"
+  [(conformance/normalize-value {})
+   (conformance/normalize-value {:foundation/expected (fn [value] value)})]
+  => [{:status :manual-review :expected nil :reason :missing-expectation}
+      {:status :manual-review :expected nil :reason :closure}])
+
+(pr-str (run {:namespace "tool.migrate.policy.foundation.conformance-test"}))

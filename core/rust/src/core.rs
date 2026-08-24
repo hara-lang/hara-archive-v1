@@ -65,6 +65,13 @@ pub(crate) fn exception_site_at(line: usize, column: usize) -> Option<ExceptionS
 
 pub fn exception_located_form(node: &crate::kernel::SpannedForm) -> Form {
     let rebuilt = match &node.form {
+        Form::List(values)
+            if values.first().is_some_and(|value| {
+                matches!(value, Form::Symbol(name) if name == "quote" || name == "'")
+            }) =>
+        {
+            Form::List(values.clone())
+        }
         Form::List(values) if node.children.len() == values.len() => {
             Form::List(node.children.iter().map(exception_located_form).collect())
         }
@@ -106,12 +113,24 @@ pub fn exception_located_form(node: &crate::kernel::SpannedForm) -> Form {
     let Some(Form::Symbol(operator)) = values.first() else {
         return Form::List(values);
     };
-    if operator != "throw" || values.len() != 2 {
+    if !matches!(
+        operator.as_str(),
+        "throw" | "ex" | "ex-info" | "std.foundation/ex" | "std.foundation/ex-info"
+    ) {
         return Form::List(values);
     }
-    values[0] = Form::Symbol("__throw-at".into());
+    let original_operator = values[0].clone();
+    let marker = if operator == "throw" {
+        "__throw-at"
+    } else {
+        "__ex-at"
+    };
+    values[0] = Form::Symbol(marker.into());
     values.insert(1, Form::Number(node.span.start.line as i64));
     values.insert(2, Form::Number(node.span.start.column as i64));
+    if marker == "__ex-at" {
+        values.insert(3, original_operator);
+    }
     Form::List(values)
 }
 
@@ -180,6 +199,7 @@ include!("core/direct_callable.rs");
 include!("core/direct_callable_catalog.rs");
 include!("core/direct_callable_impl.rs");
 include!("core/direct_callable_operations.rs");
+include!("core/bootstrap.rs");
 #[cfg(test)]
 include!("core/direct_callable_probe.rs");
 #[cfg(test)]

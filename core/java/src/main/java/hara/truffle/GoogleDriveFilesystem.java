@@ -418,7 +418,11 @@ final class GoogleDriveFilesystem implements IFilesystem {
           requireWritable(Capability.MKDIR, "mkdir", logical, null);
           requireRevisionSupport(mutation, "mkdir", logical, null);
           if ("/".equals(logical)) {
-            if (options.existsOk()) return mutation("/", client.get(rootId));
+            if (options.existsOk()) {
+              Item root = client.get(rootId);
+              checkExpected(root, mutation.expectedRevision(), "mkdir", logical, null);
+              return mutation("/", root);
+            }
             throw failure(
                 "already-exists", "mounted root exists", "mkdir", logical, null, null, false, null);
           }
@@ -428,6 +432,7 @@ final class GoogleDriveFilesystem implements IFilesystem {
           Item existing = uniqueChild(parent.item().id(), name, "mkdir", logical, null);
           if (existing != null) {
             if (existing.type() == ItemType.FOLDER && options.existsOk()) {
+              checkExpected(existing, mutation.expectedRevision(), "mkdir", logical, null);
               return mutation(logical, existing);
             }
             throw failure(
@@ -560,6 +565,10 @@ final class GoogleDriveFilesystem implements IFilesystem {
           }
           if (sourceLogical.equals(targetLogical)) {
             Resolved same = resolve(sourceLogical, "move", targetLogical);
+            checkExpected(
+                same.item(), mutation.expectedRevision(), "move", sourceLogical, targetLogical);
+            checkExpected(
+                same.item(), mutation.expectedTargetRevision(), "move", sourceLogical, targetLogical);
             return mutation(targetLogical, same.item());
           }
           if (targetLogical.startsWith(sourceLogical + "/")) {

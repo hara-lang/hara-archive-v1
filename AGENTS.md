@@ -15,6 +15,17 @@ Use `$hara-postgres` for native PostgreSQL DSL source, `$hara-xtalk` for XTalk
 or emitter work, `$hara-xtalk-compatibility` for target parity, and
 `$hara-dev-spec-writer` for language specifications.
 
+For collection/core call shapes, read
+`core/spec/std/variadic-functions.md` before editing. It records the
+source-backed Foundation and runtime boundaries, including the distinction
+between the multi-pair `std.foundation/assoc` wrapper and its fixed
+three-argument protocol method; verify the actual resolved owner instead of
+assuming a Clojure equivalent has the same arity.
+
+Use intrinsic protocol method symbols such as `IAssoc/assoc` when that
+intrinsic is available; do not spell the equivalent full
+`std.protocol.*` path in new Hara source.
+
 ## Namespace roles and publication
 
 Do not add top-level `defn-`, `defmacro-`, or private Vars to `.hal` source.

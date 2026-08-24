@@ -16,18 +16,18 @@
 (defn to-string
   "Returns the reversible string representation of a string-like value."
   [value]
-  (IStringLike/to-string value))
+  (std.protocol.istringlike.IStringLike/to-string value))
 
 (defn from-string
   "Reconstructs the type of sample from text."
   [sample text]
-  (IStringLike/from-string sample text))
+  (std.protocol.istringlike.IStringLike/from-string sample text))
 
 (defn ^{:inline true :schema [:fn [:str] :int]}
   length
   "Returns the portable character count of value."
   [value]
-  (String/length value))
+  (std.native.String/length value))
 
 (defn ^{:schema [:fn [:any] :bool]}
   blank?
@@ -35,31 +35,31 @@
   [value]
   (if (nil? value)
     true
-    (String/blank? value)))
+    (std.native.String/blank? value)))
 
 (defn ^{:inline true :schema [:fn [:str :str] :bool]}
   includes?
   "Returns true when value contains part."
   [value part]
-  (String/includes? value part))
+  (std.native.String/includes? value part))
 
 (defn ^{:inline true :schema [:fn [:str :str] :bool]}
   starts-with?
   "Returns true when value begins with part."
   [value part]
-  (String/starts-with? value part))
+  (std.native.String/starts-with? value part))
 
 (defn ^{:inline true :schema [:fn [:str :str] :bool]}
   ends-with?
   "Returns true when value ends with part."
   [value part]
-  (String/ends-with? value part))
+  (std.native.String/ends-with? value part))
 
 (defn ^{:inline true :schema [:fn [:str :int] :str]}
   char-at
   "Returns the character at index as a one-character string."
   [value index]
-  (String/char-at value index))
+  (std.native.String/char-at value index))
 
 (defn ^{:inline true
         :schema [:function [:fn [:str :int] :str]
@@ -67,9 +67,9 @@
   slice
   "Returns the portion of value from start up to optional end."
   ([value start]
-   (String/slice value start))
+   (std.native.String/slice value start))
   ([value start end]
-   (String/slice value start end)))
+   (std.native.String/slice value start end)))
 
 (defn ^{:inline true
         :schema [:function [:fn [:str :str] :int]
@@ -77,9 +77,9 @@
   index-of
   "Returns the first index of part at or after optional offset."
   ([value part]
-   (String/index-of value part))
+   (std.native.String/index-of value part))
   ([value part offset]
-   (String/index-of value part offset)))
+   (std.native.String/index-of value part offset)))
 
 (defn ^{:inline true
         :schema [:function [:fn [:str :str] :int]
@@ -87,63 +87,63 @@
   last-index-of
   "Returns the last index of part, optionally bounded by offset."
   ([value part]
-   (String/last-index-of value part))
+   (std.native.String/last-index-of value part))
   ([value part offset]
-   (String/last-index-of value part offset)))
+   (std.native.String/last-index-of value part offset)))
 
 (defn ^{:inline true :schema [:fn [:str :any] :str]}
   join
   "Joins values into one string, placing separator between adjacent items."
   [separator values]
-  (String/join separator values))
+  (std.native.String/join separator values))
 
 (defn ^{:schema [:fn [:str [:or :str :regex]] [:maybe :vector]]}
   split
   "Splits value around a string or regular-expression separator."
   [value separator]
-  (String/split value separator))
+  (std.native.String/split value separator))
 
 (defn ^{:inline true :schema [:fn [:str] :vector]}
   split-lines
   "Splits value at portable line boundaries."
   [value]
-  (String/split-lines value))
+  (std.native.String/split-lines value))
 
 (defn ^{:inline true :schema [:fn [:str :int] :str]}
   repeat
   "Returns value repeated count times."
   [value count]
-  (String/repeat value count))
+  (std.native.String/repeat value count))
 
 (defn ^{:inline true :schema [:fn [:str :str :str] :str]}
   replace
   "Replaces every occurrence of match in value with replacement."
   [value match replacement]
-  (String/replace value match replacement))
+  (std.native.String/replace value match replacement))
 
 (defn ^{:inline true :schema [:fn [:str :str :str] :str]}
   replace-first
   "Replaces the first occurrence of match in value with replacement."
   [value match replacement]
-  (String/replace-first value match replacement))
+  (std.native.String/replace-first value match replacement))
 
 (defn ^{:inline true :schema [:fn [:str] :str]}
   trim
   "Removes leading and trailing whitespace from value."
   [value]
-  (String/trim value))
+  (std.native.String/trim value))
 
 (defn ^{:inline true :schema [:fn [:str] :str]}
   trim-left
   "Removes leading whitespace from value."
   [value]
-  (String/trim-left value))
+  (std.native.String/trim-left value))
 
 (defn ^{:inline true :schema [:fn [:str] :str]}
   trim-right
   "Removes trailing whitespace from value."
   [value]
-  (String/trim-right value))
+  (std.native.String/trim-right value))
 
 (defn ^{:schema [:fn [:str] :str]}
   trim-newlines
@@ -162,13 +162,13 @@
   upper-case
   "Returns value converted to uppercase."
   [value]
-  (String/upper value))
+  (std.native.String/upper value))
 
 (defn ^{:inline true :schema [:fn [:str] :str]}
   lower-case
   "Returns value converted to lowercase."
   [value]
-  (String/lower value))
+  (std.native.String/lower value))
 
 (defn ^{:schema [:fn [:str] :str]}
   upper
@@ -198,43 +198,43 @@
   capitalize
   "Uppercases value's first character according to the native contract."
   [value]
-  (String/capitalize value))
+  (std.native.String/capitalize value))
 
 (defn ^{:inline true :schema [:fn [:str] :str]}
   decapitalize
   "Lowercases value's first character according to the native contract."
   [value]
-  (String/decapitalize value))
+  (std.native.String/decapitalize value))
 
 (defn ^{:inline true :schema [:fn [:str :int :str] :str]}
   pad-left
   "Prepends padding until value reaches length."
   [value length padding]
-  (String/pad-left value length padding))
+  (std.native.String/pad-left value length padding))
 
 (defn ^{:inline true :schema [:fn [:str :int :str] :str]}
   pad-right
   "Appends padding until value reaches length."
   [value length padding]
-  (String/pad-right value length padding))
+  (std.native.String/pad-right value length padding))
 
 (defn ^{:inline true :schema [:fn [:str] :str]}
   reverse
   "Returns value with its portable character order reversed."
   [value]
-  (String/reverse value))
+  (std.native.String/reverse value))
 
 (defn ^{:inline true :schema [:fn [:str] :bytes]}
   encode-utf8
   "Encodes value as UTF-8 bytes."
   [value]
-  (String/encode-utf8 value))
+  (std.native.String/encode-utf8 value))
 
 (defn ^{:inline true :schema [:fn [:bytes] :str]}
   decode-utf8
   "Decodes UTF-8 bytes into a string."
   [value]
-  (String/decode-utf8 value))
+  (std.native.String/decode-utf8 value))
 
 (defn- tag-value
   [value]
@@ -412,7 +412,7 @@
   to-fixed
   "Formats numeric value with exactly precision fractional digits."
   [value precision]
-  (String/to-fixed value precision))
+  (std.native.String/to-fixed value precision))
 
 (defn wrap
   "Wraps a string function so its first argument round-trips as a StringLike value.

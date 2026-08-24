@@ -7,7 +7,9 @@
 
 pub mod view;
 
-use hara_abi::{ImmutableValue as Value, Value as AbiValue};
+use hara_abi::{
+    ExceptionProvenance, ExceptionSite, ImmutableValue as Value, Value as AbiValue,
+};
 use std::collections::BTreeMap;
 
 pub const MAGIC: &[u8; 4] = b"HTA0";
@@ -49,6 +51,87 @@ const EXCEPTION_INFO: u8 = 32;
 const STRUCT: u8 = 33;
 const POINTER: u8 = 34;
 const VAR_REF: u8 = 35;
+
+fn provenance_value(provenance: &ExceptionProvenance) -> Value {
+    let mut fields = BTreeMap::new();
+    fields.insert(
+        "ex/created-at".into(),
+        provenance
+            .created_at
+            .as_ref()
+            .map(site_value)
+            .unwrap_or(Value::Nil),
+    );
+    fields.insert(
+        "ex/throws".into(),
+        Value::Vector(provenance.throws.iter().map(site_value).collect()),
+    );
+    Value::Record(fields)
+}
+
+fn site_value(site: &ExceptionSite) -> Value {
+    let mut fields = BTreeMap::new();
+    fields.insert(
+        "namespace".into(),
+        site.namespace.clone().map(Value::String).unwrap_or(Value::Nil),
+    );
+    fields.insert(
+        "resource".into(),
+        site.resource.clone().map(Value::String).unwrap_or(Value::Nil),
+    );
+    fields.insert("line".into(), Value::Integer(site.line as i64));
+    fields.insert("column".into(), Value::Integer(site.column as i64));
+    Value::Record(fields)
+}
+
+fn decode_provenance(value: Value) -> Result<ExceptionProvenance, String> {
+    let Value::Record(fields) = value else {
+        return Err("hta/value-malformed: invalid exception provenance".into());
+    };
+    if fields.len() != 2 || !fields.contains_key("ex/created-at") || !fields.contains_key("ex/throws") {
+        return Err("hta/value-malformed: invalid exception provenance fields".into());
+    }
+    let created_at = match fields.get("ex/created-at").expect("checked above") {
+        Value::Nil => None,
+        value => Some(decode_site(value)?),
+    };
+    let Value::Vector(throws) = fields.get("ex/throws").expect("checked above") else {
+        return Err("hta/value-malformed: invalid exception throws provenance".into());
+    };
+    Ok(ExceptionProvenance {
+        created_at,
+        throws: throws.iter().map(decode_site).collect::<Result<_, _>>()?,
+    })
+}
+
+fn decode_site(value: &Value) -> Result<ExceptionSite, String> {
+    let Value::Record(fields) = value else {
+        return Err("hta/value-malformed: invalid exception provenance site".into());
+    };
+    if fields.len() != 4
+        || !fields.contains_key("namespace")
+        || !fields.contains_key("resource")
+        || !fields.contains_key("line")
+        || !fields.contains_key("column")
+    {
+        return Err("hta/value-malformed: invalid exception provenance site".into());
+    }
+    let optional_string = |name: &str| match fields.get(name).expect("checked above") {
+        Value::Nil => Ok(None),
+        Value::String(value) => Ok(Some(value.clone())),
+        _ => Err(format!("hta/value-malformed: invalid exception provenance {name}")),
+    };
+    let nonnegative = |name: &str| match fields.get(name).expect("checked above") {
+        Value::Integer(value) if *value >= 0 => Ok(*value as u64),
+        _ => Err(format!("hta/value-malformed: invalid exception provenance {name}")),
+    };
+    Ok(ExceptionSite {
+        namespace: optional_string("namespace")?,
+        resource: optional_string("resource")?,
+        line: nonnegative("line")?,
+        column: nonnegative("column")?,
+    })
+}
 
 /// Encode one portable value as an exact canonical HTA0 frame.
 pub fn encode_immutable(value: &Value) -> Result<Vec<u8>, String> {
@@ -232,11 +315,22 @@ fn encode_value(value: &Value, depth: usize, output: &mut Vec<u8>) -> Result<(),
             message,
             data,
             cause,
+            provenance,
         } => {
+            if !matches!(data.as_ref(), Value::Map(_) | Value::Record(_)) {
+                return Err("hta/value-invalid: exception data must be a map".into());
+            }
+            if cause
+                .as_ref()
+                .is_some_and(|cause| !matches!(cause.as_ref(), Value::ExceptionInfo { .. }))
+            {
+                return Err("hta/value-invalid: exception cause must be an Exception".into());
+            }
             push(output, EXCEPTION_INFO)?;
             encode_value(&Value::String(message.clone()), depth + 1, output)?;
             encode_value(data, depth + 1, output)?;
-            encode_value(cause.as_deref().unwrap_or(&Value::Nil), depth + 1, output)
+            encode_value(cause.as_deref().unwrap_or(&Value::Nil), depth + 1, output)?;
+            encode_value(&provenance_value(provenance), depth + 1, output)
         }
         Value::Struct {
             name,
@@ -457,12 +551,18 @@ impl Reader<'_> {
                 let data = Box::new(self.value(depth + 1)?);
                 let cause = match self.value(depth + 1)? {
                     Value::Nil => None,
-                    value => Some(Box::new(value)),
+                    value @ Value::ExceptionInfo { .. } => Some(Box::new(value)),
+                    _ => return Err("hta/value-malformed: invalid exception cause".into()),
                 };
+                if !matches!(data.as_ref(), Value::Map(_) | Value::Record(_)) {
+                    return Err("hta/value-malformed: invalid exception data".into());
+                }
+                let provenance = decode_provenance(self.value(depth + 1)?)?;
                 Ok(Value::ExceptionInfo {
                     message,
                     data,
                     cause,
+                    provenance,
                 })
             }
             STRUCT => self.structure(depth),

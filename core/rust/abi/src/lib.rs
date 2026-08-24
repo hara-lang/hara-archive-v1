@@ -59,6 +59,7 @@ pub enum ImmutableValue {
         message: String,
         data: Box<ImmutableValue>,
         cause: Option<Box<ImmutableValue>>,
+        provenance: ExceptionProvenance,
     },
     Struct {
         name: String,
@@ -74,6 +75,20 @@ pub enum ImmutableValue {
 }
 
 pub type ImmutableRecordValue = BTreeMap<String, ImmutableValue>;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ExceptionSite {
+    pub namespace: Option<String>,
+    pub resource: Option<String>,
+    pub line: u64,
+    pub column: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct ExceptionProvenance {
+    pub created_at: Option<ExceptionSite>,
+    pub throws: Vec<ExceptionSite>,
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Error {

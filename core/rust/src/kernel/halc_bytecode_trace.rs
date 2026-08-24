@@ -253,28 +253,7 @@ fn compile_handoff(
 
 #[cfg(feature = "bytecode-vm")]
 fn compiler_registry() -> super::namespace::NamespaceRegistry<crate::core::Value> {
-    let namespaces = super::namespace::NamespaceRegistry::new("user");
-    let foundation = namespaces.find_or_create("std.foundation");
-    for (name, value) in crate::core::exception_function_values() {
-        foundation.intern(name, value);
-    }
-    for (name, protocol) in crate::core::foundation_protocol_values() {
-        foundation.intern(&name, protocol.clone());
-        namespaces
-            .find_or_create(crate::core::builtin_protocol_namespace(&name))
-            .intern(name, protocol);
-    }
-    for (namespace, name, method) in crate::core::builtin_protocol_method_values() {
-        namespaces.find_or_create(namespace).intern(name, method);
-    }
-    for (name, descriptor) in crate::core::native_type_values() {
-        let canonical_name = format!("std.native.{name}");
-        let var = foundation.intern(&canonical_name, descriptor);
-        foundation.map_var(crate::lang::data::Symbol::parse(&name), var);
-        namespaces.find_or_create(canonical_name);
-    }
-    crate::core::refer_startup_defaults(&namespaces, "user");
-    namespaces
+    crate::core::minimal_namespace_registry()
 }
 
 #[cfg(feature = "bytecode-vm")]

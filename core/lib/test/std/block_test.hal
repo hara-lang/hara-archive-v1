@@ -33,22 +33,6 @@
                   (block/linebreak? newline)
                   (block/verify newline)])
                ["   " true "\n" true true])
-   (test-check "persistent block zipper rebuilds edited containers"
-               (let [original (block/block [1 2])
-                     zipper (block/block-zip original)
-                     edited (std.lib.zip/result
-                             (std.lib.zip/replace-right
-                              (std.lib.zip/step-right
-                               (std.lib.zip/step-right
-                               (std.lib.zip/step-inside zipper))
-                               )
-                              (block/block 3)))]
-                 [(block/string original)
-                  (block/string edited)
-                  (block/string (block/replace-children
-                                 original
-                                 [(block/block 4)]))])
-               ["[1 2]" "[1 3]" "[4]"])
    (test-check "parser preserves nested whitespace, comments, and delimiters"
                (let [parsed (block/parse-string
                              "(alpha  ; note\n [1 {:k \"v\"}])")
@@ -140,6 +124,12 @@
                  :row 1 :col 1 :end-row 1 :end-col 10}
                 2
                 [:tool.lint/reader-error :tool.lint/reader-error]])
+   (test-check "root facade exports portable healing"
+               (block/heal "(+ 1 2")
+               "(+ 1 2)")
+   (test-check "root block namespace publishes facade role"
+               (get (Runtime/namespace 'std.block) :namespace/role)
+               :facade)
    (test-check "parser indexes CRLF source positions in one pass"
                (let [source "a\r\n[b\nc]"
                      parsed (block/parse-string source)

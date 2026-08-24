@@ -162,7 +162,7 @@ for path in internal_sources:
 checker_source = (ROOT / "core/lib/src/code/test/checker/common.hal").read_text(
     encoding="utf-8"
 )
-if "(extend-type Checker std.protocol.imatch/IMatch" not in checker_source:
+if "(extend-type Checker IMatch" not in checker_source:
     errors.append("code.test.checker.common does not own the IMatch implementation")
 
 cli_source = (ROOT / "core/lib/src/code/test/cli.hal").read_text(

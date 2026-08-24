@@ -65,6 +65,17 @@ mod tests {
             .collect()
     }
 
+    fn canonicalize_protocol_method_paths(source: &str) -> String {
+        core::FOUNDATION_PROTOCOLS
+            .iter()
+            .fold(source.to_owned(), |source, (protocol, _)| {
+                source.replace(
+                    &format!("std.protocol.{}/", protocol.to_ascii_lowercase()),
+                    &format!("{}/", core::builtin_protocol_namespace(protocol)),
+                )
+            })
+    }
+
     fn sandbox_eval(
         kernel: &mut SessionKernel,
         sandbox: SandboxId,
@@ -562,7 +573,7 @@ mod tests {
                     "(try\n  (throw (ex :test/provenance {}))\n  (catch caught\n    (let [provenance (ex-provenance caught)]\n      [(:line (:ex/created-at provenance))\n       (:column (:ex/created-at provenance))\n       (:line (first (:ex/throws provenance)))\n       (:column (first (:ex/throws provenance)))\n       (count (:ex/throws provenance))])))",
                 )
                 .unwrap(),
-            "[2 3 2 3 1]"
+            "[2 10 2 3 1]"
         );
     }
 
@@ -1201,7 +1212,7 @@ mod tests {
             protocols.register_extension(
                 "lazy-map",
                 "request",
-                "std.protocol.ilookup/ILookup",
+                "std.protocol.ilookup.ILookup",
                 "lookup",
                 |arguments| match arguments {
                     [core::Value::Extension(value), key, default]
@@ -1223,7 +1234,7 @@ mod tests {
             protocols.register_extension(
                 "lazy-map",
                 "request",
-                "std.protocol.icount/ICount",
+                "std.protocol.icount.ICount",
                 "count",
                 |arguments| match arguments {
                     [core::Value::Extension(value)]
@@ -2280,9 +2291,10 @@ mod tests {
         else {
             return;
         };
-        let fixture =
+        let fixture = canonicalize_protocol_method_paths(
             repo_text("01-lang/001-language/draft/conformance/fixtures/protocol_surface.hal")
-                .expect("the specs-owned protocol surface fixture must be available");
+                .expect("the specs-owned protocol surface fixture must be available"),
+        );
         let foundation = runtime
             .namespace_registry
             .find("std.foundation")
@@ -2322,23 +2334,42 @@ mod tests {
                 .methods
                 .keys()
                 .all(|method| !method.ends_with('!')));
-            assert_eq!(
+            assert!(
                 foundation
                     .resolve(&lang::data::Symbol::parse(name))
-                    .unwrap_or_else(|| panic!("missing std.foundation/{name} alias"))
-                    .deref_value(),
-                protocol
+                    .is_none(),
+                "std.foundation/{name} must not be a protocol alias"
             );
             for (method, _) in *methods {
                 let canonical_method = namespace
                     .resolve(&lang::data::Symbol::parse(method))
                     .unwrap_or_else(|| panic!("missing {namespace_name}/{method}"))
                     .deref_value();
-                let aliased_method = foundation
-                    .resolve(&lang::data::Symbol::parse(&format!("{name}/{method}")))
-                    .unwrap_or_else(|| panic!("missing global alias {name}/{method}"))
-                    .deref_value();
-                assert_eq!(aliased_method, canonical_method);
+                assert_eq!(
+                    runtime
+                        .namespace_registry
+                        .resolve(&lang::data::Symbol::parse(&format!("{namespace_name}/{method}")))
+                        .unwrap_or_else(|| panic!("missing {namespace_name}/{method}"))
+                        .deref_value(),
+                    canonical_method
+                );
+                assert!(
+                    foundation
+                        .resolve(&lang::data::Symbol::parse(&format!("{name}/{method}")))
+                        .is_none(),
+                    "std.foundation/{name}/{method} must not be a protocol alias"
+                );
+                assert!(
+                    runtime
+                        .namespace_registry
+                        .resolve(&lang::data::Symbol::parse(&format!(
+                            "std.protocol.{}/{}",
+                            protocol.to_ascii_lowercase(),
+                            method
+                        )))
+                        .is_none(),
+                    "legacy protocol method path must not be intrinsic"
+                );
                 if in_contract {
                     assert!(
                         fixture.contains(&format!("({namespace_name}/{method} fixture")),
@@ -2382,20 +2413,20 @@ mod tests {
         }
         assert_eq!(
             runtime
-                .eval_text("(std.protocol.icount/count [1 2 3])")
+                .eval_text("(std.protocol.icount.ICount/count [1 2 3])")
                 .unwrap(),
             "3"
         );
         assert_eq!(
             runtime
-                .eval_text("(std.protocol.icas/cas (atom 1) 1 2)")
+                .eval_text("(std.protocol.icas.ICas/cas (atom 1) 1 2)")
                 .unwrap(),
             "true"
         );
         assert_eq!(
             runtime
                 .eval_text(
-                    "(std.protocol.ireduce/reduce \
+                    "(std.protocol.ireduce.IReduce/reduce \
                        [1 2 3] (fn [left right] (+ left right)) 0)",
                 )
                 .unwrap(),
@@ -2403,7 +2434,9 @@ mod tests {
         );
         assert_eq!(
             runtime
-                .eval_text("(std.protocol.ipromise/state (std.foundation.promise/from 7))")
+                .eval_text(
+                    "(std.protocol.ipromise.IPromise/state (std.foundation.promise/from 7))",
+                )
                 .unwrap(),
             ":fulfilled"
         );
@@ -2600,9 +2633,10 @@ mod tests {
     #[test]
     fn shared_foundation_protocol_conformance_fixture_runs_in_the_native_runtime() {
         let mut runtime = Runtime::new();
-        let source =
+        let source = canonicalize_protocol_method_paths(
             repo_text("01-lang/001-language/draft/conformance/fixtures/protocol_surface.hal")
-                .expect("the specs-owned protocol surface fixture must be available");
+                .expect("the specs-owned protocol surface fixture must be available"),
+        );
         assert!(
             !source.contains("/I"),
             "protocol types must resolve unqualified in guest source"
@@ -2840,7 +2874,7 @@ mod tests {
         assert_eq!(
             runtime
                 .eval_text(
-                    "(try (std.protocol.icount/count) false \
+                    "(try (std.protocol.icount.ICount/count) false \
                        (catch Throwable error true))"
                 )
                 .unwrap(),
@@ -4035,13 +4069,13 @@ mod tests {
             .resolve(&crate::lang::data::Symbol::parse("identity"))
             .expect("identity fallback is installed");
         assert_eq!(canonical.origin(), kernel::VarOrigin::HalFallback);
-        let referred = runtime
+        let user = runtime.namespace_registry.find("user").unwrap();
+        assert!(user.resolve(&crate::lang::data::Symbol::parse("identity")).is_none());
+        let fallback = runtime
             .namespace_registry
-            .find("user")
-            .unwrap()
             .resolve(&crate::lang::data::Symbol::parse("identity"))
             .unwrap();
-        assert!(canonical.same_identity(&referred));
+        assert!(canonical.same_identity(&fallback));
         assert_eq!(runtime.eval_text("(identity 42)").unwrap(), "42");
         assert_eq!(runtime.eval_text("(apply-with 2 + 1 3)").unwrap(), "6");
         assert_eq!(
@@ -4631,6 +4665,7 @@ mod tests {
                     .eval_text(
                         "(ns std-block-rust-probe \
                          (:require [std.block :as block] [std.block.grid :as grid] \
+                                   [std.block.navigate :as navigate] \
                                    [std.block.reader :as reader]))",
                     )
                     .unwrap();
@@ -4642,7 +4677,7 @@ mod tests {
                     ("(block/string (block/layout '(if ready [1 2] [3 4]) {:width 10}))", "\"(if ready [1 2] [3 4])\""),
                     ("(block/string (grid/grid (block/parse-first \"(if\\nready\\ndone)\") 0 {:rules {'if {:indent 1}}}))", "\"(if\\n  ready\\n  done)\""),
                     ("(let [b (block/parse-first \"[1 #_2 3]\")] [(block/value b) (block/child-values b)])", "[[1 3] [1 3]]"),
-                    ("(let [original (block/block [1 2]) location (std.lib.zip/step-right (std.lib.zip/step-right (std.lib.zip/step-inside (block/block-zip original)))) edited (std.lib.zip/root-element (std.lib.zip/replace-right location (block/block 3)))] [(block/string original) (block/string edited)])", "[\"[1 2]\" \"[1 3]\"]"),
+                    ("(let [original (block/block [1 2]) location (std.lib.zip/step-right (std.lib.zip/step-right (std.lib.zip/step-inside (navigate/navigator original)))) edited (std.lib.zip/root-element (std.lib.zip/replace-right location (block/block 3)))] [(block/string original) (block/string edited)])", "[\"[1 2]\" \"[1 3]\"]"),
                     ("(let [input (reader/create \"ab\\ncd\") first-two (reader/read-times input reader/read-char 2) newline (reader/read-char input)] [first-two (reader/reader-position input) (reader/read-to-boundary input)])", "[[\"a\" \"b\"] [2 1] \"cd\"]"),
                     ("(block/value (block/parse-string \"[4 5]\"))", "[4 5]"),
                 ];
@@ -4864,7 +4899,9 @@ mod tests {
         );
         assert_eq!(
             runtime
-                .eval_text("(std.protocol.ifind/find #ptr {:context :kernel :id \"ROOT\"} :id)")
+                .eval_text(
+                    "(std.protocol.ifind.IFind/find #ptr {:context :kernel :id \"ROOT\"} :id)",
+                )
                 .unwrap(),
             "[:id \"ROOT\"]"
         );
@@ -8099,7 +8136,6 @@ mod tests {
         {
             register_lib_tree(&mut runtime, &lib_src, &entry);
         }
-        runtime.prepare_foundation_bytecode();
         let foundation = EMBEDDED_HAL_RESOURCES
             .iter()
             .find(|(namespace, _, _)| *namespace == "std.foundation")

@@ -34,7 +34,7 @@
   count
   "Returns the number of bytes in value."
   [value]
-  (Bytes/count value))
+  (std.native.Bytes/count value))
 
 (defn ^{:inline true
         :schema [:function [:fn [:bytes :int] :any]
@@ -42,21 +42,21 @@
   get
   "Returns a byte at index, or fallback when the indexed form supplies one."
   ([value index]
-   (Bytes/get value index))
+   (std.native.Bytes/get value index))
   ([value index fallback]
-   (Bytes/get value index fallback)))
+   (std.native.Bytes/get value index fallback)))
 
 (defn ^{:inline true :schema [:fn [:bytes :int :any] :bytes]}
   set
   "Returns value with item written at index."
   [value index item]
-  (Bytes/set value index item))
+  (std.native.Bytes/set value index item))
 
 (defn ^{:inline true :schema [:fn [:bytes] :bytes]}
   copy
   "Returns an independent byte-buffer copy of value."
   [value]
-  (Bytes/copy value))
+  (std.native.Bytes/copy value))
 
 (defn ^{:inline true
         :schema [:function [:fn [:bytes :int] :bytes]
@@ -64,18 +64,18 @@
   slice
   "Returns the bytes from start up to optional end."
   ([value start]
-   (Bytes/slice value start))
+   (std.native.Bytes/slice value start))
   ([value start end]
-   (Bytes/slice value start end)))
+   (std.native.Bytes/slice value start end)))
 
 (defn ^{:inline true :schema [:fn [:any] :int]}
   u8
   "Coerces value to its unsigned eight-bit representation."
   [value]
-  (Bytes/u8 value))
+  (std.native.Bytes/u8 value))
 
 (defn ^{:inline true :schema [:fn [:any] :int]}
   s8
   "Coerces value to its signed eight-bit representation."
   [value]
-  (Bytes/s8 value))
+  (std.native.Bytes/s8 value))

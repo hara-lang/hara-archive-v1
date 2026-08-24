@@ -71,9 +71,9 @@
   [runtime source]
   (let [argv (vec (concat (get runtime :exec) [source]))]
     (try
-      (oneshot-result
-       runtime
-       (sh/run argv (process-options runtime)))
+      (let [result (sh/result-record
+                    (sh/run argv (process-options runtime)))]
+        (oneshot-result runtime result))
       (catch Throwable error
         (throw
          (ex :host {:phase :eval

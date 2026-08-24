@@ -118,7 +118,7 @@ pub fn bind_package(
     let module_bytes = read_bytes(module_path, "module")?;
     let inspection = inspect_direct(&module_bytes)?;
     let (target, memory_plan) = binding_target(&interface, &inspection)?;
-    let adapter = if target == BindingTarget::HtaV1 {
+    let adapter = if target == BindingTarget::HtaV1 && hta_adapter_eligible(&interface) {
         Some(generate_hta_adapter(&module_bytes, &interface)?)
     } else {
         None
@@ -132,8 +132,11 @@ pub fn bind_package(
             &interface,
             &module_digest,
             &interface_digest,
-            &adapter.adapter_digest,
+            Some(&adapter.adapter_digest),
         )?,
+        (BindingTarget::HtaV1, _, None) => {
+            hta_binding_document(&interface, &module_digest, &interface_digest, None)?
+        }
         (BindingTarget::MemoryV1, Some(plan), _) => plan.canonical_source(),
         (BindingTarget::CoreV1, None, _) => {
             direct_binding_document(&interface, &module_digest, &interface_digest)
@@ -141,7 +144,7 @@ pub fn bind_package(
         _ => return Err("wasm-binding/target-invalid: binding target has no plan".into()),
     };
     let binding_digest = digest(bindings.as_bytes());
-    let project = project_document(&interface, target)?;
+    let project = project_document(&interface, target, adapter.is_some())?;
     let conformance = conformance_document(
         &interface,
         target,
@@ -163,14 +166,23 @@ pub fn bind_package(
     files.insert(interface.module.clone(), module_bytes);
     if let Some(adapter) = adapter.as_ref() {
         files.insert(ADAPTER_FILE.into(), adapter.bytes.clone());
-        files.insert(ADAPTER_MANIFEST_FILE.into(), adapter.manifest.as_bytes().to_vec());
+        files.insert(
+            ADAPTER_MANIFEST_FILE.into(),
+            adapter.manifest.as_bytes().to_vec(),
+        );
     }
     files.insert(INTERFACE_FILE.into(), canonical_interface.into_bytes());
     files.insert(BINDINGS_FILE.into(), bindings.into_bytes());
     files.insert(BUILD_PRODUCT_FILE.into(), build_product.into_bytes());
     files.insert(CONFORMANCE_FILE.into(), conformance.into_bytes());
     files.insert("project.edn".into(), project.into_bytes());
-    let package = package_document(&interface, target, &package_identity, &files)?;
+    let package = package_document(
+        &interface,
+        target,
+        &package_identity,
+        adapter.is_some(),
+        &files,
+    )?;
     files.insert(PACKAGE_FILE.into(), package.into_bytes());
     write_atomic_tree(output_root, &files)?;
 
@@ -190,7 +202,9 @@ fn binding_target(
     interface: &WasmInterface,
     inspection: &super::DirectWasmInspection,
 ) -> Result<(BindingTarget, Option<MemoryBindingPlan>), String> {
-    if interface.memory.is_some() {
+    if interface.hta_required() {
+        Ok((BindingTarget::HtaV1, None))
+    } else if interface.memory.is_some() {
         let plan = interface.memory_plan()?;
         plan.verify(inspection)?;
         Ok((BindingTarget::MemoryV1, Some(plan)))
@@ -203,7 +217,28 @@ fn binding_target(
     }
 }
 
-fn project_document(interface: &WasmInterface, target: BindingTarget) -> Result<String, String> {
+fn hta_adapter_eligible(interface: &WasmInterface) -> bool {
+    interface.memory.is_none()
+        && interface.capabilities.is_empty()
+        && interface.host_calls.is_empty()
+        && interface.callbacks.is_empty()
+        && interface.handles.is_empty()
+        && interface.resources.is_empty()
+        && interface.exports.iter().all(|export| {
+            export.errors.is_none()
+                && export.returns.hara_type.direct_wasm_type().is_some()
+                && export
+                    .arguments
+                    .iter()
+                    .all(|argument| argument.hara_type.direct_wasm_type().is_some())
+        })
+}
+
+fn project_document(
+    interface: &WasmInterface,
+    target: BindingTarget,
+    has_adapter: bool,
+) -> Result<String, String> {
     let exports = interface
         .exports
         .iter()
@@ -213,24 +248,22 @@ fn project_document(interface: &WasmInterface, target: BindingTarget) -> Result<
                 .iter()
                 .map(|argument| manifest_type(&argument.hara_type))
                 .collect::<Result<Vec<_>, _>>()?;
-            Ok((
-                string_form(&export.name),
-                Form::Map(vec![
-                    (
-                        keyword_form("wasm/export"),
-                        string_form(&export.wasm_export),
-                    ),
-                    (keyword_form("args"), Form::Vector(arguments)),
-                    (
-                        keyword_form("returns"),
-                        manifest_type(&export.returns.hara_type)?,
-                    ),
-                    (
-                        keyword_form("async"),
-                        Form::Bool(target == BindingTarget::HtaV1),
-                    ),
-                ]),
-            ))
+            let mut fields = vec![
+                (
+                    keyword_form("wasm/export"),
+                    string_form(&export.wasm_export),
+                ),
+                (keyword_form("args"), Form::Vector(arguments)),
+                (
+                    keyword_form("returns"),
+                    manifest_type(&export.returns.hara_type)?,
+                ),
+                (keyword_form("async"), Form::Bool(export.asynchronous)),
+            ];
+            if let Some(operation) = export.operation.as_ref() {
+                fields.push((keyword_form("operation"), string_form(operation)));
+            }
+            Ok((string_form(&export.name), Form::Map(fields)))
         })
         .collect::<Result<Vec<_>, String>>()?;
     let mut assets = vec![
@@ -241,9 +274,11 @@ fn project_document(interface: &WasmInterface, target: BindingTarget) -> Result<
     ];
     if target == BindingTarget::HtaV1 {
         assets.push(string_form(&interface.module));
-        assets.push(string_form(ADAPTER_MANIFEST_FILE));
+        if has_adapter {
+            assets.push(string_form(ADAPTER_MANIFEST_FILE));
+        }
     }
-    let module = if target == BindingTarget::HtaV1 {
+    let module = if target == BindingTarget::HtaV1 && has_adapter {
         ADAPTER_FILE
     } else {
         &interface.module
@@ -257,7 +292,19 @@ fn project_document(interface: &WasmInterface, target: BindingTarget) -> Result<
         (keyword_form("module"), string_form(module)),
         (keyword_form("abi"), keyword_form(target.as_keyword())),
         (keyword_form("exports"), Form::Map(exports)),
-        (keyword_form("capabilities"), Form::Vector(Vec::new())),
+        (
+            keyword_form("capabilities"),
+            Form::Vector(
+                interface
+                    .capabilities
+                    .iter()
+                    .map(|capability| keyword_form(capability))
+                    .collect(),
+            ),
+        ),
+        (keyword_form("host-calls"), host_calls_form(interface)),
+        (keyword_form("callbacks"), callbacks_form(interface)?),
+        (keyword_form("handles"), handles_form(interface)),
         (keyword_form("assets"), Form::Vector(assets)),
     ]);
     let project_id = format!("generated/{}", interface.namespace.replace('.', "-"));
@@ -329,14 +376,14 @@ fn hta_binding_document(
     interface: &WasmInterface,
     module_digest: &str,
     interface_digest: &str,
-    adapter_digest: &str,
+    adapter_digest: Option<&str>,
 ) -> Result<String, String> {
     let exports = interface
         .exports
         .iter()
         .map(public_export_contract)
         .collect::<Result<Vec<_>, _>>()?;
-    Ok(document(Form::Map(vec![
+    let mut entries = vec![
         (
             keyword_form("schema"),
             string_form(DIRECT_WASM_BINDING_SCHEMA),
@@ -357,18 +404,21 @@ fn hta_binding_document(
                 (keyword_form("digest"), string_form(interface_digest)),
             ]),
         ),
-        (
-            keyword_form("adapter"),
-            Form::Map(vec![
-                (keyword_form("path"), string_form(ADAPTER_FILE)),
-                (keyword_form("digest"), string_form(adapter_digest)),
-            ]),
-        ),
-        (
-            keyword_form("exports"),
-            Form::Vector(exports),
-        ),
-    ])))
+        (keyword_form("exports"), Form::Vector(exports)),
+    ];
+    if let Some(adapter_digest) = adapter_digest {
+        entries.insert(
+            5,
+            (
+                keyword_form("adapter"),
+                Form::Map(vec![
+                    (keyword_form("path"), string_form(ADAPTER_FILE)),
+                    (keyword_form("digest"), string_form(adapter_digest)),
+                ]),
+            ),
+        );
+    }
+    Ok(document(Form::Map(entries)))
 }
 
 fn conformance_document(
@@ -408,12 +458,14 @@ fn build_product_document(
     binding_digest: &str,
     adapter: Option<&super::AdapterArtifact>,
 ) -> String {
-    let product_type = if target == BindingTarget::HtaV1 {
+    let product_type = if target == BindingTarget::HtaV1 && adapter.is_some() {
         "hta-adapter-wasm"
+    } else if target == BindingTarget::HtaV1 {
+        "hta-wasm-module"
     } else {
         "extension-wasm-module"
     };
-    let artifact_path = if target == BindingTarget::HtaV1 {
+    let artifact_path = if target == BindingTarget::HtaV1 && adapter.is_some() {
         ADAPTER_FILE
     } else {
         &interface.module
@@ -453,10 +505,7 @@ fn build_product_document(
             keyword_form("schema"),
             string_form(DIRECT_WASM_BUILD_PRODUCT_SCHEMA),
         ),
-        (
-            keyword_form("product/type"),
-            keyword_form(product_type),
-        ),
+        (keyword_form("product/type"), keyword_form(product_type)),
         (
             keyword_form("product/namespace"),
             symbol_form(&interface.namespace),
@@ -475,10 +524,7 @@ fn build_product_document(
                 ),
             ]),
         ),
-        (
-            keyword_form("product/inputs"),
-            Form::Map(inputs),
-        ),
+        (keyword_form("product/inputs"), Form::Map(inputs)),
         (
             keyword_form("product/binding-digest"),
             string_form(binding_digest),
@@ -487,10 +533,7 @@ fn build_product_document(
             keyword_form("product/files"),
             Form::Vector(files.into_iter().map(string_form).collect()),
         ),
-        (
-            keyword_form("product/artifact"),
-            string_form(artifact_path),
-        ),
+        (keyword_form("product/artifact"), string_form(artifact_path)),
     ]))
 }
 
@@ -524,7 +567,7 @@ fn public_export_contract(export: &super::BindingFunction) -> Result<Form, Strin
         .iter()
         .map(|argument| manifest_type(&argument.hara_type))
         .collect::<Result<Vec<_>, _>>()?;
-    Ok(Form::Map(vec![
+    let mut fields = vec![
         (keyword_form("hara/name"), symbol_form(&export.name)),
         (
             keyword_form("wasm/export"),
@@ -535,7 +578,99 @@ fn public_export_contract(export: &super::BindingFunction) -> Result<Form, Strin
             keyword_form("returns"),
             manifest_type(&export.returns.hara_type)?,
         ),
-    ]))
+    ];
+    if let Some(operation) = export.operation.as_ref() {
+        fields.push((keyword_form("operation"), string_form(operation)));
+    }
+    Ok(Form::Map(fields))
+}
+
+fn host_calls_form(interface: &WasmInterface) -> Form {
+    Form::Map(
+        interface
+            .host_calls
+            .iter()
+            .map(|(service, contract)| {
+                let mut fields = vec![(
+                    keyword_form("methods"),
+                    Form::Vector(
+                        contract
+                            .methods
+                            .iter()
+                            .map(|method| string_form(method))
+                            .collect(),
+                    ),
+                )];
+                if !contract.capabilities.is_empty() {
+                    fields.push((
+                        keyword_form("capabilities"),
+                        Form::Vector(
+                            contract
+                                .capabilities
+                                .iter()
+                                .map(|capability| keyword_form(capability))
+                                .collect(),
+                        ),
+                    ));
+                }
+                (
+                    string_form(service),
+                    Form::Map(fields),
+                )
+            })
+            .collect(),
+    )
+}
+
+fn handles_form(interface: &WasmInterface) -> Form {
+    let mut handles = interface.handles.clone();
+    handles.extend(
+        interface
+            .resources
+            .iter()
+            .map(|(name, contract)| (name.clone(), contract.clone())),
+    );
+    Form::Map(
+        handles
+            .iter()
+            .map(|(name, contract)| {
+                let mut fields = vec![(keyword_form("tag"), symbol_form(&contract.tag))];
+                if let Some(release) = contract.release.as_deref() {
+                    fields.push((keyword_form("release"), string_form(release)));
+                }
+                (string_form(name), Form::Map(fields))
+            })
+            .collect(),
+    )
+}
+
+fn callbacks_form(interface: &WasmInterface) -> Result<Form, String> {
+    Ok(Form::Map(
+        interface
+            .callbacks
+            .iter()
+            .map(|(name, contract)| {
+                let mut fields = vec![
+                    (
+                        keyword_form("args"),
+                        Form::Vector(
+                            contract
+                                .arguments
+                                .iter()
+                                .map(|argument| manifest_type(&argument.hara_type))
+                                .collect::<Result<Vec<_>, _>>()?,
+                        ),
+                    ),
+                    (
+                        keyword_form("returns"),
+                        manifest_type(&contract.returns)?,
+                    ),
+                ];
+                fields.push((keyword_form("reentrant"), Form::Bool(contract.reentrant)));
+                Ok((string_form(name), Form::Map(fields)))
+            })
+            .collect::<Result<Vec<_>, String>>()?,
+    ))
 }
 
 fn manifest_type(value: &HaraValueType) -> Result<Form, String> {
@@ -548,16 +683,16 @@ fn manifest_type(value: &HaraValueType) -> Result<Form, String> {
         HaraValueType::String => "string",
         HaraValueType::Bytes => "bytes",
         HaraValueType::Void => "void",
-        HaraValueType::Record(name)
-        | HaraValueType::Variant(name)
-        | HaraValueType::Handle(name)
-        | HaraValueType::Callback(name) => {
-            return Err(format!(
-                "wasm-binding/feature-unsupported: manifest type {name} is not available in this package target"
-            ))
-        }
+        HaraValueType::Record(name) => return Ok(named_type_form("record", name)),
+        HaraValueType::Variant(name) => return Ok(named_type_form("variant", name)),
+        HaraValueType::Handle(name) => return Ok(named_type_form("handle", name)),
+        HaraValueType::Callback(name) => return Ok(named_type_form("callback", name)),
     };
     Ok(keyword_form(name))
+}
+
+fn named_type_form(kind: &str, name: &str) -> Form {
+    Form::Vector(vec![keyword_form(kind), symbol_form(name)])
 }
 
 fn write_atomic_tree(root: &Path, files: &BTreeMap<String, Vec<u8>>) -> Result<(), String> {

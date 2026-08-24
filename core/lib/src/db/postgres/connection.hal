@@ -100,6 +100,17 @@
   (db-close [value]
     (host/call SERVICE "close" (:id value))))
 
+(extend-type PostgresConnection protocol/IDatabaseProvider
+  (db-provider-contract [value]
+    (protocol/db-provider-descriptor
+     (:provider value)
+     :postgresql
+     (:capabilities value))))
+
+(extend-type PostgresConnection protocol/IDatabaseLifecycle
+  (db-reset [value]
+    (protocol/db-close-safe value)))
+
 (defn describe
   "Returns the installed PostgreSQL provider descriptor and capabilities."
   []
@@ -118,6 +129,11 @@
   "Returns the capabilities reported for a connection."
   [value]
   (:capabilities value))
+
+(defn provider-descriptor
+  "Returns only the provider identity and capabilities."
+  [value]
+  (protocol/db-provider-contract value))
 
 (defn version
   "Returns a promise resolving to the selected PostgreSQL engine version."
@@ -165,9 +181,9 @@
 
 (def conn-close close)
 
-(defn begin [value] (exec value "begin"))
-(defn commit [value] (exec value "commit"))
-(defn rollback [value] (exec value "rollback"))
+(defn begin [value] (protocol/db-begin value))
+(defn commit [value] (protocol/db-commit value))
+(defn rollback [value] (protocol/db-rollback value))
 
 (defn wait-ready [options]
   (host/call SERVICE "wait-ready" options))

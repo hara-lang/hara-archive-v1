@@ -44,8 +44,34 @@
    :review/terminal +terminal-dispositions+
    :review/allow-pending true})
 
+(def +foundation-f55f+
+  {:profile/id :foundation-f55f
+   :profile/description
+   "Active Foundation migration profile for issue 554 evidence generation."
+   :foundation/repository "zcaudate-xyz/foundation-base"
+   :foundation/revision
+   "f55f39855d5e9ea1b22f1d116df684c584323f80"
+   :foundation/tree
+   "3beb10f32e7d57139910ee9c9de1370e966ca935"
+   :foundation/source-roots ["src" "src-java" "src-lang"]
+   :foundation/test-roots ["test" "test-java" "test-lang"]
+   :foundation/rank-base 0
+   :external/rank -1
+   :hara/repository "hara-lang/hara"
+   :hara/revision "fd382c506348c1e96412e7398ac4cba7029b7885"
+   :registry/repository "hara-lang/hara-specs-registry"
+   :registry/root
+   "01-lang/005-foundation-annex/draft/conformance/libraries"
+   :corpus/path "core/spec/tool-migrate/foundation-f55f.edn"
+   :report/path "core/spec/tool-migrate/foundation-f55f.md"
+   :candidate/states +candidate-states+
+   :review/dispositions +review-dispositions+
+   :review/terminal +terminal-dispositions+
+   :review/allow-pending true})
+
 (def +profiles+
-  {:foundation-baa75a +foundation-baa75a+})
+  {:foundation-baa75a +foundation-baa75a+
+   :foundation-f55f +foundation-f55f+})
 
 (defn profile
   [identifier]
@@ -75,6 +101,10 @@
    (= -1 (:external/rank value))
    (string? (:corpus/path value))
    (string? (:report/path value))
+   (or (not (has? value :hara/revision))
+       (sha? (:hara/revision value)))
+   (or (not (has? value :registry/root))
+       (string? (:registry/root value)))
    (set? (:candidate/states value))
    (set? (:review/dispositions value))
    (set? (:review/terminal value))))

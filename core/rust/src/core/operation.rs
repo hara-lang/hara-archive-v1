@@ -778,7 +778,7 @@ fn iterator_values(value: Value) -> Result<Vec<Value>, String> {
             let value = Value::Extension(receiver.clone());
             let iterator = extension_protocol_call(
                 &receiver,
-                "std.protocol.iiter/IIter",
+                "std.protocol.iiter.IIter",
                 "iter",
                 std::slice::from_ref(&value),
             )?;
@@ -1388,7 +1388,7 @@ fn collection_empty_value(value: Value) -> Result<Value, String> {
     match value {
         Value::Extension(receiver) => extension_protocol_call(
             &receiver,
-            "std.protocol.iempty/IEmpty",
+            "std.protocol.iempty.IEmpty",
             "empty",
             &[Value::Extension(receiver.clone())],
         ),
@@ -1429,7 +1429,7 @@ fn collection_count(value: &Value) -> Result<Value, String> {
     if let Value::Extension(receiver) = value {
         return extension_protocol_call(
             receiver,
-            "std.protocol.icount/ICount",
+            "std.protocol.icount.ICount",
             "count",
             std::slice::from_ref(value),
         );
@@ -1508,7 +1508,7 @@ fn collection_get(value: &Value, key: &Value, default: Value) -> Result<Value, S
     match value {
         Value::Extension(receiver) => extension_protocol_call(
             receiver,
-            "std.protocol.ilookup/ILookup",
+            "std.protocol.ilookup.ILookup",
             "lookup",
             &[value.clone(), key.clone(), default],
         ),
@@ -1669,7 +1669,7 @@ fn collection_assoc(value: &Value, key: &Value, replacement: Value) -> Result<Va
     match value {
         Value::Extension(receiver) => extension_protocol_call(
             receiver,
-            "std.protocol.iassoc/IAssoc",
+            "std.protocol.iassoc.IAssoc",
             "assoc",
             &[value.clone(), key.clone(), replacement],
         ),
@@ -1793,7 +1793,7 @@ fn collection_dissoc(value: &Value, keys: &[Value]) -> Result<Value, String> {
             };
             extension_protocol_call(
                 receiver,
-                "std.protocol.idissoc/IDissoc",
+                "std.protocol.idissoc.IDissoc",
                 "dissoc",
                 &[current.clone(), key.clone()],
             )

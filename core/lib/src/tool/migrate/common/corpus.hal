@@ -30,6 +30,10 @@
      :source/path path
      :source/blob blob
      :dependencies (:dependencies summary)
+     :dependency/occurrences (clj/dependency-occurrences source)
+     :dependency/symbols
+     (clj/dependency-symbol-references source (:dependencies summary))
+     :core/symbols (:core/symbols summary)
      :public-symbols (:public-symbols summary)
      :candidate/matches []
      :review/disposition :pending
@@ -40,12 +44,22 @@
   [entry test-path test-blob test-source]
   (let [summary (clj/source-summary test-source)]
     (assoc
-     entry
-     :test/path test-path
-     :test/blob test-blob
-     :test/namespace (:namespace summary)
-     :test/dependencies (:dependencies summary)
-     :test/public-symbols (:public-symbols summary))))
+     (assoc
+      (assoc
+       (assoc
+        (assoc
+         (assoc
+          (assoc
+           (assoc
+            (assoc entry :test/path test-path)
+            :test/blob test-blob)
+           :test/namespace (:namespace summary))
+          :test/dependencies (:dependencies summary))
+         :test/dependency-occurrences (clj/dependency-occurrences test-source))
+        :test/dependency-symbols
+        (clj/dependency-symbol-references test-source (:dependencies summary)))
+       :test/core-symbols (:core/symbols summary))
+      :test/public-symbols (:public-symbols summary)))))
 
 (defn namespace-index
   [entries]
@@ -71,34 +85,264 @@
      {}
      entries)))
 
+(defn dependency-capability
+  [dependency]
+  (cond
+    (str/starts-with? dependency "clojure.tools.reader.reader-types")
+    {:kind :reader
+     :status :manual-review
+     :reason :reader-runtime-object}
+
+    (str/starts-with? dependency "clojure.tools.reader")
+    {:kind :reader
+     :status :manual-review
+     :reason :reader-runtime-boundary}
+
+    (or (str/starts-with? dependency "clojure.java")
+        (str/starts-with? dependency "clojure.lang"))
+    {:kind :jvm-class
+     :status :manual-review
+     :reason :jvm-runtime-object}
+
+    :else
+    {:kind :portable
+     :status :portable
+     :reason nil}))
+
+(defn external-route-record
+  [entry source external-rank family-id prefix index occurrence]
+  (let [dependency (:dependency/name occurrence)
+        references
+        (vec
+         (filter
+          (fn [reference]
+            (str/starts-with?
+             (:resolved/symbol reference)
+             (str dependency "/")))
+          (:symbols source)))
+        source-path (:path source)
+        kind (:kind source)
+        evidence (:dependency/evidence occurrence)]
+    {:external/id (str prefix "/" source-path "#" (name kind) "-" index)
+     :family/id family-id
+     :external/namespace dependency
+     :dependency/rank external-rank
+     :source/namespace (:namespace entry)
+     :source/path (:source/path entry)
+     :source/blob (:source/blob entry)
+     :source/dependency-rank (:dependency/rank entry)
+     :source/dependency-component (:dependency/component entry)
+     :source/dependency-cycle (:dependency/cycle entry)
+     :test/path (:test/path entry)
+     :test/blob (:test/blob entry)
+     :observation/kind kind
+     :observation/path source-path
+     :observation/index index
+     :dependency/evidence evidence
+     :form/location evidence
+     :referenced/symbols (vec (map :resolved/symbol references))
+     :referenced/source-symbols (vec (map :source/symbol references))
+     :referenced/evidence (vec (map :reference/evidence references))
+     :referenced/idioms (sorted-unique (map :reference/idiom references))
+     :referenced/operations (sorted-unique (map :reference/operation references))
+     :referenced/status (if (empty? references) :manual-review :derived)
+     :referenced/reason (if (empty? references) :no-qualified-symbol-evidence nil)
+     :capability (dependency-capability dependency)
+     :extraction/status :emitted
+     :candidate/matches []
+     :review/disposition :pending
+     :review/evidence []}))
+
+(defn core-reference-sources
+  [entry]
+  (vec
+   (keep
+    (fn [source]
+      (if (and (string? (:path source))
+               (vector? (:references source)))
+        source
+        nil))
+    [{:kind :source
+      :path (:source/path entry)
+      :references (vec (or (:core/symbols entry) []))}
+     {:kind :test
+      :path (:test/path entry)
+      :references (vec (or (:test/core-symbols entry) []))}])))
+
+(defn core-reference-record
+  [entry source family-id prefix index reference]
+  (let [reference-status (:reference/status reference)
+        extraction-status
+        (cond
+          (= :derived reference-status) :emitted
+          (= :skipped reference-status) :skipped
+          :else :manual-review)]
+    {:core/id (str prefix "/" (:path source) "#" (name (:kind source))
+                   "-" index)
+     :family/id family-id
+     :core/namespace "clojure.core"
+     :core/name (:reference/name reference)
+     :core/local-name (:reference/local-name reference)
+     :core/symbol (:resolved/symbol reference)
+     :core/kind (:reference/kind reference)
+     :core/operation (:reference/operation reference)
+     :core/status reference-status
+     :core/reason (:reference/reason reference)
+     :source/namespace (:namespace entry)
+     :source/path (:source/path entry)
+     :source/blob (:source/blob entry)
+     :test/path (:test/path entry)
+     :test/blob (:test/blob entry)
+     :observation/kind (:kind source)
+     :observation/path (:path source)
+     :observation/blob (if (= :test (:kind source))
+                         (:test/blob entry)
+                         (:source/blob entry))
+     :observation/index index
+     :reference/options (:reference/options reference)
+     :reference/evidence (:reference/evidence reference)
+     :extraction/status extraction-status
+     :review/disposition :pending
+     :review/evidence []}))
+
+(defn core-references
+  ([entries]
+   (core-references entries {}))
+  ([entries options]
+   (let [family-id (or (:family/id options) :foundation)
+         prefix (if (keyword? family-id) (name family-id) (str family-id))]
+     (vec
+      (sort-by
+       :core/id
+       (mapcat
+        (fn [entry]
+          (mapcat
+           (fn [source]
+             (map-indexed
+              (fn [index reference]
+                (core-reference-record
+                 entry source family-id prefix index reference))
+              (:references source)))
+           (core-reference-sources entry)))
+        entries))))))
+
+(defn core-reference-accounting
+  [references]
+  (let [discovered (count references)
+        emitted (count (filter (fn [reference]
+                                (= :emitted (:extraction/status reference)))
+                              references))
+        skipped (count (filter (fn [reference]
+                                (= :skipped (:extraction/status reference)))
+                              references))
+        manual (count (filter (fn [reference]
+                                (= :manual-review (:extraction/status reference)))
+                              references))]
+    {:discovered discovered
+     :emitted emitted
+     :skipped skipped
+     :manual-review manual
+     :complete? (= discovered (+ emitted skipped manual))}))
+
+(defn external-route-sources
+  [entry]
+  (vec
+   (keep
+    (fn [source]
+      (if (and (string? (:path source))
+               (vector? (:dependencies source)))
+        source
+        nil))
+    [{:kind :source
+      :path (:source/path entry)
+     :dependencies
+     (vec
+      (map :dependency/name
+           (or (:dependency/occurrences entry)
+               (map (fn [dependency]
+                      {:dependency/name dependency})
+                    (:dependencies entry)))))
+     :occurrences
+     (vec
+      (or (:dependency/occurrences entry)
+          (map (fn [dependency]
+                 {:dependency/name dependency})
+               (:dependencies entry))))
+     :symbols (vec (or (:dependency/symbols entry) []))}
+    {:kind :test
+     :path (:test/path entry)
+     :dependencies
+     (vec
+      (map :dependency/name
+           (or (:test/dependency-occurrences entry)
+               (map (fn [dependency]
+                      {:dependency/name dependency})
+                    (:test/dependencies entry)))))
+     :occurrences
+     (vec
+      (or (:test/dependency-occurrences entry)
+          (map (fn [dependency]
+                 {:dependency/name dependency})
+               (:test/dependencies entry))))
+     :symbols (vec (or (:test/dependency-symbols entry) []))}])))
+
 (defn external-routes
-  [entries external-rank]
-  (let [index (namespace-index entries)]
-    (vec
-     (sort-by
-      (fn [route]
-        [(:external/namespace route)
-         (:source/namespace route)
-         (:source/path route)])
-      (reduce
-       (fn [output entry]
-         (into
-          output
-          (keep
-           (fn [dependency]
-             (if (has? index dependency)
-               nil
-               {:external/namespace dependency
-                :dependency/rank external-rank
-                :source/namespace (:namespace entry)
-                :source/path (:source/path entry)
-                :source/blob (:source/blob entry)
-                :candidate/matches []
-                :review/disposition :pending
-                :review/evidence []}))
-           (:dependencies entry))))
-       []
-       entries)))))
+  ([entries external-rank]
+   (external-routes entries external-rank {}))
+  ([entries external-rank options]
+   (let [namespace-index-value (namespace-index entries)
+         family-id (or (:family/id options) :foundation)
+         prefix (if (keyword? family-id) (name family-id) (str family-id))]
+     (vec
+      (sort-by
+       :external/id
+       (reduce
+        (fn [output entry]
+          (into
+           output
+           (mapcat
+            (fn [source]
+              (vec
+               (keep
+                (fn [indexed]
+                  (let [occurrence-index (first indexed)
+                        occurrence (second indexed)
+                        dependency (:dependency/name occurrence)]
+                    (if (or (has? namespace-index-value dependency)
+                            (not (str/starts-with? dependency "clojure.")))
+                      nil
+                      (external-route-record
+                       entry
+                       source
+                       external-rank
+                       family-id
+                       prefix
+                       occurrence-index
+                       occurrence))))
+                (map-indexed
+                 (fn [index occurrence] [index occurrence])
+                 (:occurrences source)))))
+            (external-route-sources entry)))
+         []
+         entries)))))))
+
+(defn external-route-accounting
+  [routes]
+  (let [discovered (count routes)
+        emitted (count (filter (fn [route]
+                                (= :emitted (:extraction/status route)))
+                              routes))
+        skipped (count (filter (fn [route]
+                                (= :skipped (:extraction/status route)))
+                              routes))
+        manual (count (filter (fn [route]
+                                (= :manual-review (:extraction/status route)))
+                              routes))]
+    {:discovered discovered
+     :emitted emitted
+     :skipped skipped
+     :manual-review manual
+     :complete? (= discovered (+ emitted skipped manual))}))
 
 (defn tarjan-components
   "Returns deterministic strongly connected components for a dependency graph."
@@ -239,9 +483,10 @@
         component (get (:components graph-plan) owner)
         dependencies (get (:graph graph-plan) (:namespace entry))]
     (assoc
-     entry
-     :dependency/rank (get (:ranks graph-plan) owner)
-     :dependency/component component
+     (assoc
+      (assoc entry
+             :dependency/rank (get (:ranks graph-plan) owner))
+      :dependency/component component)
      :dependency/cycle
      (or
       (> (count component) 1)
@@ -449,10 +694,14 @@
     (pr-str value)))
 
 (defn corpus-document
-  [profile-value entries]
-  (let [profile-value (profile/assert-profile profile-value)
-        entries (compile-entries entries)
-        errors (validate-entries profile-value entries)]
+  ([profile-value entries]
+   (corpus-document profile-value entries {}))
+  ([profile-value entries options]
+   (let [profile-value (profile/assert-profile profile-value)
+         entries (compile-entries entries)
+         routes (external-routes entries (:external/rank profile-value) options)
+         core-observations (core-references entries options)
+         errors (validate-entries profile-value entries)]
     (if (not (empty? errors))
       (throw
        (ex :tool.migrate/invalid-corpus
@@ -466,12 +715,14 @@
      :foundation/tree (:foundation/tree profile-value)
      :external/rank (:external/rank profile-value)
      :foundation/rank-base (:foundation/rank-base profile-value)
-     :external/routes
-     (external-routes entries (:external/rank profile-value))
+     :external/routes routes
+     :external/accounting (external-route-accounting routes)
+     :core/references core-observations
+     :core/accounting (core-reference-accounting core-observations)
      :namespaces entries
      :next/review (next-review entries)
      :next/unblocked-migration
-     (next-unblocked-migration profile-value entries)}))
+     (next-unblocked-migration profile-value entries)})))
 
 (defn encode-retired-evidence
   "Keeps immutable Foundation identifiers semantically exact without making

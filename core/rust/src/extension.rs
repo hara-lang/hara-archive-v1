@@ -17,12 +17,13 @@ const MANIFEST_FIELDS: &[&str] = &[
     "exports",
     "capabilities",
     "host-calls",
+    "callbacks",
     "handles",
     "targets",
     "assets",
 ];
-const EXPORT_FIELDS: &[&str] = &["args", "returns", "async", "wasm/export"];
-const HANDLE_FIELDS: &[&str] = &["tag"];
+const EXPORT_FIELDS: &[&str] = &["args", "returns", "async", "wasm/export", "operation"];
+const HANDLE_FIELDS: &[&str] = &["tag", "release"];
 const TARGET_FIELDS: &[&str] = &["module", "runtime"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -38,6 +39,12 @@ pub struct ExtensionExport {
     pub returns: String,
     pub asynchronous: bool,
     pub raw_export: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExtensionCallback {
+    pub arguments: Vec<String>,
+    pub returns: String,
 }
 
 impl ExtensionExport {
@@ -64,9 +71,13 @@ pub struct ExtensionManifest {
     pub targets: HashMap<String, ExtensionTarget>,
     pub assets: Vec<String>,
     pub exports: Vec<(String, ExtensionExport)>,
+    pub operations: HashMap<String, String>,
     pub capabilities: Vec<String>,
     pub host_calls: HashMap<String, Vec<String>>,
+    pub host_call_capabilities: HashMap<String, Vec<String>>,
+    pub callbacks: HashMap<String, ExtensionCallback>,
     pub handle_tags: HashMap<String, String>,
+    pub handle_releases: HashMap<String, String>,
 }
 
 impl ExtensionManifest {
@@ -142,16 +153,22 @@ impl ExtensionManifest {
         if provider == "hta" && abi != WasmAbi::HtaV1 {
             return Err(malformed(origin, "HTA providers require :abi :hta.v1"));
         }
-        let exports = parse_exports(required(entries, "exports", origin)?, origin)?;
+        let (exports, operations) = parse_exports(required(entries, "exports", origin)?, origin)?;
         let capabilities = keyword_vector(
             required(entries, "capabilities", origin)?,
             origin,
             "capabilities",
         )?;
-        let host_calls = optional(entries, "host-calls")
-            .map_or_else(|| Ok(HashMap::new()), |form| parse_host_calls(form, origin))?;
-        let handle_tags = optional(entries, "handles")
-            .map_or_else(|| Ok(HashMap::new()), |form| parse_handles(form, origin))?;
+        let (host_calls, host_call_capabilities) = optional(entries, "host-calls").map_or_else(
+            || Ok((HashMap::new(), HashMap::new())),
+            |form| parse_host_calls(form, origin),
+        )?;
+        let callbacks = optional(entries, "callbacks")
+            .map_or_else(|| Ok(HashMap::new()), |form| parse_callbacks(form, origin))?;
+        let (handle_tags, handle_releases) = optional(entries, "handles").map_or_else(
+            || Ok((HashMap::new(), HashMap::new())),
+            |form| parse_handles(form, origin),
+        )?;
         Ok(Self {
             namespace,
             root,
@@ -163,9 +180,13 @@ impl ExtensionManifest {
             assets,
             abi,
             exports,
+            operations,
             capabilities,
             host_calls,
+            host_call_capabilities,
+            callbacks,
             handle_tags,
+            handle_releases,
         })
     }
 
@@ -173,6 +194,13 @@ impl ExtensionManifest {
         self.host_calls.get(service).map_or(false, |methods| {
             methods.iter().any(|candidate| candidate == method)
         })
+    }
+
+    pub fn host_call_capabilities(&self, service: &str, method: &str) -> &[String] {
+        self.host_call_capabilities
+            .get(&format!("{service}/{method}"))
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
     }
 }
 
@@ -193,6 +221,10 @@ pub trait WasmExtensionProvider {
     ) -> Result<Value, String>;
 
     fn cancel(&self, manifest: &ExtensionManifest, request: u64) -> Result<(), String>;
+
+    fn release(&self, _manifest: &ExtensionManifest, _handle: &Value) -> Result<(), String> {
+        Err("extension/release-unsupported: provider has no HTA handle boundary".into())
+    }
 
     fn shutdown(&self, manifest: &ExtensionManifest);
 }
@@ -239,6 +271,13 @@ impl ExtensionBinding {
         }
         Ok(result)
     }
+
+    pub fn release(&self, handle: &Value) -> Result<(), String> {
+        self.session
+            .provider
+            .release(&self.session.manifest, handle)
+            .map_err(|error| format!("extension/release: {error}"))
+    }
 }
 
 pub struct WasmExtension {
@@ -276,12 +315,13 @@ impl WasmExtension {
                 .capabilities()
                 .into_iter()
                 .collect::<HashSet<_>>();
-            if let Some(capability) = self
+            let missing = self
                 .manifest
                 .capabilities
                 .iter()
-                .find(|capability| !available.contains(*capability))
-            {
+                .chain(self.manifest.host_call_capabilities.values().flatten())
+                .find(|capability| !available.contains(*capability));
+            if let Some(capability) = missing {
                 return Err(format!(
                     "extension/denied: {} requires capability :{}",
                     self.manifest.namespace, capability
@@ -387,12 +427,16 @@ fn safe_relative(
     Ok(())
 }
 
-fn parse_exports(form: &Form, origin: &str) -> Result<Vec<(String, ExtensionExport)>, String> {
+fn parse_exports(
+    form: &Form,
+    origin: &str,
+) -> Result<(Vec<(String, ExtensionExport)>, HashMap<String, String>), String> {
     let entries = map(form, origin, "exports")?;
     if entries.is_empty() {
         return Err(malformed(origin, "exports cannot be empty"));
     }
-    entries
+    let mut operations = HashMap::new();
+    let exports = entries
         .iter()
         .map(|(name, specification)| {
             let name = string(name, origin, "export name")?.to_owned();
@@ -403,17 +447,16 @@ fn parse_exports(form: &Form, origin: &str) -> Result<Vec<(String, ExtensionExpo
                 origin,
                 &format!("export {name}"),
             )?;
-            let arguments = keyword_vector(
+            let arguments = wire_vector(
                 required(specification, "args", origin)?,
                 origin,
                 "export args",
             )?;
-            let returns = keyword(
+            let returns = wire_type(
                 required(specification, "returns", origin)?,
                 origin,
                 "export returns",
-            )?
-            .to_owned();
+            )?;
             let asynchronous = match optional(specification, "async") {
                 None => false,
                 Some(Form::Bool(value)) => *value,
@@ -422,6 +465,12 @@ fn parse_exports(form: &Form, origin: &str) -> Result<Vec<(String, ExtensionExpo
             let raw_export = optional(specification, "wasm/export")
                 .map(|form| string(form, origin, "export wasm/export").map(str::to_owned))
                 .transpose()?;
+            if let Some(operation) = optional(specification, "operation") {
+                let operation = string(operation, origin, "export operation")?.to_owned();
+                if operations.insert(name.clone(), operation).is_some() {
+                    return Err(malformed(origin, format!("duplicate export {name}")));
+                }
+            }
             Ok((
                 name,
                 ExtensionExport {
@@ -432,42 +481,127 @@ fn parse_exports(form: &Form, origin: &str) -> Result<Vec<(String, ExtensionExpo
                 },
             ))
         })
-        .collect()
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok((exports, operations))
 }
 
-fn parse_host_calls(form: &Form, origin: &str) -> Result<HashMap<String, Vec<String>>, String> {
-    map(form, origin, "host-calls")?
-        .iter()
-        .map(|(service, methods)| {
-            let service = string(service, origin, "host-call service")?.to_owned();
-            let methods = vector(methods, origin, "host-call methods")?
+fn parse_host_calls(
+    form: &Form,
+    origin: &str,
+) -> Result<(HashMap<String, Vec<String>>, HashMap<String, Vec<String>>), String> {
+    let mut host_calls = HashMap::new();
+    let mut host_call_capabilities = HashMap::new();
+    for (service, specification) in map(form, origin, "host-calls")? {
+        let service = string(service, origin, "host-call service")?.to_owned();
+        let (methods, capabilities) = match specification {
+            Form::Vector(_) => (
+                vector(specification, origin, "host-call methods")?
+                    .iter()
+                    .map(|method| string(method, origin, "host-call method").map(str::to_owned))
+                    .collect::<Result<Vec<_>, _>>()?,
+                Vec::new(),
+            ),
+            Form::Map(entries) => {
+                reject_unknown(entries, &["methods", "capabilities"], origin, "host-call")?;
+                let methods = vector(
+                    required(entries, "methods", origin)?,
+                    origin,
+                    "host-call methods",
+                )?
                 .iter()
                 .map(|method| string(method, origin, "host-call method").map(str::to_owned))
                 .collect::<Result<Vec<_>, _>>()?;
-            Ok((service, methods))
-        })
-        .collect()
+                let capabilities = optional(entries, "capabilities")
+                    .map(|form| keyword_vector(form, origin, "host-call capabilities"))
+                    .transpose()?
+                    .unwrap_or_default();
+                (methods, capabilities)
+            }
+            _ => {
+                return Err(malformed(
+                    origin,
+                    "host-call specification must be a vector or map",
+                ))
+            }
+        };
+        if host_calls
+            .insert(service.clone(), methods.clone())
+            .is_some()
+        {
+            return Err(malformed(
+                origin,
+                format!("duplicate host-call service {service}"),
+            ));
+        }
+        for method in methods {
+            host_call_capabilities.insert(format!("{service}/{method}"), capabilities.clone());
+        }
+    }
+    Ok((host_calls, host_call_capabilities))
 }
 
-fn parse_handles(form: &Form, origin: &str) -> Result<HashMap<String, String>, String> {
-    map(form, origin, "handles")?
-        .iter()
-        .map(|(type_name, specification)| {
-            let type_name = string(type_name, origin, "handle type")?.to_owned();
-            let specification = map(specification, origin, "handle specification")?;
-            reject_unknown(
-                specification,
-                HANDLE_FIELDS,
+fn parse_handles(
+    form: &Form,
+    origin: &str,
+) -> Result<(HashMap<String, String>, HashMap<String, String>), String> {
+    let mut tags = HashMap::new();
+    let mut releases = HashMap::new();
+    for (type_name, specification) in map(form, origin, "handles")? {
+        let type_name = string(type_name, origin, "handle type")?.to_owned();
+        let specification = map(specification, origin, "handle specification")?;
+        reject_unknown(
+            specification,
+            HANDLE_FIELDS,
+            origin,
+            &format!("handle {type_name}"),
+        )?;
+        let tag = match required(specification, "tag", origin)? {
+            Form::Symbol(tag) if valid_tag(tag) => tag.clone(),
+            _ => return Err(malformed(origin, "handle tag must be a lower-case symbol")),
+        };
+        tags.insert(type_name.clone(), tag);
+        if let Some(release) = optional(specification, "release") {
+            releases.insert(
+                type_name,
+                string(release, origin, "handle release")?.to_owned(),
+            );
+        }
+    }
+    Ok((tags, releases))
+}
+
+fn parse_callbacks(
+    form: &Form,
+    origin: &str,
+) -> Result<HashMap<String, ExtensionCallback>, String> {
+    let mut callbacks = HashMap::new();
+    for (name, specification) in map(form, origin, "callbacks")? {
+        let name = string(name, origin, "callback name")?.to_owned();
+        let entries = map(specification, origin, "callback specification")?;
+        reject_unknown(entries, &["args", "returns", "reentrant"], origin, "callback")?;
+        let arguments = wire_vector(required(entries, "args", origin)?, origin, "callback args")?;
+        let returns = wire_type(
+            required(entries, "returns", origin)?,
+            origin,
+            "callback returns",
+        )?;
+        if matches!(optional(entries, "reentrant"), Some(Form::Bool(true))) {
+            return Err(malformed(
                 origin,
-                &format!("handle {type_name}"),
-            )?;
-            let tag = match required(specification, "tag", origin)? {
-                Form::Symbol(tag) if valid_tag(tag) => tag.clone(),
-                _ => return Err(malformed(origin, "handle tag must be a lower-case symbol")),
-            };
-            Ok((type_name, tag))
-        })
-        .collect()
+                format!("callback {name} cannot be reentrant"),
+            ));
+        }
+        if optional(entries, "reentrant").is_some_and(|form| !matches!(form, Form::Bool(_))) {
+            return Err(malformed(origin, "callback reentrant must be boolean"));
+        }
+        if callbacks
+            .insert(name.clone(), ExtensionCallback { arguments, returns })
+            .is_some()
+        {
+            return Err(malformed(origin, format!("duplicate callback {name}")));
+        }
+    }
+    Ok(callbacks)
 }
 
 fn valid_identity(value: &str) -> bool {
@@ -527,6 +661,21 @@ fn keyword_vector(form: &Form, origin: &str, field: &str) -> Result<Vec<String>,
         .iter()
         .map(|form| keyword(form, origin, field).map(str::to_owned))
         .collect()
+}
+
+fn wire_vector(form: &Form, origin: &str, field: &str) -> Result<Vec<String>, String> {
+    vector(form, origin, field)?
+        .iter()
+        .map(|form| wire_type(form, origin, field))
+        .collect()
+}
+
+fn wire_type(form: &Form, origin: &str, field: &str) -> Result<String, String> {
+    match form {
+        Form::Keyword(value) => Ok(value.clone()),
+        Form::Vector(_) => Ok(form.to_string()),
+        _ => Err(malformed(origin, format!("{field} must be a type form"))),
+    }
 }
 
 fn key(form: &Form) -> Option<&str> {

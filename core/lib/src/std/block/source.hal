@@ -1,0 +1,36 @@
+(ns std.block.source
+  (:config {:role :internal})
+  (:require [std.block.base :as base]
+            [std.block.parse :as parse]))
+
+(defn namespace-name
+  "Returns the declared top-level ns or ns+ name from source."
+  [source]
+  (let [root (parse/parse-ranges source)]
+    (loop [remaining (base/block-children root)]
+      (if (empty? remaining)
+        nil
+        (let [form (first remaining)
+              value (if (base/expression? form)
+                      (base/block-value form)
+                      nil)]
+          (if (and (list? value)
+                   (or (= 'ns (first value)) (= 'ns+ (first value)))
+                   (< 1 (count value)))
+            (str (nth value 1))
+            (recur (rest remaining))))))))
+
+(defn grep-source
+  "Returns one-based line records containing needle."
+  [source needle]
+  (loop [index 0
+         lines (str/split-lines source)
+         output []]
+    (if (= index (count lines))
+      output
+      (let [line (nth lines index)]
+        (recur (inc index)
+               lines
+               (if (str/includes? line needle)
+                 (conj output {:line (inc index) :column 1 :text line})
+                 output))))))

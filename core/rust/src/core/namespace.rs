@@ -332,11 +332,8 @@ fn eval_require_spec(
                 if alias == "-" {
                     return Err("Namespace alias is reserved: -".into());
                 }
-                // An explicit namespace alias is allowed to shadow an
-                // inherited Foundation referral with the same local name.
-                // Remove that referral before a later `def` claims the name;
-                // otherwise the compiler quite correctly sees the inherited
-                // Var as foreign and rejects the definition.
+                // Clear a stale materialized Foundation binding before an
+                // explicit alias claims the same local name.
                 let local = crate::lang::data::Symbol::parse(&alias);
                 if registry
                     .current()
@@ -514,14 +511,15 @@ fn eval_namespace_form(fs: &[Form], env: &mut HashMap<String, Value>) -> Result<
     if let Some(alias) = config.global_alias() {
         registry.register_global_alias(alias, &name)?;
     }
-    if !config.blank() {
-        refer_startup_defaults(&registry, &name);
-    } else {
-        crate::core::refer_native_aliases(&registry, &name);
-    }
+    apply_global_aliases(&registry, &name);
     select_namespace_environment(&registry, env, &name);
     let destination = registry.current();
     destination.set_role(config.role());
+    destination.set_foundation_visibility(
+        config.exposed_foundation(),
+        config.excluded_foundation(),
+        config.blank(),
+    );
     destination.set_native_flavor(config.native_flavor().map(str::to_owned));
     for (local, module) in config.native_imports() {
         destination.import(local, module.clone());

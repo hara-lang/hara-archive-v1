@@ -18,36 +18,36 @@ public class HaraDbRuntimeTest {
 
   @Test
   public void databaseKernelClientAndProxyRuntimeFixturePasses() throws Exception {
-    assertHalFixturePasses("lib/test/std/db/node/runtime_test.hal");
+    assertHalFixturePasses("lib/test/db/node/runtime_test.hal");
   }
 
   @Test
   public void databaseBatchAndTransactionFixturePasses() throws Exception {
-    assertHalFixturePasses("lib/test/std/db/node/batch_test.hal");
+    assertHalFixturePasses("lib/test/db/node/batch_test.hal");
   }
 
   @Test
   public void databaseSerializedExecutionFixturePasses() throws Exception {
-    assertHalFixturePasses("lib/test/std/db/node/serial_test.hal");
+    assertHalFixturePasses("lib/test/db/node/serial_test.hal");
   }
 
   @Test
   public void databaseDynamicServiceLifecycleFixturePasses() throws Exception {
-    assertHalFixturePasses("lib/test/std/db/node/service_test.hal");
+    assertHalFixturePasses("lib/test/db/node/service_test.hal");
   }
 
   @Test
   public void databaseRuntimeStatusFixturePasses() throws Exception {
-    assertHalFixturePasses("lib/test/std/db/node/status_test.hal");
+    assertHalFixturePasses("lib/test/db/node/status_test.hal");
   }
 
   @Test
   public void databaseSupabaseRuntimeFixturePasses() throws Exception {
-    assertHalFixturePasses("lib/test/std/db/node/supabase_test.hal");
+    assertHalFixturePasses("lib/test/db/node/supabase_test.hal");
   }
 
   @Test
   public void databaseWorkerMessageTransportFixturePasses() throws Exception {
-    assertHalFixturePasses("lib/test/std/db/node/transport_test.hal");
+    assertHalFixturePasses("lib/test/db/node/transport_test.hal");
   }
 }

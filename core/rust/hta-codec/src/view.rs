@@ -401,7 +401,8 @@ fn scan_value(bytes: &[u8], start: usize, depth: usize) -> Result<usize, String>
                 return Err("hta/value-malformed: invalid exception message".into());
             }
             let data_end = scan_value(bytes, message_end, depth + 1)?;
-            scan_value(bytes, data_end, depth + 1)
+            let cause_end = scan_value(bytes, data_end, depth + 1)?;
+            scan_value(bytes, cause_end, depth + 1)
         }
         STRUCT => {
             let name_end = scan_value(bytes, cursor, depth + 1)?;

@@ -14,7 +14,8 @@
 
 (defn- command-result
   [argv value]
-  ((execution-runner value) argv {}))
+  (sh/result-record
+   ((execution-runner value) argv {})))
 
 (defn- command-checked
   [argv value]

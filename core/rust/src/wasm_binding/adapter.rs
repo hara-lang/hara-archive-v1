@@ -42,8 +42,7 @@ pub fn generate_adapter(
 ) -> Result<AdapterArtifact, String> {
     if interface.exports.iter().any(|export| export.asynchronous) {
         return Err(
-            "wasm-adapter/feature-unsupported: asynchronous exports require the HTA adapter"
-                .into(),
+            "wasm-adapter/feature-unsupported: asynchronous exports require the HTA adapter".into(),
         );
     }
     let inspection = inspect_direct(module_bytes)?;
@@ -268,10 +267,7 @@ fn emit_hta_forwarder(exports: &[BindingFunction]) -> Result<Vec<u8>, String> {
     let import_type_count = exports.len() as u32;
     let lifecycle_types = [
         ([ValType::I32].as_slice(), [ValType::I32].as_slice()),
-        (
-            [ValType::I32, ValType::I32].as_slice(),
-            [].as_slice(),
-        ),
+        ([ValType::I32, ValType::I32].as_slice(), [].as_slice()),
         ([].as_slice(), [ValType::I32].as_slice()),
         (
             [ValType::I32, ValType::I32].as_slice(),
@@ -370,16 +366,10 @@ fn emit_hta_forwarder(exports: &[BindingFunction]) -> Result<Vec<u8>, String> {
     code.function(&emit_abi_version());
     code.function(&emit_start(exports, alloc));
     code.function(&emit_next_event());
-    code.function(&emit_noop(
-        &[ValType::I32, ValType::I32],
-        &[ValType::I32],
-    ));
+    code.function(&emit_noop(&[ValType::I32, ValType::I32], &[ValType::I32]));
     code.function(&emit_noop(&[ValType::I64], &[ValType::I32]));
     code.function(&emit_noop(&[ValType::I64], &[ValType::I32]));
-    code.function(&emit_noop(
-        &[ValType::I32, ValType::I32],
-        &[ValType::I32],
-    ));
+    code.function(&emit_noop(&[ValType::I32, ValType::I32], &[ValType::I32]));
     module.section(&code);
     Ok(module.finish())
 }
@@ -421,11 +411,7 @@ fn emit_abi_version() -> Function {
 }
 
 fn emit_start(exports: &[BindingFunction], alloc: u32) -> Function {
-    let mut function = Function::new([
-        (1, ValType::I32),
-        (1, ValType::I64),
-        (1, ValType::I64),
-    ]);
+    let mut function = Function::new([(1, ValType::I32), (1, ValType::I64), (1, ValType::I64)]);
     function.instruction(&Instruction::I32Const(64));
     function.instruction(&Instruction::Call(alloc));
     function.instruction(&Instruction::LocalSet(2));
@@ -437,16 +423,13 @@ fn emit_start(exports: &[BindingFunction], alloc: u32) -> Function {
     function.instruction(&Instruction::GlobalSet(5));
 
     for (index, export) in exports.iter().enumerate() {
-        let name = export.name.as_bytes();
+        let operation = export.operation.as_deref().unwrap_or(&export.name);
+        let name = operation.as_bytes();
         let mut checks = Vec::new();
         for (offset, byte) in b"HTA0".iter().enumerate() {
             checks.push(byte_check(0, offset as u32, *byte));
         }
-        for (offset, byte) in [
-            (4, 9),
-            (9, 4),
-            (14 + name.len(), 9),
-        ] {
+        for (offset, byte) in [(4, 9), (9, 4), (14 + name.len(), 9)] {
             checks.push(byte_check(0, offset as u32, byte));
         }
         for (offset, value) in [
@@ -470,7 +453,7 @@ fn emit_start(exports: &[BindingFunction], alloc: u32) -> Function {
         }
         checks.push(vec![
             Instruction::LocalGet(1),
-            Instruction::I32Const(expected_frame_size(export) as i32),
+            Instruction::I32Const(expected_frame_size(export, name.len()) as i32),
             Instruction::I32Eq,
         ]);
         for (index, check) in checks.into_iter().enumerate() {
@@ -495,7 +478,9 @@ fn emit_start(exports: &[BindingFunction], alloc: u32) -> Function {
     }
 
     function.instruction(&Instruction::GlobalGet(5));
-    function.instruction(&Instruction::If(wasm_encoder::BlockType::Result(ValType::I64)));
+    function.instruction(&Instruction::If(wasm_encoder::BlockType::Result(
+        ValType::I64,
+    )));
     function.instruction(&Instruction::LocalGet(2));
     function.instruction(&Instruction::GlobalSet(1));
     store_byte(&mut function, 2, 0, b'H');
@@ -524,13 +509,8 @@ fn emit_start(exports: &[BindingFunction], alloc: u32) -> Function {
     function
 }
 
-fn expected_frame_size(export: &BindingFunction) -> u32 {
-    19 + export.name.len() as u32
-        + export
-            .arguments
-            .iter()
-            .map(encoded_size)
-            .sum::<u32>()
+fn expected_frame_size(export: &BindingFunction, operation_length: usize) -> u32 {
+    19 + operation_length as u32 + export.arguments.iter().map(encoded_size).sum::<u32>()
 }
 
 fn store_i32_constant(function: &mut Function, pointer: u32, offset: u32, value: i32) {
@@ -560,7 +540,9 @@ fn emit_next_event() -> Function {
     function.instruction(&Instruction::GlobalGet(1));
     function.instruction(&Instruction::LocalTee(0));
     function.instruction(&Instruction::I32Eqz);
-    function.instruction(&Instruction::If(wasm_encoder::BlockType::Result(ValType::I64)));
+    function.instruction(&Instruction::If(wasm_encoder::BlockType::Result(
+        ValType::I64,
+    )));
     function.instruction(&Instruction::I64Const(0));
     function.instruction(&Instruction::Else);
     function.instruction(&Instruction::GlobalGet(2));
@@ -804,11 +786,15 @@ fn hta_adapter_manifest(
     let exports = exports
         .iter()
         .map(|export| {
-            Form::Map(vec![
+            let mut fields = vec![
                 (keyword("hara/name"), symbol(&export.name)),
                 (keyword("wasm/export"), string(&export.wasm_export)),
                 (keyword("async"), Form::Bool(true)),
-            ])
+            ];
+            if let Some(operation) = export.operation.as_deref() {
+                fields.push((keyword("operation"), string(operation)));
+            }
+            Form::Map(fields)
         })
         .collect();
     Form::Map(vec![
@@ -836,10 +822,7 @@ fn hta_adapter_manifest(
             Form::Map(vec![
                 (keyword("name"), string("hara-wasm-bindgen")),
                 (keyword("version"), string(env!("CARGO_PKG_VERSION"))),
-                (
-                    keyword("digest"),
-                    string(&tool_digest()),
-                ),
+                (keyword("digest"), string(&tool_digest())),
             ]),
         ),
         (keyword("exports"), Form::Vector(exports)),
@@ -1115,14 +1098,20 @@ mod tests {
             vec![
                 crate::core::Value::String("sum".into()),
                 crate::core::Value::Vector(
-                    vec![crate::core::Value::Number(19), crate::core::Value::Number(23)].into(),
+                    vec![
+                        crate::core::Value::Number(19),
+                        crate::core::Value::Number(23),
+                    ]
+                    .into(),
                 ),
             ]
             .into(),
         ))
         .unwrap();
         let pointer = alloc.call(&mut store, request.len() as i32).unwrap();
-        memory.write(&mut store, pointer as usize, &request).unwrap();
+        memory
+            .write(&mut store, pointer as usize, &request)
+            .unwrap();
 
         let task = start
             .call(&mut store, (pointer, request.len() as i32))

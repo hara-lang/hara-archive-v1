@@ -76,7 +76,7 @@ The following roots should become `:facade` after their local implementation has
 |---|---|---|
 | `std.typed` | Mark schema, registry, explain and infer owners internal. | Curated and renamed `intern-in`. |
 | `std.config` | Move session operations to `std.config.session`. | Selected `intern-in`. |
-| `std.block` | Move zipper helpers to `std.block.zip` and source helpers to `std.block.source`. | Curated and renamed `intern-in`. |
+| `std.block` | Use `std.block.navigate` for navigation and move source helpers to `std.block.source`. | Curated and renamed `intern-in`. |
 | `code.vm` | Mark model/source/interpreter/HALC/bytecode/conformance owners internal. | Renamed `intern-in` families. |
 | `code.test` | Move root macros and compatibility adapters to `code.test.api`. | `intern-all code.test.api` plus selected `intern-in`. |
 | `tool.lint` | Move Result-boundary entrypoints to `tool.lint.api`. | `intern-all`/`intern-in` from API and report owners. |

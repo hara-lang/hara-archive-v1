@@ -5,49 +5,7 @@ const EMBEDDED_FOUNDATION_BYTECODE: &[u8] =
 #[cfg_attr(not(feature = "raw-wasm"), wasm_bindgen)]
 impl Runtime {
     fn empty() -> Runtime {
-        let namespace_registry = kernel::NamespaceRegistry::new("user");
-        let foundation = namespace_registry.find_or_create("std.foundation");
-        for (name, value) in core::direct_callable_values()
-            .expect("runtime callable inventory and direct catalog must agree")
-        {
-            let origin = core::direct_callable_spec(name)
-                .expect("direct callable value must retain its catalog entry")
-                .origin
-                .var_origin();
-            foundation.intern_with_origin(name, value, origin);
-        }
-        for (name, protocol) in core::foundation_protocol_values() {
-            foundation.intern(&name, protocol.clone());
-            let namespace =
-                namespace_registry.find_or_create(core::builtin_protocol_namespace(&name));
-            namespace.intern(name, protocol);
-        }
-        for (namespace, name, method) in core::builtin_protocol_method_values() {
-            namespace_registry
-                .find_or_create(namespace)
-                .intern(name, method);
-        }
-        let native = namespace_registry.find_or_create("std.native");
-        for (name, descriptor) in core::native_type_values() {
-            // The descriptor's canonical Var is std.native/<Type>. Foundation
-            // only refers that Var; it must not manufacture a differently
-            // qualified cell whose spelling happens to contain std.native.
-            let var = native.intern(&name, descriptor);
-            foundation.map_var(crate::lang::data::Symbol::parse(&name), var.clone());
-            namespace_registry.find_or_create(format!("std.native.{name}"));
-        }
-        for (native_type, methods) in core::NATIVE_TYPES {
-            let namespace_name = format!("std.native.{native_type}");
-            let namespace = namespace_registry.find_or_create(&namespace_name);
-            for method in *methods {
-                namespace.intern_with_origin(
-                    *method,
-                    core::native_type_function_value(native_type, method)
-                        .unwrap_or_else(|error| panic!("{error}")),
-                    kernel::VarOrigin::RuntimePrimitive,
-                );
-            }
-        }
+        let namespace_registry = core::minimal_namespace_registry();
         let vm_provider = namespace_registry.find_or_create("tool.vm.provider");
         for (name, value) in core::vm_tool_provider_values() {
             vm_provider.intern_with_origin(name, value, kernel::VarOrigin::RuntimePrimitive);
@@ -108,7 +66,6 @@ impl Runtime {
         runtime
             .bootstrap_foundation()
             .expect("embedded std.foundation fallback must be valid");
-        runtime.refer_foundation_into("user");
         runtime
     }
 
@@ -137,7 +94,6 @@ impl Runtime {
     /// only require core forms and should become interactive immediately.
     pub fn core() -> Runtime {
         let mut runtime = Runtime::empty();
-        runtime.refer_foundation_into("user");
         runtime.use_namespace("user");
         runtime
     }
@@ -151,72 +107,6 @@ impl Runtime {
     pub fn set_test_runner(&mut self, runner: &str) -> Result<(), JsValue> {
         self.configure_test_runner(runner)
             .map_err(|error| JsValue::from_str(&error))
-    }
-
-    #[cfg(feature = "bytecode-vm")]
-    pub(crate) fn prepare_foundation_bytecode(&mut self) {
-        let foundation = self.namespace_registry.find_or_create("std.foundation");
-        for name in core::foundation_bootstrap_callable_names() {
-            let symbol = crate::lang::data::Symbol::parse(name);
-            if foundation.resolve(&symbol).is_none() {
-                let value = core::direct_bootstrap_callable_value(name).unwrap_or_else(|| {
-                    panic!("missing direct Foundation bootstrap callable: {name}")
-                });
-                foundation.intern_with_origin(name, value, kernel::VarOrigin::RuntimePrimitive);
-            }
-        }
-        for name in core::BYTECODE_PROTOCOL_PREDICATES {
-            let symbol = crate::lang::data::Symbol::parse(name);
-            if foundation.resolve(&symbol).is_none() {
-                let value = core::direct_protocol_predicate_function_value(name)
-                    .unwrap_or_else(|| panic!("missing direct protocol predicate: {name}"));
-                foundation.intern_with_origin(name, value, kernel::VarOrigin::RuntimePrimitive);
-            }
-        }
-    }
-
-    fn refer_native_types_into(&mut self, namespace: &str) {
-        let target = self.namespace_registry.find_or_create(namespace);
-        for (protocol, _) in core::FOUNDATION_PROTOCOLS {
-            let protocol_namespace = core::builtin_protocol_namespace(protocol);
-            if let Some(source) = self.namespace_registry.find(&protocol_namespace) {
-                target.alias(protocol, source);
-            }
-        }
-        for (native_type, _) in core::NATIVE_TYPES {
-            let native_namespace = format!("std.native.{native_type}");
-            if let Some(source) = self.namespace_registry.find(&native_namespace) {
-                target.alias(*native_type, source);
-            }
-        }
-        if let Some(native) = self.namespace_registry.find("std.native") {
-            for (name, var) in native.mappings() {
-                if target.resolve(&name).is_none() {
-                    target.map_var(name.clone(), var.clone());
-                }
-                let canonical =
-                    crate::lang::data::Symbol::parse(&format!("std.native.{}", name.as_str()));
-                if target.resolve(&canonical).is_none() {
-                    target.map_var(canonical, var);
-                }
-            }
-        }
-    }
-
-    fn refer_foundation_into(&mut self, namespace: &str) {
-        self.refer_native_types_into(namespace);
-        let target = self.namespace_registry.find_or_create(namespace);
-        if namespace == "std.foundation" {
-            return;
-        }
-        let Some(foundation) = self.namespace_registry.find("std.foundation") else {
-            return;
-        };
-        for (name, var) in foundation.mappings() {
-            if target.resolve(&name).is_none() {
-                target.map_var(name, var);
-            }
-        }
     }
 
     fn bootstrap_foundation(&mut self) -> Result<(), String> {
@@ -292,7 +182,7 @@ impl Runtime {
             self.loaded_resources.insert(name.into());
         }
         self.use_namespace("std.foundation");
-        self.refer_foundation_into("user");
+        core::apply_global_aliases(&self.namespace_registry, "user");
         self.use_namespace("user");
         Ok(())
     }
@@ -690,20 +580,21 @@ impl Runtime {
             .get(name)
             .cloned()
             .unwrap_or_else(kernel::GeneratedNamespaceConfig::defaults);
-        self.namespace_registry
-            .find_or_create(name)
-            .set_role(config.role());
+        let target = self.namespace_registry.find_or_create(name);
+        target.set_role(config.role());
+        target.set_foundation_visibility(
+            config.exposed_foundation(),
+            config.excluded_foundation(),
+            config.blank(),
+        );
         if config.blank() {
-            let target = self.namespace_registry.find_or_create(name);
             for (local, var) in target.mappings() {
                 if var.symbol().get_namespace() != Some(name) {
                     target.unmap(&local);
                 }
             }
-            self.refer_native_types_into(name);
         } else {
-            self.refer_foundation_into(name);
-            let target = self.namespace_registry.find_or_create(name);
+            core::apply_global_aliases(&self.namespace_registry, name);
             let omitted = match config.exposed_foundation() {
                 Some(exposed) => target
                     .mappings()
@@ -1244,8 +1135,8 @@ impl Runtime {
             .map_err(|error| JsValue::from_str(&error))
     }
 
-    #[cfg(all(target_arch = "wasm32", not(feature = "raw-wasm")))]
-    #[wasm_bindgen(js_name = installDirectWasmImport)]
+    #[cfg(target_arch = "wasm32")]
+    #[cfg_attr(not(feature = "raw-wasm"), wasm_bindgen(js_name = installDirectWasmImport))]
     pub fn install_direct_wasm_import_js(
         &mut self,
         logical: &str,
@@ -1255,7 +1146,7 @@ impl Runtime {
             .map_err(|error| JsValue::from_str(&error))
     }
 
-    #[cfg(all(target_arch = "wasm32", not(feature = "raw-wasm")))]
+    #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen(js_name = installMemoryWasmBinding)]
     pub fn install_memory_wasm_binding_js(
         &mut self,

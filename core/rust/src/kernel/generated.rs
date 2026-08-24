@@ -80,12 +80,8 @@ pub struct GeneratedNamespaceConfig {
 
 impl GeneratedNamespaceConfig {
     pub fn defaults() -> Self {
-        let mut aliases = HashMap::new();
-        for native_type in NATIVE_TYPES {
-            aliases.insert((*native_type).into(), format!("std.native.{native_type}"));
-        }
         Self {
-            aliases,
+            aliases: HashMap::new(),
             global_alias: None,
             global_aliases: HashMap::new(),
             lazy_aliases: HashMap::new(),
@@ -200,9 +196,6 @@ impl GeneratedNamespaceConfig {
         config.native_flavor_imports = native_flavor_imports;
         config.role = role;
         config.blank = blank;
-        for native_type in NATIVE_TYPES {
-            config.put_alias(native_type, &format!("std.native.{native_type}"))?;
-        }
         for (library, namespace, _) in LIBRARIES {
             if excluded.contains(*library) {
                 continue;
@@ -410,7 +403,9 @@ impl GeneratedNamespaceConfig {
                             return Err(":require :refer-macros expects unqualified symbols".into());
                         }
                         let canonical = canonical(target, name);
-                        if let Some(previous) = self.macro_refers.insert(name.into(), canonical.clone()) {
+                        if let Some(previous) =
+                            self.macro_refers.insert(name.into(), canonical.clone())
+                        {
                             if previous != canonical {
                                 return Err(format!(
                                     "Referred macro already exists: {name} ({previous})"

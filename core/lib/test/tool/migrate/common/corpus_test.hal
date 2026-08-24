@@ -1,0 +1,170 @@
+(ns tool.migrate.common.corpus-test
+  (:use code.test)
+  (:require [tool.migrate.common.corpus :as corpus]
+            [tool.migrate.policy.foundation.profile :as profile]))
+
+(def source
+  "(ns demo.core
+     (:require [clojure.string :as string]
+               [demo.local :as local]))
+   (defn run [value] (string/join \",\" (local/value value))))")
+
+(def test-source
+  "(ns demo.core-test
+     (:require [clojure.tools.reader.reader-types :as reader-types]))
+   (defn run-test [value] (reader-types/indexing-push-back-reader value))")
+
+(def local-source
+  "(ns demo.local)
+   (defn value [input] input)")
+
+(def source-entry-value
+  (corpus/attach-test
+   (corpus/source-entry "src/demo/core.clj" "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" source)
+   "test/demo/core_test.clj"
+   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   test-source))
+
+(def local-entry-value
+  (corpus/source-entry
+   "src/demo/local.clj"
+   "cccccccccccccccccccccccccccccccccccccccc"
+   local-source))
+
+(def routes
+  (corpus/external-routes
+   (corpus/compile-entries [source-entry-value local-entry-value])
+   -1
+   {:family/id :demo}))
+
+^{:refer tool.migrate.common.corpus/dependency-capability}
+(fact "dependency capabilities identify portable and host-bound namespaces"
+  [(corpus/dependency-capability "clojure.string")
+   (corpus/dependency-capability "clojure.tools.reader.reader-types")
+   (corpus/dependency-capability "clojure.lang.PersistentVector")]
+  => [{:kind :portable :status :portable :reason nil}
+      {:kind :reader :status :manual-review
+       :reason :reader-runtime-object}
+      {:kind :jvm-class :status :manual-review
+       :reason :jvm-runtime-object}])
+
+^{:refer tool.migrate.common.corpus/core-reference-sources}
+(fact "core reference sources pair source and test evidence"
+  (mapv (fn [source]
+          [(:kind source) (:path source) (count (:references source))])
+        (corpus/core-reference-sources source-entry-value))
+  => [[:source "src/demo/core.clj" 1]
+      [:test "test/demo/core_test.clj" 1]])
+
+^{:refer tool.migrate.common.corpus/core-reference-record}
+(fact "core reference records retain shadowing as manual review"
+  (select-keys
+   (corpus/core-reference-record
+    source-entry-value
+    {:kind :source :path "src/demo/core.clj"}
+    :demo
+    "demo"
+    0
+    {:reference/name "map"
+     :reference/local-name "map"
+     :reference/idiom :core
+     :reference/kind :var
+     :reference/status :shadowed
+     :reference/reason :lexical-binding
+     :reference/operation :core-operation
+     :reference/evidence {:path [0 1]}})
+   [:core/id :core/namespace :core/name :core/status
+    :core/reason :extraction/status])
+  => {:core/id "demo/src/demo/core.clj#source-0"
+      :core/namespace "clojure.core"
+      :core/name "map"
+      :core/status :shadowed
+      :core/reason :lexical-binding
+      :extraction/status :manual-review})
+
+^{:refer tool.migrate.common.corpus/external-route-sources}
+(fact "external route sources include source and paired test observations"
+  (mapv (juxt :kind :path)
+        (corpus/external-route-sources source-entry-value))
+  => [[:source "src/demo/core.clj"]
+      [:test "test/demo/core_test.clj"]])
+
+^{:refer tool.migrate.common.corpus/external-route-record}
+(fact "external route records retain stable IDs and form provenance"
+  (let [route (first routes)]
+    [(select-keys route
+                  [:external/id :external/namespace :source/path :source/blob
+                   :observation/kind :extraction/status
+                   :source/dependency-rank])
+     (map? (:form/location route))
+    (:referenced/idioms route)
+    (:referenced/operations route)
+    (= 1 (count (:referenced/evidence route)))
+    (:capability route)])
+  => [{:external/id "demo/src/demo/core.clj#source-0"
+       :external/namespace "clojure.string"
+       :source/path "src/demo/core.clj"
+       :source/blob "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+       :observation/kind :source
+  :extraction/status :emitted
+  :source/dependency-rank 1}
+      true
+      [:text]
+      [:string-aggregation]
+      true
+      {:kind :portable :status :portable :reason nil}])
+
+^{:refer tool.migrate.common.corpus/core-references}
+(fact "core reference records preserve family, source, and extraction status"
+  (let [references (corpus/core-references
+                    [source-entry-value]
+                    {:family/id :demo})]
+    [(count references)
+     (select-keys (first references)
+                  [:core/id :core/namespace :core/kind
+                   :source/path :observation/kind :extraction/status])
+     (corpus/core-reference-accounting references)])
+  => [2
+      {:core/id "demo/src/demo/core.clj#source-0"
+       :core/namespace "clojure.core"
+       :core/kind :macro
+       :source/path "src/demo/core.clj"
+       :observation/kind :source
+       :extraction/status :emitted}
+      {:discovered 2 :emitted 2 :skipped 0 :manual-review 0 :complete? true}])
+
+^{:refer tool.migrate.common.corpus/core-reference-accounting}
+(fact "core reference accounting keeps shadowed cases explicit"
+  (corpus/core-reference-accounting
+   [{:extraction/status :emitted}
+    {:extraction/status :skipped}
+    {:extraction/status :manual-review}])
+  => {:discovered 3 :emitted 1 :skipped 1 :manual-review 1 :complete? true})
+
+^{:refer tool.migrate.common.corpus/external-routes}
+(fact "external routes exclude indexed Foundation namespaces and sort by ID"
+  [(mapv :external/id routes)
+   (mapv :external/namespace routes)]
+  => [["demo/src/demo/core.clj#source-0"
+       "demo/test/demo/core_test.clj#test-0"]
+      ["clojure.string" "clojure.tools.reader.reader-types"]])
+
+^{:refer tool.migrate.common.corpus/external-route-accounting}
+(fact "external route accounting is complete and deterministic"
+  (corpus/external-route-accounting routes)
+  => {:discovered 2 :emitted 2 :skipped 0 :manual-review 0 :complete? true})
+
+^{:refer tool.migrate.common.corpus/corpus-document}
+(fact "corpus documents publish external observations with accounting"
+  (let [document (corpus/corpus-document
+                  profile/+foundation-f55f+
+                  [source-entry-value local-entry-value]
+                  {:family/id :demo})]
+    [(get-in document [:external/accounting :complete?])
+     (get-in document [:core/accounting :complete?])
+     (mapv :external/namespace (:external/routes document))
+     (:profile/id document)])
+  => [true true ["clojure.string" "clojure.tools.reader.reader-types"]
+      :foundation-f55f])
+
+(pr-str (run {:namespace "tool.migrate.common.corpus-test"}))

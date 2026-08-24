@@ -202,7 +202,6 @@ fn runtime_bytecode_defmacro_registers_and_expands() {
 #[test]
 fn bytecode_variadic_macro_forwards_rest_to_helper_in_order() {
     let mut runtime = Runtime::core();
-    runtime.prepare_foundation_bytecode();
     assert_eq!(
         runtime.eval_bytecode_native("(defn third-form [forms] (first (rest (rest forms))))"),
         Ok("#'user/third-form".into())
@@ -230,14 +229,12 @@ fn foundation_source_compiles_to_bytecode() {
         .1;
     let mut runtime = Runtime::core();
     assert!(runtime.use_namespace("std.foundation"));
-    runtime.prepare_foundation_bytecode();
     let artifact = runtime
         .compile_bytecode_artifact(body)
         .unwrap_or_else(|error| panic!("foundation compile failed: {error}"));
 
     let mut loaded = Runtime::core();
     assert!(loaded.use_namespace("std.foundation"));
-    loaded.prepare_foundation_bytecode();
     crate::core::with_definition_origin(crate::kernel::VarOrigin::HalFallback, || {
         loaded
             .eval_bytecode_artifact(&artifact)

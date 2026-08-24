@@ -19,6 +19,14 @@
                :namespaces ["code.manage"]
                :format :editor-json
                :options {:added "5.8"}})
+  (test-check "contract-check accepts one path and the completion override"
+              (cli/parse-arguments
+               ["contract-check" "issue-contract.md" "--complete"])
+              {:operation :contract-check
+               :write false
+               :namespaces ["issue-contract.md"]
+               :format :edn
+               :options {:complete? true}})
   (test-check "obsolete import and purge options are rejected explicitly"
               [(try
                  (cli/parse-arguments ["import" "code.manage" "--form" "(def x 1)"])

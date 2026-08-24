@@ -1,0 +1,22 @@
+{:hara/type :project
+ :hara/version "1.0.0"
+ :project/id "hara:db/text"
+ :project/version "0.1.0"
+ :project/source-paths []
+ :project/source-files ["text/base_check.hal"
+                        "text/base_flatten.hal"
+                        "text/base_graph.hal"
+                        "text/base_schema.hal"
+                        "text/base_scope.hal"
+                        "text/base_tree.hal"
+                        "text/base_util.hal"
+                        "text/sql_call.hal"
+                        "text/sql_graph.hal"
+                        "text/sql_raw.hal"
+                        "text/sql_tree.hal"
+                        "text/sql_util.hal"
+                        "text/sql_view.hal"]
+ :project/test-paths []
+ :project/extension-paths []
+ :project/capabilities #{}
+ :project/dependencies {"hara:db/protocol" {:version "^0.1.0"}}}

@@ -44,6 +44,17 @@
   (db-close [value]
     (provider/close (:id value))))
 
+(extend-type PostgresWasmConnection protocol/IDatabaseProvider
+  (db-provider-contract [value]
+    (protocol/db-provider-descriptor
+     provider-id
+     :postgresql
+     (:capabilities value))))
+
+(extend-type PostgresWasmConnection protocol/IDatabaseLifecycle
+  (db-reset [value]
+    (protocol/db-close-safe value)))
+
 (defn describe [] (provider/describe))
 (defn open
   ([] (open {}))
@@ -62,12 +73,16 @@
    (provider/query-options (:id value) sql parameters options)))
 (defn batch-exec [value sql] (exec value sql []))
 (defn capabilities [value] (:capabilities value))
+(defn provider-descriptor
+  "Returns only the provider identity and capabilities."
+  [value]
+  (protocol/db-provider-contract value))
 (defn version
   ([] (provider/version))
   ([_] (provider/version)))
-(defn begin [value] (exec value "begin"))
-(defn commit [value] (exec value "commit"))
-(defn rollback [value] (exec value "rollback"))
+(defn begin [value] (protocol/db-begin value))
+(defn commit [value] (protocol/db-commit value))
+(defn rollback [value] (protocol/db-rollback value))
 
 (defn listen [value channel]
   (promise/then

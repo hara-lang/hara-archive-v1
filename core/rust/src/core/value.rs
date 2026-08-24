@@ -20,29 +20,6 @@ pub struct ExceptionInfo {
     pub provenance: Rc<RefCell<ExceptionProvenance>>,
 }
 
-fn portable_host_error(message: String) -> Value {
-    let data = Value::Map(
-        [
-            (
-                Value::Keyword("ex/code".into()),
-                Value::Keyword("host/native-error".into()),
-            ),
-            (
-                Value::Keyword("ex/message".into()),
-                Value::String(message.clone()),
-            ),
-        ]
-        .into_iter()
-        .collect(),
-    );
-    Value::ExceptionInfo(Rc::new(ExceptionInfo {
-        message,
-        data: Box::new(data),
-        cause: None,
-        provenance: Rc::new(RefCell::new(ExceptionProvenance::default())),
-    }))
-}
-
 fn default_exception_class(code: &Keyword) -> Option<Keyword> {
     if code.get_namespace() != Some("hara") {
         return None;
@@ -75,13 +52,20 @@ pub(crate) fn record_exception_throw(value: &Value, site: Option<ExceptionSite>)
         return;
     };
     let mut provenance = exception.provenance.borrow_mut();
-    if provenance.created_at.is_none() {
-        provenance.created_at = Some(site.clone());
-    }
     provenance.throws.push(site);
 }
 
-fn exception_site_value(site: &ExceptionSite) -> Value {
+pub(crate) fn record_exception_creation(value: &Value, site: Option<ExceptionSite>) {
+    let (Value::ExceptionInfo(exception), Some(site)) = (value, site) else {
+        return;
+    };
+    let mut provenance = exception.provenance.borrow_mut();
+    if provenance.created_at.is_none() {
+        provenance.created_at = Some(site);
+    }
+}
+
+pub(crate) fn exception_site_value(site: &ExceptionSite) -> Value {
     Value::Map(
         [
             (
@@ -107,7 +91,7 @@ fn exception_site_value(site: &ExceptionSite) -> Value {
     )
 }
 
-fn exception_provenance_value(exception: &ExceptionInfo) -> Value {
+pub(crate) fn exception_provenance_value(exception: &ExceptionInfo) -> Value {
     let provenance = exception.provenance.borrow();
     Value::Map(
         [
@@ -711,8 +695,7 @@ pub(crate) fn exception_function_values() -> Vec<(&'static str, Value)> {
                 }
                 let cause = match lookup("ex/cause") {
                     Some(cause @ Value::ExceptionInfo(_)) => Some(cause.clone()),
-                    Some(Value::String(message)) => Some(portable_host_error(message.clone())),
-                    Some(_) => return Err(":ex/cause must be an Exception or host error".into()),
+                    Some(_) => return Err(":ex/cause must be an Exception".into()),
                     None => None,
                 };
                 if let Some(context) = lookup("ex/context") {
@@ -738,7 +721,7 @@ pub(crate) fn exception_function_values() -> Vec<(&'static str, Value)> {
                     data =
                         map_assoc_value(&data, Value::Keyword("ex/cause".into()), cause.clone())?;
                 }
-                Ok(Value::ExceptionInfo(Rc::new(ExceptionInfo {
+                let value = Value::ExceptionInfo(Rc::new(ExceptionInfo {
                     message,
                     cause: cause.map(Box::new),
                     data: Box::new(data),
@@ -746,7 +729,9 @@ pub(crate) fn exception_function_values() -> Vec<(&'static str, Value)> {
                         created_at: None,
                         throws: Vec::new(),
                     })),
-                })))
+                }));
+                record_exception_creation(&value, current_exception_site());
+                Ok(value)
             }),
         ),
         (
@@ -761,15 +746,22 @@ pub(crate) fn exception_function_values() -> Vec<(&'static str, Value)> {
                 if map_entries(&arguments[1]).is_none() {
                     return Err("ex-info expects a data map".into());
                 }
-                Ok(Value::ExceptionInfo(Rc::new(ExceptionInfo {
+                let cause = match arguments.get(2) {
+                    Some(cause @ Value::ExceptionInfo(_)) => Some(Box::new(cause.clone())),
+                    Some(_) => return Err("ex-info expects an Exception cause".into()),
+                    None => None,
+                };
+                let value = Value::ExceptionInfo(Rc::new(ExceptionInfo {
                     message: message.clone(),
                     data: Box::new(arguments[1].clone()),
-                    cause: arguments.get(2).cloned().map(Box::new),
+                    cause,
                     provenance: Rc::new(RefCell::new(ExceptionProvenance {
                         created_at: None,
                         throws: Vec::new(),
                     })),
-                })))
+                }));
+                record_exception_creation(&value, current_exception_site());
+                Ok(value)
             }),
         ),
         (
@@ -2699,7 +2691,7 @@ fn protocol_to_mutable(arguments: &[Value]) -> Result<Value, String> {
     match arguments {
         [Value::Extension(receiver)] => extension_protocol_call(
             receiver,
-            "std.protocol.itomutable/IToMutable",
+            "std.protocol.itomutable.IToMutable",
             "to-mutable",
             arguments,
         ),
@@ -2712,7 +2704,7 @@ fn protocol_to_persistent(arguments: &[Value]) -> Result<Value, String> {
     match arguments {
         [Value::Extension(receiver)] => extension_protocol_call(
             receiver,
-            "std.protocol.itopersistent/IToPersistent",
+            "std.protocol.itopersistent.IToPersistent",
             "to-persistent",
             arguments,
         ),

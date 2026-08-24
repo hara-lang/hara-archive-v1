@@ -256,58 +256,7 @@ impl Session {
         resources: Rc<RefCell<HashMap<String, String>>>,
         events: Rc<RefCell<VecDeque<Vec<u8>>>>,
     ) -> Self {
-        let namespaces = kernel::NamespaceRegistry::new("user");
-        let foundation_namespace = namespaces.find_or_create("std.foundation");
-        for (name, value) in core::direct_callable_values()
-            .expect("runtime callable inventory and direct catalog must agree")
-        {
-            foundation_namespace.intern(name, value);
-        }
-        for (name, protocol) in core::foundation_protocol_values() {
-            foundation_namespace.intern(&name, protocol.clone());
-            namespaces
-                .find_or_create(core::builtin_protocol_namespace(&name))
-                .intern(name, protocol);
-        }
-        for (namespace, name, method) in core::builtin_protocol_method_values() {
-            let var = namespaces.find_or_create(&namespace).intern(&name, method);
-            if matches!(
-                (namespace.as_str(), name.as_str()),
-                ("std.protocol.itomutable", "to-mutable")
-                    | ("std.protocol.itopersistent", "to-persistent")
-            ) {
-                foundation_namespace.map_var(lang::data::Symbol::parse(&name), var);
-            }
-        }
-        for (name, descriptor) in core::native_type_values() {
-            let canonical_name = format!("std.native.{name}");
-            let var = foundation_namespace.intern(&canonical_name, descriptor);
-            foundation_namespace.map_var(lang::data::Symbol::parse(&name), var);
-            namespaces.find_or_create(canonical_name);
-        }
-        for (native_type, methods) in core::NATIVE_TYPES {
-            let namespace_name = format!("std.native.{native_type}");
-            let namespace = namespaces.find_or_create(&namespace_name);
-            for method in *methods {
-                let var = namespace.intern(
-                    *method,
-                    core::native_type_function_value(native_type, method)
-                        .unwrap_or_else(|error| panic!("{error}")),
-                );
-                if *native_type == "Base"
-                    && foundation_namespace
-                        .resolve(&lang::data::Symbol::parse(method))
-                        .is_none()
-                {
-                    foundation_namespace.map_var(lang::data::Symbol::parse(method), var);
-                }
-            }
-        }
-        let native_string = namespaces.find_or_create("std.native.String");
-        let string = namespaces.find_or_create("std.foundation.string");
-        for (name, var) in native_string.mappings() {
-            string.map_var(name, var);
-        }
+        let namespaces = core::minimal_namespace_registry();
         let native_json = namespaces.find_or_create("std.native.Json");
         native_json.intern(
             "read",
@@ -358,27 +307,8 @@ impl Session {
                 Ok(Value::String(arguments[0].display()))
             }),
         );
-        core::refer_startup_defaults(&namespaces, "user");
         let mut env = HashMap::new();
         core::select_namespace_environment(&namespaces, &mut env, "user");
-        // Keep qualified native calls directly addressable in raw WASM. The
-        // compact core evaluator resolves ordinary aliases through the
-        // namespace registry, while wasm32's exported one-shot evaluator also
-        // needs the qualified bindings in its transient environment.
-        for (native_type, methods) in core::NATIVE_TYPES {
-            let namespace_name = format!("std.native.{native_type}");
-            let namespace = namespaces
-                .find(&namespace_name)
-                .expect("native namespace was installed");
-            for method in *methods {
-                let function = namespace
-                    .resolve(&lang::data::Symbol::parse(method))
-                    .expect("native method inventory was installed")
-                    .deref_value();
-                env.insert(format!("{native_type}/{method}"), function.clone());
-                env.insert(format!("{namespace_name}/{method}"), function);
-            }
-        }
         let provider_resources = resources.clone();
         let provider = Rc::new(move |name: &str| {
             provider_resources
@@ -394,13 +324,17 @@ impl Session {
             core::with_protocols(&protocols, || {
                 core::with_namespace_registry(&namespaces, || {
                     core::with_namespace_source(provider, || {
-                        core::require_namespace(&namespaces, &mut env, "std.foundation")
+                        core::require_namespace(&namespaces, &mut env, "std.foundation")?;
+                        for &(name, _) in FOUNDATION_RESOURCES.iter().skip(1) {
+                            core::require_namespace(&namespaces, &mut env, name)?;
+                        }
+                        Ok::<(), String>(())
                     })
                 })
             })
         })
         .expect("raw runtime foundation resource must load");
-        core::refer_startup_defaults(&namespaces, "user");
+        core::apply_global_aliases(&namespaces, "user");
         core::select_namespace_environment(&namespaces, &mut env, "user");
         Self {
             name: name.into(),
@@ -2750,7 +2684,7 @@ mod tests {
             "session/eval",
             vec![
                 Value::String("files".into()),
-                Value::String("(File/write \"/note.bin\" (bytes 1 2 3))".into()),
+                Value::String("(std.native.File/write \"/note.bin\" (bytes 1 2 3))".into()),
             ],
         )
         .unwrap();
@@ -2882,23 +2816,14 @@ mod tests {
 
     #[test]
     fn foundation_aliases_load_without_require_in_fresh_sessions() {
-        let probes = [
+        let source_aliases = [
             "str/trim",
             "promise/from",
             "bytes/count",
-            "socket/connect",
-            "file/resolve",
             "co/create",
-            "edn/read",
-            "json/read",
-            "algo/deque",
             "pretty/render",
-            "host/call",
-            "kernel/session-list",
-            "os/platform",
-            "crypto/sha256",
         ];
-        for (index, probe) in probes.into_iter().enumerate() {
+        for (index, probe) in source_aliases.into_iter().enumerate() {
             let mut kernel = SessionKernel::new();
             let task = index as u64 + 1;
             dispatch(
@@ -2914,6 +2839,33 @@ mod tests {
                     [Value::Number(0), Value::Number(found_task), Value::Bool(false)] if *found_task == task as i64
                 ),
                 "{probe} should resolve through its built-in alias"
+            );
+        }
+        for probe in [
+            "socket/connect",
+            "file/resolve",
+            "edn/read",
+            "json/read",
+            "algo/deque",
+            "host/call",
+            "kernel/session-list",
+            "os/platform",
+            "crypto/sha256",
+        ] {
+            let mut kernel = SessionKernel::new();
+            dispatch(
+                &mut kernel,
+                1,
+                "eval",
+                vec![Value::String(format!("(nil? (resolve '{probe}))"))],
+            )
+            .unwrap();
+            assert!(
+                matches!(
+                    result(&mut kernel).as_slice(),
+                    [Value::Number(0), Value::Number(1), Value::Bool(true)]
+                ),
+                "{probe} should not resolve through a runtime compatibility alias"
             );
         }
     }
@@ -3050,11 +3002,13 @@ mod tests {
                 .iter()
                 .map(|(_, methods)| methods.len())
                 .sum::<usize>(),
-            372
+            389
         );
         let mut runtime = Session::new();
-        assert!(runtime.env.contains_key("Edn/write"));
-        assert!(runtime.env.contains_key("ICount"));
+        assert!(runtime.env.contains_key("std.native.Edn/write"));
+        assert!(runtime
+            .env
+            .contains_key("std.protocol.icount.ICount"));
         for native_type in [
             "Maths",
             "Num",
@@ -3082,28 +3036,33 @@ mod tests {
             "Base",
             "Iter",
         ] {
-            assert!(runtime.env.contains_key(native_type), "{native_type}");
+            assert!(
+                runtime
+                    .env
+                    .contains_key(&format!("std.native.{native_type}")),
+                "std.native.{native_type}"
+            );
         }
         runtime
-            .start_fiber(1, "(ns example.json) (Json/write {\"answer\" 42})")
+            .start_fiber(1,             "(ns example.json) (std.native.Json/write {\"answer\" 42})")
             .unwrap();
         assert_eq!(
             completion_value(&mut runtime, 1),
             Value::String("{\"answer\":42}".into())
         );
         runtime
-            .start_fiber(2, "(Edn/read \"{:answer 42}\")")
+            .start_fiber(2,             "(std.native.Edn/read \"{:answer 42}\")")
             .unwrap();
         assert_eq!(completion_value(&mut runtime, 2).display(), "{:answer 42}");
         runtime
-            .start_fiber(3, "(Json/pretty {\"answer\" 42} {})")
+            .start_fiber(3,             "(std.native.Json/pretty {\"answer\" 42} {})")
             .unwrap();
         assert_eq!(
             completion_value(&mut runtime, 3),
             Value::String("{\n  \"answer\": 42\n}".into())
         );
         runtime
-            .start_fiber(4, "(Edn/pretty {:answer 42} {})")
+            .start_fiber(4,             "(std.native.Edn/pretty {:answer 42} {})")
             .unwrap();
         assert_eq!(
             completion_value(&mut runtime, 4),
@@ -3113,38 +3072,42 @@ mod tests {
             .start_fiber(
                 5,
                 "(try \
-                   (throw (std.foundation/ex-info \"bad input\" {:kind :invalid})) \
+                   (throw (ex-info \"bad input\" {:kind :invalid})) \
                    (catch Throwable error \
-                     [(std.foundation/ex-message error) \
-                      (std.foundation/ex-data error)]))",
+                     [(ex-message error) \
+                      (ex-data error)]))",
             )
             .unwrap();
         assert_eq!(
             completion_value(&mut runtime, 5).display(),
             "[\"bad input\" {:kind :invalid}]"
         );
-        runtime.start_fiber(6, "(Edn/write {:answer 42})").unwrap();
+        runtime
+            .start_fiber(6, "(std.native.Edn/write {:answer 42})")
+            .unwrap();
         assert_eq!(
             completion_value(&mut runtime, 6),
             Value::String("{:answer 42}".into())
         );
         runtime
-            .start_fiber(7, "(= Maths std.native.Maths)")
+            .start_fiber(7, "(= std.native.Maths std.native.Maths)")
             .unwrap();
         assert_eq!(completion_value(&mut runtime, 7), Value::Bool(true));
         runtime
             .start_fiber(
                 8,
-                "[(= Edn std.native.Edn std.foundation/Edn) \
-                  (= Json std.native.Json std.foundation/Json) \
-                  (= Maths std.native.Maths std.foundation/Maths)]",
+                "[ (= std.native.Edn std.native.Edn) \
+                  (= std.native.Json std.native.Json) \
+                  (= std.native.Maths std.native.Maths)]",
             )
             .unwrap();
         assert_eq!(
             completion_value(&mut runtime, 8).display(),
             "[true true true]"
         );
-        runtime.start_fiber(9, "(ICount/count [1 2 3])").unwrap();
+        runtime
+            .start_fiber(9, "(std.protocol.icount.ICount/count [1 2 3])")
+            .unwrap();
         assert_eq!(completion_value(&mut runtime, 9), Value::Number(3));
     }
 

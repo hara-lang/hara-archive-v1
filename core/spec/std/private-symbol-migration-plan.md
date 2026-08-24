@@ -65,13 +65,6 @@ Kind: `function`. Reason: `:strict-facade`.
 - `grep-source`
 - `namespace-name`
 
-### `std.block` → `std.block.zip`
-
-Kind: `function`. Reason: `:strict-facade`.
-
-- `block-context`
-- `block-zip`
-
 ### `std.block.layout` → `std.block.layout.classify`
 
 Kind: `function`. Reason: `:domain-owner`.

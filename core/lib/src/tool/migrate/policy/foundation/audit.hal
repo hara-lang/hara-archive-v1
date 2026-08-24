@@ -17,13 +17,12 @@
        (ex :tool.migrate/git-stdin-unsupported
            {:ex/message "The command adapter does not write Foundation objects"
             :argv argv})))
-    (let [result
-          (sh/run
-           (vec
-            (concat
-             ["git" "--git-dir" git-dir]
-             argv))
-           {:trim false})]
+    (let [result (sh/result-record
+                  (sh/run
+                   (vec
+                    (concat
+                     ["git" "--git-dir" git-dir]
+                     argv))))]
       {:exit (:exit result)
        :out (:stdout result)
        :err (:stderr result)})))
@@ -246,7 +245,7 @@
   ([git-dir hara-root]
    (audit
     (git-runner git-dir)
-    profile/+foundation-baa75a+
+    profile/+foundation-f55f+
     (hara-target-units hara-root)))
   ([runner profile-value targets]
    (profile/assert-profile profile-value)
@@ -268,7 +267,7 @@
 
 (defn write-audit
   [git-dir hara-root]
-  (let [profile-value profile/+foundation-baa75a+
+  (let [profile-value profile/+foundation-f55f+
         document (audit git-dir hara-root)
         corpus-path (path/join hara-root (:corpus/path profile-value))
         report-path (path/join hara-root (:report/path profile-value))]

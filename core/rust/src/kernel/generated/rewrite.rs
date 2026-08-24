@@ -83,10 +83,8 @@ impl GeneratedNamespaceConfig {
     }
 
     fn resolve_symbol(&self, symbol: &str) -> String {
-        if let Some((namespace, method)) = symbol.rsplit_once('/') {
-            if known_namespace(namespace) {
-                return canonical(namespace, method);
-            }
+        if let Some(canonical) = crate::core::canonical_intrinsic_symbol(symbol) {
+            return canonical;
         }
         if let Some(canonical) = self.refers.get(symbol) {
             return canonical.clone();
@@ -100,8 +98,12 @@ impl GeneratedNamespaceConfig {
         if let Some(namespace) = self.global_aliases.get(alias) {
             return canonical(namespace, method);
         }
-        self.aliases
-            .get(alias)
-            .map_or_else(|| symbol.into(), |namespace| canonical(namespace, method))
+        if let Some(namespace) = self.aliases.get(alias) {
+            return canonical(namespace, method);
+        }
+        if known_namespace(alias) {
+            return canonical(alias, method);
+        }
+        symbol.into()
     }
 }

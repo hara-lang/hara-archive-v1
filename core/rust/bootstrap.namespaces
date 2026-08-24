@@ -24,6 +24,13 @@ std.block.layout.common
 std.block.layout
 std.block.grid
 std.block
+std.block.heal
+std.block.heal.core
+std.block.heal.edit
+std.block.heal.parse
+std.block.heal.print
+std.block.source
+std.lib.format.diff
 std.typed.registry
 std.typed.schema
 std.typed.infer

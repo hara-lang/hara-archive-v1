@@ -43,9 +43,9 @@
   [runtime source]
   (let [argv (get runtime :exec)]
     (try
-      (checker-result
-       runtime
-       (sh/run argv (process-options runtime source)))
+      (let [result (sh/result-record
+                    (sh/run argv (process-options runtime source)))]
+        (checker-result runtime result))
       (catch Throwable error
         (throw
          (ex :host {:phase :verify

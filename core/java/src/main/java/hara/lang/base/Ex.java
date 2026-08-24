@@ -60,6 +60,12 @@ public interface Ex {
       }
     }
 
+    public Info(String s, IMetadata data, Throwable throwable, Site createdAt, List<Site> throwsAt) {
+      this(s, data, throwable);
+      this.createdAt = createdAt;
+      if (throwsAt != null) this.throwsAt.addAll(throwsAt);
+    }
+
     @Override
     public IMetadata getData() {
       return data;
@@ -67,8 +73,11 @@ public interface Ex {
 
     public synchronized void recordThrow(Site site) {
       if (site == null) return;
-      if (createdAt == null) createdAt = site;
       throwsAt.add(site);
+    }
+
+    public synchronized void recordCreation(Site site) {
+      if (createdAt == null && site != null) createdAt = site;
     }
 
     public synchronized Site createdAt() {

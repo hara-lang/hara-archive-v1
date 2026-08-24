@@ -75,7 +75,7 @@ fn direct_coroutine_resume_operation(
         return fiber::coroutine::resume_sync(coroutine.clone(), arguments[1..].to_vec());
     }
     protocol_call(
-        "std.protocol.icoroutine/ICoroutine",
+        "std.protocol.icoroutine.ICoroutine",
         "resume",
         &arguments,
     )

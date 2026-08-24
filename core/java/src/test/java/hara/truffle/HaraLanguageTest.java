@@ -1805,9 +1805,9 @@ public class HaraLanguageTest {
         assertTrue(
             protocol,
             context
-                .eval(HaraLanguage.ID, protocolNamespace + "/" + protocol)
+                .eval(HaraLanguage.ID, protocolNamespace + "." + protocol + "/" + protocol)
                 .toString()
-                .contains(protocolNamespace + "/" + protocol));
+                .contains(protocolNamespace + "." + protocol));
         assertTrue(
             protocol,
             context
@@ -1817,6 +1817,8 @@ public class HaraLanguageTest {
                         + protocol
                         + " "
                         + protocolNamespace
+                        + "."
+                        + protocol
                         + "/"
                         + protocol
                         + ")")
@@ -1825,31 +1827,43 @@ public class HaraLanguageTest {
       assertEquals(
           3L,
           context
-              .eval(HaraLanguage.ID, "(std.protocol.icount/count [1 2 3])")
+              .eval(HaraLanguage.ID, "(std.protocol.icount.ICount/count [1 2 3])")
               .asLong());
       assertTrue(
           context
-              .eval(HaraLanguage.ID, "(std.protocol.icas/cas (atom 1) 1 2)")
+              .eval(HaraLanguage.ID, "(std.protocol.icas.ICas/cas (atom 1) 1 2)")
               .asBoolean());
       assertEquals(
           6L,
           context
               .eval(
                   HaraLanguage.ID,
-                  "(std.protocol.ireduce/reduce [1 2 3] + 0)")
+                  "(std.protocol.ireduce.IReduce/reduce [1 2 3] + 0)")
               .asLong());
       assertEquals(
           ":fulfilled",
           context
               .eval(
                   HaraLanguage.ID,
-                  "(std.protocol.ipromise/state (std.foundation.promise/from 7))")
+                  "(std.protocol.ipromise.IPromise/state (std.foundation.promise/from 7))")
               .toString());
-      assertEquals(
-          ":loaded",
+      assertTrue(
           context
-              .eval(HaraLanguage.ID, "(require 'std.protocol.ifind) :loaded")
-              .toString());
+              .eval(
+                  HaraLanguage.ID,
+                  "(= [:a 1] (std.protocol.ifind.IFind/find {:a 1} :a))")
+              .asBoolean());
+      assertTrue(
+          context
+              .eval(
+                  HaraLanguage.ID,
+                  "(satisfies? std.protocol.ipeekfirst.IPeekFirst [1])")
+              .asBoolean());
+      PolyglotException legacyProtocolMethod =
+          assertThrows(
+              PolyglotException.class,
+              () -> context.eval(HaraLanguage.ID, "std.protocol.ipeekfirst/peek-first"));
+      assertTrue(legacyProtocolMethod.getMessage().contains("Unbound symbol"));
       PolyglotException obsoleteMethod =
           assertThrows(
               PolyglotException.class,
@@ -1864,7 +1878,7 @@ public class HaraLanguageTest {
                 () ->
                     context.eval(
                         HaraLanguage.ID,
-                        hiddenNamespace + "/" + unavailableProtocol));
+                        hiddenNamespace + "." + unavailableProtocol + "/" + unavailableProtocol));
         assertTrue(hiddenCanonical.getMessage().contains("Unbound symbol"));
         PolyglotException hiddenFoundation =
             assertThrows(
@@ -1880,13 +1894,20 @@ public class HaraLanguageTest {
 
   @Test
   public void sharedFoundationProtocolConformanceFixtureRuns() throws Exception {
-    String source =
+    String protocols =
         Files.readString(
             specsRegistry()
-                .resolve(
-                    "01-lang/001-language/draft/conformance/fixtures/protocol_surface.hal"));
+                .resolve("01-lang/001-language/draft/conformance/protocols.edn"));
+    String source =
+        canonicalizeProtocolMethodPaths(
+            Files.readString(
+                specsRegistry()
+                    .resolve(
+                        "01-lang/001-language/draft/conformance/fixtures/protocol_surface.hal")),
+            protocols);
     Matcher calls =
-        Pattern.compile("\\(std\\.protocol\\.[a-z]+/[a-z?\\-]+\\s+fixture").matcher(source);
+        Pattern.compile("\\(std\\.protocol\\.[a-z]+\\.I[A-Za-z]+/[a-z?\\-]+\\s+fixture")
+            .matcher(source);
     int callCount = 0;
     while (calls.find()) callCount++;
     assertEquals(105, callCount);
@@ -1904,11 +1925,6 @@ public class HaraLanguageTest {
 
   @Test
   public void sharedFoundationProtocolFunctionalityFixtureRuns() throws Exception {
-    String source =
-        Files.readString(
-            specsRegistry()
-                .resolve(
-                    "01-lang/001-language/draft/conformance/fixtures/protocol_behavioral.hal"));
     String catalog =
         Files.readString(
             specsRegistry()
@@ -1918,6 +1934,13 @@ public class HaraLanguageTest {
         Files.readString(
             specsRegistry()
                 .resolve("01-lang/001-language/draft/conformance/protocols.edn"));
+    String source =
+        canonicalizeProtocolMethodPaths(
+            Files.readString(
+                specsRegistry()
+                    .resolve(
+                        "01-lang/001-language/draft/conformance/fixtures/protocol_behavioral.hal")),
+            protocols);
     assertTrue(
         "protocol types must resolve unqualified in guest source",
         !Pattern.compile("std\\.protocol\\.[^\\s/]+/I[A-Z]").matcher(source).find());
@@ -1950,7 +1973,7 @@ public class HaraLanguageTest {
     Matcher methodVars =
         Pattern.compile(
                 "(?m)^\\s*\\[?\\(protocol-case\\s+:[^\\s]+\\s+:[^\\s]+\\s+"
-                    + "(std\\.protocol\\.[a-z]+/[a-z?\\-]+)")
+                    + "(std\\.protocol\\.[a-z]+\\.I[A-Za-z]+/[a-z?\\-]+)")
             .matcher(source);
 
     try (Context context = context()) {
@@ -2031,7 +2054,7 @@ public class HaraLanguageTest {
           context
               .eval(
                   HaraLanguage.ID,
-                  "(try (std.protocol.icount/count) false "
+                  "(try (std.protocol.icount.ICount/count) false "
                       + "(catch Throwable error true))")
               .asBoolean());
     }
@@ -2730,6 +2753,36 @@ public class HaraLanguageTest {
                   "(ex-native-type (new RuntimeException \"host\"))")
               .asString());
     }
+  }
+
+  private static String canonicalizeProtocolMethodPaths(String source, String protocols) {
+    java.util.Map<String, String> protocolNames = new java.util.LinkedHashMap<>();
+    Matcher names = Pattern.compile(":name\\s+(I[A-Za-z]+)").matcher(protocols);
+    while (names.find()) {
+      String protocol = names.group(1);
+      protocolNames.put(protocol.toLowerCase(java.util.Locale.ROOT), protocol);
+    }
+    Matcher paths =
+        Pattern.compile("std\\.protocol\\.([a-z][a-z0-9]*)/([a-z][a-z0-9?\\-]*)")
+            .matcher(source);
+    StringBuffer canonical = new StringBuffer();
+    while (paths.find()) {
+      String protocol = protocolNames.get(paths.group(1));
+      if (protocol == null) {
+        throw new IllegalArgumentException("Unknown protocol namespace: " + paths.group(1));
+      }
+      paths.appendReplacement(
+          canonical,
+          Matcher.quoteReplacement(
+              "std.protocol."
+                  + paths.group(1)
+                  + "."
+                  + protocol
+                  + "/"
+                  + paths.group(2)));
+    }
+    paths.appendTail(canonical);
+    return canonical.toString();
   }
 
   private static Context context() {
