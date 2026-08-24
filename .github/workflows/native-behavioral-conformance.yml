@@ -96,6 +96,6 @@ jobs:
       - name: Run the source-owned native corpus
         working-directory: core
         run: >-
-          mvn -B -Ptruffle
+          mvn -B -Ptruffle,conformance
           -Dtest=NativeBehavioralConformanceTest
           test --file java/pom.xml

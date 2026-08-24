@@ -257,7 +257,13 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: instrumentation-cross-runtime-conformance
-          path: .
+          path: core
+
+      - name: Verify browser instrumentation inputs
+        run: |
+          test -s core/spec/instrumentation-conformance.json
+          test -s core/target/instrumentation-rust-a.json
+          test -s core/target/instrumentation-java-a.json
 
       - name: Set up Rust Wasm toolchain
         uses: dtolnay/rust-toolchain@stable
