@@ -4,9 +4,9 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
-import hara.lang.data.types.IMapType;
+import hara.lang.protocol.IMapType;
 import hara.lang.data.types.ISequentialType;
-import hara.lang.data.types.ISetType;
+import hara.lang.protocol.ISetType;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;

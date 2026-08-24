@@ -3,7 +3,7 @@ package hara.truffle;
 import hara.lang.data.Keyword;
 import hara.lang.data.Map;
 import hara.lang.data.Symbol;
-import hara.lang.data.types.IMapType;
+import hara.lang.protocol.IMapType;
 import hara.lang.protocol.IFn;
 import hara.lang.protocol.IMetadata;
 import hara.lang.protocol.IPromise;

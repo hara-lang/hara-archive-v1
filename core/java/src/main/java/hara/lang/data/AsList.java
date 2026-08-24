@@ -1,6 +1,6 @@
 package hara.lang.data;
 
-import hara.lang.data.types.ILinearType;
+import hara.lang.protocol.ILinearType;
 import hara.lang.data.types.ISequentialType;
 import hara.lang.data.types.ObjMutable;
 

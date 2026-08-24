@@ -2,8 +2,8 @@ package hara.truffle;
 
 import hara.kernel.builtin.BuiltinStruct;
 import hara.lang.data.Keyword;
-import hara.lang.data.types.ILinearType;
-import hara.lang.data.types.IMapType;
+import hara.lang.protocol.ILinearType;
+import hara.lang.protocol.IMapType;
 
 import java.math.BigInteger;
 import java.util.ArrayList;

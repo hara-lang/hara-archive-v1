@@ -6,6 +6,7 @@ use syn::{
     parse_macro_input, Error, Ident, ItemMod, ItemTrait, LitBool, LitInt, LitStr, Result, Token,
     TraitItem,
 };
+use std::collections::HashSet;
 
 struct NativeArgs {
     namespace: Option<LitStr>,
@@ -85,6 +86,7 @@ fn expand_native_registry(mut input: ItemMod) -> Result<proc_macro2::TokenStream
     let mut declarations = Vec::new();
     let original_items = std::mem::take(items);
     let mut retained_items = Vec::with_capacity(original_items.len());
+    let mut type_names = HashSet::new();
     for item in original_items {
         let syn::Item::Struct(native_type) = item else {
             retained_items.push(item);
@@ -106,6 +108,72 @@ fn expand_native_registry(mut input: ItemMod) -> Result<proc_macro2::TokenStream
         let name = args
             .name
             .ok_or_else(|| Error::new_spanned(&native_type.ident, "hara_native requires name"))?;
+        if namespace.value() != "std.native" {
+            return Err(Error::new_spanned(
+                &namespace,
+                "hara_native declarations must use the std.native namespace",
+            ));
+        }
+        if name.value().is_empty() {
+            return Err(Error::new_spanned(
+                &name,
+                "hara_native requires a non-empty name",
+            ));
+        }
+        if !type_names.insert(name.value()) {
+            return Err(Error::new_spanned(
+                &name,
+                "duplicate hara_native type name",
+            ));
+        }
+        if args.methods.is_empty() {
+            return Err(Error::new_spanned(
+                &native_type.ident,
+                "hara_native requires at least one method",
+            ));
+        }
+        let mut method_names = HashSet::new();
+        for method in &args.methods {
+            if method.value().is_empty() {
+                return Err(Error::new_spanned(
+                    method,
+                    "hara_native methods must not be empty",
+                ));
+            }
+            if !method_names.insert(method.value()) {
+                return Err(Error::new_spanned(
+                    method,
+                    "duplicate hara_native method name",
+                ));
+            }
+        }
+        match (args.availability.value().as_str(), args.capability.as_ref()) {
+            ("capability-gated", None) => {
+                return Err(Error::new_spanned(
+                    &args.availability,
+                    "capability-gated hara_native declarations require a capability",
+                ));
+            }
+            ("capability-gated", Some(capability)) if capability.value().is_empty() => {
+                return Err(Error::new_spanned(
+                    capability,
+                    "capability-gated hara_native declarations require a non-empty capability",
+                ));
+            }
+            ("portable" | "inventory-only", Some(capability)) if capability.value().is_empty() => {
+                return Err(Error::new_spanned(
+                    capability,
+                    "portable and inventory-only hara_native declarations cannot declare an empty capability",
+                ));
+            }
+            ("portable" | "inventory-only", Some(capability)) => {
+                return Err(Error::new_spanned(
+                    capability,
+                    "only capability-gated hara_native declarations may declare a capability",
+                ));
+            }
+            _ => {}
+        }
         let availability = native_availability_variant(&args.availability)?;
         let capability = match args.capability {
             Some(value) => quote!(Some(#value)),

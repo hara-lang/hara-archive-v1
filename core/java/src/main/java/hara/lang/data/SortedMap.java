@@ -2,7 +2,7 @@ package hara.lang.data;
 
 import hara.lang.base.Iter;
 import hara.lang.base.primitive.Array;
-import hara.lang.data.types.IMapType;
+import hara.lang.protocol.IMapType;
 import hara.lang.data.types.ObjMutable;
 import hara.lang.data.types.ObjPersistent;
 import hara.lang.protocol.*;

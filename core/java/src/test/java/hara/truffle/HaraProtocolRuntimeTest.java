@@ -5,7 +5,7 @@ import static org.junit.Assert.assertTrue;
 
 import hara.lang.data.Atom;
 import hara.lang.protocol.IDeps;
-import hara.lang.data.types.ISetType;
+import hara.lang.protocol.ISetType;
 import hara.lang.data.List;
 import hara.lang.data.Keyword;
 import hara.lang.data.Queue;

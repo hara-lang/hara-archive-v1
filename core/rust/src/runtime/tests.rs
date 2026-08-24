@@ -458,10 +458,10 @@ mod tests {
     }
 
     #[test]
-    fn evaluator_owns_lexical_state_without_owning_namespace_state() {
+    fn execution_state_owns_lexical_state_without_owning_namespace_state() {
         let registry = kernel::NamespaceRegistry::<core::Value>::new("user");
         let mut execution = RuntimeExecutionState::new();
-        evaluator
+        execution
             .environment_mut()
             .insert("local".into(), core::Value::Number(42));
 
@@ -1326,10 +1326,12 @@ mod tests {
     #[test]
     fn foundation_boolean_and_not_equal_are_portable() {
         let mut runtime = Runtime::new();
+        assert_eq!(runtime.eval_text("(not nil)").unwrap(), "true");
+        assert_eq!(runtime.eval_text("(not :present)").unwrap(), "false");
         assert_eq!(runtime.eval_text("(boolean :present)").unwrap(), "true");
         assert_eq!(runtime.eval_text("(boolean nil)").unwrap(), "false");
+        assert_eq!(runtime.eval_text("(compare 1 2)").unwrap(), "-1");
         assert_eq!(runtime.eval_text("(not= 1 2)").unwrap(), "true");
-        assert_eq!(runtime.eval_text("(not= 1 1 2)").unwrap(), "true");
         assert_eq!(runtime.eval_text("(not= 1 1)").unwrap(), "false");
     }
 
@@ -2399,7 +2401,7 @@ mod tests {
                 }
             }
         }
-        assert_eq!(portable_protocol_count, 57);
+        assert_eq!(portable_protocol_count, 60);
         assert_eq!(portable_method_count, 109);
         assert_eq!(capability_protocol_count, 15);
         assert_eq!(capability_method_count, 20);
@@ -3427,6 +3429,7 @@ mod tests {
         }
 
         let mut specified = Vec::new();
+        let mut specified_declarations = Vec::new();
         for value in types {
             let Form::Map(native_type) = value else {
                 panic!("native type entries must be maps")
@@ -3496,6 +3499,12 @@ mod tests {
                 }
             }
             specified.push((name.clone(), methods));
+            specified_declarations.push((
+                name.clone(),
+                specified.last().unwrap().1.clone(),
+                availability.clone(),
+                (availability == "capability-gated").then(|| "native-runtime".to_owned()),
+            ));
         }
 
         let runtime_inventory = core::NATIVE_TYPES
@@ -3525,6 +3534,30 @@ mod tests {
             );
         }
         assert_eq!(specified, runtime_inventory);
+        let runtime_declarations = core::NATIVE_DECLARATIONS
+            .iter()
+            .map(|declaration| {
+                let availability = match declaration.availability {
+                    core::NativeAvailability::Portable => "implemented",
+                    core::NativeAvailability::CapabilityGated => "capability-gated",
+                    core::NativeAvailability::InventoryOnly => "inventory-only",
+                };
+                (
+                    declaration.name.to_owned(),
+                    declaration
+                        .methods
+                        .iter()
+                        .map(|method| (*method).to_owned())
+                        .collect::<Vec<_>>(),
+                    availability.to_owned(),
+                    declaration.capability.map(str::to_owned),
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            specified_declarations, runtime_declarations,
+            "annotated native declaration metadata differs from native.edn"
+        );
         assert!(
             !specified.iter().any(|(name, _)| name == "Builtins"),
             "Builtins is accounting only and must not be a native type"
@@ -4047,6 +4080,22 @@ mod tests {
                 .eval_text("[(sequential? [1]) (sequential? '(1)) (sequential? {:a 1})]")
                 .unwrap(),
             "[true true false]"
+        );
+        assert_eq!(
+            runtime
+                .eval_text(
+                    "[(satisfies? IMapType {:a 1})\
+                     (satisfies? IMapType [1])\
+                     (satisfies? ISetType #{1})\
+                     (satisfies? ISetType [1])\
+                     (satisfies? ILinearType [1])\
+                     (satisfies? ILinearType #{1})\
+                     (map? {:a 1}) (map? [1])\
+                     (set? #{1}) (set? [1])\
+                     (sequential? [1]) (sequential? #{1})]"
+                )
+                .unwrap(),
+            "[true false true false true false true false true false true false]"
         );
         assert_eq!(runtime.eval_text("(not false)").unwrap(), "true");
         assert_eq!(runtime.eval_text("(< 1 2 3)").unwrap(), "true");

@@ -1,6 +1,6 @@
 package hara.lang.protocol;
 
-import hara.lang.data.types.ISetType;
+import hara.lang.protocol.ISetType;
 import hara.lang.declaration.HaraMethod;
 import hara.lang.declaration.HaraProtocolBinding;
 import java.util.Iterator;

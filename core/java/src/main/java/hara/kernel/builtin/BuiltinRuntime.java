@@ -8,7 +8,7 @@ import hara.lang.base.Fn;
 import hara.lang.base.Iter;
 import hara.lang.base.primitive.Array;
 import hara.lang.data.*;
-import hara.lang.data.types.IMapType;
+import hara.lang.protocol.IMapType;
 import hara.lang.protocol.*;
 
 import java.net.MalformedURLException;

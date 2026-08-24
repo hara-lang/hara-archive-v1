@@ -34,7 +34,7 @@
   annotate
   "Annotates document with its portable rendering kind."
   [kind document]
-  (std.native.Document/annotate kind document))
+  (Document/annotate kind document))
 
 (defn- handled [visitor kind value document]
   (let [handler (get (:print-handlers (:options visitor)) kind)]
@@ -73,25 +73,25 @@
                            (annotate :pretty/nil "...")
                            (format-doc visitor value)))
                        (limited-values visitor values))]
-    (std.native.Document/group
+    (Document/group
       open
-      (std.native.Document/align (join-documents separator documents))
+      (Document/align (join-documents separator documents))
       close)))
 
 (defn- map-document [visitor value separator]
   (let [options (:options visitor)
         entries (ordered-values visitor (seq value) first)
         documents (map (fn [entry]
-                         (std.native.Document/fragment
+                         (Document/fragment
                            (format-doc visitor (key entry))
                            (if (coll? (val entry))
                              (:map-coll-separator options)
                              " ")
                            (format-doc visitor (val entry))))
                        entries)]
-    (std.native.Document/group
+    (Document/group
       "{"
-      (std.native.Document/align (join-documents separator documents))
+      (Document/align (join-documents separator documents))
       "}")))
 
 (defn- unknown-document [visitor value]
@@ -122,7 +122,7 @@
                                   (ordered-values visitor value identity) " ")))
   (visit-tagged [visitor tag form]
     (handled visitor :tagged form
-             (std.native.Document/fragment "#" (str tag) " " (format-doc visitor form))))
+             (Document/fragment "#" (str tag) " " (format-doc visitor form))))
   (visit-unknown [visitor value] (unknown-document visitor value)))
 
 (extend-type PrettyVisitor std.protocol.iencodevisitor.IEncodeVisitor
@@ -135,26 +135,26 @@
   (visit-symbol [visitor value] (handled visitor :symbol value (annotate :pretty/symbol (str value))))
   (visit-seq [visitor value]
     (handled visitor :seq value
-             (collection-document visitor "(" ")" value (std.native.Document/line))))
+             (collection-document visitor "(" ")" value (Document/line))))
   (visit-vector [visitor value]
     (handled visitor :vector value
-             (collection-document visitor "[" "]" value (std.native.Document/line))))
+             (collection-document visitor "[" "]" value (Document/line))))
   (visit-map [visitor value]
     (handled visitor :map value
              (map-document visitor value
-                           (std.native.Document/fragment
+                           (Document/fragment
                              (:map-delimiter (:options visitor))
-                             (std.native.Document/line)))))
+                             (Document/line)))))
   (visit-set [visitor value]
     (handled visitor :set value
              (collection-document visitor "#{" "}"
                                   (ordered-values visitor value identity)
-                                  (std.native.Document/line))))
+                                  (Document/line))))
   (visit-tagged [visitor tag form]
     (handled visitor :tagged form
-             (std.native.Document/group
+             (Document/group
                (annotate :pretty/tag (str "#" tag))
-               (std.native.Document/line)
+               (Document/line)
                (format-doc visitor form))))
   (visit-unknown [visitor value] (unknown-document visitor value)))
 
@@ -190,11 +190,11 @@
    (let [metadata (value-meta value)
          options (:options visitor)]
      (if (and metadata (:print-meta options))
-       (std.native.Document/align
-         (std.native.Document/fragment
+       (Document/align
+         (Document/fragment
            (annotate :pretty/delimiter "^")
            (format-doc visitor metadata))
-         (std.native.Document/line)
+         (Document/line)
          (format-doc-edn visitor value))
        (format-doc-edn visitor value))))
   ([value] (format-doc (pretty-printer) value)))
@@ -204,14 +204,14 @@
   render
   "Renders document to a string with optional Document rendering options."
   ([document] (render document {}))
-  ([document options] (std.native.Document/render document options)))
+  ([document options] (Document/render document options)))
 
 (defn ^{:schema [:function [:fn [:any] :any]
                             [:fn [:any :map] :any]]}
   write
   "Renders document and writes it through the portable Printer boundary."
   ([document] (write document {}))
-  ([document options] (std.native.Printer/p (render document options))))
+  ([document options] (Printer/p (render document options))))
 
 (defn ^{:schema [:function [:fn [:any] :str]
                             [:fn [:any :map] :str]]}
@@ -228,4 +228,4 @@
   pprint
   "Pretty-formats value and writes it through the portable Printer boundary."
   ([value] (pprint value {}))
-  ([value options] (std.native.Printer/p (pprint-str value options))))
+  ([value options] (Printer/p (pprint-str value options))))

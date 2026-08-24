@@ -1,7 +1,7 @@
 package hara.truffle;
 
 import hara.lang.data.types.ISequentialLookupType;
-import hara.lang.data.types.ISetType;
+import hara.lang.protocol.ISetType;
 import hara.lang.protocol.IFn;
 import hara.lang.protocol.ILookup;
 import java.util.Arrays;

@@ -1,6 +1,6 @@
 package hara.lang.data;
 
-import hara.lang.data.types.IMapType;
+import hara.lang.protocol.IMapType;
 import hara.lang.data.types.ObjMutable;
 
 import java.util.Iterator;

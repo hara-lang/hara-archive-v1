@@ -111,6 +111,7 @@ impl Runtime {
     }
 
     fn bootstrap_foundation(&mut self) -> Result<(), String> {
+        core::install_foundation_intrinsics(&self.namespace_registry);
         for &(name, _, source) in EMBEDDED_HAL_RESOURCES {
             self.register_resource(name, source);
         }

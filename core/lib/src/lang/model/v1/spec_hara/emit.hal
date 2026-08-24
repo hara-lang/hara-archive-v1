@@ -559,9 +559,9 @@
         "x:apply" (list 'apply
                         (lowered (argument 0))
                         (lowered (argument 1)))
-        "x:json-encode" (list 'std.native.Json/write
+        "x:json-encode" (list 'Json/write
                               (lowered (argument 0)))
-        "x:json-decode" (list 'std.native.Json/read
+        "x:json-decode" (list 'Json/read
                               (lowered (argument 0)))
         "x:str-join" (list 'std.foundation.string/join
                            (lowered (argument 0))

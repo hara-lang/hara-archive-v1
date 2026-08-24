@@ -1130,10 +1130,6 @@ fn native_base_values(operation: &str, values: &[Value]) -> Result<Value, String
             [value] => Ok(Value::Bool(!value.truthy())),
             _ => Err("Base/not expects one value".into()),
         },
-        "boolean" => match values {
-            [value] => Ok(Value::Bool(value.truthy())),
-            _ => Err("Base/boolean expects one value".into()),
-        },
         "compare" => match values {
             [left, right] => Ok(Value::Number(match left.cmp(right) {
                 std::cmp::Ordering::Less => -1,
@@ -1141,10 +1137,6 @@ fn native_base_values(operation: &str, values: &[Value]) -> Result<Value, String
                 std::cmp::Ordering::Greater => 1,
             })),
             _ => Err("Base/compare expects two values".into()),
-        },
-        "reduced?" => match values {
-            [value] => Ok(Value::Bool(is_reduced_value(value))),
-            _ => Err("Base/reduced? expects one value".into()),
         },
         "satisfies?" => match values {
             [Value::Protocol(protocol), value] => {
@@ -1176,49 +1168,8 @@ fn native_base_values(operation: &str, values: &[Value]) -> Result<Value, String
         },
         predicate if predicate.ends_with('?') => match values {
             [value] => Ok(Value::Bool(match predicate {
-                "nil?" => matches!(value, Value::Nil),
-                "boolean?" => matches!(value, Value::Bool(_)),
-                "string?" => matches!(value, Value::String(_)),
-                "char?" => matches!(value, Value::Character(_)),
                 "number?" => numeric::is_numeric_value(value),
                 "long?" => numeric::to_i64_exact(value).is_ok(),
-                "double?" => matches!(value, Value::Float(_)),
-                "keyword?" => matches!(value, Value::Keyword(_)),
-                "symbol?" => matches!(value, Value::Symbol(_)),
-                "pointer?" => matches!(value, Value::Pointer(_)),
-                "atom?" => matches!(value, Value::Atom(_)),
-                "function?" => matches!(value, Value::Function(_)),
-                "bytes?" => matches!(value, Value::Bytes(_) | Value::ByteBuffer(_)),
-                "array?" => matches!(value, Value::Array(_)),
-                "object?" => matches!(value, Value::Object(_)),
-                "list?" => matches!(value, Value::List(_)),
-                "cons?" => matches!(value, Value::Cons(_)),
-                "vector?" => matches!(value, Value::Vector(_) | Value::Tuple(_)),
-                "tuple?" => matches!(value, Value::Tuple(_)),
-                "map?" => match value {
-                    Value::Map(_)
-                    | Value::OrderedMap(_)
-                    | Value::SortedMap(_)
-                    | Value::Trie(_)
-                    | Value::PriorityMap(_) => true,
-                    Value::Extension(receiver) => extension_has_category(receiver, "map"),
-                    _ => false,
-                },
-                "set?" => matches!(
-                    value,
-                    Value::Set(_) | Value::OrderedSet(_) | Value::SortedSet(_)
-                ),
-                "sequential?" => matches!(
-                    value,
-                    Value::List(_)
-                        | Value::Cons(_)
-                        | Value::Queue(_)
-                        | Value::Deque(_)
-                        | Value::Vector(_)
-                        | Value::Tuple(_)
-                        | Value::Seq(_)
-                ),
-                "coll?" => named_protocol_satisfies("coll?", value),
                 _ => return Err(format!("unknown Base predicate: {predicate}")),
             })),
             _ => Err(format!("Base/{predicate} expects one value")),
@@ -1993,7 +1944,14 @@ impl Value {
             || matches!(value, Self::Vector(_) | Self::MutableCollection(_))
     }
     fn supports_native_idissoc(value: &Self) -> bool {
-        Self::supports_native_iassoc(value)
+        Self::supports_native_map(value)
+            || matches!(
+                value,
+                Self::Set(_)
+                    | Self::OrderedSet(_)
+                    | Self::SortedSet(_)
+                    | Self::MutableCollection(_)
+            )
     }
     fn supports_native_ifind(value: &Self) -> bool {
         Self::supports_native_map(value)
@@ -2016,7 +1974,8 @@ impl Value {
             )
     }
     fn supports_native_ilookup(value: &Self) -> bool {
-        Self::supports_native_map(value)
+        matches!(value, Self::Nil)
+            || Self::supports_native_map(value)
             || matches!(value, Self::Vector(_) | Self::Tuple(_) | Self::Pointer(_))
     }
     fn supports_native_ideref(value: &Self) -> bool {
@@ -2227,7 +2186,6 @@ fn protocol_satisfies(protocol: &GuestProtocol, value: &Value) -> bool {
 
 fn named_predicate_protocol(name: &str) -> Option<&'static str> {
     match name {
-        "coll?" => Some("IColl"),
         "iterable?" => Some("IIter"),
         "iterator?" => Some("IIterator"),
         "counted?" => Some("ICount"),

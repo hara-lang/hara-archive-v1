@@ -15,7 +15,7 @@ import hara.lang.data.List;
 import hara.lang.data.Map;
 import hara.lang.data.Queue;
 import hara.lang.data.Vector;
-import hara.lang.data.types.ILinearType;
+import hara.lang.protocol.ILinearType;
 import hara.lang.data.types.ObjFn;
 import hara.lang.protocol.*;
 

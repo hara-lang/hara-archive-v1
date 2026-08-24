@@ -1,8 +1,8 @@
 package hara.truffle;
 
-import hara.lang.data.types.IMapType;
+import hara.lang.protocol.IMapType;
 import hara.lang.data.types.ISequentialType;
-import hara.lang.data.types.ISetType;
+import hara.lang.protocol.ISetType;
 import java.lang.reflect.Array;
 import java.util.ArrayList;
 import java.util.Collection;

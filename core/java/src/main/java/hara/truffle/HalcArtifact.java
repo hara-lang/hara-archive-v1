@@ -2,9 +2,9 @@ package hara.truffle;
 
 import hara.lang.data.Keyword;
 import hara.lang.data.Symbol;
-import hara.lang.data.types.ILinearType;
-import hara.lang.data.types.IMapType;
-import hara.lang.data.types.ISetType;
+import hara.lang.protocol.ILinearType;
+import hara.lang.protocol.IMapType;
+import hara.lang.protocol.ISetType;
 import hara.lang.protocol.IMetadata;
 import hara.lang.protocol.IObjType;
 import java.io.ByteArrayInputStream;

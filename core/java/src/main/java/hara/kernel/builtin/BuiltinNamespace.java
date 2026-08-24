@@ -6,7 +6,7 @@ import hara.kernel.base.RT;
 import hara.kernel.protocol.IRuntime;
 import hara.lang.data.AsMap;
 import hara.lang.data.Symbol;
-import hara.lang.data.types.IMapType;
+import hara.lang.protocol.IMapType;
 import hara.kernel.base.Var;
 
 import java.util.Iterator;

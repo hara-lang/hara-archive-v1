@@ -43,31 +43,31 @@
   run
   "Runs function asynchronously and returns its promise."
   [function]
-  (std.native.Promise/run function))
+  (Promise/run function))
 
 (defn ^{:inline true :schema [:fn [:fn] :promise]}
   new
   "Creates a promise controlled by executor."
   [executor]
-  (std.native.Promise/new executor))
+  (Promise/new executor))
 
 (defn ^{:inline true :schema [:fn [:any] :promise]}
   from
   "Returns a settled promise containing value."
   [value]
-  (std.native.Promise/from value))
+  (Promise/from value))
 
 (defn ^{:inline true :schema [:fn [:any] :promise]}
   all
   "Returns a promise of all values after every input succeeds."
   [values]
-  (std.native.Promise/all values))
+  (Promise/all values))
 
 (defn ^{:inline true :schema [:fn [:num :fn] :promise]}
   delay
   "Runs function after milliseconds and returns its promise."
   [milliseconds function]
-  (std.native.Promise/delay milliseconds function))
+  (Promise/delay milliseconds function))
 
 (defn ^{:inline true :schema [:fn [:promise] :keyword]}
   state

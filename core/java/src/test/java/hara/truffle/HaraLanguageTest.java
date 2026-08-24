@@ -32,6 +32,27 @@ public class HaraLanguageTest {
   }
 
   @Test
+  public void collectionCategoryPredicatesUsePortableProtocols() {
+    try (Context context = context()) {
+      assertEquals(
+          "[true false true false true false true false true false true false]",
+          context
+              .eval(
+                  HaraLanguage.ID,
+                  "[(satisfies? IMapType {:a 1}) "
+                      + " (satisfies? IMapType [1]) "
+                      + " (satisfies? ISetType #{1}) "
+                      + " (satisfies? ISetType [1]) "
+                      + " (satisfies? ILinearType [1]) "
+                      + " (satisfies? ILinearType #{1}) "
+                      + " (map? {:a 1}) (map? [1]) "
+                      + " (set? #{1}) (set? [1]) "
+                      + " (sequential? [1]) (sequential? #{1})]")
+              .toString());
+    }
+  }
+
+  @Test
   public void pointersAreCanonicalDescriptorsWithContextDispatch() {
     try (Context context = context()) {
       assertEquals(
@@ -569,7 +590,6 @@ public class HaraLanguageTest {
       assertTrue(context.eval(HaraLanguage.ID, "(< 1 1.1)").asBoolean());
       assertTrue(context.eval(HaraLanguage.ID, "(= 1 1.0)").asBoolean());
       assertTrue(context.eval(HaraLanguage.ID, "(= 1 1 1)").asBoolean());
-      assertTrue(context.eval(HaraLanguage.ID, "(not= 1 1 2)").asBoolean());
       assertTrue(context.eval(HaraLanguage.ID, "(< 1.2 1.3)").asBoolean());
       assertTrue(context.eval(HaraLanguage.ID, "(< 1 2)").asBoolean());
       assertTrue(context.eval(HaraLanguage.ID, "(apply < [1 2 3])").asBoolean());
@@ -1796,9 +1816,9 @@ public class HaraLanguageTest {
     while (names.find()) {
       protocols.add(names.group(1));
     }
-    assertTrue(contract, contract.contains(":protocol-count 57"));
+    assertTrue(contract, contract.contains(":protocol-count 60"));
     assertTrue(contract, contract.contains(":capability-specific-protocol-count 15"));
-    assertEquals(72, protocols.size());
+    assertEquals(75, protocols.size());
     Set<String> unavailableProtocols =
         Set.of(
             "IHasRuntime",

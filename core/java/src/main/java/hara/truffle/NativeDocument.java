@@ -1,7 +1,7 @@
 package hara.truffle;
 
 import hara.lang.data.Keyword;
-import hara.lang.data.types.IMapType;
+import hara.lang.protocol.IMapType;
 import hara.lang.data.types.ISequentialType;
 import java.util.ArrayDeque;
 import java.util.ArrayList;

@@ -5,7 +5,7 @@ import hara.kernel.protocol.IRuntime;
 import hara.kernel.builtin.BuiltinNamespace;
 import hara.lang.data.Symbol;
 import hara.kernel.base.Var;
-import hara.lang.data.types.IMapType;
+import hara.lang.protocol.IMapType;
 import org.junit.Test;
 import static org.junit.Assert.*;
 

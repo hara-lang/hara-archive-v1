@@ -150,7 +150,7 @@
   [runtime frame]
   (cond
     (native-runtime? runtime)
-    (std.native.Work/cancelled?)
+    (Work/cancelled?)
 
     (nil? (base/runtime-store runtime))
     false

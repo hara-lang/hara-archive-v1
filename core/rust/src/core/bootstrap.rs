@@ -1,6 +1,44 @@
 /// Installs the runtime-owned substrate required by canonical Foundation
 /// source. Ordinary Foundation functions and compatibility aliases are
 /// intentionally absent; they are defined by the source modules themselves.
+const FOUNDATION_INTRINSICS: &[&str] = &[
+    "+", "-", "*", "/", "%", "=", "<", "<=", ">", ">=", "quot", "rem", "mod", "number?",
+];
+
+/// Installs the small language-level callable substrate needed while loading
+/// `std.foundation`. These are runtime primitives, not a second public native
+/// catalog: the Foundation source can replace or wrap them with ordinary HAL
+/// Vars, and every installed Var carries `RuntimePrimitive` provenance.
+pub fn install_foundation_intrinsics(namespaces: &NamespaceRegistry<Value>) {
+    let foundation = namespaces.find_or_create("std.foundation");
+    for declaration in NATIVE_DECLARATIONS {
+        let qualified = Symbol::parse(&declaration.qualified_name());
+        if let Some(descriptor) = namespaces.resolve(&qualified) {
+            foundation.map_var(Symbol::parse(declaration.name), descriptor);
+        }
+    }
+    for name in FOUNDATION_INTRINSICS {
+        let value = crate::core::direct_function_value(name)
+            .unwrap_or_else(|| panic!("missing Foundation intrinsic implementation: {name}"));
+        foundation.intern_with_origin(name, value, VarOrigin::RuntimePrimitive);
+    }
+    let iterator = NATIVE_DECLARATIONS
+        .iter()
+        .find(|declaration| declaration.name == "Iter")
+        .expect("annotated Iter declaration");
+    for method in iterator.methods {
+        foundation.intern_with_origin(
+            method,
+            native_type_function_value(iterator.name, method)
+                .unwrap_or_else(|error| panic!("{error}")),
+            VarOrigin::RuntimePrimitive,
+        );
+    }
+    for (name, value) in crate::core::exception_function_values() {
+        foundation.intern_with_origin(name, value, VarOrigin::RuntimePrimitive);
+    }
+}
+
 pub fn minimal_namespace_registry() -> NamespaceRegistry<Value> {
     let namespaces = NamespaceRegistry::new("user");
 
@@ -19,6 +57,9 @@ pub fn minimal_namespace_registry() -> NamespaceRegistry<Value> {
     }
     for declaration in NATIVE_DECLARATIONS {
         let namespace = namespaces.find_or_create(declaration.qualified_name());
+        namespaces
+            .register_global_alias(declaration.name, declaration.qualified_name())
+            .unwrap_or_else(|error| panic!("{error}"));
         for method in declaration.methods {
             namespace.intern_with_origin(
                 method,
@@ -56,7 +97,6 @@ pub fn minimal_namespace_registry() -> NamespaceRegistry<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::lang::protocol::INamespaced;
 
     #[test]
     fn intrinsic_type_vars_use_only_canonical_symbols() {

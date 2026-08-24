@@ -6,7 +6,7 @@ import static org.junit.Assert.assertTrue;
 
 import hara.lang.base.G;
 import hara.lang.data.Keyword;
-import hara.lang.data.types.IMapType;
+import hara.lang.protocol.IMapType;
 import hara.lang.protocol.IObjType;
 import org.junit.Test;
 

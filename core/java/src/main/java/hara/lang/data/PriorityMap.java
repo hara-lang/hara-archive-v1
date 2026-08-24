@@ -1,7 +1,7 @@
 package hara.lang.data;
 
 import hara.lang.data.Tuple.Tup2;
-import hara.lang.data.types.IMapType;
+import hara.lang.protocol.IMapType;
 import hara.lang.data.types.ObjPersistent;
 import hara.lang.protocol.IMetadata;
 import hara.lang.protocol.IPeekFirst;

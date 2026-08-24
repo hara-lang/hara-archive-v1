@@ -11,9 +11,9 @@
      (= :pure (:op spec))
      ((:fn spec)
       input
-      {:run (std.native.Work/current-run)
-       :cancelled? std.native.Work/cancelled?
-       :deadline-nanos std.native.Work/deadline-nanos})
+      {:run (Work/current-run)
+       :cancelled? Work/cancelled?
+       :deadline-nanos Work/deadline-nanos})
 
      (= :chain (:op spec))
      (reduce execute-pure input (:children spec))

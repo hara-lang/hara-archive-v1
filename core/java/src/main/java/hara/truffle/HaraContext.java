@@ -22,8 +22,8 @@ import hara.lang.base.iter.CloseableIterator;
 import hara.lang.data.Symbol;
 import hara.lang.data.List;
 import hara.lang.data.Keyword;
-import hara.lang.data.types.IMapType;
-import hara.lang.data.types.ILinearType;
+import hara.lang.protocol.IMapType;
+import hara.lang.protocol.ILinearType;
 import hara.lang.data.types.ObjFn;
 import hara.lang.protocol.IFn;
 import hara.lang.protocol.IMetadata;
@@ -626,6 +626,11 @@ public final class HaraContext {
     namespaceStates.put("std.native.Runtime", NamespaceLoadState.LOADED);
 
     HaraNamespace base = namespace("std.native.Base");
+    defineNativeFunction("std.native.Base", "not", values -> {
+      requireMethodArity("std.native.Base/not", values, 1);
+      return !truthy(values[0]);
+    }, null);
+    defineNativeFunction("std.native.Base", "compare", this::compareValues, null);
     base.define(
         "apply",
         new VariadicBuiltin("std.native.Base/apply", this::applyFunction));
@@ -2438,9 +2443,7 @@ public final class HaraContext {
     target.define("rem", new VariadicBuiltin("rem", values -> arithmetic("rem", values)));
     target.define("mod", new VariadicBuiltin("mod", values -> arithmetic("mod", values)));
     target.define("%", new VariadicBuiltin("%", values -> arithmetic("rem", values)));
-    target.define("compare", new VariadicBuiltin("compare", this::compareValues));
     target.define("=", new VariadicBuiltin("=", values -> compare("=", values)));
-    target.define("not=", new VariadicBuiltin("not=", values -> compare("not=", values)));
     target.define("<", new VariadicBuiltin("<", values -> compare("<", values)));
     target.define("<=", new VariadicBuiltin("<=", values -> compare("<=", values)));
     target.define(">", new VariadicBuiltin(">", values -> compare(">", values)));
@@ -2452,21 +2455,6 @@ public final class HaraContext {
     num.define("double", new UnaryBuiltin("std.native.Num/double", HaraNumericConversions::toDouble));
     num.define("parse-long", new UnaryBuiltin("std.native.Num/parse-long", this::parseLong));
     num.define("parse-double", new UnaryBuiltin("std.native.Num/parse-double", this::parseDouble));
-    target.define("not", new UnaryBuiltin("not", value -> !truthy(value)));
-    target.define(
-        "boolean",
-        new UnaryBuiltin(
-            "boolean", HaraContext::truthy));
-    target.define("boolean?", new UnaryBuiltin("boolean?", value ->
-        HaraBox.unwrap(value) instanceof Boolean));
-    target.define(
-        "nil?",
-        new UnaryBuiltin(
-            "nil?",
-            value -> {
-              Object unwrapped = HaraBox.unwrap(value);
-              return unwrapped == null || unwrapped == HaraNull.SINGLETON;
-            }));
     target.define(
         "not-nil?",
         new UnaryBuiltin(
@@ -2483,68 +2471,13 @@ public final class HaraContext {
             "empty?", value -> !Boolean.TRUE.equals(iterHasNext(iterValue(value)))));
     target.define("vec", new UnaryBuiltin("vec", this::toVector));
     target.define("set", new UnaryBuiltin("set", this::toSet));
-    target.define(
-        "array?",
-        new UnaryBuiltin("array?", value -> HaraBox.unwrap(value) instanceof HaraArray));
     target.define("reverse", new UnaryBuiltin("reverse", this::reverseValue));
-    target.define(
-        "map?",
-        new UnaryBuiltin("map?", value -> HaraBox.unwrap(value) instanceof IMapType<?, ?>));
-    target.define(
-        "set?",
-        new UnaryBuiltin(
-            "set?",
-            value -> HaraBox.unwrap(value) instanceof hara.lang.data.types.ISetType<?>));
-    target.define(
-        "vector?",
-        new UnaryBuiltin(
-            "vector?",
-            value ->
-                HaraBox.unwrap(value) instanceof hara.lang.data.Vector<?>
-                    || HaraBox.unwrap(value) instanceof hara.lang.data.Tuple.Tup0
-                    || HaraBox.unwrap(value) instanceof hara.lang.data.Tuple.Tup1<?>));
-    target.define(
-        "symbol?",
-        new UnaryBuiltin("symbol?", value -> HaraBox.unwrap(value) instanceof Symbol));
     // Bootstrap seed only; canonical std.foundation/fn? is defined by HAL.
     target.define("fn?", new UnaryBuiltin("fn?", value -> protocolSatisfies("IFn", value)));
-    target.define("function?", new UnaryBuiltin("function?", this::isNativeFunctionValue));
-    target.define(
-        "keyword?",
-        new UnaryBuiltin("keyword?", value -> HaraBox.unwrap(value) instanceof Keyword));
-    target.define(
-        "string?",
-        new UnaryBuiltin("string?", value -> HaraBox.unwrap(value) instanceof String));
     target.define(
         "number?", new UnaryBuiltin("number?", HaraNumericConversions::isNumeric));
     target.define(
         "long?", new UnaryBuiltin("long?", HaraNumericConversions::fitsLong));
-    target.define("double?", new UnaryBuiltin("double?", value -> {
-      Object raw = HaraBox.unwrap(value);
-      return raw instanceof Float || raw instanceof Double;
-    }));
-    target.define("sequential?", new UnaryBuiltin("sequential?", value ->
-        HaraBox.unwrap(value) instanceof hara.lang.data.types.ISequentialType<?>));
-    target.define("coll?", new UnaryBuiltin("coll?", value -> protocolSatisfies("IColl", value)));
-    target.define(
-        "tuple?",
-        new UnaryBuiltin(
-            "tuple?",
-            value -> {
-              Object raw = HaraBox.unwrap(value);
-              return raw instanceof hara.lang.data.Tuple.Tup0
-                  || raw instanceof hara.lang.data.Tuple.Tup1<?>;
-            }));
-    target.define("object?", new UnaryBuiltin("object?", value ->
-        HaraBox.unwrap(value) instanceof HaraObject));
-    target.define("bytes?", new UnaryBuiltin("bytes?", value ->
-        HaraBox.unwrap(value) instanceof byte[]));
-    target.define("atom?", new UnaryBuiltin("atom?", value ->
-        HaraBox.unwrap(value) instanceof hara.lang.data.Atom.Struct<?, ?>));
-    target.define("promise?", new UnaryBuiltin("promise?", value ->
-        HaraBox.unwrap(value) instanceof HaraPromise));
-    target.define("coroutine?", new UnaryBuiltin("coroutine?", value ->
-        HaraBox.unwrap(value) instanceof StdFoundationCoroutine.HaraCoroutine));
     target.define("iterator?", new UnaryBuiltin("iterator?", value -> protocolSatisfies("IIterator", value)));
     target.define("iterable?", new UnaryBuiltin("iterable?", value -> protocolSatisfies("IIter", value)));
     target.define("counted?", new UnaryBuiltin("counted?", value -> protocolSatisfies("ICount", value)));
@@ -2901,8 +2834,6 @@ public final class HaraContext {
     target.define("use", new UnaryBuiltin("use", this::useNamespace));
     target.define("iter", new UnaryBuiltin("iter", this::iterValue));
     target.define("seq", new VariadicBuiltin("seq", this::seqValue));
-    target.define("seq?", new UnaryBuiltin("seq?", this::isSeq));
-    target.define("iter?", new UnaryBuiltin("iter?", this::isIterator));
     target.define("iter-finite?", new UnaryBuiltin("iter-finite?", this::isIteratorFinite));
     target.define("iter-materialize", new UnaryBuiltin("iter-materialize", this::iterMaterialize));
     target.define("iter-next?", new UnaryBuiltin("iter-next?", this::iterHasNext));
@@ -2941,9 +2872,6 @@ public final class HaraContext {
     target.define(
         "unreduced",
         new UnaryBuiltin("Base/unreduced", value -> Reduced.unreduced(HaraBox.unwrap(value))));
-    target.define(
-        "reduced?",
-        new UnaryBuiltin("Base/reduced?", value -> Reduced.isReduced(HaraBox.unwrap(value))));
     target.define("alter-var-root", new VariadicBuiltin("alter-var-root", this::alterVarRoot));
     target.define("module-revision", new UnaryBuiltin("module-revision", this::moduleRevision));
     target.define(
@@ -3032,7 +2960,7 @@ public final class HaraContext {
 
   private Object toSet(Object value) {
     Object raw = HaraBox.unwrap(value);
-    if (raw instanceof hara.lang.data.types.ISetType<?>) return value;
+    if (raw instanceof hara.lang.protocol.ISetType<?>) return value;
     return hara.lang.data.Set.Standard.into((Iterator<?>) iterValue(raw));
   }
 
@@ -3315,17 +3243,10 @@ public final class HaraContext {
         new UnaryBuiltin(
             "pointer", value -> hara.lang.data.Pointer.fromDescriptor(HaraBox.unwrap(value))));
     target.define(
-        "pointer?",
-        new UnaryBuiltin(
-            "pointer?", value -> HaraBox.unwrap(value) instanceof hara.lang.data.Pointer));
-    target.define(
         "pr-str",
         new UnaryBuiltin(
             "pr-str",
             value -> hara.kernel.builtin.BuiltinUtil.prStr(HaraBox.unwrap(value))));
-    target.define(
-        "char?",
-        new UnaryBuiltin("char?", value -> HaraBox.unwrap(value) instanceof Character));
     target.define(
         "uuid?",
         new UnaryBuiltin("uuid?", value -> HaraBox.unwrap(value) instanceof java.util.UUID));
@@ -3342,12 +3263,6 @@ public final class HaraContext {
               return raw instanceof hara.lang.protocol.IPair<?, ?>
                   || raw instanceof java.util.Map.Entry<?, ?>;
             }));
-    target.define(
-        "list?",
-        new UnaryBuiltin("list?", value -> HaraBox.unwrap(value) instanceof hara.lang.data.List<?>));
-    target.define(
-        "cons?",
-        new UnaryBuiltin("cons?", value -> HaraBox.unwrap(value) instanceof hara.lang.data.Cons<?>));
     target.define("promise", new UnaryBuiltin("promise", this::promiseRun));
     target.define("bytes", new VariadicBuiltin("bytes", this::createBytes));
     target.define("array", new VariadicBuiltin("array", HaraArray::new));
@@ -3419,7 +3334,8 @@ public final class HaraContext {
     else if (raw instanceof Float || raw instanceof Double) type = "Float";
     else if (raw instanceof Character) type = "Character";
     else if (raw instanceof java.util.regex.Pattern) type = "RegExp";
-    else if (raw instanceof hara.lang.data.TaggedLiteral) type = "TaggedLiteral";
+    else if (raw instanceof hara.lang.data.TaggedLiteral)
+      type = Reduced.isReduced(raw) ? "Reduced" : "TaggedLiteral";
     else if (raw instanceof Boolean) type = "Boolean";
     else if (raw instanceof String) type = "String";
     else if (raw instanceof Keyword) type = "Keyword";
@@ -3588,7 +3504,7 @@ public final class HaraContext {
   private static Object schemaAst(HalcSchema.Type ast) {
     if (ast instanceof HalcSchema.Properties decorated) {
       Object base = schemaAst(decorated.schema());
-      if (!(base instanceof hara.lang.data.types.IMapType<?, ?> map))
+      if (!(base instanceof hara.lang.protocol.IMapType<?, ?> map))
         throw new HaraException("canonical schema AST must be a map");
       ArrayList<Object> entries = new ArrayList<>();
       for (Object item : map) {
@@ -3688,7 +3604,7 @@ public final class HaraContext {
     if (values.length != 3
         || !(HaraBox.unwrap(values[0]) instanceof String service)
         || !(HaraBox.unwrap(values[1]) instanceof String method)
-        || !(HaraBox.unwrap(values[2]) instanceof hara.lang.data.types.ILinearType<?> arguments)) {
+        || !(HaraBox.unwrap(values[2]) instanceof hara.lang.protocol.ILinearType<?> arguments)) {
       throw new HaraException(
           "std.native.Host/call expects service, method, and an argument vector");
     }
@@ -4393,7 +4309,7 @@ public final class HaraContext {
                     "std.native.Sandbox/call expects an id, qualified symbol, and argument vector");
               String callable = callableSymbol.display();
               Object rawArguments = HaraBox.unwrap(values[2]);
-              if (!(rawArguments instanceof hara.lang.data.types.ILinearType<?> arguments))
+              if (!(rawArguments instanceof hara.lang.protocol.ILinearType<?> arguments))
                 throw new HaraException("std.native.Sandbox/call expects an argument vector");
               ArrayList<Object> transferred = new ArrayList<>();
               for (int index = 0; index < arguments.count(); index++) {
@@ -4529,7 +4445,7 @@ public final class HaraContext {
   @SuppressWarnings("rawtypes")
   private static SandboxModel.SandboxSpec sandboxSpec(Object value) {
     Object input = HaraBox.unwrap(value);
-    if (!(input instanceof hara.lang.data.types.IMapType map))
+    if (!(input instanceof hara.lang.protocol.IMapType map))
       throw new HaraException("std.native.Sandbox/open expects a SandboxSpec map");
     java.util.Set<String> allowed =
         java.util.Set.of(
@@ -4561,7 +4477,7 @@ public final class HaraContext {
     java.util.List<SandboxModel.BundleReference> bundles = sandboxBundles(map);
     SessionModel.SessionMountId mount = sandboxMount(map);
     Object providerOptions = map.lookup(Keyword.create("provider-options"));
-    if (!(HaraBox.unwrap(providerOptions) instanceof hara.lang.data.types.IMapType)
+    if (!(HaraBox.unwrap(providerOptions) instanceof hara.lang.protocol.IMapType)
         || !sandboxPortable(providerOptions)) {
       throw new SandboxModel.SandboxException(
           SandboxModel.ErrorCode.INVALID_SPEC, "provider-options must be an immutable map");
@@ -4578,7 +4494,7 @@ public final class HaraContext {
   }
 
   @SuppressWarnings("rawtypes")
-  private static String sandboxEntryNamespace(hara.lang.data.types.IMapType map) {
+  private static String sandboxEntryNamespace(hara.lang.protocol.IMapType map) {
     Object value = HaraBox.unwrap(map.lookup(Keyword.create("entry-namespace")));
     if (value instanceof Symbol symbol && symbol.getNamespace() == null) return symbol.display();
     throw new SandboxModel.SandboxException(
@@ -4595,20 +4511,20 @@ public final class HaraContext {
         || input instanceof Character
         || input instanceof Keyword
         || input instanceof Symbol) return true;
-    if (input instanceof hara.lang.data.types.IMapType map) {
+    if (input instanceof hara.lang.protocol.IMapType map) {
       for (Object item : map) {
         java.util.Map.Entry entry = (java.util.Map.Entry) item;
         if (!sandboxPortable(entry.getKey()) || !sandboxPortable(entry.getValue())) return false;
       }
       return true;
     }
-    if (input instanceof hara.lang.data.types.ILinearType<?> values) {
+    if (input instanceof hara.lang.protocol.ILinearType<?> values) {
       for (int index = 0; index < values.count(); index++) {
         if (!sandboxPortable(values.nth(index))) return false;
       }
       return true;
     }
-    if (input instanceof hara.lang.data.types.ISetType<?> values) {
+    if (input instanceof hara.lang.protocol.ISetType<?> values) {
       for (Object item : values) if (!sandboxPortable(item)) return false;
       return true;
     }
@@ -4617,20 +4533,20 @@ public final class HaraContext {
 
   @SuppressWarnings("rawtypes")
   private static java.util.List<SandboxModel.BundleReference> sandboxBundles(
-      hara.lang.data.types.IMapType spec) {
+      hara.lang.protocol.IMapType spec) {
     Object raw = HaraBox.unwrap(spec.lookup(Keyword.create("bundles")));
     if (raw == null) {
       throw new SandboxModel.SandboxException(
           SandboxModel.ErrorCode.INVALID_SPEC, "bundles must be a vector");
     }
-    if (!(raw instanceof hara.lang.data.types.ILinearType<?> bundles)) {
+    if (!(raw instanceof hara.lang.protocol.ILinearType<?> bundles)) {
       throw new SandboxModel.SandboxException(
           SandboxModel.ErrorCode.INVALID_SPEC, "bundles must be a vector");
     }
     ArrayList<SandboxModel.BundleReference> resolved = new ArrayList<>();
     for (int index = 0; index < bundles.count(); index++) {
       Object item = HaraBox.unwrap(bundles.nth(index));
-      if (!(item instanceof hara.lang.data.types.IMapType bundle) || bundle.count() != 2) {
+      if (!(item instanceof hara.lang.protocol.IMapType bundle) || bundle.count() != 2) {
         throw new SandboxModel.SandboxException(
             SandboxModel.ErrorCode.INVALID_SPEC, "bundle references require digest and format");
       }
@@ -4643,7 +4559,7 @@ public final class HaraContext {
 
   @SuppressWarnings("rawtypes")
   private static SessionModel.SessionMountId sandboxMount(
-      hara.lang.data.types.IMapType spec) {
+      hara.lang.protocol.IMapType spec) {
     Object raw = HaraBox.unwrap(spec.lookup(Keyword.create("mount")));
     if (raw == null) return null;
     if (!(raw instanceof Number number) || number.longValue() <= 0) {
@@ -4655,13 +4571,13 @@ public final class HaraContext {
 
   @SuppressWarnings("rawtypes")
   private static SandboxModel.SandboxLimits sandboxLimits(
-      hara.lang.data.types.IMapType spec) {
+      hara.lang.protocol.IMapType spec) {
     Object raw = HaraBox.unwrap(spec.lookup(Keyword.create("limits")));
     if (raw == null) {
       throw new SandboxModel.SandboxException(
           SandboxModel.ErrorCode.INVALID_SPEC, "limits must be a map");
     }
-    if (!(raw instanceof hara.lang.data.types.IMapType limits)) {
+    if (!(raw instanceof hara.lang.protocol.IMapType limits)) {
       throw new SandboxModel.SandboxException(
           SandboxModel.ErrorCode.INVALID_SPEC, "limits must be a map");
     }
@@ -4693,7 +4609,7 @@ public final class HaraContext {
 
   @SuppressWarnings("rawtypes")
   private static long sandboxPositive(
-      hara.lang.data.types.IMapType map, String name, long fallback) {
+      hara.lang.protocol.IMapType map, String name, long fallback) {
     Object raw = HaraBox.unwrap(map.lookup(Keyword.create(name)));
     if (raw == null) return fallback;
     if (!(raw instanceof Number number) || number.longValue() <= 0) {
@@ -4705,7 +4621,7 @@ public final class HaraContext {
 
   @SuppressWarnings("rawtypes")
   private static String sandboxString(
-      hara.lang.data.types.IMapType map, String name, String fallback) {
+      hara.lang.protocol.IMapType map, String name, String fallback) {
     Object value = HaraBox.unwrap(map.lookup(Keyword.create(name)));
     if (value == null) return fallback;
     if (value instanceof String text) return text;
@@ -7355,16 +7271,6 @@ public final class HaraContext {
   }
 
   @TruffleBoundary
-  private Object isSeq(Object value) {
-    return HaraBox.unwrap(value) instanceof hara.lang.data.Seq;
-  }
-
-  @TruffleBoundary
-  private Object isIterator(Object value) {
-    return HaraBox.unwrap(value) instanceof Iterator<?>;
-  }
-
-  @TruffleBoundary
   private Object isIteratorFinite(Object value) {
     return !(HaraBox.unwrap(value) instanceof Iterator<?>);
   }
@@ -8076,7 +7982,7 @@ public final class HaraContext {
   private Boolean protocolSatisfactionPolicy(String protocolName, Object receiver) {
     if ("IFn".equals(protocolName)) return isFunctionValue(receiver);
     if ("ILookup".equals(protocolName)
-        && receiver instanceof hara.lang.data.types.ISetType<?>) {
+        && receiver instanceof hara.lang.protocol.ISetType<?>) {
       return false;
     }
     return null;
@@ -8958,16 +8864,16 @@ public final class HaraContext {
 
     @SuppressWarnings({"rawtypes", "unchecked"})
     private static IMetadata mergeMetadata(IMetadata existing, IMetadata fallback) {
-      if (!(fallback instanceof hara.lang.data.types.IMapType)) return existing;
-      hara.lang.data.types.IMapType merged =
-          existing instanceof hara.lang.data.types.IMapType
-              ? (hara.lang.data.types.IMapType) existing
+      if (!(fallback instanceof hara.lang.protocol.IMapType)) return existing;
+      hara.lang.protocol.IMapType merged =
+          existing instanceof hara.lang.protocol.IMapType
+              ? (hara.lang.protocol.IMapType) existing
               : hara.lang.data.Map.Standard.EMPTY;
       java.util.Iterator<java.util.Map.Entry> entries =
-          ((hara.lang.data.types.IMapType) fallback).iterator();
+          ((hara.lang.protocol.IMapType) fallback).iterator();
       while (entries.hasNext()) {
         java.util.Map.Entry entry = entries.next();
-        merged = (hara.lang.data.types.IMapType) merged.assoc(entry.getKey(), entry.getValue());
+        merged = (hara.lang.protocol.IMapType) merged.assoc(entry.getKey(), entry.getValue());
       }
       return merged;
     }

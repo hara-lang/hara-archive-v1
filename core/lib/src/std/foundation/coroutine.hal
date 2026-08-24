@@ -42,13 +42,13 @@
   create
   "Creates a suspended coroutine from function."
   [function]
-  (std.native.Coroutine/create function))
+  (Coroutine/create function))
 
 (defn ^{:inline true :schema [:fn [:any] :bool]}
   coroutine?
   "Returns true when value is a coroutine."
   [value]
-  (std.native.Coroutine/instance? value))
+  (Coroutine/instance? value))
 
 (defn ^{:inline true :schema [:fn [:any] :keyword]}
   status
@@ -72,10 +72,10 @@
   yield
   "Suspends the current coroutine with value."
   [value]
-  (std.native.Coroutine/yield value))
+  (Coroutine/yield value))
 
 (defn ^{:inline true :schema [:fn [:promise] :any]}
   await
   "Suspends until promise settles, then returns or throws its result."
   [promise]
-  (std.native.Coroutine/await promise))
+  (Coroutine/await promise))

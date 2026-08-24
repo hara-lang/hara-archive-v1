@@ -1,6 +1,6 @@
 package hara.truffle.bytecode;
 
-import hara.lang.data.types.ILinearType;
+import hara.lang.protocol.ILinearType;
 import hara.truffle.HalcSchema;
 import hara.truffle.bytecode.HbcProgram.Function;
 import hara.truffle.bytecode.HbcProgram.Instruction;

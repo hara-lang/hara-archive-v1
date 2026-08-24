@@ -850,23 +850,6 @@ pub(crate) fn exception_function_values() -> Vec<(&'static str, Value)> {
 
 pub(crate) fn direct_function_value(name: &str) -> Option<Value> {
     match name {
-        "compare" => Some(native_function("compare", 2, |arguments| {
-            Ok(Value::Number(match arguments[0].cmp(&arguments[1]) {
-                std::cmp::Ordering::Less => -1,
-                std::cmp::Ordering::Equal => 0,
-                std::cmp::Ordering::Greater => 1,
-            }))
-        })),
-        "boolean" => Some(native_function("boolean", 1, |arguments| {
-            Ok(Value::Bool(arguments[0].truthy()))
-        })),
-        "not=" => Some(native_variadic_function(
-            "not=",
-            |arguments| match apply_primitive(Primitive::Equal, &arguments)? {
-                Value::Bool(equal) => Ok(Value::Bool(!equal)),
-                _ => unreachable!("equality primitive must return a boolean"),
-            },
-        )),
         "quot" => Some(native_function("quot", 2, |arguments| {
             numeric::numeric_quotient(&arguments[0], &arguments[1])
         })),
@@ -1280,8 +1263,8 @@ fn native_iter_operation(method: &str, arguments: Vec<Value>) -> Result<Value, S
         }
     };
     match method {
+        "seq" => iterator_seq(unary(method)?),
         "iter" => make_iterator(unary(method)?),
-        "iter?" => Ok(Value::Bool(matches!(unary(method)?, Value::Iterator(_)))),
         "iter-finite?" => Ok(Value::Bool(iterator_is_finite(&unary(method)?))),
         "iter-materialize" => Ok(Value::Vector(iterator_to_vec(unary(method)?)?.into())),
         "iter-next?" => iterator_has_next(&unary(method)?),

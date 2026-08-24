@@ -9,10 +9,10 @@
 
 (def results
   [(fact "Document constructors produce canonical ordinary data"
-     [(std.native.Document/text "a" "b")
-      (std.native.Document/annotate :pretty/string "x")
-      (std.native.Document/valid? document)
-      (std.native.Document/valid? [:document/unknown "x"])]
+     [(Document/text "a" "b")
+      (Document/annotate :pretty/string "x")
+      (Document/valid? document)
+      (Document/valid? [:document/unknown "x"])]
      => ["ab" [:document/annotate :pretty/string "x"] true false])
    (fact "group stays flat within width"
      (std.foundation.pretty/render document {:width 80})

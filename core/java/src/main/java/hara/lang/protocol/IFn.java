@@ -1,7 +1,7 @@
 package hara.lang.protocol;
 
 import hara.lang.base.Ex;
-import hara.lang.data.types.ILinearType;
+import hara.lang.protocol.ILinearType;
 import hara.lang.declaration.HaraMethod;
 import hara.lang.declaration.HaraProtocolBinding;
 

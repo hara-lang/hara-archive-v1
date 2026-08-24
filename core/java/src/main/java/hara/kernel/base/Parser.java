@@ -7,9 +7,9 @@ import hara.lang.base.primitive.Array;
 import hara.lang.base.primitive.Num;
 import hara.kernel.builtin.BuiltinStruct;
 import hara.lang.data.*;
-import hara.lang.data.types.ILinearType;
-import hara.lang.data.types.IMapType;
-import hara.lang.data.types.ISetType;
+import hara.lang.protocol.ILinearType;
+import hara.lang.protocol.IMapType;
+import hara.lang.protocol.ISetType;
 import hara.lang.protocol.Constant;
 import hara.lang.protocol.IMetadata;
 import hara.lang.protocol.IObjType;
@@ -191,7 +191,7 @@ public interface Parser {
         Object value, int startLine, int startColumn, int endLine, int endColumn) {
       if (!(value instanceof ILinearType)
           && !(value instanceof IMapType)
-          && !(value instanceof hara.lang.data.types.ISetType)) return value;
+          && !(value instanceof hara.lang.protocol.ISetType)) return value;
       IObjType object = (IObjType) value;
       IMapType span =
           hashMap(

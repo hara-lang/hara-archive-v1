@@ -1,7 +1,7 @@
 package hara.kernel.flavor;
 
 import hara.lang.data.Symbol;
-import hara.lang.data.types.ILinearType;
+import hara.lang.protocol.ILinearType;
 import java.util.ArrayList;
 import java.util.List;
 

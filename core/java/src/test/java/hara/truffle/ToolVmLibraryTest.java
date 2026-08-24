@@ -5,7 +5,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 import hara.lang.data.Keyword;
-import hara.lang.data.types.IMapType;
+import hara.lang.protocol.IMapType;
 import hara.truffle.bytecode.HbcCodec;
 import hara.truffle.bytecode.HbcProgram;
 import java.nio.charset.StandardCharsets;

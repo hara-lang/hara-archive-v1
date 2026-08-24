@@ -3,7 +3,7 @@ package hara.truffle;
 import hara.kernel.base.Parser;
 import hara.lang.base.G;
 import hara.lang.data.Keyword;
-import hara.lang.data.types.IMapType;
+import hara.lang.protocol.IMapType;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.net.URI;

@@ -74,21 +74,21 @@
              (:after (bootstrap/scaffold 'std.native.Test "")))
             (bootstrap/test-references
              (:after (bootstrap/scaffold 'std.protocol.icount "")))])
-   :expected [['std.native.Test/actual
-               'std.native.Test/catalog
-               'std.native.Test/compare
-               'std.native.Test/config
-               'std.native.Test/context
-               'std.native.Test/events
-               'std.native.Test/expected
-               'std.native.Test/failure
-               'std.native.Test/failure-count
-               'std.native.Test/failure-seq
-               'std.native.Test/failure?
-               'std.native.Test/failures
-               'std.native.Test/passed?
-               'std.native.Test/result
-               'std.native.Test/run]
+   :expected [['Test/actual
+               'Test/catalog
+               'Test/compare
+               'Test/config
+               'Test/context
+               'Test/events
+               'Test/expected
+               'Test/failure
+               'Test/failure-count
+               'Test/failure-seq
+               'Test/failure?
+               'Test/failures
+               'Test/passed?
+               'Test/result
+               'Test/run]
               [(symbol "std.protocol.icount.ICount" "ICount")
                'std.protocol.icount.ICount/count]]}])
 

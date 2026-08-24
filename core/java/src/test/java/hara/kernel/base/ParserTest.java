@@ -43,10 +43,10 @@ public class ParserTest {
             Files.readString(
                 SpecRegistry.require("01-lang/001-language/draft/conformance/core.edn")),
             null);
-    assertTrue(corpus instanceof hara.lang.data.types.IMapType);
-    hara.lang.data.types.IMapType map = (hara.lang.data.types.IMapType) corpus;
+    assertTrue(corpus instanceof hara.lang.protocol.IMapType);
+    hara.lang.protocol.IMapType map = (hara.lang.protocol.IMapType) corpus;
     assertEquals("0.0.0-alpha", map.lookup(Keyword.create("spec/version")));
-    assertTrue(map.lookup(Keyword.create("cases")) instanceof hara.lang.data.types.ILinearType);
+    assertTrue(map.lookup(Keyword.create("cases")) instanceof hara.lang.protocol.ILinearType);
   }
 
   @Test
@@ -98,7 +98,7 @@ public class ParserTest {
   public void testReadStringVector() {
     Object result = Parser.LispReader.readString("[1 2 3]", null);
     assertTrue(result instanceof hara.lang.data.Tuple.Tup1);
-    hara.lang.data.types.ILinearType v = (hara.lang.data.types.ILinearType) result;
+    hara.lang.protocol.ILinearType v = (hara.lang.protocol.ILinearType) result;
     assertEquals(3, v.count());
   }
 
@@ -150,7 +150,7 @@ public class ParserTest {
     Object result = Parser.LispReader.readString("^:foo [1]", null);
     assertTrue(result instanceof hara.lang.protocol.IObjType);
     hara.lang.protocol.IObjType obj = (hara.lang.protocol.IObjType) result;
-    hara.lang.data.types.IMapType meta = (hara.lang.data.types.IMapType) obj.meta();
+    hara.lang.protocol.IMapType meta = (hara.lang.protocol.IMapType) obj.meta();
     assertEquals(Boolean.TRUE, meta.lookup(Keyword.create("foo")));
   }
 
@@ -159,7 +159,7 @@ public class ParserTest {
     Object result = Parser.LispReader.readString("^{:tag \"fast\"} [1]", null);
     assertTrue(result instanceof hara.lang.protocol.IObjType);
     hara.lang.protocol.IObjType obj = (hara.lang.protocol.IObjType) result;
-    hara.lang.data.types.IMapType meta = (hara.lang.data.types.IMapType) obj.meta();
+    hara.lang.protocol.IMapType meta = (hara.lang.protocol.IMapType) obj.meta();
     assertEquals("fast", meta.lookup(Keyword.create("tag")));
   }
 

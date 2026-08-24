@@ -11,7 +11,7 @@ import hara.lang.base.primitive.Array;
 import hara.lang.data.*;
 import hara.lang.data.Map.Standard;
 import hara.lang.data.Tuple.*;
-import hara.lang.data.types.ILinearType;
+import hara.lang.protocol.ILinearType;
 
 import java.util.Iterator;
 import java.util.Map.Entry;

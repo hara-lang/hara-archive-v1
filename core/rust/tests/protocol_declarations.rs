@@ -11,13 +11,13 @@ fn annotated_protocols_close_the_specs_surface() {
     let expected = read_specs();
     let actual = protocol_declarations();
 
-    assert_eq!(actual.len(), 72);
+    assert_eq!(actual.len(), 75);
     assert_eq!(
         actual
             .iter()
             .filter(|protocol| protocol.availability != ProtocolAvailability::InventoryOnly)
             .count(),
-        72
+        75
     );
     assert_eq!(
         actual

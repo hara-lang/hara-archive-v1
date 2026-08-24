@@ -1,16 +1,20 @@
-package hara.lang.data.types;
+package hara.lang.protocol;
 
 import hara.lang.base.Eq;
 import hara.lang.base.G;
 import hara.lang.base.Iter;
-import hara.lang.protocol.*;
-
+import hara.lang.declaration.HaraProtocolBinding;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 
+/** Portable map-category protocol descriptor. */
+@HaraProtocolBinding(
+    namespace = "std.protocol.imaptype",
+    name = "IMapType",
+    parents = {"IColl", "IObjType", "IMetadata", "ILookup", "IAssoc", "IDissoc", "IFind", "IFn"})
 public interface IMapType<K, V>
     extends IColl<Entry<K, V>>,
         IObjType,
@@ -19,8 +23,8 @@ public interface IMapType<K, V>
         IAssoc<K, V>,
         IDissoc<K>,
         IFind<K, Entry<K, V>>,
-        IUnOrderedType<Entry<K, V>>,
         IFn<V, K, V> {
+
   default java.util.Map<K, V> asJavaMap() {
     return null;
   }
@@ -36,30 +40,30 @@ public interface IMapType<K, V>
   }
 
   @Override
-  default IMapType<K, V> conj(Entry<K, V> e) {
-    return (IMapType<K, V>) assoc(e.getKey(), e.getValue());
+  default IMapType<K, V> conj(Entry<K, V> entry) {
+    return (IMapType<K, V>) assoc(entry.getKey(), entry.getValue());
   }
 
   @Override
   default V lookup(K key) {
-    Entry<K, V> e = find(key);
-    return (e == null) ? null : e.getValue();
+    Entry<K, V> entry = find(key);
+    return entry == null ? null : entry.getValue();
   }
 
   @Override
   default V lookup(K key, V notFound) {
-    Entry<K, V> e = find(key);
-    return (e == null) ? notFound : e.getValue();
+    Entry<K, V> entry = find(key);
+    return entry == null ? notFound : entry.getValue();
   }
 
   @Override
   default Iterator<K> keys() {
-    return Iter.map(iterator(), (n) -> n.getKey());
+    return Iter.map(iterator(), Entry::getKey);
   }
 
   @Override
   default Iterator<V> vals() {
-    return Iter.map(iterator(), (n) -> n.getValue());
+    return Iter.map(iterator(), Entry::getValue);
   }
 
   @Override
@@ -84,44 +88,50 @@ public interface IMapType<K, V>
         startString(),
         endString(),
         sepString(),
-        (o) -> G.display(o.getKey()) + " " + G.display(o.getValue()));
+        entry -> G.display(entry.getKey()) + " " + G.display(entry.getValue()));
   }
 
   @SuppressWarnings({"unchecked", "rawtypes"})
   @Override
   default boolean equality(Object obj) {
-
     if (obj instanceof IMapType) {
-      return (count() == ((IMapType) obj).count())
+      return count() == ((IMapType) obj).count()
           && Iter.every(
-              this.iterator(),
-              (e) -> {
-                Map.Entry oe = (Entry) ((IMapType) obj).find(e.getKey());
-                return oe != null && Eq.eq(oe.getValue(), e.getValue());
+              iterator(),
+              entry -> {
+                Map.Entry other = (Entry) ((IMapType) obj).find(entry.getKey());
+                return other != null && Eq.eq(other.getValue(), entry.getValue());
               });
-    } else if (obj instanceof java.util.Map) {
-      return (this.count() == ((java.util.Map) obj).size())
+    }
+    if (obj instanceof java.util.Map) {
+      return count() == ((java.util.Map) obj).size()
           && Iter.every(
               ((java.util.Map) obj).entrySet().iterator(),
-              (e) -> {
-                Map.Entry oe = (Map.Entry) e;
-                Map.Entry te = (Map.Entry) ((IMapType) this).find(oe.getKey());
-                return te != null && Eq.eq(te.getValue(), oe.getValue());
+              entry -> {
+                Map.Entry other = (Map.Entry) entry;
+                Map.Entry current = (Map.Entry) find((K) other.getKey());
+                return current != null && Eq.eq(current.getValue(), other.getValue());
               });
-    } else {
-      return false;
     }
+    return false;
+  }
+
+  @Override
+  default long hashCalc(Constant.HashType type) {
+    Function<Object, Long> hash = G.hashFn(type);
+    return Iter.reduce(
+        iterator(), Long.valueOf(hashSeed().hashCode()), (acc, entry) -> acc + hash.apply(entry));
   }
 
   @SuppressWarnings({"unchecked", "rawtypes"})
   @Override
-  public default Function getArg1() {
+  default Function getArg1() {
     return key -> lookup((K) key);
   }
 
   @SuppressWarnings({"unchecked", "rawtypes"})
   @Override
-  public default BiFunction getArg2() {
+  default BiFunction getArg2() {
     return (key, notFound) -> lookup((K) key, (V) notFound);
   }
 }

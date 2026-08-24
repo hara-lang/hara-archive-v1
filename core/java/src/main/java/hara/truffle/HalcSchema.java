@@ -3,8 +3,8 @@ package hara.truffle;
 import hara.lang.base.G;
 import hara.lang.data.Keyword;
 import hara.lang.data.Symbol;
-import hara.lang.data.types.ILinearType;
-import hara.lang.data.types.IMapType;
+import hara.lang.protocol.ILinearType;
+import hara.lang.protocol.IMapType;
 import hara.kernel.builtin.BuiltinStruct;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -175,10 +175,10 @@ public final class HalcSchema {
 
   public static Type normalize(Object schema) {
     if (schema instanceof Keyword keyword) return new Primitive(keywordName(keyword));
-    if (schema instanceof hara.lang.data.types.IMapType<?, ?> map) {
+    if (schema instanceof hara.lang.protocol.IMapType<?, ?> map) {
       @SuppressWarnings("unchecked")
-      hara.lang.data.types.IMapType<Object, Object> valuesMap =
-          (hara.lang.data.types.IMapType<Object, Object>) map;
+      hara.lang.protocol.IMapType<Object, Object> valuesMap =
+          (hara.lang.protocol.IMapType<Object, Object>) map;
       Object kindValue = valuesMap.lookup(Keyword.create("kind"));
       if (kindValue instanceof Keyword kind) {
         return normalizeLonghand(valuesMap, kind.getName());
@@ -572,7 +572,7 @@ public final class HalcSchema {
         pushJoined(members, inferExpression(vector.nth(index), environment));
       return new VectorType(join(members));
     }
-    if (form instanceof hara.lang.data.types.IMapType<?, ?> map) {
+    if (form instanceof hara.lang.protocol.IMapType<?, ?> map) {
       List<Field> fields = new ArrayList<>();
       for (Object item : map) {
         Entry<?, ?> entry = (Entry<?, ?>) item;
@@ -580,7 +580,7 @@ public final class HalcSchema {
       }
       return new MapType(fields);
     }
-    if (form instanceof hara.lang.data.types.ISetType<?> set) {
+    if (form instanceof hara.lang.protocol.ISetType<?> set) {
       List<Type> members = new ArrayList<>();
       for (Object value : set) pushJoined(members, inferExpression(value, environment));
       return new SetType(join(members));

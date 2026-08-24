@@ -1,7 +1,7 @@
 package hara.kernel.builtin;
 
 import hara.lang.data.Tuple;
-import hara.lang.data.types.ILinearType;
+import hara.lang.protocol.ILinearType;
 import org.junit.Test;
 import static org.junit.Assert.*;
 import java.util.Arrays;

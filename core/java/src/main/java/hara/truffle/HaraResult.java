@@ -5,7 +5,7 @@ import hara.lang.base.Ex;
 import hara.lang.base.G;
 import hara.lang.data.Keyword;
 import hara.lang.data.Tuple;
-import hara.lang.data.types.IMapType;
+import hara.lang.protocol.IMapType;
 import hara.lang.protocol.Constant;
 import hara.lang.protocol.IDeref;
 import hara.lang.protocol.IDerefTimeout;

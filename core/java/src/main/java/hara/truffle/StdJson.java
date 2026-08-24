@@ -1,7 +1,7 @@
 package hara.truffle;
 
-import hara.lang.data.types.IMapType;
-import hara.lang.data.types.ILinearType;
+import hara.lang.protocol.IMapType;
+import hara.lang.protocol.ILinearType;
 
 /** Compact and indented encoders for the strict JSON v1 value model. */
 final class StdJson {

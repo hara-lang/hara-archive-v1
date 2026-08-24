@@ -2,7 +2,7 @@ package hara.kernel.base;
 
 import hara.kernel.builtin.BuiltinRuntime;
 import hara.lang.data.Symbol;
-import hara.lang.data.types.ILinearType;
+import hara.lang.protocol.ILinearType;
 import org.junit.Test;
 
 import static org.junit.Assert.*;

@@ -10,7 +10,7 @@ import hara.lang.protocol.ILookup;
 import hara.lang.protocol.IMetadata;
 import hara.lang.protocol.IObjType;
 import hara.lang.protocol.IPointer;
-import hara.lang.data.types.IMapType;
+import hara.lang.protocol.IMapType;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.LinkedHashMap;

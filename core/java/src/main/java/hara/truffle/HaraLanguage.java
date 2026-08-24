@@ -202,8 +202,8 @@ public final class HaraLanguage extends TruffleLanguage<HaraContext> {
         }
         if (clause.count() == 2
             && config.equals(clause.nth(0))
-            && clause.nth(1) instanceof hara.lang.data.types.IMapType<?, ?> options) {
-          hara.lang.data.types.IMapType raw = options;
+            && clause.nth(1) instanceof hara.lang.protocol.IMapType<?, ?> options) {
+          hara.lang.protocol.IMapType raw = options;
           if (raw.lookup(override) != null || raw.lookup(expose) != null) return true;
         }
       }
@@ -212,7 +212,7 @@ public final class HaraLanguage extends TruffleLanguage<HaraContext> {
   }
 
   private static boolean requiresFoundationNamespace(Object value) {
-    if (!(value instanceof hara.lang.data.types.ILinearType<?> requirement)
+    if (!(value instanceof hara.lang.protocol.ILinearType<?> requirement)
         || requirement.count() == 0
         || !(requirement.nth(0) instanceof hara.lang.data.Symbol namespace)) {
       return false;
@@ -239,10 +239,10 @@ public final class HaraLanguage extends TruffleLanguage<HaraContext> {
     if (!(form instanceof IObjType) || sourceName == null) return form;
     IObjType object = (IObjType) form;
     IMetadata metadata = object.meta();
-    hara.lang.data.types.IMapType updated =
-        metadata instanceof hara.lang.data.types.IMapType
-            ? (hara.lang.data.types.IMapType)
-                ((hara.lang.data.types.IMapType) metadata)
+    hara.lang.protocol.IMapType updated =
+        metadata instanceof hara.lang.protocol.IMapType
+            ? (hara.lang.protocol.IMapType)
+                ((hara.lang.protocol.IMapType) metadata)
                     .assoc(Keyword.create("file"), sourceName)
             : Map.Standard.from(null, Keyword.create("file"), sourceName);
     return object.withMeta(updated);

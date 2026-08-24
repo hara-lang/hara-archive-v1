@@ -68,10 +68,10 @@ list, but their call shapes still need source/runtime evidence:
 
 | Operation | Contract | Evidence |
 | --- | --- | --- |
-| `get` | Runtime intrinsic with two- and three-argument forms | [`primitive.rs`](../../rust/src/core/primitive.rs) |
-| `nth` | Runtime intrinsic with exactly two arguments | [`primitive.rs`](../../rust/src/core/primitive.rs) |
-| `conj` | Runtime intrinsic with a collection and zero or more values | [`evaluator.rs:3159`](../../rust/src/core/evaluator.rs#L3159) |
-| `cons` | Runtime intrinsic with exactly an item and a collection | [`evaluator.rs:3169`](../../rust/src/core/evaluator.rs#L3169) |
+| `get` | Foundation wrapper over `ILookup/lookup` with two- and three-argument forms | [`foundation.hal:45-58`](../../lib/src/std/foundation.hal#L45-L58) |
+| `nth` | Foundation wrapper over `INth/nth` with exactly two arguments | [`foundation.hal:60-66`](../../lib/src/std/foundation.hal#L60-L66) |
+| `conj` | Foundation wrapper over `IConj/conj` with a collection and one or more values | [`foundation.hal:79-89`](../../lib/src/std/foundation.hal#L79-L89) |
+| `cons` | Foundation wrapper over `ICons/cons` with exactly an item and a collection | [`foundation.hal:91-96`](../../lib/src/std/foundation.hal#L91-L96) |
 | `filter`, `take`, `drop`, `mapcat`, `keep`, `every?`, `any?` | Foundation multi-arity forms: unary form returns a reusable transform; collection form executes it | [`foundation.hal:958-1087`](../../lib/src/std/foundation.hal#L958-L1087) |
 
 ## Macro call shapes

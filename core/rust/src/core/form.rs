@@ -121,13 +121,17 @@ pub(crate) fn definition_metadata(
     };
     metadata = assoc_metadata(metadata, "arglists", MetadataValue::Vector(arglists));
     if metadata.as_ref().is_some_and(|value| value.flag("inline")) {
-        let target = inline_forward_target(rest)
-            .ok_or_else(|| ":inline true requires a transparent forwarding function".to_string())?;
-        metadata = assoc_metadata(
-            metadata,
-            "inline-target",
-            MetadataValue::Symbol(Symbol::from(target)),
-        );
+        // Transparent wrappers receive an `inline-target` for direct call
+        // lowering. Composed source wrappers may still opt into inline
+        // metadata; they remain ordinary source functions when no single
+        // forwarding target can be derived.
+        if let Some(target) = inline_forward_target(rest) {
+            metadata = assoc_metadata(
+                metadata,
+                "inline-target",
+                MetadataValue::Symbol(Symbol::from(target)),
+            );
+        }
     }
     if private {
         metadata = assoc_metadata(metadata, "private", MetadataValue::Boolean(true));

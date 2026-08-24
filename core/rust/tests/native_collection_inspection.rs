@@ -58,3 +58,24 @@ fn canonical_peek_first_protocol_is_available_without_legacy_aliases() {
         "40"
     );
 }
+
+#[test]
+fn portable_collection_categories_classify_by_protocol_parents() {
+    let mut runtime = Runtime::new();
+    assert_eq!(
+        runtime
+            .eval_native(
+                "[(satisfies? IMapType {:a 1})\
+                 (satisfies? IMapType [1])\
+                 (satisfies? ISetType #{1})\
+                 (satisfies? ISetType [1])\
+                 (satisfies? ILinearType [1])\
+                 (satisfies? ILinearType #{1})\
+                 (map? {:a 1}) (map? [1])\
+                 (set? #{1}) (set? [1])\
+                 (sequential? [1]) (sequential? #{1})]"
+            )
+            .unwrap(),
+        "[true false true false true false true false true false true false]"
+    );
+}

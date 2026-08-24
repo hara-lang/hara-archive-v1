@@ -7,7 +7,7 @@ import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
 import hara.lang.data.Keyword;
-import hara.lang.data.types.IMapType;
+import hara.lang.protocol.IMapType;
 import java.nio.charset.StandardCharsets;
 import java.util.HexFormat;
 import org.graalvm.polyglot.Context;

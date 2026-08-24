@@ -32,8 +32,8 @@ public class HalcArtifactTest {
     hara.lang.data.List<?> definition = (hara.lang.data.List<?>) module.forms[2];
     hara.lang.data.Symbol definitionName = (hara.lang.data.Symbol) definition.nth(1);
     @SuppressWarnings("unchecked")
-    hara.lang.data.types.IMapType<Object, Object> metadata =
-        (hara.lang.data.types.IMapType<Object, Object>) definitionName.meta();
+    hara.lang.protocol.IMapType<Object, Object> metadata =
+        (hara.lang.protocol.IMapType<Object, Object>) definitionName.meta();
     hara.lang.data.List<?> reference =
         (hara.lang.data.List<?>) metadata.lookup(hara.lang.data.Keyword.create("schema"));
     hara.lang.data.Symbol target = (hara.lang.data.Symbol) reference.nth(1);

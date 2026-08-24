@@ -2,7 +2,7 @@ package hara.lang.data;
 
 import hara.lang.base.Ex;
 import hara.lang.base.Iter;
-import hara.lang.data.types.ILinearType;
+import hara.lang.protocol.ILinearType;
 import hara.lang.data.types.ISequentialType;
 import hara.lang.data.types.ObjEmpty;
 import hara.lang.data.types.ObjPersistent;

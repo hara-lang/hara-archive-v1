@@ -23,9 +23,9 @@ import hara.lang.base.primitive.Cast;
 import hara.lang.base.primitive.Num;
 import hara.lang.data.Symbol;
 import hara.lang.data.Keyword;
-import hara.lang.data.types.ILinearType;
-import hara.lang.data.types.IMapType;
-import hara.lang.data.types.ISetType;
+import hara.lang.protocol.ILinearType;
+import hara.lang.protocol.IMapType;
+import hara.lang.protocol.ISetType;
 import hara.lang.protocol.IExInfo;
 import hara.lang.protocol.IFn;
 import hara.lang.protocol.IMetadata;
@@ -556,8 +556,8 @@ public final class HaraNodes {
     }
 
     private static long length(Object value) {
-      if (value instanceof hara.lang.data.types.ILinearType<?>) {
-        return ((hara.lang.data.types.ILinearType<?>) value).count();
+      if (value instanceof hara.lang.protocol.ILinearType<?>) {
+        return ((hara.lang.protocol.ILinearType<?>) value).count();
       }
       if (value instanceof java.util.Map<?, ?>) return ((java.util.Map<?, ?>) value).size();
       if (value instanceof java.util.List<?>) return ((java.util.List<?>) value).size();
@@ -578,8 +578,8 @@ public final class HaraNodes {
           return ((java.util.List<?>) target).get(index(key, target));
         }
         if (target instanceof byte[]) return ((byte[]) target)[index(key, target)];
-        if (target instanceof hara.lang.data.types.ILinearType<?>) {
-          return ((hara.lang.data.types.ILinearType<?>) target).nth(indexLong(key));
+        if (target instanceof hara.lang.protocol.ILinearType<?>) {
+          return ((hara.lang.protocol.ILinearType<?>) target).nth(indexLong(key));
         }
         if (target instanceof String) return ((String) target).charAt(index(key, target));
         if (target != null && target.getClass().isArray()) {
@@ -692,10 +692,10 @@ public final class HaraNodes {
         return new java.util.ArrayList<>(
             ((java.util.List<?>) target).subList((int) start, (int) end));
       }
-      if (target instanceof hara.lang.data.types.ILinearType<?>) {
+      if (target instanceof hara.lang.protocol.ILinearType<?>) {
         Object[] values = new Object[(int) (end - start)];
         for (int i = 0; i < values.length; i++) {
-          values[i] = ((hara.lang.data.types.ILinearType<?>) target).nth(start + i);
+          values[i] = ((hara.lang.protocol.ILinearType<?>) target).nth(start + i);
         }
         return BuiltinStruct.vector(values);
       }
@@ -747,9 +747,9 @@ public final class HaraNodes {
     public Object execute(VirtualFrame frame) {
       Object value = target.execute(frame);
       if (value == null) return null;
-      if (key instanceof Number && value instanceof hara.lang.data.types.ILinearType<?>) {
+      if (key instanceof Number && value instanceof hara.lang.protocol.ILinearType<?>) {
         long index = keyIndex();
-        hara.lang.data.types.ILinearType<?> linear = (hara.lang.data.types.ILinearType<?>) value;
+        hara.lang.protocol.ILinearType<?> linear = (hara.lang.protocol.ILinearType<?>) value;
         return index < 0 || index >= linear.count() ? null : linear.nth(index);
       }
       if (key instanceof Number && value instanceof hara.lang.data.types.ILinkedType<?>) {
@@ -829,8 +829,8 @@ public final class HaraNodes {
     public Object execute(VirtualFrame frame) {
       Object value = target.execute(frame);
       if (value == null) return null;
-      if (value instanceof hara.lang.data.types.ILinearType<?>) {
-        hara.lang.data.types.ILinearType<?> linear = (hara.lang.data.types.ILinearType<?>) value;
+      if (value instanceof hara.lang.protocol.ILinearType<?>) {
+        hara.lang.protocol.ILinearType<?> linear = (hara.lang.protocol.ILinearType<?>) value;
         if (start > linear.count()) {
           throw new HaraException("Destructuring rest index is out of bounds", this);
         }
@@ -851,7 +851,7 @@ public final class HaraNodes {
     }
 
     @TruffleBoundary
-    private Object restLinear(hara.lang.data.types.ILinearType<?> linear) {
+    private Object restLinear(hara.lang.protocol.ILinearType<?> linear) {
       Object[] values = new Object[(int) linear.count() - (int) start];
       for (int i = 0; i < values.length; i++) {
         values[i] = linear.nth(start + i);
@@ -2544,7 +2544,7 @@ public final class HaraNodes {
         case GET:
           return receiver == null
               || receiver instanceof hara.lang.protocol.ILookup
-              || receiver instanceof hara.lang.data.types.ISetType
+              || receiver instanceof hara.lang.protocol.ISetType
               || receiver instanceof byte[];
         case NTH:
           return receiver instanceof hara.lang.protocol.INth || receiver instanceof byte[];
@@ -2579,7 +2579,7 @@ public final class HaraNodes {
             (hara.lang.protocol.ILookup<Object, Object>) receiver;
         return values.length == 3 ? lookup.lookup(values[1], values[2]) : lookup.lookup(values[1]);
       }
-      if (receiver instanceof hara.lang.data.types.ISetType<?> set) {
+      if (receiver instanceof hara.lang.protocol.ISetType<?> set) {
         Object found =
             ((hara.lang.protocol.IFind<Object, Object>) set).find(values[1]);
         return found == null && values.length == 3 ? values[2] : found;

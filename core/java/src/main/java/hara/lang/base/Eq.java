@@ -1,7 +1,7 @@
 package hara.lang.base;
 
 import hara.lang.base.primitive.Num;
-import hara.lang.data.types.IMapType;
+import hara.lang.protocol.IMapType;
 import hara.lang.data.types.ISequentialType;
 import hara.lang.protocol.IEquality;
 

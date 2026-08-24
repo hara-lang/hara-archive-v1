@@ -1,4 +1,4 @@
-;; std.fs.walk — deterministic traversal over std.native.File/entries.
+;; std.fs.walk — deterministic traversal over File/entries.
 (ns std.fs.walk
   (:config {:override [walk]})
   (:require [std.fs.path :as path]))

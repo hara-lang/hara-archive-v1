@@ -33,6 +33,33 @@
                  (std.foundation/count {})])
    :expected [3 0]}])
 
+^{:refer std.foundation/empty}
+(Test/run
+ [{:name "dispatches empty-value construction through IEmpty"
+   :test (fn [] [(std.foundation/empty [1 2 3])
+                 (std.foundation/empty {:a 1})])
+   :expected [[] {}]}])
+
+^{:refer std.foundation/nth}
+(Test/run
+ [{:name "dispatches indexed access through INth"
+   :test (fn [] [(std.foundation/nth [10 20 30] 1)
+                 (std.foundation/nth {:a 1} :a)])
+   :expected [20 1]}])
+
+^{:refer std.foundation/conj}
+(Test/run
+ [{:name "conjoins values through IConj"
+   :test (fn [] [(std.foundation/conj [1] 2)
+                 (std.foundation/conj [1] 2 3)])
+   :expected [[1 2] [1 2 3]]}])
+
+^{:refer std.foundation/cons}
+(Test/run
+ [{:name "conses a value through ICons"
+   :test (fn [] (std.foundation/cons 1 [2 3]))
+   :expected (1 2 3)}])
+
 ^{:refer std.foundation/tuple}
 (Test/run
  [{:name "constructs a fixed-width tuple from all values"
@@ -306,8 +333,36 @@
 ^{:refer std.foundation/juxt}
 (Test/run [])
 
+^{:refer std.foundation/not}
+(Test/run
+ [{:name "recognizes falsey values"
+   :test (fn [] [(std.foundation/not nil)
+                 (std.foundation/not false)
+                 (std.foundation/not true)])
+   :expected [true true false]}])
+
 ^{:refer std.foundation/boolean}
-(Test/run [])
+(Test/run
+ [{:name "returns canonical booleans"
+   :test (fn [] [(std.foundation/boolean nil)
+                 (std.foundation/boolean false)
+                 (std.foundation/boolean :present)])
+   :expected [false false true]}])
+
+^{:refer std.foundation/compare}
+(Test/run
+ [{:name "orders mutually comparable values"
+   :test (fn [] [(std.foundation/compare 1 2)
+                 (std.foundation/compare 2 2)
+                 (std.foundation/compare 2 1)])
+   :expected [-1 0 1]}])
+
+^{:refer std.foundation/not=}
+(Test/run
+ [{:name "negates equality across all supplied values"
+   :test (fn [] [(std.foundation/not= 1 2)
+                 (std.foundation/not= 1 1)])
+   :expected [true false]}])
 
 ^{:refer std.foundation/zero?}
 (Test/run [])
@@ -325,7 +380,12 @@
 (Test/run [])
 
 ^{:refer std.foundation/nil?}
-(Test/run [])
+(Test/run
+ [{:name "checks nil through equality"
+   :test (fn [] [(std.foundation/nil? nil)
+                 (std.foundation/nil? false)
+                 (std.foundation/nil? :present)])
+   :expected [true false false]}])
 
 ^{:refer std.foundation/false?}
 (Test/run [])
@@ -398,6 +458,36 @@
  [{:name "rejects ordinary values"
    :test (fn [] (std.foundation/reduced? 42))
    :expected false}])
+
+^{:refer std.foundation/coll?}
+(Test/run
+ [{:name "uses IColl satisfaction"
+   :test (fn [] [(std.foundation/coll? [1])
+                 (std.foundation/coll? {})
+                 (std.foundation/coll? 1)])
+   :expected [true true false]}])
+
+^{:refer std.foundation/map?}
+(Test/run
+ [{:name "uses IMapType satisfaction"
+   :test (fn [] [(std.foundation/map? {:a 1})
+                 (std.foundation/map? [1])])
+   :expected [true false]}])
+
+^{:refer std.foundation/set?}
+(Test/run
+ [{:name "uses ISetType satisfaction"
+   :test (fn [] [(std.foundation/set? #{1})
+                 (std.foundation/set? [1])])
+   :expected [true false]}])
+
+^{:refer std.foundation/sequential?}
+(Test/run
+ [{:name "uses ILinearType satisfaction"
+   :test (fn [] [(std.foundation/sequential? [1])
+                 (std.foundation/sequential? '(1))
+                 (std.foundation/sequential? #{1})])
+   :expected [true true false]}])
 
 ^{:refer std.foundation/unreduced}
 (Test/run
@@ -614,6 +704,27 @@
   {:name "preserves list order"
    :test (fn [] (std.foundation/drop 1 '(a b c d)))
    :expected '(b c d)}])
+
+^{:refer std.foundation/seq?}
+(Test/run
+ [{:name "recognizes realized sequences by runtime type"
+   :test (fn [] [(std.foundation/seq? (std.foundation/seq [1]))
+                 (std.foundation/seq? [1])])
+   :expected [true false]}])
+
+^{:refer std.foundation/iter?}
+(Test/run
+ [{:name "recognizes iterators by runtime type"
+   :test (fn [] [(std.foundation/iter? (std.foundation/iter [1]))
+                 (std.foundation/iter? [1])])
+   :expected [true false]}])
+
+^{:refer std.foundation/promise?}
+(Test/run
+ [{:name "recognizes promises by runtime type"
+   :test (fn [] [(std.foundation/promise? (Promise/from 1))
+                 (std.foundation/promise? 1)])
+   :expected [true false]}])
 
 ^{:refer std.foundation/subvec}
 (Test/run
@@ -1101,7 +1212,7 @@
   {:name "consumes a native iterator in order"
    :test (fn []
            (let [calls (atom 0)
-                 values (std.foundation/for [x (std.native.Iter/iter-range 0 3)]
+                 values (std.foundation/for [x (Iter/iter-range 0 3)]
                           (do (swap! calls inc) x))]
              [(vec values) @calls]))
    :expected [[0 1 2] 3]}

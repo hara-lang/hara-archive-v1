@@ -8,8 +8,8 @@ import static org.junit.Assert.assertTrue;
 import hara.kernel.base.Parser;
 import hara.lang.data.Keyword;
 import hara.lang.data.Symbol;
-import hara.lang.data.types.ILinearType;
-import hara.lang.data.types.IMapType;
+import hara.lang.protocol.ILinearType;
+import hara.lang.protocol.IMapType;
 import hara.lang.declaration.HaraAvailability;
 import hara.lang.declaration.HaraMethod;
 import hara.lang.declaration.HaraNativeBinding;
@@ -47,7 +47,8 @@ public class HaraDeclarationCoverageTest {
       assertNotNull("compatibility snapshot is missing", input);
       json = new String(input.readAllBytes());
     }
-    assertTrue(json, json.contains("\"protocolCount\": 72"));
+    assertTrue(json, json.contains("\"protocolCount\": 75"));
+    assertTrue(json, json.contains("\"portableProtocolCount\": 60"));
     assertTrue(json, json.contains("\"declaredMethodCount\": 129"));
     assertTrue(json, json.contains("\"nativeTypeCount\": 34"));
     assertTrue(json, json.contains("\"IEncodeVisitor\""));
@@ -59,7 +60,7 @@ public class HaraDeclarationCoverageTest {
     IMapType contract = readMap(specsRegistry().resolve(PROTOCOLS_SPEC));
     Map<String, ProtocolSpec> expected = protocolSpecs(contract);
 
-    assertEquals("Java protocol closure must equal the specs inventory", 72, expected.size());
+    assertEquals("Java protocol closure must equal the specs inventory", 75, expected.size());
 
     for (ProtocolSpec spec : expected.values()) {
       Class<?> type = Class.forName(PROTOCOL_PACKAGE + spec.name);
@@ -104,7 +105,7 @@ public class HaraDeclarationCoverageTest {
   @Test
   public void runtimeDiscoveryFindsTheSameClosedProtocolSet() {
     Map<String, Class<?>> declarations = HaraProtocolDeclarations.discover();
-    assertEquals(72, declarations.size());
+    assertEquals(75, declarations.size());
     assertNotNull(declarations.get("IColl").getAnnotation(HaraProtocolBinding.class));
     assertNotNull(declarations.get("IMetadata").getAnnotation(HaraProtocolBinding.class));
   }
@@ -225,6 +226,15 @@ public class HaraDeclarationCoverageTest {
   private static String symbol(Object value) {
     assertTrue("Expected symbol, got " + value, value instanceof Symbol);
     return ((Symbol) value).getName();
+  }
+
+  private static List<String> symbols(Object value, String label) {
+    ILinearType values = linear(value, label);
+    List<String> output = new ArrayList<>();
+    for (int index = 0; index < values.count(); index++) {
+      output.add(symbol(values.nth(index)));
+    }
+    return List.copyOf(output);
   }
 
   private static Keyword keyword(String name) {

@@ -68,7 +68,7 @@
   (let [source (str/trim (str/join "\n" lines))]
     {:refer (marker-reference (first lines))
      :source source
-     :pending (str/includes? (whitespace-free source) "(std.native.Test/run[])")}))
+     :pending (str/includes? (whitespace-free source) "(Test/run[])")}))
 
 (defn- source-sections
   [source]
@@ -139,10 +139,10 @@
 
 (defn- pending-block
   [reference]
-  (str +refer-prefix+ reference "}\n(std.native.Test/run [])"))
+  (str +refer-prefix+ reference "}\n(Test/run [])"))
 
 (defn scaffold
-  "Returns a pure preview that adds missing std.native.Test/run blocks using string concatenation."
+  "Returns a pure preview that adds missing Test/run blocks using string concatenation."
   ([namespace-symbol source]
    (scaffold namespace-symbol source {}))
   ([namespace-symbol source options]

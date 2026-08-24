@@ -1165,7 +1165,7 @@ pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, Stri
                     Ok(Value::Promise(provider.run(task)))
                 }
                 Form::Symbol(n)
-                    if ["bytes?", "array?", "object?", "regexp?", "uuid?"]
+                    if ["regexp?", "uuid?"]
                         .contains(&n.as_str()) =>
                 {
                     if fs.len() != 2 {
@@ -1173,9 +1173,6 @@ pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, Stri
                     }
                     let value = eval(&fs[1], env)?;
                     Ok(Value::Bool(match n.as_str() {
-                        "bytes?" => matches!(value, Value::Bytes(_) | Value::ByteBuffer(_)),
-                        "array?" => matches!(value, Value::Array(_)),
-                        "object?" => matches!(value, Value::Object(_)),
                         "regexp?" => matches!(value, Value::Regex(_)),
                         // UUID values are not yet represented by the Rust value model.
                         "uuid?" => false,
@@ -2052,29 +2049,6 @@ pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, Stri
                     }
                     let value = eval(&fs[1], env)?;
                     Ok(Value::Bool(named_protocol_satisfies(n, &value)))
-                }
-                Form::Symbol(n)
-                    if ["cons?", "tuple?", "sequential?", "pointer?"].contains(&n.as_str()) =>
-                {
-                    if fs.len() != 2 {
-                        return Err(format!("{n} expects one argument"));
-                    }
-                    let value = eval(&fs[1], env)?;
-                    Ok(Value::Bool(match n.as_str() {
-                        "cons?" => matches!(value, Value::Cons(_)),
-                        "tuple?" => matches!(value, Value::Tuple(_)),
-                        "sequential?" => matches!(
-                            value,
-                            Value::List(_)
-                                | Value::Cons(_)
-                                | Value::Queue(_)
-                                | Value::Deque(_)
-                                | Value::Vector(_)
-                                | Value::Tuple(_)
-                                | Value::Seq(_)
-                        ),
-                        _ => unreachable!(),
-                    }))
                 }
                 Form::Symbol(n) if n == "to-mutable" || n == "to-persistent" => {
                     if fs.len() != 2 {

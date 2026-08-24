@@ -5,7 +5,7 @@ import hara.kernel.base.RT;
 import hara.kernel.maven.Maven;
 import hara.lang.base.Ex;
 import hara.lang.data.Keyword;
-import hara.lang.data.types.IMapType;
+import hara.lang.protocol.IMapType;
 import hara.lang.protocol.ILookup;
 
 import java.io.File;

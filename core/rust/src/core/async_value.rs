@@ -6,6 +6,7 @@ fn portable_type_keyword(value: &Value) -> Result<Keyword, String> {
         Value::BigInteger(_) => "Integer",
         Value::Character(_) => "Character",
         Value::Regex(_) => "RegExp",
+        Value::Tagged(value) if is_reduced_value(&Value::Tagged(value.clone())) => "Reduced",
         Value::Tagged(_) => "TaggedLiteral",
         Value::Bool(_) => "Boolean",
         Value::String(_) => "String",

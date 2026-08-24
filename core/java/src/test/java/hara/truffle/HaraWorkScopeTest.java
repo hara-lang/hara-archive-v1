@@ -8,7 +8,7 @@ import static org.junit.Assert.assertTrue;
 
 import hara.lang.data.Keyword;
 import hara.lang.data.Symbol;
-import hara.lang.data.types.IMapType;
+import hara.lang.protocol.IMapType;
 import hara.lang.protocol.IWorkRun;
 import java.util.UUID;
 import java.util.List;

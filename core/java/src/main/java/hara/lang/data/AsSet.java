@@ -1,6 +1,6 @@
 package hara.lang.data;
 
-import hara.lang.data.types.ISetType;
+import hara.lang.protocol.ISetType;
 import hara.lang.data.types.ObjMutable;
 
 import java.util.Iterator;

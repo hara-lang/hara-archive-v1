@@ -5,8 +5,8 @@ import static org.junit.Assert.assertNull;
 
 import hara.kernel.base.Parser;
 import hara.lang.data.Keyword;
-import hara.lang.data.types.ILinearType;
-import hara.lang.data.types.IMapType;
+import hara.lang.protocol.ILinearType;
+import hara.lang.protocol.IMapType;
 import java.io.InputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;

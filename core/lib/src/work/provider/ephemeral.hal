@@ -19,7 +19,7 @@
    (provider {}))
   ([options]
    (let [native-host (or (:native-host options)
-                         (std.native.Work/default-host))
+                         (Work/default-host))
          locator
          (host/normalise-locator
           {:host/type :ephemeral

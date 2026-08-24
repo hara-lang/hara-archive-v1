@@ -187,10 +187,8 @@ pub(crate) mod declarations {
         name = "Base",
         methods = [
             "list", "vector", "vec", "set", "tuple", "hash-map", "hash-set", "atom", "pointer", "symbol",
-            "keyword", "reduced", "unreduced", "apply", "not", "boolean", "compare", "reduced?", "nil?",
-            "boolean?", "string?", "char?", "number?", "long?", "double?", "keyword?", "symbol?", "pointer?",
-            "atom?", "function?", "bytes?", "array?", "object?", "list?", "cons?", "vector?", "tuple?", "map?",
-            "set?", "sequential?", "coll?", "satisfies?", "special-symbol?", "type", "instance?"
+            "keyword", "reduced", "unreduced", "apply", "not", "compare",
+            "number?", "long?", "satisfies?", "special-symbol?", "type", "instance?"
         ]
     )]
     struct Base;
@@ -202,7 +200,7 @@ pub(crate) mod declarations {
         namespace = "std.native",
         name = "Iter",
         methods = [
-            "iter", "iter?", "iter-finite?", "iter-materialize", "iter-next?", "iter-next", "iter-close",
+            "seq", "iter", "iter-finite?", "iter-materialize", "iter-next?", "iter-next", "iter-close",
             "iter-concat", "iter-map", "iter-filter", "iter-take-while", "iter-drop-while", "iter-mapcat",
             "iter-keep", "iter-interpose", "iter-interleave", "iter-every?", "iter-any?", "iter-take",
             "iter-drop", "iter-zip", "iter-cycle", "iter-partition-pair", "iter-partition-all", "iter-partition",
