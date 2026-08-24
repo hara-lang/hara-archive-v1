@@ -2,15 +2,16 @@ package hara.truffle;
 
 import hara.lang.data.Symbol;
 import hara.lang.data.types.IMapType;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
  * Publishes both namespace- and interface-qualified products of every live built-in protocol.
  *
  * <p>The registrar derives the declaration set from runtime Vars rather than repeating a protocol
- * inventory or scanning the classpath. Each generated product maps the same {@link HaraVar}, so
- * both source spellings share identity, metadata, bindings, origin, and the underlying {@link
- * HaraProtocol} dispatch registry.
+ * inventory or scanning the classpath. Every product of one declaration maps the exact same
+ * {@link HaraVar}, so descriptor roots, method roots, metadata, origin, dynamic state, and protocol
+ * dispatch remain shared across both source spellings.
  */
 public final class ProtocolProductLibraryProvider implements HaraLibraryProvider {
   private static final String FOUNDATION_NAMESPACE = "std.foundation";
@@ -58,49 +59,112 @@ public final class ProtocolProductLibraryProvider implements HaraLibraryProvider
     return context.invokeCallable(vars.get(), new Object[] {Symbol.create(FOUNDATION_NAMESPACE)});
   }
 
-  private static void publishProducts(
+  /** Publishes all products of one declaration only after the complete collision preflight. */
+  static void publishProducts(
       HaraContext context, String protocolName, HaraProtocol protocol) {
     ProductNamespaces products = ProductNamespaces.from(protocol.name(), protocolName);
 
-    HaraVar interfaceDescriptor = context.resolve(Symbol.create(products.interfaceNamespace()));
-    HaraVar ownerDescriptor =
-        context.resolve(Symbol.create(products.ownerNamespace(), protocolName));
-    HaraVar descriptor = existingProduct(interfaceDescriptor, ownerDescriptor, protocol.name());
-    if (interfaceDescriptor == null) {
-      context.referLibraryVar(products.interfaceNamespace(), protocolName, descriptor);
-    }
-    if (ownerDescriptor == null) {
-      context.referLibraryVar(products.ownerNamespace(), protocolName, descriptor);
-    }
-
-    for (String methodName : protocol.methods().keySet()) {
-      HaraVar interfaceMethod =
-          context.resolve(Symbol.create(products.interfaceNamespace(), methodName));
-      HaraVar ownerMethod =
-          context.resolve(Symbol.create(products.ownerNamespace(), methodName));
-      HaraVar method =
-          existingProduct(
-              interfaceMethod, ownerMethod, protocol.name() + "/" + methodName);
-      if (interfaceMethod == null) {
-        context.referLibraryVar(products.interfaceNamespace(), methodName, method);
+    synchronized (context) {
+      Map<ProductTarget, HaraVar> projections = new LinkedHashMap<>();
+      HaraVar descriptor = requireSourceProduct(context, products, protocolName);
+      if (descriptor.get() != protocol) {
+        throw new HaraException(
+            "Protocol descriptor does not contain its declared protocol: " + protocol.name());
       }
-      if (ownerMethod == null) {
-        context.referLibraryVar(products.ownerNamespace(), methodName, method);
+      addProjections(projections, products, protocolName, descriptor);
+
+      for (String methodName : protocol.methods().keySet()) {
+        addProjections(
+            projections,
+            products,
+            methodName,
+            requireSourceProduct(context, products, methodName));
+      }
+
+      // No product is written until every target has proved either absent or already mapped to
+      // the same Var. The publication phase below is therefore a sequence of non-failing map puts.
+      for (Map.Entry<ProductTarget, HaraVar> projection : projections.entrySet()) {
+        HaraVar existing = resolveTarget(context, projection.getKey());
+        if (existing != null && existing != projection.getValue()) {
+          throw productCollision(projection.getKey(), existing, projection.getValue());
+        }
+      }
+
+      for (Map.Entry<ProductTarget, HaraVar> projection : projections.entrySet()) {
+        ProductTarget target = projection.getKey();
+        if (resolveTarget(context, target) == null) {
+          context.referLibraryVar(target.namespace(), target.name(), projection.getValue());
+        }
+      }
+
+      for (Map.Entry<ProductTarget, HaraVar> projection : projections.entrySet()) {
+        if (resolveTarget(context, projection.getKey()) != projection.getValue()) {
+          throw new HaraException(
+              "Protocol product did not preserve Var identity: " + projection.getKey().display());
+        }
       }
     }
   }
 
-  private static HaraVar existingProduct(
-      HaraVar interfaceProduct, HaraVar ownerProduct, String declaration) {
-    if (interfaceProduct == null && ownerProduct == null) {
-      throw new HaraException("Declaration has no registered product: " + declaration);
+  private static HaraVar requireSourceProduct(
+      HaraContext context, ProductNamespaces products, String localName) {
+    ProductTarget interfaceTarget =
+        new ProductTarget(products.interfaceNamespace(), localName);
+    ProductTarget ownerTarget = new ProductTarget(products.ownerNamespace(), localName);
+    HaraVar interfaceProduct = resolveTarget(context, interfaceTarget);
+    HaraVar ownerProduct = resolveTarget(context, ownerTarget);
+
+    if (interfaceProduct != null && ownerProduct != null && interfaceProduct != ownerProduct) {
+      throw productCollision(ownerTarget, ownerProduct, interfaceProduct);
     }
-    if (interfaceProduct != null
-        && ownerProduct != null
-        && interfaceProduct != ownerProduct) {
-      throw new HaraException("Declaration products do not share one Var: " + declaration);
+    HaraVar source = interfaceProduct != null ? interfaceProduct : ownerProduct;
+    if (source == null) {
+      throw new HaraException(
+          "Missing built-in protocol product: "
+              + interfaceTarget.display()
+              + " or "
+              + ownerTarget.display());
     }
-    return interfaceProduct != null ? interfaceProduct : ownerProduct;
+    return source;
+  }
+
+  private static void addProjections(
+      Map<ProductTarget, HaraVar> projections,
+      ProductNamespaces products,
+      String localName,
+      HaraVar source) {
+    addProjection(
+        projections, new ProductTarget(products.interfaceNamespace(), localName), source);
+    addProjection(projections, new ProductTarget(products.ownerNamespace(), localName), source);
+  }
+
+  private static void addProjection(
+      Map<ProductTarget, HaraVar> projections, ProductTarget target, HaraVar source) {
+    HaraVar previous = projections.putIfAbsent(target, source);
+    if (previous != null && previous != source) {
+      throw productCollision(target, previous, source);
+    }
+  }
+
+  private static HaraVar resolveTarget(HaraContext context, ProductTarget target) {
+    return context.resolve(Symbol.create(target.namespace(), target.name()));
+  }
+
+  private static HaraException productCollision(
+      ProductTarget target, HaraVar existing, HaraVar requested) {
+    return new HaraException(
+        "Protocol product collision at "
+            + target.display()
+            + ": existing "
+            + existing
+            + " is not "
+            + requested);
+  }
+
+  private record ProductTarget(String namespace, String name) {
+    private String display() {
+      return namespace + "/" + name;
+    }
   }
 
   private record ProductNamespaces(String ownerNamespace, String interfaceNamespace) {
