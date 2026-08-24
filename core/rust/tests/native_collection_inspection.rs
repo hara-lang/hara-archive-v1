@@ -35,3 +35,26 @@ fn native_set_inspection_does_not_reclassify_sequential_values() {
     let value = runtime.eval_native_value("[:alpha :beta]").unwrap();
     assert!(core::set_values(&value).is_none());
 }
+
+#[test]
+fn canonical_peek_first_protocol_is_available_without_legacy_aliases() {
+    let mut runtime = Runtime::new();
+    assert_eq!(
+        runtime
+            .eval_native("(std.protocol.ipeekfirst.IPeekFirst/peek-first [40 42])")
+            .unwrap(),
+        "40"
+    );
+    assert!(runtime
+        .eval_native("std.protocol.ipeekfirst/peek-first")
+        .is_err());
+    assert!(runtime.eval_native("std.foundation/IPeekFirst").is_err());
+
+    #[cfg(feature = "bytecode-vm")]
+    assert_eq!(
+        runtime
+            .eval_bytecode_native("(std.protocol.ipeekfirst.IPeekFirst/peek-first [40 42])")
+            .unwrap(),
+        "40"
+    );
+}

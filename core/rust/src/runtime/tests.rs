@@ -65,6 +65,17 @@ mod tests {
             .collect()
     }
 
+    fn canonicalize_protocol_method_paths(source: &str) -> String {
+        core::FOUNDATION_PROTOCOLS
+            .iter()
+            .fold(source.to_owned(), |source, (protocol, _)| {
+                source.replace(
+                    &format!("std.protocol.{}/", protocol.to_ascii_lowercase()),
+                    &format!("{}/", core::builtin_protocol_namespace(protocol)),
+                )
+            })
+    }
+
     fn sandbox_eval(
         kernel: &mut SessionKernel,
         sandbox: SandboxId,
@@ -2280,9 +2291,10 @@ mod tests {
         else {
             return;
         };
-        let fixture =
+        let fixture = canonicalize_protocol_method_paths(
             repo_text("01-lang/001-language/draft/conformance/fixtures/protocol_surface.hal")
-                .expect("the specs-owned protocol surface fixture must be available");
+                .expect("the specs-owned protocol surface fixture must be available"),
+        );
         let foundation = runtime
             .namespace_registry
             .find("std.foundation")
@@ -2322,23 +2334,42 @@ mod tests {
                 .methods
                 .keys()
                 .all(|method| !method.ends_with('!')));
-            assert_eq!(
+            assert!(
                 foundation
                     .resolve(&lang::data::Symbol::parse(name))
-                    .unwrap_or_else(|| panic!("missing std.foundation/{name} alias"))
-                    .deref_value(),
-                protocol
+                    .is_none(),
+                "std.foundation/{name} must not be a protocol alias"
             );
             for (method, _) in *methods {
                 let canonical_method = namespace
                     .resolve(&lang::data::Symbol::parse(method))
                     .unwrap_or_else(|| panic!("missing {namespace_name}/{method}"))
                     .deref_value();
-                let aliased_method = foundation
-                    .resolve(&lang::data::Symbol::parse(&format!("{name}/{method}")))
-                    .unwrap_or_else(|| panic!("missing global alias {name}/{method}"))
-                    .deref_value();
-                assert_eq!(aliased_method, canonical_method);
+                assert_eq!(
+                    runtime
+                        .namespace_registry
+                        .resolve(&lang::data::Symbol::parse(&format!("{namespace_name}/{method}")))
+                        .unwrap_or_else(|| panic!("missing {namespace_name}/{method}"))
+                        .deref_value(),
+                    canonical_method
+                );
+                assert!(
+                    foundation
+                        .resolve(&lang::data::Symbol::parse(&format!("{name}/{method}")))
+                        .is_none(),
+                    "std.foundation/{name}/{method} must not be a protocol alias"
+                );
+                assert!(
+                    runtime
+                        .namespace_registry
+                        .resolve(&lang::data::Symbol::parse(&format!(
+                            "std.protocol.{}/{}",
+                            protocol.to_ascii_lowercase(),
+                            method
+                        )))
+                        .is_none(),
+                    "legacy protocol method path must not be intrinsic"
+                );
                 if in_contract {
                     assert!(
                         fixture.contains(&format!("({namespace_name}/{method} fixture")),
@@ -2600,9 +2631,10 @@ mod tests {
     #[test]
     fn shared_foundation_protocol_conformance_fixture_runs_in_the_native_runtime() {
         let mut runtime = Runtime::new();
-        let source =
+        let source = canonicalize_protocol_method_paths(
             repo_text("01-lang/001-language/draft/conformance/fixtures/protocol_surface.hal")
-                .expect("the specs-owned protocol surface fixture must be available");
+                .expect("the specs-owned protocol surface fixture must be available"),
+        );
         assert!(
             !source.contains("/I"),
             "protocol types must resolve unqualified in guest source"
