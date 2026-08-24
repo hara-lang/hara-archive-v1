@@ -145,6 +145,7 @@ jobs:
             core/lib/test/tool/migrate/policy/foundation/conformance_test.hal \
             core/lib/test/tool/migrate/policy/foundation/profile_test.hal \
             core/lib/test/tool/migrate/policy/foundation/review_test.hal \
+            core/lib/test/tool/migrate/policy/foundation/review/generation_test.hal \
             core/lib/test/work/verify/conformance_test.hal
 
       - name: Run complete Hara library harness
