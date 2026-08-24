@@ -10,3 +10,4 @@ hara.truffle.NativeJsonLibraryProvider
 hara.truffle.WorkProtocolLibraryProvider
 hara.truffle.ToolVmLibraryProvider
 hara.truffle.ToolPackageLibraryProvider
+hara.truffle.ProtocolProductLibraryProvider
