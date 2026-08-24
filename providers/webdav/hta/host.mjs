@@ -14,6 +14,36 @@ import {
   statusFailure
 } from "./common.mjs";
 
+const CONTEXT_CLOSE_HOOKS = Symbol.for("hara.hta.close-hooks");
+
+function installContextCloseHook(context, hook) {
+  if (!context || typeof context.close !== "function") return;
+  let state = context[CONTEXT_CLOSE_HOOKS];
+  if (!state) {
+    const originalClose = context.close.bind(context);
+    const hooks = new Set();
+    let closePromise = null;
+    state = Object.freeze({ hooks });
+    Object.defineProperty(context, CONTEXT_CLOSE_HOOKS, { value: state });
+    Object.defineProperty(context, "close", {
+      configurable: true,
+      value(...args) {
+        if (!closePromise) {
+          closePromise = (async () => {
+            const settled = await Promise.allSettled([...hooks].map(cleanup => cleanup()));
+            const result = await originalClose(...args);
+            const rejected = settled.find(item => item.status === "rejected");
+            if (rejected) throw rejected.reason;
+            return result;
+          })();
+        }
+        return closePromise;
+      }
+    });
+  }
+  state.hooks.add(hook);
+}
+
 function canonicalRootUrl(value, allowInsecureLoopback) {
   let url;
   try {
@@ -272,7 +302,25 @@ export function createWebdavFetchHost(options = {}) {
   );
   const mounts = new Map();
   const pending = new Map();
+  const registeredContexts = new WeakSet();
   let nextMount = 0;
+
+  function ownerFromCall(receiver) {
+    const owner = receiver?.kernelContext ?? null;
+    return owner && (typeof owner === "object" || typeof owner === "function") ? owner : null;
+  }
+
+  function requireOwner(record, owner) {
+    if (record?.owner && owner && record.owner !== owner) {
+      fail("file/permission-denied", "WebDAV host authority belongs to another HTA context");
+    }
+  }
+
+  function registerOwner(owner) {
+    if (!owner || registeredContexts.has(owner)) return;
+    registeredContexts.add(owner);
+    installContextCloseHook(owner, () => closeContext(owner));
+  }
 
   function mount(id) {
     const value = mounts.get(id);
@@ -280,7 +328,7 @@ export function createWebdavFetchHost(options = {}) {
     return value;
   }
 
-  async function perform(mountId, id, providerRequest) {
+  async function perform(mountId, id, providerRequest, owner = null) {
     if (typeof id !== "string" || !id.length || pending.has(id)) {
       fail("file/descriptor-invalid", "WebDAV request identity must be unique");
     }
@@ -288,10 +336,15 @@ export function createWebdavFetchHost(options = {}) {
     if (value.body?.byteLength > maxResponseBytes) {
       fail("file/quota-exceeded", "WebDAV request exceeds the configured transfer limit");
     }
-    if (mountId !== null) mount(mountId);
+    if (mountId !== null) {
+      const mounted = mount(mountId);
+      requireOwner(mounted, owner);
+      owner = mounted.owner ?? owner;
+    }
+    registerOwner(owner);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(new Error("timeout")), timeoutMs);
-    pending.set(id, { controller, mountId });
+    pending.set(id, { controller, mountId, owner });
     try {
       const url = logicalUrl(root, value.path);
       const headers = { ...trustedHeaders(options.headers), ...value.headers };
@@ -339,13 +392,15 @@ export function createWebdavFetchHost(options = {}) {
   }
 
   async function open(id, openOptionsValue) {
+    const owner = ownerFromCall(this);
+    registerOwner(owner);
     const openOptions = plain(openOptionsValue ?? new Map());
     const readOnly = configuredReadOnly || openOptions?.["read-only?"] === true;
     const response = await perform(null, id, {
       method: "PROPFIND",
       path: "/",
       headers: { Depth: "0" }
-    });
+    }, owner);
     if (response.status !== 207 && !response.ok && !(response.status >= 200 && response.status < 300)) {
       statusFailure(response.status, "open", "/");
     }
@@ -354,7 +409,7 @@ export function createWebdavFetchHost(options = {}) {
     if (rootEntry.type !== "directory") fail("file/not-directory", "WebDAV root is not a directory");
     const mountId = `webdav-host-${++nextMount}`;
     const capabilities = capabilitySet([...configuredCapabilities], readOnly);
-    mounts.set(mountId, { id: mountId, readOnly, capabilities, closed: false });
+    mounts.set(mountId, { id: mountId, readOnly, capabilities, closed: false, owner });
     return wire({
       mount: mountId,
       "read-only": readOnly,
@@ -364,13 +419,18 @@ export function createWebdavFetchHost(options = {}) {
   }
 
   async function invoke(mountId, id, requestValue) {
-    return wire(await perform(mountId, id, requestValue));
+    return wire(await perform(mountId, id, requestValue, ownerFromCall(this)));
   }
 
   async function cancel(mountId, id) {
-    if (mountId !== null && mounts.has(mountId)) mount(mountId);
+    const owner = ownerFromCall(this);
+    if (mountId !== null && mounts.has(mountId)) {
+      const mounted = mount(mountId);
+      requireOwner(mounted, owner);
+    }
     const active = pending.get(id);
     if (!active) return false;
+    requireOwner(active, owner);
     if (mountId !== null && active.mountId !== mountId) {
       fail("file/permission-denied", "WebDAV cancellation belongs to another mount");
     }
@@ -378,7 +438,7 @@ export function createWebdavFetchHost(options = {}) {
     return true;
   }
 
-  async function close(mountId) {
+  async function closeMount(mountId) {
     const value = mounts.get(mountId);
     if (!value) return null;
     mounts.delete(mountId);
@@ -389,9 +449,27 @@ export function createWebdavFetchHost(options = {}) {
     return null;
   }
 
+  async function close(mountId) {
+    const value = mounts.get(mountId);
+    if (!value) return null;
+    requireOwner(value, ownerFromCall(this));
+    return closeMount(mountId);
+  }
+
+  async function closeContext(owner) {
+    for (const active of pending.values()) {
+      if (active.owner === owner) active.controller.abort(new Error("closed"));
+    }
+    await Promise.all(
+      [...mounts.values()]
+        .filter(value => value.owner === owner)
+        .map(value => closeMount(value.id))
+    );
+  }
+
   async function closeAll() {
     for (const active of pending.values()) active.controller.abort(new Error("closed"));
-    await Promise.all([...mounts.keys()].map(close));
+    await Promise.all([...mounts.keys()].map(closeMount));
   }
 
   return Object.freeze({
