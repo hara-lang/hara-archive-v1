@@ -3,6 +3,7 @@ package hara.truffle;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 
+import hara.lang.protocol.IStreamDuplex;
 import org.graalvm.polyglot.Context;
 import org.junit.Test;
 
@@ -33,6 +34,12 @@ public class NativeTypeBoundaryTest {
                       + "(nil? (resolve 'std.native.Seq))]")
               .toString());
     }
+  }
+
+  @Test
+  public void duplexUsesTheAnnotatedStreamProtocolBoundary() {
+    assertEquals(
+        IStreamDuplex.class, HaraProtocolDeclarations.discover().get("IStreamDuplex"));
   }
 
   @Test

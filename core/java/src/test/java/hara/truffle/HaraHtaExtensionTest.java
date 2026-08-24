@@ -16,6 +16,24 @@ public class HaraHtaExtensionTest {
       Path.of("rust/raw/target/wasm32-unknown-unknown/release/hara_wasm_raw.wasm");
 
   @Test
+  public void htaTimeoutConfigurationMatchesTheRustBoundary() {
+    String previous = System.getProperty("hara.hta.timeout.ms");
+    try {
+      System.setProperty("hara.hta.timeout.ms", "0");
+      assertEquals(0L, HaraWasmExtension.htaTimeoutMillis());
+      System.setProperty("hara.hta.timeout.ms", "17");
+      assertEquals(17L, HaraWasmExtension.htaTimeoutMillis());
+      System.setProperty("hara.hta.timeout.ms", "-1");
+      assertEquals(120_000L, HaraWasmExtension.htaTimeoutMillis());
+      System.setProperty("hara.hta.timeout.ms", "invalid");
+      assertEquals(120_000L, HaraWasmExtension.htaTimeoutMillis());
+    } finally {
+      if (previous == null) System.clearProperty("hara.hta.timeout.ms");
+      else System.setProperty("hara.hta.timeout.ms", previous);
+    }
+  }
+
+  @Test
   public void htaActorEvaluatesAndSettlesTasks() throws Exception {
     withExtension(
         "",

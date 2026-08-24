@@ -11,7 +11,11 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import org.graalvm.nativeimage.ImageInfo;
 import org.graalvm.polyglot.Context;
 import org.graalvm.polyglot.Source;
@@ -21,6 +25,9 @@ import org.graalvm.polyglot.proxy.ProxyObject;
 
 /** Generic, import-free Wasm extension instance. */
 final class HaraWasmExtension implements HaraExtensionRuntime {
+  private static final long DEFAULT_HTA_TIMEOUT_MILLIS = 120_000L;
+  private static final long MAX_WASM_MEMORY_BYTES = 64L * 1024 * 1024;
+
   private final HaraExtensionManifest manifest;
   private final Context context;
   private final Map<String, Value> exports;
@@ -37,9 +44,17 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
   private final Value htaDropTask;
   private final Value htaRelease;
   private final BlockingQueue<Command> mailbox;
-  private final Map<Long, CompletableFuture<Object>> tasks = new LinkedHashMap<>();
+  private final Map<Long, TaskFuture> tasks = new LinkedHashMap<>();
+  private final ScheduledExecutorService deadlines =
+      Executors.newSingleThreadScheduledExecutor(
+          runnable -> {
+            Thread thread = new Thread(runnable, "hara-hta-deadlines");
+            thread.setDaemon(true);
+            return thread;
+          });
   private final Set<HtaHandle> handles = new LinkedHashSet<>();
   private final Set<Long> hostCallsSeen = new LinkedHashSet<>();
+  private final Map<Long, Long> hostCallTasks = new LinkedHashMap<>();
   private final Thread owner;
 
   HaraWasmExtension(HaraExtensionPackage extensionPackage) {
@@ -57,20 +72,27 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
       throw new HaraException(
           "extension/abi-unsupported: " + manifest.abi() + " for " + manifest.namespace());
     }
-    capabilities = supportedCapabilities();
-    if (manifest.capabilities().stream().anyMatch(capability -> !capabilities.contains(capability))
-        || manifest.hostCallCapabilities().values().stream()
-            .flatMap(List::stream)
-            .anyMatch(capability -> !capabilities.contains(capability))) {
-      throw new HaraException(
-          "extension/capability-denied: "
-              + manifest.capabilities()
-              + " for "
-              + manifest.namespace());
-    }
+    boolean isHta = "hta.v1".equals(manifest.abi());
+    capabilities = isHta ? supportedCapabilities() : Set.of();
 
     Context opened = null;
     try {
+      if ((!isHta
+              && (!manifest.capabilities().isEmpty()
+                  || !manifest.hostCalls().isEmpty()
+                  || !manifest.hostCallCapabilities().isEmpty()))
+          || (isHta
+              && (manifest.capabilities().stream()
+                      .anyMatch(capability -> !capabilities.contains(capability))
+                  || manifest.hostCallCapabilities().values().stream()
+                      .flatMap(List::stream)
+                      .anyMatch(capability -> !capabilities.contains(capability))))) {
+        throw new HaraException(
+            "extension/capability-denied: "
+                + manifest.capabilities()
+                + " for "
+                + manifest.namespace());
+      }
       byte[] bytes = extensionPackage.moduleBytes();
       byte[] libraryBytes = extensionPackage.wrappedLibraryBytes();
       HaraWasmMemoryBinding memoryBinding =
@@ -108,7 +130,7 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
       Value members = instance.hasMember("exports") ? instance.getMember("exports") : instance;
       Value memoryValue = members.hasMember("memory") ? members.getMember("memory") : null;
       Value allocatorValue = members.hasMember("alloc") ? members.getMember("alloc") : null;
-      boolean isHta = "hta.v1".equals(manifest.abi());
+      checkMemoryLimit(memoryValue, manifest.namespace());
       boolean isMemory = memoryBinding != null;
       LinkedHashMap<String, Value> declared = new LinkedHashMap<>();
       if (!isHta && !isMemory) {
@@ -144,9 +166,11 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
       mailbox = isHta ? new LinkedBlockingQueue<>() : null;
       owner = isHta ? startMailboxOwner() : null;
     } catch (HaraException error) {
+      deadlines.shutdownNow();
       if (opened != null) opened.close(true);
       throw error;
     } catch (Exception error) {
+      deadlines.shutdownNow();
       if (opened != null) opened.close(true);
       throw new HaraException(
           "extension/module-invalid: " + manifest.namespace() + " (" + error.getMessage() + ")");
@@ -216,7 +240,9 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
       appendArgument(arguments, spec.arguments().get(i), values[i], name);
     }
     try {
-      return result(spec.returns(), exports.get(name).execute(arguments.toArray()), name);
+      Object result = result(spec.returns(), exports.get(name).execute(arguments.toArray()), name);
+      checkMemoryLimit(memory, manifest.namespace());
+      return result;
     } catch (HaraException error) {
       throw error;
     } catch (Exception error) {
@@ -310,6 +336,7 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
         if (command instanceof Start) start((Start) command);
         else if (command instanceof Delivery) deliver((Delivery) command);
         else if (command instanceof Cancel) cancel((Cancel) command);
+        else if (command instanceof Timeout) timeout((Timeout) command);
         else if (command instanceof Release) releaseNow((Release) command);
         else {
           rejectAll(new HaraException("hta/session-closed"));
@@ -344,17 +371,26 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
       throw new HaraException("hta/task-duplicate: " + task);
     }
     command.result.task = task;
-    tasks.put(task, command.result.future);
+    tasks.put(task, command.result);
+    long timeout = htaTimeoutMillis();
+    if (timeout > 0) {
+      command.result.deadline =
+          deadlines.schedule(
+              () -> mailbox.add(new Timeout(command.result)), timeout, TimeUnit.MILLISECONDS);
+    }
     if (command.result.future.isCancelled()) {
       cancel(new Cancel(command.result));
     }
   }
 
   private void deliver(Delivery command) {
+    Long task = hostCallTasks.get(command.call);
+    if (task == null || task.longValue() != command.task || !tasks.containsKey(task)) return;
     int status =
         executeFrame(htaDeliver, List.of(command.call, command.fulfilled ? 0L : 1L, command.value))
             .asInt();
     if (status != 0) throw new HaraException("hta/deliver-failed: " + status);
+    hostCallTasks.remove(command.call);
   }
 
   @SuppressWarnings("unchecked")
@@ -368,12 +404,14 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
       long kind = number(event, 0, "event kind");
       if (kind == 0 || kind == 1) {
         long task = number(event, 1, "task id");
-        CompletableFuture<Object> future = tasks.remove(task);
-        if (future == null) continue;
+        TaskFuture pending = tasks.remove(task);
+        if (pending == null) continue;
+        removeHostCalls(task);
+        cancelDeadline(pending);
         int dropStatus = htaDropTask.execute(task).asInt();
         if (dropStatus != 0) throw new HaraException("hta/drop-task-failed: " + dropStatus);
-        if (kind == 0) future.complete(event.get(2));
-        else future.completeExceptionally(rejection(event.get(2)));
+        if (kind == 0) pending.future.complete(event.get(2));
+        else pending.future.completeExceptionally(rejection(event.get(2)));
       } else if (kind == 2) {
         hostCall(event);
       } else {
@@ -388,28 +426,38 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
       throw new HaraException("hta/host-call-malformed");
     }
     long call = number(event, 1, "call id");
+    long task = number(event, 2, "task id");
+    if (!tasks.containsKey(task)) return;
     if (!hostCallsSeen.add(call)) return;
     int serviceIndex = event.size() == 8 ? 5 : 3;
     String service = string(event.get(serviceIndex), "service");
     String method = string(event.get(serviceIndex + 1), "method");
     List<Object> arguments = (List<Object>) event.get(serviceIndex + 2);
     if (!manifest.permitsHostCall(service, method)) {
-      mailbox.add(new Delivery(call, false, error("hta/host-call-denied", service + "/" + method)));
+      hostCallTasks.put(call, task);
+      mailbox.add(
+          new Delivery(
+              call, task, false, error("hta/host-call-denied", service + "/" + method)));
       return;
     }
     if (manifest.hostCallCapabilities(service, method).stream()
         .anyMatch(capability -> !capabilities.contains(capability))) {
-      mailbox.add(new Delivery(call, false, error("hta/capability-denied", service + "/" + method)));
+      hostCallTasks.put(call, task);
+      mailbox.add(
+          new Delivery(
+              call, task, false, error("hta/capability-denied", service + "/" + method)));
       return;
     }
+    hostCallTasks.put(call, task);
     CompletableFuture.supplyAsync(() -> invokeHost(service, method, arguments))
         .whenComplete(
             (value, failure) ->
                 mailbox.add(
                     failure == null
-                        ? new Delivery(call, true, value)
+                        ? new Delivery(call, task, true, value)
                         : new Delivery(
                             call,
+                            task,
                             false,
                             error(
                                 "hta/host-call-failed",
@@ -440,6 +488,7 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
         || !memory.hasBufferElements()) {
       throw new HaraException("hta/memory-unavailable: " + manifest.namespace());
     }
+    checkMemoryLimit(memory, manifest.namespace());
     for (int i = 0; i < bytes.length; i++) memory.writeBufferByte(pointer + i, bytes[i]);
     return new Frame((int) pointer, bytes.length);
   }
@@ -447,7 +496,9 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
   private Value executeFrame(Value function, Object value) {
     Frame frame = writeFrame(HtaValueCodec.encode(value));
     try {
-      return function.execute(frame.pointer, frame.length);
+      Value result = function.execute(frame.pointer, frame.length);
+      checkMemoryLimit(memory, manifest.namespace());
+      return result;
     } finally {
       deallocator.execute(frame.pointer, frame.length);
     }
@@ -538,6 +589,18 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
     return Set.copyOf(result);
   }
 
+  static long htaTimeoutMillis() {
+    String configured = System.getProperty("hara.hta.timeout.ms");
+    if (configured == null) configured = System.getenv("HARA_HTA_TIMEOUT_MS");
+    if (configured == null) return DEFAULT_HTA_TIMEOUT_MILLIS;
+    try {
+      long timeout = Long.parseLong(configured);
+      return timeout >= 0 ? timeout : DEFAULT_HTA_TIMEOUT_MILLIS;
+    } catch (NumberFormatException ignored) {
+      return DEFAULT_HTA_TIMEOUT_MILLIS;
+    }
+  }
+
   private static Map<Object, Object> error(String code, String message) {
     LinkedHashMap<Object, Object> error = new LinkedHashMap<>();
     error.put(hara.lang.data.Keyword.create("code"), hara.lang.data.Keyword.create(code));
@@ -560,12 +623,55 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
     if (command.result.task <= 0) return;
     long task = command.result.task;
     if (tasks.remove(task) == null) return;
+    removeHostCalls(task);
+    cancelDeadline(command.result);
     try {
       int status = htaCancel.execute(task).asInt();
       if (status != 0) throw new HaraException("hta/cancel-failed: " + status);
     } finally {
       htaDropTask.execute(task);
     }
+  }
+
+  private void timeout(Timeout command) {
+    if (command.result.task <= 0) return;
+    long task = command.result.task;
+    if (tasks.remove(task) == null) return;
+    removeHostCalls(task);
+    cancelDeadline(command.result);
+    try {
+      htaCancel.execute(task);
+    } catch (RuntimeException ignored) {
+      // Match the Rust provider: cleanup failures must not change the timeout result.
+    }
+    try {
+      htaDropTask.execute(task);
+    } catch (RuntimeException ignored) {
+      // The task is already removed from the host registry.
+    }
+    command.result.future.completeExceptionally(new HaraException("hta/timeout"));
+  }
+
+  private static void cancelDeadline(TaskFuture task) {
+    if (task.deadline != null) task.deadline.cancel(false);
+  }
+
+  private static void checkMemoryLimit(Value memory, String namespace) {
+    if (memory == null || !memory.hasBufferElements()) return;
+    try {
+      if (memory.getBufferSize() > MAX_WASM_MEMORY_BYTES) {
+        throw new HaraException("extension/resource-limit: memory exceeds the Wasm limit: " + namespace);
+      }
+    } catch (HaraException error) {
+      throw error;
+    } catch (RuntimeException error) {
+      throw new HaraException(
+          "extension/memory-invalid: " + namespace + " (" + error.getMessage() + ")");
+    }
+  }
+
+  private void removeHostCalls(long task) {
+    hostCallTasks.entrySet().removeIf(entry -> entry.getValue() == task);
   }
 
   private void validateHandles(Object value) {
@@ -597,7 +703,12 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
       } catch (RuntimeException ignored) {
       }
     }
-    tasks.values().forEach(future -> future.completeExceptionally(error));
+    tasks.values().forEach(
+        task -> {
+          cancelDeadline(task);
+          task.future.completeExceptionally(error);
+        });
+    hostCallTasks.clear();
     tasks.clear();
   }
 
@@ -606,6 +717,7 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
   private static final class TaskFuture {
     private final CompletableFuture<Object> future;
     private long task;
+    private ScheduledFuture<?> deadline;
 
     private TaskFuture(CompletableFuture<Object> future) {
       this.future = future;
@@ -626,11 +738,13 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
 
   private static final class Delivery implements Command {
     private final long call;
+    private final long task;
     private final boolean fulfilled;
     private final Object value;
 
-    private Delivery(long call, boolean fulfilled, Object value) {
+    private Delivery(long call, long task, boolean fulfilled, Object value) {
       this.call = call;
+      this.task = task;
       this.fulfilled = fulfilled;
       this.value = value;
     }
@@ -640,6 +754,14 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
     private final TaskFuture result;
 
     private Cancel(TaskFuture result) {
+      this.result = result;
+    }
+  }
+
+  private static final class Timeout implements Command {
+    private final TaskFuture result;
+
+    private Timeout(TaskFuture result) {
       this.result = result;
     }
   }
@@ -666,6 +788,7 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
 
   @Override
   public void close() {
+    deadlines.shutdownNow();
     if (!hta) {
       context.close(true);
       return;

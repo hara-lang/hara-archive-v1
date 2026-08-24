@@ -81,6 +81,50 @@ public class HaraWasmExtensionTest {
   }
 
   @Test
+  public void coreWasmCannotBorrowHtaCapabilities() throws Exception {
+    Path root = Files.createTempDirectory("hara-wasm-capability-boundary-");
+    Path extension = root.resolve("demo/capability-boundary");
+    Files.createDirectories(extension);
+    HaraExtensionTestProject.write(
+        extension,
+        "{:namespace \"demo.capability-boundary\" :version \"1.0.0\" :provider :wasm "
+            + ":module \"answer-42.wasm\" :abi :core.v1 "
+            + ":exports {\"add\" {:args [:i32 :i32] :returns :i32 :async true}} "
+            + ":capabilities [:filesystem]}");
+    Files.write(extension.resolve("answer-42.wasm"), ADD_WASM);
+    String previousPath = System.getProperty("hara.extensions.path");
+    String previousCapabilities = System.getProperty("hara.hta.capabilities");
+    System.setProperty("hara.extensions.path", root.toString());
+    System.setProperty("hara.hta.capabilities", "filesystem");
+    try (Context context = Context.newBuilder(HaraLanguage.ID).build()) {
+      PolyglotException error =
+          assertThrows(
+              PolyglotException.class,
+              () ->
+                  context.eval(
+                      HaraLanguage.ID,
+                      "(ns app (:require [demo.capability-boundary]))"));
+      assertTrue(error.getMessage().contains("extension/capability-denied"));
+    } finally {
+      if (previousPath == null) System.clearProperty("hara.extensions.path");
+      else System.setProperty("hara.extensions.path", previousPath);
+      if (previousCapabilities == null) System.clearProperty("hara.hta.capabilities");
+      else System.setProperty("hara.hta.capabilities", previousCapabilities);
+      try (var paths = Files.walk(root)) {
+        paths
+            .sorted(java.util.Comparator.reverseOrder())
+            .forEach(
+                path -> {
+                  try {
+                    Files.deleteIfExists(path);
+                  } catch (Exception ignored) {
+                  }
+                });
+      }
+    }
+  }
+
+  @Test
   public void importRejectsHostClassesAndWasmFlavorIsNotAllowed() {
     try (Context context = Context.newBuilder(HaraLanguage.ID).build()) {
       PolyglotException hostImport =

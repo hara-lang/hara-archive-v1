@@ -156,6 +156,7 @@ final class HaraWasmMemoryExecutor {
       throw new HaraException(
           "extension/invoke-failed: " + function.name() + " (" + message(error) + ")");
     }
+    checkMemoryLimit();
     state.callCompleted = true;
     return liftResult(function, rawResult, releaseAlways, totalCopyBytes);
   }
