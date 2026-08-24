@@ -1,0 +1,217 @@
+(ns tool.migrate.policy.foundation.review
+  (:config {:role :internal})
+  (:require [tool.migrate.policy.foundation.profile :as profile]))
+
+(def +document-type+
+  :foundation-conformance-review-import)
+
+(def +authority+
+  :hara-specs-registry)
+
+(def +historical-status+
+  :historical-reviewed-evidence)
+
+(defn review-entry-valid?
+  [entry]
+  (and
+   (map? entry)
+   (keyword? (:review/id entry))
+   (keyword? (:review/kind entry))
+   (= +historical-status+ (:review/status entry))
+   (string? (:source/repository entry))
+   (profile/sha? (:source/revision entry))
+   (keyword? (:promotion/status entry))))
+
+(defn review-import-errors
+  [document]
+  (let [target (:current/target document)
+        imports (:review/imports document)
+        import-values (if (vector? imports) imports [])
+        ids (map :review/id import-values)
+        duplicate-ids
+        (vec
+         (sort
+          (keep
+           (fn [entry]
+             (if (> (second entry) 1)
+               (first entry)
+               nil))
+           (frequencies ids))))]
+    (vec
+     (concat
+      (if (and
+           (map? document)
+           (= +document-type+ (:document/type document))
+           (= +authority+ (:conformance/authority document)))
+        []
+        [{:type :tool.migrate.review/invalid-document}])
+      (if (and
+           (map? target)
+           (profile/sha? (:foundation/revision target))
+           (profile/sha? (:foundation/tree target))
+           (profile/sha? (:hara/revision target))
+           (string? (:family/index target)))
+        []
+        [{:type :tool.migrate.review/invalid-current-target}])
+      (if (and
+           (vector? imports)
+           (not (empty? imports))
+           (every? review-entry-valid? imports))
+        []
+        [{:type :tool.migrate.review/invalid-imports}])
+      (map
+       (fn [review-id]
+         {:type :tool.migrate.review/duplicate-review-id
+          :review/id review-id})
+       duplicate-ids)
+      (if (and
+           (vector? (:promotion/invariants document))
+           (not (empty? (:promotion/invariants document))))
+        []
+        [{:type :tool.migrate.review/missing-promotion-invariants}])))))
+
+(defn assert-review-import
+  [document]
+  (let [errors (review-import-errors document)]
+    (if (not (empty? errors))
+      (throw
+       (ex :tool.migrate/invalid-review-import
+           {:errors errors}
+           :ex/message "Foundation review import is invalid")))
+    document))
+
+(defn review-entry
+  [document review-id]
+  (let [document (assert-review-import document)]
+    (first
+     (filter
+      (fn [entry]
+        (= review-id (:review/id entry)))
+      (:review/imports document)))))
+
+(defn core-candidate-record
+  [review record]
+  {:candidate/status :historical-review
+   :candidate/review-id (:review/id review)
+   :candidate/source-revision (:source/revision review)
+   :candidate/classification (:classification record)
+   :candidate/hara-symbol (:hara/symbol record)
+   :candidate/dimensions (vec (or (:dimensions record) []))
+   :candidate/summary (:summary record)
+   :candidate/promotion (:promotion/status review)
+   :candidate/requires-current-review true})
+
+(defn core-candidate
+  [document observation]
+  (if (not= :derived (:core/status observation))
+    nil
+    (let [review
+          (review-entry document :historical/clojure-core-compatibility)
+          records
+          (concat
+           (or (:review/renamed review) [])
+           (or (:review/changed review) []))
+          record
+          (first
+           (filter
+            (fn [candidate]
+              (= (:core/name observation)
+                 (:clojure/symbol candidate)))
+            records))]
+      (if record
+        (core-candidate-record review record)
+        nil))))
+
+(defn mapped-symbols
+  [references mappings]
+  (vec
+   (filter
+    (fn [mapping]
+      (some
+       (fn [reference]
+         (str/ends-with?
+          reference
+          (str "/" (:source mapping))))
+       references))
+    mappings)))
+
+(defn external-candidate
+  [document observation]
+  (if (not= :emitted (:extraction/status observation))
+    nil
+    (let [review
+          (review-entry document :historical/foundation-external-baa75a)
+          reusable
+          (first
+           (filter
+            (fn [candidate]
+              (= (:external/namespace observation)
+                 (:external/namespace candidate)))
+            (or (:review/reusable review) [])))
+          references (vec (or (:referenced/symbols observation) []))
+          mappings
+          (if reusable
+            (mapped-symbols references (:symbol/mappings reusable))
+            [])]
+      (if reusable
+        {:candidate/status :historical-review
+         :candidate/review-id (:review/id review)
+         :candidate/source-revision (:source/revision review)
+         :candidate/classification (:candidate/classification reusable)
+         :candidate/namespace (:candidate/namespace reusable)
+         :candidate/safety (:candidate/safety reusable)
+         :candidate/hara-evidence (:hara/evidence reusable)
+         :candidate/symbol-mappings mappings
+         :candidate/symbol-status
+         (cond
+           (not (empty? mappings)) :matched
+           (empty? references) :no-symbol-evidence
+           :else :unmapped-symbols)
+         :candidate/source-policy (:promotion/source-policy review)
+         :candidate/promotion (:promotion/status review)
+         :candidate/requires-current-source-reconciliation true
+         :candidate/requires-current-review true}
+        nil))))
+
+(defn annotate-core-observation
+  [document observation]
+  (let [candidate (core-candidate document observation)]
+    (if candidate
+      (assoc observation :review/candidate candidate)
+      observation)))
+
+(defn annotate-external-observation
+  [document observation]
+  (let [candidate (external-candidate document observation)]
+    (if candidate
+      (assoc observation :review/candidate candidate)
+      observation)))
+
+(defn review-import-reference
+  [document]
+  (let [document (assert-review-import document)]
+    {:document/id (:document/id document)
+     :review/ids (mapv :review/id (:review/imports document))
+     :status :candidate-only
+     :runtime/status :not-executed}))
+
+(defn annotate-contract
+  [document contract]
+  (let [document (assert-review-import document)
+        core-observations
+        (mapv
+         (fn [observation]
+           (annotate-core-observation document observation))
+         (vec (or (:conformance/core-references contract) [])))
+        external-observations
+        (mapv
+         (fn [observation]
+           (annotate-external-observation document observation))
+         (vec (or (:conformance/external-dependencies contract) [])))]
+    (assoc
+     (assoc
+      (assoc contract
+             :conformance/core-references core-observations)
+      :conformance/external-dependencies external-observations)
+     :review/import
+     (review-import-reference document))))

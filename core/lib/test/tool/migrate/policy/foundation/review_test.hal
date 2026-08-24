@@ -1,0 +1,239 @@
+(ns tool.migrate.policy.foundation.review-test
+  (:use code.test)
+  (:require [tool.migrate.policy.foundation.review :as review]))
+
+(def core-review
+  {:review/id :historical/clojure-core-compatibility
+   :review/kind :clojure-core-symbol-compatibility
+   :review/status :historical-reviewed-evidence
+   :source/repository "hara-lang/hara"
+   :source/revision "2167569e9577c0b1f6e00ba7af1e5f186dd4f582"
+   :promotion/status :pending-current-family-review
+   :review/renamed
+   [{:clojure/symbol "contains?"
+     :hara/symbol "IFind/has?"
+     :classification :renamed
+     :summary "Protocol membership uses IFind/has?."}]
+   :review/changed
+   [{:clojure/symbol "map"
+     :hara/symbol "map"
+     :classification :adapted
+     :dimensions [:arity :evaluation :return-type]
+     :summary "The Hara collection transform differs from Clojure transducers."}]})
+
+(def external-review
+  {:review/id :historical/foundation-external-baa75a
+   :review/kind :external-clojure-dependency-routes
+   :review/status :historical-reviewed-evidence
+   :source/repository "hara-lang/hara"
+   :source/revision "546371c47fef69be2d5d347c67a2b02f1b0c8e5e"
+   :promotion/status :pending-current-source-reconciliation
+   :promotion/source-policy
+   {:same-blob :eligible-for-carry-forward-review
+    :changed-blob :historical-evidence-only}
+   :review/reusable
+   [{:external/namespace "clojure.string"
+     :candidate/namespace "std.foundation.string"
+     :candidate/classification :portable-substitute
+     :candidate/safety :review
+     :hara/evidence
+     {:source/path "core/lib/src/std/foundation/string.hal"
+      :source/blob "c89fdd4d1d23e407507fd98b88912328ad78f0c1"
+      :test/path "core/lib/test/std/foundation/string_test.hal"
+      :test/blob "482ddef026cd6f07f51088f90cf3b4c3ab9ab188"}
+     :symbol/mappings
+     [{:source "join" :target "join"}
+      {:source "triml" :target "trim-left"}]}]})
+
+(def review-import
+  {:document/id :foundation.review-import/historical-clojure
+   :document/type :foundation-conformance-review-import
+   :document/version "alpha"
+   :document/status :draft
+   :conformance/authority :hara-specs-registry
+   :current/target
+   {:foundation/revision "f55f39855d5e9ea1b22f1d116df684c584323f80"
+    :foundation/tree "3beb10f32e7d57139910ee9c9de1370e966ca935"
+    :hara/revision "fd382c506348c1e96412e7398ac4cba7029b7885"
+    :family/index "../libraries/index.edn"}
+   :review/imports [core-review external-review]
+   :promotion/invariants
+   [:historical-review-does-not-satisfy-current-review
+    :runtime-status-remains-pending-until-executed]})
+
+(def core-observation
+  {:core/id "demo/src/demo.clj#source-0"
+   :core/name "map"
+   :core/status :derived
+   :core/symbol "clojure.core/map"
+   :review/disposition :pending})
+
+(def external-observation
+  {:external/id "demo/src/demo.clj#source-1"
+   :external/namespace "clojure.string"
+   :referenced/symbols ["clojure.string/join" "clojure.string/triml"]
+   :extraction/status :emitted
+   :review/disposition :pending})
+
+^{:refer tool.migrate.policy.foundation.review/review-entry-valid?}
+(fact "review entries require immutable historical coordinates"
+  [(review/review-entry-valid? core-review)
+   (review/review-entry-valid?
+    (assoc core-review :source/revision "moving-target"))]
+  => [true false])
+
+^{:refer tool.migrate.policy.foundation.review/review-import-errors}
+(fact "review import validation detects duplicate review identities"
+  (let [duplicate
+        (update review-import :review/imports conj core-review)]
+    [(review/review-import-errors review-import)
+     (review/review-import-errors duplicate)])
+  => [[]
+      [{:type :tool.migrate.review/duplicate-review-id
+        :review/id :historical/clojure-core-compatibility}]])
+
+^{:refer tool.migrate.policy.foundation.review/assert-review-import}
+(fact "asserting a review import returns valid data and rejects invalid data"
+  [(= review-import (review/assert-review-import review-import))
+   (try
+     (review/assert-review-import
+      (assoc review-import :conformance/authority :other))
+     false
+     (catch Throwable error
+       (= :tool.migrate/invalid-review-import
+          (ex-class error))))]
+  => [true true])
+
+^{:refer tool.migrate.policy.foundation.review/review-entry}
+(fact "review entries are selected by their immutable review identity"
+  (:review/kind
+   (review/review-entry
+    review-import
+    :historical/foundation-external-baa75a))
+  => :external-clojure-dependency-routes)
+
+^{:refer tool.migrate.policy.foundation.review/core-candidate-record}
+(fact "core candidate records remain historical and require current review"
+  (select-keys
+   (review/core-candidate-record
+    core-review
+    (first (:review/changed core-review)))
+   [:candidate/status :candidate/review-id :candidate/classification
+    :candidate/hara-symbol :candidate/dimensions
+    :candidate/requires-current-review])
+  => {:candidate/status :historical-review
+      :candidate/review-id :historical/clojure-core-compatibility
+      :candidate/classification :adapted
+      :candidate/hara-symbol "map"
+      :candidate/dimensions [:arity :evaluation :return-type]
+      :candidate/requires-current-review true})
+
+^{:refer tool.migrate.policy.foundation.review/core-candidate}
+(fact "core candidates cover explicit changed and renamed records only"
+  [(select-keys
+    (review/core-candidate review-import core-observation)
+    [:candidate/classification :candidate/hara-symbol])
+   (select-keys
+    (review/core-candidate
+     review-import
+     (assoc core-observation :core/name "contains?"))
+    [:candidate/classification :candidate/hara-symbol])
+   (review/core-candidate
+    review-import
+    (assoc core-observation :core/name "reduce"))
+   (review/core-candidate
+    review-import
+    (assoc core-observation :core/status :shadowed))]
+  => [{:candidate/classification :adapted
+       :candidate/hara-symbol "map"}
+      {:candidate/classification :renamed
+       :candidate/hara-symbol "IFind/has?"}
+      nil
+      nil])
+
+^{:refer tool.migrate.policy.foundation.review/mapped-symbols}
+(fact "symbol mapping keeps only symbols observed by the current family"
+  (review/mapped-symbols
+   ["clojure.string/triml"]
+   [{:source "join" :target "join"}
+    {:source "triml" :target "trim-left"}])
+  => [{:source "triml" :target "trim-left"}])
+
+^{:refer tool.migrate.policy.foundation.review/external-candidate}
+(fact "external candidates retain reusable mappings without accepting them"
+  [(select-keys
+    (review/external-candidate review-import external-observation)
+    [:candidate/status :candidate/namespace :candidate/classification
+     :candidate/symbol-mappings :candidate/symbol-status
+     :candidate/requires-current-review])
+   (review/external-candidate
+    review-import
+    (assoc external-observation :extraction/status :skipped))]
+  => [{:candidate/status :historical-review
+       :candidate/namespace "std.foundation.string"
+       :candidate/classification :portable-substitute
+       :candidate/symbol-mappings
+       [{:source "join" :target "join"}
+        {:source "triml" :target "trim-left"}]
+       :candidate/symbol-status :matched
+       :candidate/requires-current-review true}
+      nil])
+
+^{:refer tool.migrate.policy.foundation.review/annotate-core-observation}
+(fact "core annotation preserves the pending review disposition"
+  (let [value
+        (review/annotate-core-observation review-import core-observation)]
+    [(:review/disposition value)
+     (get-in value [:review/candidate :candidate/status])])
+  => [:pending :historical-review])
+
+^{:refer tool.migrate.policy.foundation.review/annotate-external-observation}
+(fact "external annotation preserves current source evidence and review state"
+  (let [value
+        (review/annotate-external-observation
+         review-import
+         external-observation)]
+    [(:external/id value)
+     (:review/disposition value)
+     (get-in value [:review/candidate :candidate/namespace])])
+  => ["demo/src/demo.clj#source-1"
+      :pending
+      "std.foundation.string"])
+
+^{:refer tool.migrate.policy.foundation.review/review-import-reference}
+(fact "review references explicitly report candidate-only unexecuted status"
+  (review/review-import-reference review-import)
+  => {:document/id :foundation.review-import/historical-clojure
+      :review/ids
+      [:historical/clojure-core-compatibility
+       :historical/foundation-external-baa75a]
+      :status :candidate-only
+      :runtime/status :not-executed})
+
+^{:refer tool.migrate.policy.foundation.review/annotate-contract}
+(fact "contract annotation never promotes review or runtime status"
+  (let [contract
+        {:conformance/status :pending
+         :runtime/status {:jvm :pending :rust :pending :wasm :pending}
+         :conformance/core-references [core-observation]
+         :conformance/external-dependencies [external-observation]}
+        output (review/annotate-contract review-import contract)]
+    [(:conformance/status output)
+     (:runtime/status output)
+     (get-in output
+             [:conformance/core-references 0 :review/disposition])
+     (get-in output
+             [:conformance/core-references 0
+              :review/candidate :candidate/status])
+     (get-in output
+             [:conformance/external-dependencies 0
+              :review/candidate :candidate/status])
+     (get-in output [:review/import :status])])
+  => [:pending
+      {:jvm :pending :rust :pending :wasm :pending}
+      :pending
+      :historical-review
+      :historical-review
+      :candidate-only])
+
+(pr-str (run {:namespace "tool.migrate.policy.foundation.review-test"}))
