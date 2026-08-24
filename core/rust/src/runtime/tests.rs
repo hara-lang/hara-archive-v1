@@ -562,7 +562,7 @@ mod tests {
                     "(try\n  (throw (ex :test/provenance {}))\n  (catch caught\n    (let [provenance (ex-provenance caught)]\n      [(:line (:ex/created-at provenance))\n       (:column (:ex/created-at provenance))\n       (:line (first (:ex/throws provenance)))\n       (:column (first (:ex/throws provenance)))\n       (count (:ex/throws provenance))])))",
                 )
                 .unwrap(),
-            "[2 3 2 3 1]"
+            "[2 10 2 3 1]"
         );
     }
 

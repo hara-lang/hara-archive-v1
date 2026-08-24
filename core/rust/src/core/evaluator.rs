@@ -739,6 +739,9 @@ pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, Stri
                         return Err("internal throw location marker is malformed".into());
                     };
                     let value = eval(value, env)?;
+                    if !matches!(value, Value::ExceptionInfo(_)) {
+                        return Err("throw expects an Exception value created by ex".into());
+                    }
                     Err(thrown_error_at(
                         value,
                         exception_site_at(*line as usize, *column as usize),
@@ -749,7 +752,25 @@ pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, Stri
                         return Err("throw expects one value".into());
                     }
                     let value = eval(&fs[1], env)?;
+                    if !matches!(value, Value::ExceptionInfo(_)) {
+                        return Err("throw expects an Exception value created by ex".into());
+                    }
                     Err(thrown_error(value))
+                }
+                Form::Symbol(n) if n == "__ex-at" => {
+                    let [_, Form::Number(line), Form::Number(column), rest @ ..] = fs.as_slice()
+                    else {
+                        return Err("internal exception location marker is malformed".into());
+                    };
+                    if rest.is_empty() {
+                        return Err("internal exception location marker is malformed".into());
+                    }
+                    let expression = Form::List(rest.to_vec());
+                    with_exception_site(
+                        exception_site_at(*line as usize, *column as usize)
+                            .expect("exception site always exists"),
+                        || eval(&expression, env),
+                    )
                 }
                 Form::Symbol(n) if n == "try" => {
                     if fs.len() < 2 {

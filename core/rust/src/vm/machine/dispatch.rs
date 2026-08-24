@@ -392,16 +392,19 @@ impl Machine {
                 };
                 let value = Self::into_value(program.clone(), value);
                 let position = function.source_map.position(self.ip);
-                crate::core::record_exception_throw(
-                    &value,
-                    position.map(|position| crate::core::ExceptionSite {
+                let site = position.map(|position| crate::core::ExceptionSite {
                         namespace: program.namespace.clone(),
                         resource: None,
                         line: position.line,
                         column: position.column,
-                    }),
-                );
-                let message = crate::core::thrown_error(value);
+                    });
+                if !matches!(value, Value::ExceptionInfo(_)) {
+                    return Dispatch::Failed(self.error(
+                        function,
+                        "throw expects an Exception value created by ex",
+                    ));
+                }
+                let message = crate::core::thrown_error_at(value, site);
                 match self.raise(function, message) {
                     Ok(target) => return Dispatch::Unwound(target),
                     Err(error) => return Dispatch::Failed(error),
@@ -415,8 +418,20 @@ impl Machine {
                     }
                 };
                 let message = match value.into_runtime_value() {
+                    Some(value @ Value::ExceptionInfo(_)) => {
+                        let position = function.source_map.position(self.ip);
+                        crate::core::thrown_error_at(
+                            value,
+                            position.map(|position| crate::core::ExceptionSite {
+                                namespace: self.program.namespace.clone(),
+                                resource: None,
+                                line: position.line,
+                                column: position.column,
+                            }),
+                        )
+                    }
                     Some(Value::String(message)) => message,
-                    Some(_) => "rethrow expects a string message".to_string(),
+                    Some(_) => "rethrow expects an Exception or pending error value".to_string(),
                     None => {
                         // Defensive: the compiler only emits Rethrow behind a
                         // pending-error flag it set to a message string.
