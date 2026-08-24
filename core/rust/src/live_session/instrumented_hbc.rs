@@ -53,7 +53,6 @@ impl HbcRuntimeContext {
             })
         })
     }
-
     fn program_from_artifact(
         &self,
         artifact: &[u8],
@@ -62,7 +61,6 @@ impl HbcRuntimeContext {
             .map(Rc::new)
             .map_err(backend_error)
     }
-
     fn run<T>(&self, operation: impl FnOnce() -> T) -> T {
         let registry = self.namespace_registry.clone();
         let protocols = self.protocols.clone();
@@ -116,7 +114,6 @@ impl InstrumentedHbcLiveSession {
         let program = context.program_from_artifact(artifact)?;
         Self::start_with_program(runtime, owner_session_id, session_id, source, Some(program))
     }
-
     fn start_with_program(
         runtime: &Runtime,
         owner_session_id: impl Into<String>,
@@ -157,7 +154,6 @@ impl InstrumentedHbcLiveSession {
         }
         Ok(session)
     }
-
     fn instrument(&self) -> Result<&InstrumentHandle, LiveSessionError> {
         self.instrument.as_ref().ok_or_else(|| {
             LiveSessionError::new(
@@ -166,7 +162,6 @@ impl InstrumentedHbcLiveSession {
             )
         })
     }
-
     fn lease(&self) -> Result<&ControlLease, LiveSessionError> {
         self.lease.as_ref().ok_or_else(|| {
             LiveSessionError::new(
@@ -175,7 +170,6 @@ impl InstrumentedHbcLiveSession {
             )
         })
     }
-
     fn target(&self) -> Result<&HbcTarget, LiveSessionError> {
         self.target.as_ref().ok_or_else(|| {
             LiveSessionError::new(
