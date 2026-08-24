@@ -121,8 +121,8 @@ public class StdFoundationTest {
                       + "  [(swap! reference (fn [value amount] (+ value amount)) 2) "
                       + "   (reset! reference 9) "
                       + "   (cas! reference 9 10) "
-                      + "   (std.protocol.iiterator/iter-next? "
-                      + "     (std.protocol.iiter/iter (watch-list reference))) "
+                      + "   (std.protocol.iiterator.IIterator/iter-next? "
+                      + "     (std.protocol.iiter.IIter/iter (watch-list reference))) "
                       + "   (deref seen)])")
               .toString());
       for (String legacy :

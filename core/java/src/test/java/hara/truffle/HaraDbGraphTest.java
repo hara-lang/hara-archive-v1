@@ -18,36 +18,36 @@ public class HaraDbGraphTest {
 
   @Test
   public void schemaScopeCompilerFixturePasses() throws Exception {
-    assertHalFixturePasses("lib/test/std/db/text/base_scope_test.hal");
+    assertHalFixturePasses("lib/test/db/text/base_scope_test.hal");
   }
 
   @Test
   public void graphNormalizationFixturePasses() throws Exception {
-    assertHalFixturePasses("lib/test/std/db/text/base_graph_test.hal");
+    assertHalFixturePasses("lib/test/db/text/base_graph_test.hal");
   }
 
   @Test
   public void recursiveGraphSqlFixturePasses() throws Exception {
-    assertHalFixturePasses("lib/test/std/db/text/sql_graph_test.hal");
+    assertHalFixturePasses("lib/test/db/text/sql_graph_test.hal");
   }
 
   @Test
   public void graphPlannerFixturePasses() throws Exception {
-    assertHalFixturePasses("lib/test/std/db/text/base_tree_test.hal");
+    assertHalFixturePasses("lib/test/db/text/base_tree_test.hal");
   }
 
   @Test
   public void plannedSqlFixturePasses() throws Exception {
-    assertHalFixturePasses("lib/test/std/db/text/sql_tree_test.hal");
+    assertHalFixturePasses("lib/test/db/text/sql_tree_test.hal");
   }
 
   @Test
   public void viewCompatibilityFixturePasses() throws Exception {
-    assertHalFixturePasses("lib/test/std/db/text/sql_view_test.hal");
+    assertHalFixturePasses("lib/test/db/text/sql_view_test.hal");
   }
 
   @Test
   public void sqlFunctionCallFixturePasses() throws Exception {
-    assertHalFixturePasses("lib/test/std/db/text/sql_call_test.hal");
+    assertHalFixturePasses("lib/test/db/text/sql_call_test.hal");
   }
 }

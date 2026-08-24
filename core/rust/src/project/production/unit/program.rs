@@ -311,7 +311,7 @@ mod tests {
     fn native_global_edges_separate_type_and_method_roots() {
         let mut unit = analysis("(def value nil)");
         classify_native_edge("std.native.String/slice", &mut unit);
-        classify_native_edge("std.protocol.icount/count", &mut unit);
+        classify_native_edge("std.protocol.icount.ICount/count", &mut unit);
         assert!(unit.native_roots.types.contains("std.native.String"));
         assert!(unit
             .native_roots
@@ -321,6 +321,6 @@ mod tests {
         assert!(unit
             .native_roots
             .protocol_methods
-            .contains("std.protocol.icount/count"));
+            .contains("std.protocol.icount.ICount/count"));
     }
 }

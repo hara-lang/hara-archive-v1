@@ -4,7 +4,7 @@ use super::*;
 fn protocol_resume_path_uses_the_coroutine_evaluator() {
     let fiber = EvalFiber::start(
         "(let [c (std.foundation.coroutine/create (fn [] 42))] \
-           (std.protocol.icoroutine/resume c))",
+           (std.protocol.icoroutine.ICoroutine/resume c))",
         HashMap::new(),
     )
     .unwrap();

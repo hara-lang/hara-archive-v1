@@ -1578,7 +1578,7 @@ pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, Stri
                 }
                 Form::Symbol(n)
                     if n == "std.foundation.coroutine/resume"
-                        || n == "std.protocol.icoroutine/resume" =>
+                        || n == "std.protocol.icoroutine.ICoroutine/resume" =>
                 {
                     if fs.len() < 2 {
                         return Err("coroutine/resume expects a coroutine".into());

@@ -612,7 +612,7 @@ pub(crate) const DIRECT_CALLABLE_CATALOG: &[DirectCallableSpec] = &[
         Operation(direct_coroutine_resume_operation)
     ),
     direct!(
-        "std.protocol.icoroutine/resume",
+        "std.protocol.icoroutine.ICoroutine/resume",
         DirectCallableArity::AtLeast(1),
         RuntimePrimitive,
         Operation(direct_coroutine_resume_operation)
