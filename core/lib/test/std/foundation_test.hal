@@ -400,10 +400,15 @@
  [{:name "associates one key/value pair"
    :test (fn [] (std.foundation/assoc {:a 1} :b 2))
    :expected {:a 1 :b 2}}
-  {:name "keeps the Foundation Var fixed at three arguments"
+  {:name "associates multiple key/value pairs"
+   :test (fn []
+           [(std.foundation/assoc {:a 1} :b 2 :c 3)
+            (std.foundation/apply std.foundation/assoc [{} :a 1 :b 2])])
+   :expected [{:a 1 :b 2 :c 3} {:a 1 :b 2}]}
+  {:name "rejects an incomplete key/value tail"
    :test (fn []
            (try
-             (std.foundation/assoc {:a 1} :b 2 :c 3)
+             (std.foundation/assoc {:a 1} :b 2 :c)
              (catch Throwable error :arity-error)))
    :expected :arity-error}])
 

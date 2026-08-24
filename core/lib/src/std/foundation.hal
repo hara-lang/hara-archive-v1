@@ -727,11 +727,22 @@
 ;; Nested associative access
 ;; ---------------------------------------------------------------------------
 
-(defn ^{:public true :schema [:fn [:any :any :any] :any]}
+(defn ^{:public true :schema [:fn [:any :any :any & :any] :any]}
   assoc
-  "Returns value with key associated to new-value through IAssoc."
-  [value key new-value]
-  (std.protocol.iassoc.IAssoc/assoc value key new-value))
+  "Returns value with one or more key/value pairs associated through IAssoc."
+  [value key new-value & more]
+  (loop [output (IAssoc/assoc value key new-value)
+         remaining more]
+    (if (empty? remaining)
+      output
+      (if (empty? (rest remaining))
+        (throw (ex :foundation/invalid-assoc
+                   {:value value :key (first remaining)}
+                   :ex/message "assoc requires key/value pairs"
+                   :ex/class :ex.class/argument))
+        (recur
+         (IAssoc/assoc output (first remaining) (second remaining))
+         (rest (rest remaining)))))))
 
 (defn ^{:schema [:fn [:any [:vector :any]] :any]}
   get-in
