@@ -164,19 +164,21 @@
     [{:source/namespace "code.test"
       :target/namespaces ["code.test"]
       :status :consolidated}]
-    "code_test/conformance.edn")
-   (family-descriptor
-    :lang_common
-    ["test-lang/xt/lang/common_" "test-lang/kmi/lang/common_"]
-    19
-    "lang.common"
-    [{:source/namespace "xt.lang.common"
-      :target/namespaces ["lang.common"]
-      :status :renamed}
-     {:source/namespace "kmi.lang.common"
-      :target/namespaces ["lang.common"]
-      :status :manual-review}]
-    "lang_common/conformance.edn")])
+    "code_test/conformance.edn")])
+
+(def +downstream-language-families+
+  [{:family/id :xt_lang
+    :family/name "xt_lang"
+    :family/role :downstream-consumer
+    :family/depends-on [:lang]
+    :source/test-prefixes ["test-lang/xt/lang/common_"]
+    :generation/status :deferred}
+   {:family/id :kmi_lang
+    :family/name "kmi_lang"
+    :family/role :downstream-consumer
+    :family/depends-on [:lang]
+    :source/test-prefixes ["test-lang/kmi/lang/common_"]
+    :generation/status :deferred}])
 
 (defn path-selected?
   [descriptor path]

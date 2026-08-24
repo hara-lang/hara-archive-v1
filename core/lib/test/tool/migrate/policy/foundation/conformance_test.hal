@@ -94,6 +94,35 @@
    origin
    [observation]))
 
+^{:refer tool.migrate.policy.foundation.conformance/initial-plan}
+(fact "xt and kmi language suites are downstream consumers of lang"
+  (let [upstream (:families (conformance/initial-plan))
+        upstream-prefixes (set (mapcat :source/test-prefixes upstream))
+        downstream conformance/+downstream-language-families+]
+    [(mapv :family/id downstream)
+     (mapv :family/role downstream)
+     (mapv :family/depends-on downstream)
+     (mapv :generation/status downstream)
+     (contains? upstream-prefixes "test-lang/xt/lang/common_")
+     (contains? upstream-prefixes "test-lang/kmi/lang/common_")
+     (boolean
+      (some (fn [family]
+              (= :lang_common (:family/id family)))
+            upstream))
+     (boolean
+      (some (fn [family]
+              (= :xt_lang (:family/id family)))
+            upstream))
+     (boolean
+      (some (fn [family]
+              (= :kmi_lang (:family/id family)))
+            upstream))])
+  => [[:xt_lang :kmi_lang]
+      [:downstream-consumer :downstream-consumer]
+      [[:lang] [:lang]]
+      [:deferred :deferred]
+      false false false false false])
+
 ^{:refer tool.migrate.policy.foundation.conformance/validate-core-observations}
 (fact "core observation validation requires complete deterministic evidence"
   [(conformance/validate-core-observations
