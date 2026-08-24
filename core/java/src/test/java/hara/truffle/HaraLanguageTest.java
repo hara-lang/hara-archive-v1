@@ -1859,11 +1859,18 @@ public class HaraLanguageTest {
                   HaraLanguage.ID,
                   "(satisfies? std.protocol.ipeekfirst.IPeekFirst [1])")
               .asBoolean());
-      PolyglotException legacyProtocolMethod =
-          assertThrows(
-              PolyglotException.class,
-              () -> context.eval(HaraLanguage.ID, "std.protocol.ipeekfirst/peek-first"));
-      assertTrue(legacyProtocolMethod.getMessage().contains("Unbound symbol"));
+      assertTrue(
+          context
+              .eval(
+                  HaraLanguage.ID,
+                  "(= std.protocol.ipeekfirst.IPeekFirst "
+                      + "std.protocol.ipeekfirst/IPeekFirst)")
+              .asBoolean());
+      assertEquals(
+          1L,
+          context
+              .eval(HaraLanguage.ID, "(std.protocol.ipeekfirst/peek-first [1])")
+              .asLong());
       PolyglotException obsoleteMethod =
           assertThrows(
               PolyglotException.class,
