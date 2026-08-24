@@ -103,35 +103,38 @@ mod tests {
             );
         }
 
-        let interface_type = namespaces
-            .resolve(&Symbol::parse("std.protocol.iassoc.IAssoc"))
-            .expect("protocol interface type");
-        let protocol_var = namespaces
-            .resolve(&Symbol::parse("std.protocol.iassoc/IAssoc"))
-            .expect("protocol namespace var");
-        assert!(interface_type.same_identity(&protocol_var));
-        assert_eq!(
-            interface_type.symbol().as_str(),
-            "std.protocol.iassoc.IAssoc"
-        );
-        assert_eq!(interface_type.origin(), VarOrigin::RuntimePrimitive);
-        assert_eq!(protocol_var.origin(), VarOrigin::RuntimePrimitive);
+        for (protocol, method) in [("IAssoc", "assoc"), ("IPeekFirst", "peek-first")] {
+            let interface_namespace = builtin_protocol_namespace(protocol);
+            let owner_namespace = builtin_protocol_owner_namespace(&interface_namespace);
 
-        let interface_method = namespaces
-            .resolve(&Symbol::parse("std.protocol.iassoc.IAssoc/assoc"))
-            .expect("interface-qualified protocol method");
-        let protocol_method = namespaces
-            .resolve(&Symbol::parse("std.protocol.iassoc/assoc"))
-            .expect("namespace-qualified protocol method");
-        assert!(interface_method.same_identity(&protocol_method));
-        assert_eq!(
-            interface_method.symbol().as_str(),
-            "std.protocol.iassoc.IAssoc/assoc"
-        );
-        assert_eq!(interface_method.origin(), VarOrigin::RuntimePrimitive);
-        assert_eq!(protocol_method.origin(), VarOrigin::RuntimePrimitive);
+            let interface_type = namespaces
+                .resolve(&Symbol::parse(&interface_namespace))
+                .expect("protocol interface type");
+            let protocol_var = namespaces
+                .resolve(&Symbol::parse(&format!("{owner_namespace}/{protocol}")))
+                .expect("protocol namespace var");
+            assert!(interface_type.same_identity(&protocol_var));
+            assert_eq!(interface_type.symbol().as_str(), interface_namespace);
+            assert_eq!(interface_type.origin(), VarOrigin::RuntimePrimitive);
+            assert_eq!(protocol_var.origin(), VarOrigin::RuntimePrimitive);
 
-        assert!(namespaces.resolve(&Symbol::parse("IAssoc")).is_none());
-        assert!(namespaces.resolve(&Symbol::parse("assoc")).is_none());
+            let interface_method = namespaces
+                .resolve(&Symbol::parse(&format!("{interface_namespace}/{method}")))
+                .expect("interface-qualified protocol method");
+            let protocol_method = namespaces
+                .resolve(&Symbol::parse(&format!("{owner_namespace}/{method}")))
+                .expect("namespace-qualified protocol method");
+            assert!(interface_method.same_identity(&protocol_method));
+            assert_eq!(
+                interface_method.symbol().as_str(),
+                format!("{interface_namespace}/{method}")
+            );
+            assert_eq!(interface_method.origin(), VarOrigin::RuntimePrimitive);
+            assert_eq!(protocol_method.origin(), VarOrigin::RuntimePrimitive);
+        }
+
+        for root in ["IAssoc", "assoc", "IPeekFirst", "peek-first"] {
+            assert!(namespaces.resolve(&Symbol::parse(root)).is_none());
+        }
     }
 }
