@@ -36,7 +36,7 @@
                     {})]
     [(types/fact? value)
      (value)
-     (std.protocol.idisplay/display value)])
+     (std.protocol.idisplay.IDisplay/display value)])
   => [true 42
       "#fact {:type :core :id fact-id :ns code.test-compatibility-test :desc \"portable fact\" :line 1}"])
 

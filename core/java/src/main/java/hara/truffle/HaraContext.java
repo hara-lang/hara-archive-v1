@@ -1565,6 +1565,16 @@ public final class HaraContext {
         namespaceName == null ? currentNamespace : namespaces.get(namespaceName);
     HaraVar variable = namespace == null ? null : namespace.lookup(symbol.getName());
     if (variable == null
+        && namespaceName == null
+        && symbol.getName().startsWith(PROTOCOL_NAMESPACE_PREFIX)) {
+      HaraNamespace protocolNamespace = namespaces.get(symbol.getName());
+      if (protocolNamespace != null) {
+        String protocolName =
+            symbol.getName().substring(symbol.getName().lastIndexOf('.') + 1);
+        variable = protocolNamespace.lookup(protocolName);
+      }
+    }
+    if (variable == null
         && namespaceName != null
         && (bytecodeLibrary.provides(namespaceName) || libraryLoader.provides(namespaceName))
         && namespaceStates.get(namespaceName) != NamespaceLoadState.LOADING) {
@@ -1861,7 +1871,11 @@ public final class HaraContext {
   }
 
   private static String builtinProtocolNamespace(String protocolName) {
-    return PROTOCOL_NAMESPACE_PREFIX + protocolName.toLowerCase(java.util.Locale.ROOT);
+    return
+        PROTOCOL_NAMESPACE_PREFIX
+            + protocolName.toLowerCase(java.util.Locale.ROOT)
+            + "."
+            + protocolName;
   }
 
   private void defineBuiltinProtocolMethods(

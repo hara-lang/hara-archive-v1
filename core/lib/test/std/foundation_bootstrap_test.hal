@@ -89,8 +89,8 @@
                'std.native.Test/passed?
                'std.native.Test/result
                'std.native.Test/run]
-              [(symbol "std.protocol.icount" "ICount")
-               'std.protocol.icount/count]]}])
+              [(symbol "std.protocol.icount.ICount" "ICount")
+               'std.protocol.icount.ICount/count]]}])
 
 ^{:refer std.foundation.bootstrap/coverage}
 (Test/run
