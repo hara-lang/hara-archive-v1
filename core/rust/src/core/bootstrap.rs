@@ -80,22 +80,26 @@ mod tests {
                     .as_str(),
                 path
             );
-            assert!(namespace.resolve(&Symbol::parse(name)).is_none());
         }
 
-        let protocol = "std.protocol.iassoc.IAssoc";
-        let namespace = namespaces.find(protocol).expect("protocol namespace");
-        let var = namespace
-            .resolve(&Symbol::parse("IAssoc"))
-            .expect("canonical protocol");
-        assert_eq!(var.symbol().as_str(), protocol);
-        assert_eq!(var.origin(), VarOrigin::RuntimePrimitive);
-        assert!(namespace.resolve(&Symbol::parse("IAssoc")).is_none());
-        assert!(namespaces.resolve(&Symbol::parse("std.protocol.iassoc/assoc")).is_none());
-        assert!(
-            namespaces
-                .resolve(&Symbol::parse("std.protocol.iassoc.IAssoc/assoc"))
-                .is_some()
-        );
+        for (protocol, method) in [("IAssoc", "assoc"), ("IPeekFirst", "peek-first")] {
+            let canonical = builtin_protocol_namespace(protocol);
+            let namespace = namespaces.find(&canonical).expect("protocol namespace");
+            let var = namespace
+                .resolve(&Symbol::parse(protocol))
+                .expect("canonical protocol");
+            assert_eq!(var.symbol().as_str(), canonical);
+            assert_eq!(var.origin(), VarOrigin::RuntimePrimitive);
+            assert!(namespaces
+                .resolve(&Symbol::parse(&format!(
+                    "std.protocol.{}/{}",
+                    protocol.to_ascii_lowercase(),
+                    method
+                )))
+                .is_none());
+            assert!(namespaces
+                .resolve(&Symbol::parse(&format!("{canonical}/{method}")))
+                .is_some());
+        }
     }
 }
