@@ -11,11 +11,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+import hara.spec.SpecRegistry;
 import org.graalvm.polyglot.Context;
 import org.graalvm.polyglot.Value;
 import org.junit.Test;
 
 /** Runs the specs-owned native behavioral corpus against the Truffle runtime. */
+@org.junit.experimental.categories.Category(hara.spec.RegistryConformance.class)
 public class NativeBehavioralConformanceTest {
   private static final Path CORPUS =
       specsRegistry()
@@ -122,9 +124,6 @@ public class NativeBehavioralConformanceTest {
   }
 
   private static Path specsRegistry() {
-    String override = System.getenv("HARA_SPECS_REGISTRY");
-    return override == null || override.isBlank()
-        ? Path.of("../hara-specs-registry")
-        : Path.of(override);
+    return SpecRegistry.root();
   }
 }

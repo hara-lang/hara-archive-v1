@@ -5,6 +5,7 @@ import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
 import hara.kernel.base.RT;
+import hara.spec.SpecRegistry;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashSet;
@@ -1776,6 +1777,7 @@ public class HaraLanguageTest {
   }
 
   @Test
+  @org.junit.experimental.categories.Category(hara.spec.RegistryConformance.class)
   public void exposesTheSharedProtocolInventoryFromFoundation() throws Exception {
     String contract =
         Files.readString(
@@ -1892,6 +1894,7 @@ public class HaraLanguageTest {
   }
 
   @Test
+  @org.junit.experimental.categories.Category(hara.spec.RegistryConformance.class)
   public void sharedFoundationProtocolConformanceFixtureRuns() throws Exception {
     String protocols =
         Files.readString(
@@ -1923,6 +1926,7 @@ public class HaraLanguageTest {
   }
 
   @Test
+  @org.junit.experimental.categories.Category(hara.spec.RegistryConformance.class)
   public void sharedFoundationProtocolFunctionalityFixtureRuns() throws Exception {
     String catalog =
         Files.readString(
@@ -2060,6 +2064,7 @@ public class HaraLanguageTest {
   }
 
   @Test
+  @org.junit.experimental.categories.Category(hara.spec.RegistryConformance.class)
   public void sharedFoundationProtocolCorpusRecordsJvmInterpreterCapabilityExclusion()
       throws Exception {
     String protocols =
@@ -2789,9 +2794,6 @@ public class HaraLanguageTest {
   }
 
   private static Path specsRegistry() {
-    String override = System.getenv("HARA_SPECS_REGISTRY");
-    return override == null || override.isBlank()
-        ? Path.of("../hara-specs-registry")
-        : Path.of(override);
+    return SpecRegistry.root();
   }
 }

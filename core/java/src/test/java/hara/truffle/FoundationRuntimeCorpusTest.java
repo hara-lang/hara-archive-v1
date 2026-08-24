@@ -8,14 +8,17 @@ import hara.lang.data.Keyword;
 import hara.lang.data.Symbol;
 import hara.lang.data.types.ILinearType;
 import hara.lang.data.types.IMapType;
+import hara.spec.SpecRegistry;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.Set;
 import org.graalvm.polyglot.Context;
 import org.junit.Test;
+import org.junit.experimental.categories.Category;
 
 /** Executes the specs-owned Foundation surface and behavioral corpus. */
+@Category(hara.spec.RegistryConformance.class)
 public class FoundationRuntimeCorpusTest {
   private static final Path REPOSITORY = repositoryRoot();
   private static final Path FOUNDATION =
@@ -108,10 +111,7 @@ public class FoundationRuntimeCorpusTest {
   }
 
   private static Path specsRegistry() {
-    String override = System.getenv("HARA_SPECS_REGISTRY");
-    return override == null || override.isBlank()
-        ? REPOSITORY.getParent().resolve("hara-specs-registry")
-        : Path.of(override);
+    return SpecRegistry.root();
   }
 
   private static Path repositoryRoot() {

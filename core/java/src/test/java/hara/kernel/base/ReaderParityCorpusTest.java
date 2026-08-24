@@ -1,5 +1,6 @@
 package hara.kernel.base;
 
+import hara.spec.SpecRegistry;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThrows;
@@ -15,10 +16,13 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.Test;
+import org.junit.experimental.categories.Category;
 
 /** Executes the canonical reader corpus shared with the Rust runtime. */
+@Category(hara.spec.RegistryConformance.class)
 public class ReaderParityCorpusTest {
-  private static final Path CORPUS = Path.of("../hara-specs-registry/01-lang/001-language/draft/conformance/reader.edn");
+  private static final Path CORPUS =
+      SpecRegistry.resolve("01-lang/001-language/draft/conformance/reader.edn");
 
   private static Keyword key(String name) {
     return Keyword.create(null, name);

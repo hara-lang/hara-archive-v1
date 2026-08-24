@@ -8,14 +8,14 @@ import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import hara.spec.SpecRegistry;
 import org.junit.Test;
 
 public class HaraSpecToolTest {
   @Test
+  @org.junit.experimental.categories.Category(hara.spec.RegistryConformance.class)
   public void portableMetaspecLintReturnsEdnAndStableExitCodes() throws Exception {
-    Path valid = Path.of("../hara-specs-registry/01-lang/000-metaspec/draft/metaspec-metaspec.edn");
-    if (!Files.isRegularFile(valid))
-      valid = Path.of("../hara-specs-registry/01-lang/000-metaspec/draft/metaspec-metaspec.edn");
+    Path valid = SpecRegistry.require("01-lang/000-metaspec/draft/metaspec-metaspec.edn");
     ByteArrayOutputStream output = new ByteArrayOutputStream();
     ByteArrayOutputStream error = new ByteArrayOutputStream();
     int status =

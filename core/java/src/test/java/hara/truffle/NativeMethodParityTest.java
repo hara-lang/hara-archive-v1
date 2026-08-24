@@ -9,6 +9,7 @@ import hara.lang.data.Keyword;
 import hara.lang.data.Symbol;
 import hara.lang.data.types.ILinearType;
 import hara.lang.data.types.IMapType;
+import hara.spec.SpecRegistry;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -21,6 +22,7 @@ import org.graalvm.polyglot.Context;
 import org.junit.Test;
 
 /** Keeps the closed std.native inventory and its direct method surface aligned with the spec. */
+@org.junit.experimental.categories.Category(hara.spec.RegistryConformance.class)
 public class NativeMethodParityTest {
   private static final Path CONTRACT =
       specsRegistry()
@@ -207,12 +209,7 @@ public class NativeMethodParityTest {
   }
 
   private static Path specsRegistry() {
-    String override = System.getenv("HARA_SPECS_REGISTRY");
-    if (override != null && !override.isBlank()) return Path.of(override);
-    for (Path candidate : List.of(Path.of("../../hara-specs-registry"), Path.of("../hara-specs-registry"))) {
-      if (Files.isDirectory(candidate)) return candidate;
-    }
-    return Path.of("../../hara-specs-registry");
+    return SpecRegistry.root();
   }
 
   private static Path resolveWrapperSource(String source) {

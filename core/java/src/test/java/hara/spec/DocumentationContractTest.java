@@ -14,19 +14,20 @@ import hara.lang.data.Keyword;
 import hara.lang.data.types.IMapType;
 import hara.truffle.HaraLibraryProvider;
 import org.junit.Test;
+import org.junit.experimental.categories.Category;
 
 /** Verifies that active specification documents and published examples describe the current slice. */
 public class DocumentationContractTest {
-  private static final List<Path> ACTIVE_SPECIFICATIONS =
+  private static final List<String> ACTIVE_SPECIFICATION_PATHS =
       List.of(
-          Path.of("../hara-specs-registry/01-lang/000-metaspec/draft/metaspec-metaspec.edn"),
-          Path.of("../hara-specs-registry/01-lang/001-language/metaspec/language-metaspec.edn"),
-          Path.of("../hara-specs-registry/01-lang/001-language/draft/hal-langspec.edn"));
+          "01-lang/000-metaspec/draft/metaspec-metaspec.edn",
+          "01-lang/001-language/metaspec/language-metaspec.edn",
+          "01-lang/001-language/draft/hal-langspec.edn");
 
   private static void assumeSpecsSubmodule() {
     assumeTrue(
-        "specs submodule not initialized: git submodule update --init specs",
-        Files.isRegularFile(ACTIVE_SPECIFICATIONS.get(0)));
+        "hara-specs-registry is unavailable; set HARA_SPECS_REGISTRY",
+        SpecRegistry.available());
   }
 
   private static void assumeDocsSubmodule() {
@@ -36,9 +37,11 @@ public class DocumentationContractTest {
   }
 
   @Test
+  @Category(RegistryConformance.class)
   public void activeSpecificationsAreReadableEdnWithRenderedCompanions() throws Exception {
     assumeSpecsSubmodule();
-    for (Path specification : ACTIVE_SPECIFICATIONS) {
+    for (String relative : ACTIVE_SPECIFICATION_PATHS) {
+      Path specification = SpecRegistry.resolve(relative);
       assertTrue("Missing active specification: " + specification, Files.exists(specification));
       Object document =
           Parser.LispReader.readString(

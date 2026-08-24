@@ -6,9 +6,11 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import hara.spec.SpecRegistry;
 import org.graalvm.polyglot.Context;
 import org.junit.Test;
 
+@org.junit.experimental.categories.Category(hara.spec.RegistryConformance.class)
 public class StdTypedCatalogDocumentTest {
   private static final String FIXTURE_PATH =
       "01-lang/011-typed-catalog/draft/conformance/catalog-v1.json";
@@ -26,11 +28,7 @@ public class StdTypedCatalogDocumentTest {
       "sha256:0932e3b99be0a918adc4adc939bef7c0966c77a0007b86afd9a47fe732d7f01d";
 
   private static Path fixturePath() {
-    Path nested = Path.of("hara-specs-registry").resolve(FIXTURE_PATH);
-    if (Files.isRegularFile(nested)) {
-      return nested;
-    }
-    return Path.of("..", "hara-specs-registry").resolve(FIXTURE_PATH);
+    return SpecRegistry.resolve(FIXTURE_PATH);
   }
 
   private static String fixtureText() throws IOException {

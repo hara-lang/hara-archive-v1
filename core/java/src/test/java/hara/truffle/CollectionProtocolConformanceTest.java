@@ -19,6 +19,7 @@ import hara.lang.protocol.IPopFirst;
 import hara.lang.protocol.IPopLast;
 import hara.lang.protocol.IPushFirst;
 import hara.lang.protocol.IPushLast;
+import hara.spec.SpecRegistry;
 import java.util.Iterator;
 import java.util.Map.Entry;
 import java.nio.file.Files;
@@ -28,6 +29,7 @@ import org.junit.Test;
 /** Protocol-level collection checks shared by Hara-native and Java-backed values. */
 public class CollectionProtocolConformanceTest {
   @Test
+  @org.junit.experimental.categories.Category(hara.spec.RegistryConformance.class)
   public void sharedNativeValueProtocolMatrixPasses() throws Exception {
     String source =
         Files.readString(
@@ -44,10 +46,7 @@ public class CollectionProtocolConformanceTest {
   }
 
   private static Path specsRegistry() {
-    String override = System.getenv("HARA_SPECS_REGISTRY");
-    return override == null || override.isBlank()
-        ? Path.of("../hara-specs-registry")
-        : Path.of(override);
+    return SpecRegistry.root();
   }
 
   @Test

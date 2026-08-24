@@ -4,20 +4,22 @@ import static org.junit.Assert.assertTrue;
 
 import hara.kernel.base.Parser;
 import hara.lang.base.G;
+import hara.spec.SpecRegistry;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.graalvm.polyglot.Context;
 import org.junit.Test;
 
+@org.junit.experimental.categories.Category(hara.spec.RegistryConformance.class)
 public class HaraMetaspecConformsTest {
   private static final Path ROOT =
-      Path.of("../hara-specs-registry/01-lang/000-metaspec/draft/metaspec-metaspec.edn");
+      SpecRegistry.resolve("01-lang/000-metaspec/draft/metaspec-metaspec.edn");
   private static final Path LANGUAGE =
-      Path.of("../hara-specs-registry/01-lang/001-language/metaspec/language-metaspec.edn");
+      SpecRegistry.resolve("01-lang/001-language/metaspec/language-metaspec.edn");
   private static final Path LANGUAGE_SPEC =
-      Path.of("../hara-specs-registry/01-lang/001-language/draft/hal-langspec.edn");
+      SpecRegistry.resolve("01-lang/001-language/draft/hal-langspec.edn");
   private static final Path ARTIFACT =
-      Path.of("../hara-specs-registry/00-unsorted/artifact/metaspec/artifact-metaspec.edn");
+      SpecRegistry.resolve("00-unsorted/artifact/metaspec/artifact-metaspec.edn");
 
   @Test
   public void rootChecksItselfAndSpecializedMetaspecs() throws Exception {

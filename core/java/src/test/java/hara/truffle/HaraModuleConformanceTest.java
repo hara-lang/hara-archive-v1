@@ -8,6 +8,7 @@ import hara.kernel.base.Parser;
 import hara.lang.data.Keyword;
 import hara.lang.data.types.ILinearType;
 import hara.lang.data.types.IMapType;
+import hara.spec.SpecRegistry;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -28,9 +29,10 @@ import org.junit.Test;
  * Runtime fixtures fail if a referenced case disappears or its expectation
  * changes without a corresponding implementation change.
  */
+@org.junit.experimental.categories.Category(hara.spec.RegistryConformance.class)
 public class HaraModuleConformanceTest {
   private static final Path CORPUS =
-      Path.of("../hara-specs-registry/01-lang/001-language/draft/conformance/modules.edn");
+      SpecRegistry.resolve("01-lang/001-language/draft/conformance/modules.edn");
 
   @Test
   public void executesNamespaceLoadingTransactionAndReloadScenarios()

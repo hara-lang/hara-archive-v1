@@ -9,6 +9,7 @@ import hara.kernel.base.Parser;
 import hara.lang.data.Keyword;
 import hara.lang.data.types.ILinearType;
 import hara.lang.data.types.IMapType;
+import hara.spec.SpecRegistry;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.graalvm.polyglot.Context;
@@ -17,9 +18,10 @@ import org.graalvm.polyglot.io.IOAccess;
 import org.junit.Test;
 
 /** Executes the Host/session boundary cases declared by the Host runtime specification. */
+@org.junit.experimental.categories.Category(hara.spec.RegistryConformance.class)
 public class HaraHostSessionConformanceTest {
   private static final Path SPEC =
-      Path.of("../hara-specs-registry/00-unsorted/runtime/draft/host-runtime.edn");
+      SpecRegistry.resolve("00-unsorted/runtime/draft/host-runtime.edn");
 
   @Test
   public void hostFacadeIdentityAndNamespaceStateAreSessionLocal() throws Exception {

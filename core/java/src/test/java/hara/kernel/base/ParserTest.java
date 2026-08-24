@@ -1,5 +1,6 @@
 package hara.kernel.base;
 
+import hara.spec.SpecRegistry;
 import hara.lang.data.*;
 import org.junit.Test;
 
@@ -35,12 +36,12 @@ public class ParserTest {
   }
 
   @Test
+  @org.junit.experimental.categories.Category(hara.spec.RegistryConformance.class)
   public void l0ConformanceCorpusIsReadableEdn() throws Exception {
-    String registry = System.getenv().getOrDefault("HARA_SPECS_REGISTRY", "../hara-specs-registry");
     Object corpus =
         Parser.LispReader.readString(
             Files.readString(
-                Path.of(registry, "01-lang/001-language/draft/conformance/core.edn")),
+                SpecRegistry.require("01-lang/001-language/draft/conformance/core.edn")),
             null);
     assertTrue(corpus instanceof hara.lang.data.types.IMapType);
     hara.lang.data.types.IMapType map = (hara.lang.data.types.IMapType) corpus;

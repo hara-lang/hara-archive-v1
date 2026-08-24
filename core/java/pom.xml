@@ -41,7 +41,8 @@
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 		<mainclass>hara.kernel.Main</mainclass>
 		<graalvm.version>25.0.3</graalvm.version>
-		<hara.specs.registry>${project.basedir}/../../hara-specs-registry</hara.specs.registry>
+		<hara.specs.registry>${project.basedir}/../../../hara-specs-registry</hara.specs.registry>
+		<surefire.excluded.groups>hara.spec.RegistryConformance</surefire.excluded.groups>
 	</properties>
 	<dependencies>
 		<dependency>
@@ -290,6 +291,7 @@
 				<version>3.0.0-M5</version>
 				<configuration>
 					<workingDirectory>${project.basedir}/..</workingDirectory>
+					<excludedGroups>${surefire.excluded.groups}</excludedGroups>
 				</configuration>
 			</plugin>
 			<plugin>
@@ -450,6 +452,12 @@
 					</plugin>
 				</plugins>
 			</build>
+		</profile>
+		<profile>
+			<id>conformance</id>
+			<properties>
+				<surefire.excluded.groups></surefire.excluded.groups>
+			</properties>
 		</profile>
 	</profiles>
 </project>

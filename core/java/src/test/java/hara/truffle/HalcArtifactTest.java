@@ -383,8 +383,10 @@ public class HalcArtifactTest {
   }
 
   @Test
+  @org.junit.experimental.categories.Category(hara.spec.RegistryConformance.class)
   public void sharedCrossRuntimeGoldensDecode() throws Exception {
-    Path root = Path.of("../hara-specs-registry/01-lang/009-halc/draft/conformance/golden");
+    Path root =
+        hara.spec.SpecRegistry.resolve("01-lang/009-halc/draft/conformance/golden");
     HalcArtifact.Module current = HalcArtifact.decode(Files.readAllBytes(root.resolve("complete.halc")));
     assertEquals(HalcArtifact.Origin.HALC, current.origin);
     assertEquals("halc.conformance.complete", current.namespace);

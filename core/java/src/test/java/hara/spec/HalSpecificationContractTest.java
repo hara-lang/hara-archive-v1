@@ -15,8 +15,10 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import org.junit.Test;
+import org.junit.experimental.categories.Category;
 
 /** Structural checks for the draft HAL meta-spec and its first language document. */
+@Category(RegistryConformance.class)
 public class HalSpecificationContractTest {
   private static final Path METASPEC =
       specsRegistry().resolve("01-lang/001-language/metaspec/language-metaspec.edn");
@@ -127,10 +129,7 @@ public class HalSpecificationContractTest {
   }
 
   private static Path specsRegistry() {
-    String override = System.getenv("HARA_SPECS_REGISTRY");
-    return override == null || override.isBlank()
-        ? Path.of("../hara-specs-registry")
-        : Path.of(override);
+    return SpecRegistry.root();
   }
 
   private static IMapType map(IMapType parent, Keyword key) {

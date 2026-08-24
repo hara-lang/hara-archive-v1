@@ -1,5 +1,6 @@
 package hara.truffle;
 
+import hara.spec.SpecRegistry;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
@@ -11,11 +12,12 @@ import org.junit.Test;
 
 public class EvaluationJournalTest {
   @Test
+  @org.junit.experimental.categories.Category(hara.spec.RegistryConformance.class)
   public void consumesSharedCorpusAndRecordsPortableNestedOperations() throws Exception {
     String corpus =
         Files.readString(
-            Path.of(
-                "../hara-specs-registry/00-unsorted/diagnostics/draft/conformance/evaluation-journal.edn"));
+            SpecRegistry.resolve(
+                "00-unsorted/diagnostics/draft/conformance/evaluation-journal.edn"));
     assertEquals(1, HaraLanguage.readAll(corpus, "evaluation-journal.edn").length);
 
     try (Context context = context()) {

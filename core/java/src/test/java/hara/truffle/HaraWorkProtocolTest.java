@@ -12,6 +12,7 @@ import hara.lang.protocol.IWorkHost;
 import hara.lang.protocol.IWorkRef;
 import hara.lang.protocol.IWorkRun;
 import hara.lang.protocol.IWorkStore;
+import hara.spec.SpecRegistry;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
@@ -82,6 +83,7 @@ public class HaraWorkProtocolTest {
   }
 
   @Test
+  @org.junit.experimental.categories.Category(hara.spec.RegistryConformance.class)
   public void guestTypesExtendNativeWorkProtocolsAndParents() throws Exception {
     try (Context context = Context.newBuilder(HaraLanguage.ID).build()) {
       String corpus =
@@ -125,9 +127,6 @@ public class HaraWorkProtocolTest {
   }
 
   private static Path specsRegistry() {
-    String override = System.getenv("HARA_SPECS_REGISTRY");
-    return override == null || override.isBlank()
-        ? Path.of("../hara-specs-registry")
-        : Path.of(override);
+    return SpecRegistry.root();
   }
 }

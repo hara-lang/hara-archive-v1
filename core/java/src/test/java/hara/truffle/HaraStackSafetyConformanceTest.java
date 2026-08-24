@@ -9,6 +9,7 @@ import hara.lang.base.G;
 import hara.lang.data.Keyword;
 import hara.lang.data.types.ILinearType;
 import hara.lang.data.types.IMapType;
+import hara.spec.SpecRegistry;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -18,8 +19,10 @@ import org.graalvm.polyglot.Context;
 import org.graalvm.polyglot.PolyglotException;
 import org.graalvm.polyglot.Value;
 import org.junit.Test;
+import org.junit.experimental.categories.Category;
 
 /** Executes the shared source-level stack/work corpus on the JVM evaluator. */
+@Category(hara.spec.RegistryConformance.class)
 public class HaraStackSafetyConformanceTest {
   private static Keyword key(String name) {
     return Keyword.create(null, name);
@@ -56,10 +59,7 @@ public class HaraStackSafetyConformanceTest {
   }
 
   private static IMapType readCorpus() throws IOException {
-    String registry =
-        System.getenv().getOrDefault("HARA_SPECS_REGISTRY", "../hara-specs-registry");
-    Path path =
-        Path.of(registry, "01-lang/001-language/draft/conformance/stack-safety.edn");
+    Path path = SpecRegistry.resolve("01-lang/001-language/draft/conformance/stack-safety.edn");
     Object parsed = Parser.LispReader.readString(Files.readString(path), null);
     assertTrue("stack-safety corpus must be a map", parsed instanceof IMapType);
     return (IMapType) parsed;

@@ -14,6 +14,7 @@ import hara.lang.declaration.HaraAvailability;
 import hara.lang.declaration.HaraMethod;
 import hara.lang.declaration.HaraNativeBinding;
 import hara.lang.declaration.HaraProtocolBinding;
+import hara.spec.SpecRegistry;
 import java.io.InputStream;
 import java.lang.reflect.Method;
 import java.nio.file.Files;
@@ -31,6 +32,7 @@ import java.util.Set;
 import org.junit.Test;
 
 /** Checks that the Java declaration surface is closed before runtime publication. */
+@org.junit.experimental.categories.Category(hara.spec.RegistryConformance.class)
 public class HaraDeclarationCoverageTest {
   private static final String PROTOCOL_PACKAGE = "hara.lang.protocol.";
   private static final String NATIVE_NAMESPACE = "std.native";
@@ -215,12 +217,7 @@ public class HaraDeclarationCoverageTest {
   }
 
   private static Path specsRegistry() {
-    String override = System.getenv("HARA_SPECS_REGISTRY");
-    if (override != null && !override.isBlank()) return Path.of(override);
-    for (Path candidate : List.of(Path.of("../../hara-specs-registry"), Path.of("../hara-specs-registry"))) {
-      if (Files.isDirectory(candidate)) return candidate;
-    }
-    return Path.of("../../hara-specs-registry");
+    return SpecRegistry.root();
   }
 
   private record ProtocolSpec(

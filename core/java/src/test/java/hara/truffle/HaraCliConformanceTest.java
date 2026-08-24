@@ -14,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import org.junit.Test;
 
+@org.junit.experimental.categories.Category(hara.spec.RegistryConformance.class)
 public class HaraCliConformanceTest {
   @Test
   public void rootHelpIsSuccessfulAndPublicOnly() {

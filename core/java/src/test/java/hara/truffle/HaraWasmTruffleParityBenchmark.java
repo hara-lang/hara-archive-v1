@@ -4,6 +4,7 @@ import hara.kernel.base.Parser;
 import hara.lang.data.Keyword;
 import hara.lang.data.types.ILinearType;
 import hara.lang.data.types.IMapType;
+import hara.spec.SpecRegistry;
 import java.io.BufferedWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -15,7 +16,8 @@ import org.graalvm.polyglot.Context;
 /** Emits per-case cold and warm timings for the Rust-WASM/Truffle parity corpus. */
 public final class HaraWasmTruffleParityBenchmark {
   private static final Path CORPUS =
-      Path.of("../hara-specs-registry/01-lang/001-language/draft/conformance/parity/wasm-truffle.edn");
+      SpecRegistry.resolve(
+          "01-lang/001-language/draft/conformance/parity/wasm-truffle.edn");
   private static final Path ARTIFACT =
       Path.of("rust/raw/target/wasm32-unknown-unknown/release/hara_wasm_raw.wasm");
   private static final String NAMESPACE = "test.rust.parity";

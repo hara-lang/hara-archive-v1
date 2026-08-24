@@ -5,6 +5,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 import hara.kernel.base.Parser;
+import hara.spec.SpecRegistry;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -13,6 +14,7 @@ import java.util.List;
 import java.util.Set;
 import org.junit.Test;
 
+@org.junit.experimental.categories.Category(hara.spec.RegistryConformance.class)
 public class HaraDifferentialConformanceTest {
   private static final Path MANIFEST =
       specsRegistry()
@@ -73,9 +75,6 @@ public class HaraDifferentialConformanceTest {
   }
 
   private static Path specsRegistry() {
-    String override = System.getenv("HARA_SPECS_REGISTRY");
-    return override == null || override.isBlank()
-        ? Path.of("../hara-specs-registry")
-        : Path.of(override);
+    return SpecRegistry.root();
   }
 }

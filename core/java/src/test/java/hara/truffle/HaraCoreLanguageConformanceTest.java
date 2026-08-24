@@ -9,6 +9,7 @@ import hara.lang.base.G;
 import hara.lang.data.Keyword;
 import hara.lang.data.types.ILinearType;
 import hara.lang.data.types.IMapType;
+import hara.spec.SpecRegistry;
 import java.math.BigInteger;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -16,8 +17,10 @@ import org.graalvm.polyglot.Context;
 import org.graalvm.polyglot.PolyglotException;
 import org.graalvm.polyglot.Value;
 import org.junit.Test;
+import org.junit.experimental.categories.Category;
 
 /** Executes the versioned JVM core-language conformance corpus. */
+@Category(hara.spec.RegistryConformance.class)
 public class HaraCoreLanguageConformanceTest {
   private static Keyword key(String name) {
     return Keyword.create(null, name);
@@ -37,9 +40,9 @@ public class HaraCoreLanguageConformanceTest {
 
   @SuppressWarnings({"rawtypes", "unchecked"})
   private void executeCorpus(String name, String casePrefix) throws Exception {
-    String registry = System.getenv().getOrDefault("HARA_SPECS_REGISTRY", "../hara-specs-registry");
     String source =
-        Files.readString(Path.of(registry, "01-lang/001-language/draft/conformance", name));
+        Files.readString(
+            SpecRegistry.require("01-lang/001-language/draft/conformance/" + name));
     IMapType manifest = (IMapType) Parser.LispReader.readString(source, null);
     ILinearType<?> cases = (ILinearType<?>) manifest.lookup(key("cases"));
     assertTrue(cases.count() > 0);
