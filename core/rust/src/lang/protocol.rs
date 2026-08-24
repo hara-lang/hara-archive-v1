@@ -1,3 +1,7 @@
+#[path = "protocol/declarations.rs"]
+pub(crate) mod declarations;
+#[path = "protocol/iabort.rs"]
+pub mod iabort;
 #[path = "protocol/iapplicable.rs"]
 pub mod iapplicable;
 #[path = "protocol/iassoc.rs"]
@@ -6,6 +10,8 @@ pub mod iassoc;
 pub mod icas;
 #[path = "protocol/iclose.rs"]
 pub mod iclose;
+#[path = "protocol/iclosed.rs"]
+pub mod iclosed;
 #[path = "protocol/icoll.rs"]
 pub mod icoll;
 #[path = "protocol/icomponent.rs"]
@@ -34,12 +40,20 @@ pub mod idisplay;
 pub mod idissoc;
 #[path = "protocol/iempty.rs"]
 pub mod iempty;
+#[path = "protocol/iencodable.rs"]
+pub mod iencodable;
+#[path = "protocol/iencode.rs"]
+pub mod iencode;
+#[path = "protocol/iencodevisitor.rs"]
+pub mod iencodevisitor;
 #[path = "protocol/iequality.rs"]
 pub mod iequality;
 #[path = "protocol/iexinfo.rs"]
 pub mod iexinfo;
 #[path = "protocol/ifind.rs"]
 pub mod ifind;
+#[path = "protocol/iflush.rs"]
+pub mod iflush;
 #[path = "protocol/ifn.rs"]
 pub mod ifn;
 #[path = "protocol/ihash.rs"]
@@ -58,6 +72,8 @@ pub mod iiter;
 pub mod iiterator;
 #[path = "protocol/ilookup.rs"]
 pub mod ilookup;
+#[path = "protocol/imatch.rs"]
+pub mod imatch;
 #[path = "protocol/imetadata.rs"]
 pub mod imetadata;
 #[path = "protocol/imutable.rs"]
@@ -98,17 +114,47 @@ pub mod ireduce;
 pub mod ireset;
 #[path = "protocol/ispace.rs"]
 pub mod ispace;
+#[path = "protocol/istream.rs"]
+pub mod istream;
+#[path = "protocol/istreamduplex.rs"]
+pub mod istreamduplex;
+#[path = "protocol/istreamoffer.rs"]
+pub mod istreamoffer;
+#[path = "protocol/istreampoll.rs"]
+pub mod istreampoll;
+#[path = "protocol/istreamwrite.rs"]
+pub mod istreamwrite;
+#[path = "protocol/istringlike.rs"]
+pub mod istringlike;
 #[path = "protocol/itomutable.rs"]
 pub mod itomutable;
 #[path = "protocol/itopersistent.rs"]
 pub mod itopersistent;
 #[path = "protocol/iwatch.rs"]
 pub mod iwatch;
+#[path = "protocol/iwork.rs"]
+pub mod iwork;
+#[path = "protocol/iworkexecutor.rs"]
+pub mod iworkexecutor;
+#[path = "protocol/iworkhost.rs"]
+pub mod iworkhost;
+#[path = "protocol/iworkref.rs"]
+pub mod iworkref;
+#[path = "protocol/iworkrun.rs"]
+pub mod iworkrun;
+#[path = "protocol/iworkstore.rs"]
+pub mod iworkstore;
 
+pub use declarations::{
+    find_protocol, protocol_declarations, ProtocolArity, ProtocolAvailability, ProtocolDeclaration,
+    ProtocolMethodDeclaration,
+};
+pub use iabort::IAbort;
 pub use iapplicable::IApplicable;
 pub use iassoc::IAssoc;
 pub use icas::ICas;
 pub use iclose::IClose;
+pub use iclosed::IClosed;
 pub use icoll::IColl;
 pub use icomponent::IComponent;
 pub use iconj::IConj;
@@ -123,9 +169,13 @@ pub use idereftimeout::IDerefTimeout;
 pub use idisplay::IDisplay;
 pub use idissoc::IDissoc;
 pub use iempty::IEmpty;
+pub use iencodable::IEncodable;
+pub use iencode::IEncode;
+pub use iencodevisitor::IEncodeVisitor;
 pub use iequality::IEquality;
 pub use iexinfo::IExInfo;
 pub use ifind::IFind;
+pub use iflush::IFlush;
 pub use ifn::IFn;
 pub use ihash::{HashType, IHash};
 pub use ihashcached::IHashCached;
@@ -135,6 +185,7 @@ pub use iinvokein::IInvokeIn;
 pub use iiter::IIter;
 pub use iiterator::IIterator;
 pub use ilookup::ILookup;
+pub use imatch::IMatch;
 pub use imetadata::{IMetadata, MetaType};
 pub use imutable::IMutable;
 pub use inamespaced::INamespaced;
@@ -155,9 +206,21 @@ pub use irealize::IRealize;
 pub use ireduce::IReduce;
 pub use ireset::IReset;
 pub use ispace::ISpace;
+pub use istream::IStream;
+pub use istreamduplex::IStreamDuplex;
+pub use istreamoffer::IStreamOffer;
+pub use istreampoll::IStreamPoll;
+pub use istreamwrite::IStreamWrite;
+pub use istringlike::IStringLike;
 pub use itomutable::IToMutable;
 pub use itopersistent::IToPersistent;
 pub use iwatch::IWatch;
+pub use iwork::IWork;
+pub use iworkexecutor::IWorkExecutor;
+pub use iworkhost::IWorkHost;
+pub use iworkref::IWorkRef;
+pub use iworkrun::IWorkRun;
+pub use iworkstore::IWorkStore;
 
 #[cfg(test)]
 mod tests {

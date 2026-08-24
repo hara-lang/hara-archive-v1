@@ -1,4 +1,5 @@
 use super::{IDisplay, IMetadata};
+use hara_protocol_macros::hara_protocol;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ObjType {
@@ -35,6 +36,12 @@ pub enum ObjType {
     Pointer,
 }
 
+#[hara_protocol(
+    namespace = "std.protocol.iobjtype",
+    name = "IObjType",
+    parents = ["IHash", "IDisplay"],
+    inherited_methods = [("meta", "meta", 1), ("with-meta", "with_meta", 2)]
+)]
 pub trait IObjType: IDisplay + IMetadata {
     fn obj_type(&self) -> ObjType {
         ObjType::Class

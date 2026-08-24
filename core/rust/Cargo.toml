@@ -28,7 +28,16 @@ include = [
 ]
 
 [workspace]
-members = [".", "abi", "compiler", "hta-codec", "raw", "runtime", "vm-runtime"]
+members = [
+  ".",
+  "abi",
+  "compiler",
+  "hta-codec",
+  "protocol-macros",
+  "raw",
+  "runtime",
+  "vm-runtime",
+]
 default-members = ["."]
 resolver = "2"
 

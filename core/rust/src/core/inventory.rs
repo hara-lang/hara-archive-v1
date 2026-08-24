@@ -867,208 +867,35 @@ pub fn native_type_values() -> Vec<(String, Value)> {
         .collect()
 }
 
-pub(crate) const FOUNDATION_PROTOCOLS: &[(&str, &[(&str, usize)])] = &[
-    (
-        "IApplicable",
-        &[
-            ("apply-in", 3),
-            ("apply-default", 1),
-            ("transform-in", 3),
-            ("transform-out", 4),
-        ],
-    ),
-    ("IAssoc", &[("assoc", 3)]),
-    ("ICas", &[("cas", 3)]),
-    ("IClose", &[("close", 1)]),
-    ("IStream", &[("next", 1)]),
-    ("IStreamWrite", &[("write", 2)]),
-    ("IAbort", &[("abort", 2)]),
-    ("IStreamPoll", &[("poll", 1)]),
-    ("IStreamOffer", &[("offer", 2)]),
-    ("IClosed", &[("closed?", 1)]),
-    ("IFlush", &[("flush", 1)]),
-    ("IStreamDuplex", &[]),
-    (
-        "IComponent",
-        &[
-            ("props", 1),
-            ("status", 1),
-            ("started?", 1),
-            ("stopped?", 1),
-            ("start", 1),
-            ("stop", 1),
-            ("kill", 1),
-            ("remote?", 1),
-        ],
-    ),
-    ("IWork", &[("work-spec", 1)]),
-    ("IWorkExecutor", &[("work-execute", 2)]),
-    ("IWorkStore", &[("work-query", 2), ("work-transact", 2)]),
-    ("IWorkRef", &[("work-id", 1)]),
-    ("IWorkHost", &[("work-submit", 4), ("work-resolve", 2)]),
-    (
-        "IWorkRun",
-        &[
-            ("work-status", 1),
-            ("work-result", 1),
-            ("work-events", 2),
-            ("work-cancel", 2),
-        ],
-    ),
-    ("IConj", &[("conj", 2)]),
-    ("ICons", &[("cons", 2)]),
-    ("IContext", &[("call", usize::MAX)]),
-    ("ICoroutine", &[("status", 1), ("resume", usize::MAX)]),
-    (
-        "IContextLifeCycle",
-        &[
-            ("has-module?", 2),
-            ("setup-module", 2),
-            ("teardown-module", 2),
-            ("has-pointer?", 2),
-            ("setup-pointer", 2),
-            ("teardown-pointer", 2),
-        ],
-    ),
-    ("ICount", &[("count", 1)]),
-    (
-        "IDeps",
-        &[("dep-get", 2), ("dep-entries", 2), ("dep-keys", 1)],
-    ),
-    ("IDeref", &[("deref", 1)]),
-    ("IDerefTimeout", &[("deref-timeout", 3)]),
-    ("IDisplay", &[("display", 1)]),
-    ("IDissoc", &[("dissoc", 2)]),
-    ("IEmpty", &[("empty", 1)]),
-    ("IEncodable", &[("encode-with", 2)]),
-    ("IEncode", &[("encode", 2)]),
-    (
-        "IEncodeVisitor",
-        &[
-            ("visit-nil", 1),
-            ("visit-boolean", 2),
-            ("visit-number", 2),
-            ("visit-character", 2),
-            ("visit-string", 2),
-            ("visit-keyword", 2),
-            ("visit-symbol", 2),
-            ("visit-seq", 2),
-            ("visit-vector", 2),
-            ("visit-map", 2),
-            ("visit-set", 2),
-            ("visit-tagged", 3),
-            ("visit-unknown", 2),
-        ],
-    ),
-    ("IEquality", &[("equality", 2)]),
-    ("IExInfo", &[("data", 1)]),
-    ("IFind", &[("find", 2)]),
-    ("IFn", &[("invoke", usize::MAX)]),
-    ("IHash", &[("hash", 1)]),
-    ("IHashCached", &[("hash-current", 1), ("hash-put", 2)]),
-    ("IIndexed", &[("index-of", 2)]),
-    ("IIndexedKV", &[("index-of-key", 2), ("index-of-val", 2)]),
-    ("IInvokeIn", &[("invoke-in", usize::MAX)]),
-    ("IIter", &[("iter", 1)]),
-    ("IIterator", &[("iter-next?", 1), ("iter-next", 1)]),
-    ("ILookup", &[("lookup", usize::MAX)]),
-    ("IMatch", &[("match-value", 2)]),
-    ("IStringLike", &[("to-string", 1), ("from-string", 2)]),
-    ("IMutable", &[]),
-    ("INamespaced", &[("name", 1), ("namespace", 1)]),
-    ("INth", &[("nth", 2)]),
-    ("IOFn", &[]),
-    ("IObjType", &[("meta", 1), ("with-meta", 2)]),
-    ("IPair", &[("key", 1), ("value", 1)]),
-    ("IPeekFirst", &[("peek-first", 1)]),
-    ("IPeekLast", &[("peek-last", 1)]),
-    ("IPersistent", &[]),
-    (
-        "IPromise",
-        &[
-            ("state", 1),
-            ("value", 1),
-            ("then", 2),
-            ("catch", 2),
-            ("finally", 2),
-            ("cancel", 1),
-        ],
-    ),
-    ("IPointer", &[("ptr-context", 1)]),
-    ("IPopFirst", &[("pop-first", 1)]),
-    ("IPopLast", &[("pop-last", 1)]),
-    ("IPushFirst", &[("push-first", 2)]),
-    ("IPushLast", &[("push-last", 2)]),
-    ("IRealize", &[("realized?", 1), ("realize", 1)]),
-    ("IReduce", &[("reduce", usize::MAX)]),
-    ("IReset", &[("reset", 2)]),
-    (
-        "ISpace",
-        &[
-            ("context-set", 4),
-            ("context-unset", 2),
-            ("context-list", 1),
-            ("context-get", 2),
-            ("rt-active", 1),
-            ("rt-get", 2),
-            ("rt-start", 2),
-            ("rt-started?", 2),
-            ("rt-stopped?", 2),
-            ("rt-stop", 2),
-        ],
-    ),
-    ("IToMutable", &[("to-mutable", 1)]),
-    ("IToPersistent", &[("to-persistent", 1)]),
-    (
-        "IWatch",
-        &[("watch-add", 3), ("watch-remove", 2), ("watch-list", 1)],
-    ),
-];
+pub(crate) fn protocol_declarations() -> &'static [crate::lang::protocol::ProtocolDeclaration] {
+    crate::lang::protocol::protocol_declarations()
+}
 
 pub fn builtin_protocol_namespace(protocol: &str) -> String {
-    format!(
-        "std.protocol.{}.{}",
-        protocol.to_ascii_lowercase(),
-        protocol
-    )
+    let simple = protocol.strip_prefix("std.foundation/").unwrap_or(protocol);
+    crate::lang::protocol::find_protocol(simple)
+        .map(|declaration| declaration.runtime_name())
+        .unwrap_or_else(|| {
+            if simple.starts_with("std.protocol.") {
+                simple.to_owned()
+            } else {
+                format!("std.protocol.{}.{}", simple.to_ascii_lowercase(), simple)
+            }
+        })
 }
 
 pub(crate) fn builtin_protocol_name(protocol: &str) -> String {
-    builtin_protocol_namespace(protocol)
-}
-
-pub(crate) fn builtin_protocol_parents(protocol: &str) -> Vec<String> {
-    let parents: &[&str] = match protocol {
-        "ICoroutine" | "IStream" => &["IClose"],
-        "IHashCached" => &["IHash"],
-        "IIterator" => &["IIter"],
-        "ILookup" => &["IFind"],
-        "IOFn" => &["IFn"],
-        "IObjType" => &["IHash", "IDisplay"],
-        "IPromise" => &["IDeref", "IDerefTimeout"],
-        "IToMutable" => &["IPersistent"],
-        "IToPersistent" => &["IMutable"],
-        "IStreamDuplex" => &["IStream", "IStreamWrite", "IAbort"],
-        "IWorkHost" => &["IComponent"],
-        "IWorkRun" => &["IWorkRef", "IClosed"],
-        _ => &[],
-    };
-    parents
-        .iter()
-        .map(|parent| builtin_protocol_name(parent))
-        .collect()
+    let simple = protocol.strip_prefix("std.foundation/").unwrap_or(protocol);
+    crate::lang::protocol::find_protocol(simple)
+        .map(|declaration| declaration.runtime_name())
+        .unwrap_or_else(|| protocol.to_owned())
 }
 
 pub(crate) fn canonical_protocol_name(protocol: &str) -> String {
     let simple = protocol.strip_prefix("std.foundation/").unwrap_or(protocol);
-    if FOUNDATION_PROTOCOLS
-        .iter()
-        .any(|(candidate, _)| *candidate == simple)
-    {
-        builtin_protocol_name(simple)
-    } else {
-        protocol.to_owned()
-    }
+    crate::lang::protocol::find_protocol(simple)
+        .map(|declaration| declaration.runtime_name())
+        .unwrap_or_else(|| protocol.to_owned())
 }
 
 pub(crate) fn canonical_intrinsic_protocol_symbol(symbol: &str) -> Option<String> {
@@ -1094,39 +921,33 @@ pub(crate) fn canonical_intrinsic_symbol(symbol: &str) -> Option<String> {
 }
 
 pub fn foundation_protocol_values() -> Vec<(String, Value)> {
-    FOUNDATION_PROTOCOLS
+    protocol_declarations()
         .iter()
-        .map(|(name, methods)| {
+        .filter(|declaration| declaration.availability.is_guest_visible())
+        .map(|declaration| {
             (
-                (*name).to_owned(),
-                Value::Protocol(Rc::new(GuestProtocol {
-                    name: builtin_protocol_name(name),
-                    methods: methods
-                        .iter()
-                        .map(|(method, arity)| ((*method).to_owned(), *arity))
-                        .collect(),
-                    parents: builtin_protocol_parents(name),
-                })),
+                declaration.name.to_owned(),
+                Value::Protocol(Rc::new(guest_protocol(*declaration))),
             )
         })
         .collect()
 }
 
 pub fn builtin_protocol_method_values() -> Vec<(String, String, Value)> {
-    FOUNDATION_PROTOCOLS
+    protocol_declarations()
         .iter()
-        .flat_map(|(protocol, methods)| {
-            methods.iter().map(move |(method, arity)| {
-                let namespace = builtin_protocol_namespace(protocol);
-                let protocol_name = builtin_protocol_name(protocol);
-                let method_name = (*method).to_owned();
-                let display_name = format!("{namespace}/{method}");
+        .filter(|declaration| declaration.availability.is_guest_visible())
+        .flat_map(|declaration| {
+            declaration.methods.iter().map(move |method| {
+                let namespace = builtin_protocol_namespace(declaration.name);
+                let protocol_name = declaration.runtime_name();
+                let method_name = method.name.to_owned();
+                let display_name = format!("{namespace}/{}", method.name);
                 let arity_display_name = display_name.clone();
-                let (minimum_arity, maximum_arity) =
-                    builtin_protocol_arity_range(protocol, method, *arity);
+                let (minimum_arity, maximum_arity) = method.arity.range();
                 (
                     namespace,
-                    (*method).to_owned(),
+                    method.name.to_owned(),
                     native_variadic_function(&display_name, move |arguments| {
                         if arguments.len() < minimum_arity
                             || maximum_arity.is_some_and(|maximum| arguments.len() > maximum)
@@ -1151,18 +972,19 @@ pub fn builtin_protocol_method_values() -> Vec<(String, String, Value)> {
         .collect()
 }
 
-fn builtin_protocol_arity_range(
-    protocol: &str,
-    method: &str,
-    declared_arity: usize,
-) -> (usize, Option<usize>) {
-    if declared_arity != usize::MAX {
-        return (declared_arity, Some(declared_arity));
-    }
-    match (protocol, method) {
-        ("ILookup", "lookup") | ("IReduce", "reduce") => (2, Some(3)),
-        ("IInvokeIn", "invoke-in") => (2, None),
-        _ => (1, None),
+fn guest_protocol(declaration: crate::lang::protocol::ProtocolDeclaration) -> GuestProtocol {
+    GuestProtocol {
+        name: declaration.runtime_name(),
+        methods: declaration
+            .methods
+            .iter()
+            .map(|method| (method.name.to_owned(), method.arity.guest_arity()))
+            .collect(),
+        parents: declaration
+            .parents
+            .iter()
+            .map(|parent| builtin_protocol_name(parent))
+            .collect(),
     }
 }
 
@@ -1171,10 +993,16 @@ mod native_work_protocol_tests {
     use super::*;
 
     fn methods(name: &str) -> Vec<(&'static str, usize)> {
-        FOUNDATION_PROTOCOLS
+        protocol_declarations()
             .iter()
-            .find(|(candidate, _)| *candidate == name)
-            .map(|(_, methods)| methods.to_vec())
+            .find(|declaration| declaration.name == name)
+            .map(|declaration| {
+                declaration
+                    .methods
+                    .iter()
+                    .map(|method| (method.name, method.arity.guest_arity()))
+                    .collect()
+            })
             .expect("protocol must exist")
     }
 

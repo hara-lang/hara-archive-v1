@@ -220,8 +220,11 @@ pub(crate) fn is_bytecode_callable(name: &str) -> bool {
         || NATIVE_TYPES
             .iter()
             .any(|(_, methods)| methods.contains(&local))
-        || FOUNDATION_PROTOCOLS
-            .iter()
-            .any(|(_, methods)| methods.iter().any(|(method, _)| method == &local))
+        || protocol_declarations().iter().any(|declaration| {
+            declaration
+                .methods
+                .iter()
+                .any(|method| method.name == local)
+        })
         || ["disj", "special-symbol?", "the-ns", "ns-name"].contains(&local)
 }

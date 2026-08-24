@@ -1,11 +1,20 @@
 use super::{IConj, ICount, IDisplay, IEmpty, IEquality, IHash};
+use hara_protocol_macros::hara_protocol;
 
+#[hara_protocol(
+    namespace = "std.protocol.icoll",
+    name = "IColl",
+    availability = "inventory-only"
+)]
 pub trait IColl<E>:
     IntoIterator<Item = E> + IEquality + IConj<E> + IEmpty + ICount + IHash + IDisplay
 {
+    #[hara_method(value = "start-string", arity = 1)]
     fn start_string(&self) -> &'static str;
+    #[hara_method(value = "end-string", arity = 1)]
     fn end_string(&self) -> &'static str;
 
+    #[hara_method(value = "separator", arity = 1)]
     fn separator(&self) -> &'static str {
         " "
     }

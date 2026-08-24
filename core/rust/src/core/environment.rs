@@ -61,7 +61,39 @@ impl ProtocolRegistry {
     ) where
         F: Fn(&[Value]) -> Result<Value, String> + 'static,
     {
-        let protocol = canonical_protocol_name(&protocol.into());
+        let protocol = protocol.into();
+        if crate::lang::protocol::find_protocol(&protocol).is_some() {
+            self.register_declared(protocol, method, function);
+            return;
+        }
+        let protocol = canonical_protocol_name(&protocol);
+        let supported_protocol = protocol.clone();
+        self.register_when(
+            protocol,
+            method,
+            move |value| native_protocol_supports(&supported_protocol, value),
+            function,
+        );
+    }
+
+    pub(crate) fn register_declared<F>(
+        &mut self,
+        protocol: impl Into<String>,
+        method: impl Into<String>,
+        function: F,
+    ) where
+        F: Fn(&[Value]) -> Result<Value, String> + 'static,
+    {
+        let protocol = protocol.into();
+        let method = method.into();
+        let declaration = crate::lang::protocol::find_protocol(&protocol)
+            .unwrap_or_else(|| panic!("unknown built-in protocol declaration: {protocol}"));
+        assert!(
+            declaration.method(&method).is_some(),
+            "method {method} is not declared by protocol {}",
+            declaration.name
+        );
+        let protocol = declaration.runtime_name();
         let supported_protocol = protocol.clone();
         self.register_when(
             protocol,
@@ -80,6 +112,16 @@ impl ProtocolRegistry {
             .entry(canonical_protocol_name(&protocol.into()))
             .or_default()
             .push(Rc::new(supports));
+    }
+
+    pub(crate) fn register_marker_declared<S>(&mut self, protocol: impl Into<String>, supports: S)
+    where
+        S: Fn(&Value) -> bool + 'static,
+    {
+        let protocol = protocol.into();
+        let declaration = crate::lang::protocol::find_protocol(&protocol)
+            .unwrap_or_else(|| panic!("unknown built-in protocol declaration: {protocol}"));
+        self.register_marker(declaration.runtime_name(), supports);
     }
 
     pub fn register_when<S, F>(
@@ -242,9 +284,9 @@ impl ProtocolRegistry {
                 .guest_declarations
                 .borrow()
                 .contains(&(protocol.to_owned(), method.to_owned()))
-            || FOUNDATION_PROTOCOLS
+            || protocol_declarations()
                 .iter()
-                .any(|(name, _)| builtin_protocol_name(name) == protocol);
+                .any(|declaration| builtin_protocol_name(declaration.name) == protocol);
         if !known_method {
             return Err(format!("missing protocol method: {protocol}/{method}"));
         }
@@ -275,13 +317,9 @@ impl ProtocolRegistry {
             }
         }
         let methods = self.methods.borrow();
-        let receiver = arguments
-            .first()
-            .ok_or_else(|| {
-                format!(
-                    "protocol/arity: {protocol}/{method} expects at least one argument, received 0"
-                )
-            })?;
+        let receiver = arguments.first().ok_or_else(|| {
+            format!("protocol/arity: {protocol}/{method} expects at least one argument, received 0")
+        })?;
         let last_error = format!(
             "protocol/unsupported-receiver: missing protocol implementation: {protocol}/{method}"
         );
@@ -296,9 +334,9 @@ impl ProtocolRegistry {
             .guest_declarations
             .borrow()
             .contains(&(protocol.to_owned(), method.to_owned()))
-            || FOUNDATION_PROTOCOLS
+            || protocol_declarations()
                 .iter()
-                .any(|(name, _)| builtin_protocol_name(name) == protocol)
+                .any(|declaration| builtin_protocol_name(declaration.name) == protocol)
         {
             Err(last_error)
         } else {
@@ -315,43 +353,9 @@ impl ProtocolRegistry {
     }
 
     pub fn satisfies(&self, protocol: &GuestProtocol, value: &Value) -> bool {
-        if protocol.name.ends_with("/IStreamDuplex") {
-            return ["IStream", "IStreamWrite", "IAbort"].iter().all(|name| {
-                FOUNDATION_PROTOCOLS
-                    .iter()
-                    .find(|(candidate, _)| candidate == name)
-                    .is_some_and(|(name, methods)| {
-                        self.satisfies(
-                            &GuestProtocol {
-                                name: builtin_protocol_name(name),
-                                methods: methods
-                                    .iter()
-                                    .map(|(method, arity)| ((*method).to_owned(), *arity))
-                                    .collect(),
-                                parents: builtin_protocol_parents(name),
-                            },
-                            value,
-                        )
-                    })
-            });
-        }
         if !protocol.parents.iter().all(|parent| {
-            FOUNDATION_PROTOCOLS
-                .iter()
-                .find(|(name, _)| builtin_protocol_name(name) == *parent)
-                .is_some_and(|(name, methods)| {
-                    self.satisfies(
-                        &GuestProtocol {
-                            name: builtin_protocol_name(name),
-                            methods: methods
-                                .iter()
-                                .map(|(method, arity)| ((*method).to_owned(), *arity))
-                                .collect(),
-                            parents: builtin_protocol_parents(name),
-                        },
-                        value,
-                    )
-                })
+            crate::lang::protocol::find_protocol(parent)
+                .is_some_and(|declaration| self.satisfies(&guest_protocol(declaration), value))
         }) {
             return false;
         }
@@ -412,16 +416,14 @@ impl ProtocolRegistry {
     /// Returns the built-in collection protocol registry used by evaluator dispatch.
     pub fn core() -> Self {
         let mut registry = Self::new();
-        registry.register_marker("std.protocol.icoll.IColl", Value::supports_native_icoll);
-        registry.register_marker("std.protocol.imutable.IMutable", |value| {
+        registry.register_marker_declared("IColl", Value::supports_native_icoll);
+        registry.register_marker_declared("IMutable", |value| {
             native_protocol_supports("IMutable", value)
         });
-        registry.register_marker("std.protocol.ipersistent.IPersistent", |value| {
+        registry.register_marker_declared("IPersistent", |value| {
             native_protocol_supports("IPersistent", value)
         });
-        registry.register_marker("std.protocol.iofn.IOFn", |value| {
-            matches!(value, Value::Keyword(_))
-        });
+        registry.register_marker_declared("IOFn", |value| matches!(value, Value::Keyword(_)));
         registry.register("std.protocol.icount.ICount", "count", protocol_count);
         registry.register("std.protocol.inth.INth", "nth", protocol_nth);
         registry.register("std.protocol.ilookup.ILookup", "lookup", protocol_lookup);
@@ -788,7 +790,10 @@ pub(crate) fn catch_matches(error: &str, class: &str) -> bool {
     if class == "Exception" || class == "Throwable" {
         return true;
     }
-    if let Some(selectors) = class.strip_prefix('[').and_then(|value| value.strip_suffix(']')) {
+    if let Some(selectors) = class
+        .strip_prefix('[')
+        .and_then(|value| value.strip_suffix(']'))
+    {
         return selectors
             .split(',')
             .any(|selector| catch_matches(error, selector));
@@ -867,11 +872,15 @@ pub(crate) fn binding_is_hal_alias(name: &str, var: &KernelVar<Value>) -> bool {
     let Ok(registry) = namespace_registry() else {
         return false;
     };
-    registry.current().aliases().into_iter().any(|(alias, target)| {
-        alias.as_str() == qualifier
-            && !target.name().as_str().starts_with("std.native.")
-            && var.symbol().get_namespace() == Some(target.name().as_str())
-    })
+    registry
+        .current()
+        .aliases()
+        .into_iter()
+        .any(|(alias, target)| {
+            alias.as_str() == qualifier
+                && !target.name().as_str().starts_with("std.native.")
+                && var.symbol().get_namespace() == Some(target.name().as_str())
+        })
 }
 
 pub(crate) fn binding_is_native_alias(name: &str, var: &KernelVar<Value>) -> bool {
@@ -884,11 +893,15 @@ pub(crate) fn binding_is_native_alias(name: &str, var: &KernelVar<Value>) -> boo
     let Ok(registry) = namespace_registry() else {
         return false;
     };
-    registry.current().aliases().into_iter().any(|(alias, target)| {
-        alias.as_str() == qualifier
-            && target.name().as_str().starts_with("std.native.")
-            && var.symbol().get_namespace() == Some(target.name().as_str())
-    })
+    registry
+        .current()
+        .aliases()
+        .into_iter()
+        .any(|(alias, target)| {
+            alias.as_str() == qualifier
+                && target.name().as_str().starts_with("std.native.")
+                && var.symbol().get_namespace() == Some(target.name().as_str())
+        })
 }
 
 /// Names a fresh local var cell: qualified to the current namespace when

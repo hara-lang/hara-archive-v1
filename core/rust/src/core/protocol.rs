@@ -876,16 +876,17 @@ fn schema_value_to_form(value: &Value) -> Result<Form, String> {
                 .map(schema_value_to_form)
                 .collect::<Result<_, _>>()?,
         )),
-        value
-            @ (Value::Map(_)
-            | Value::OrderedMap(_)
-            | Value::SortedMap(_)
-            | Value::Trie(_)
-            | Value::PriorityMap(_)) => Ok(Form::Map(
+        value @ (Value::Map(_)
+        | Value::OrderedMap(_)
+        | Value::SortedMap(_)
+        | Value::Trie(_)
+        | Value::PriorityMap(_)) => Ok(Form::Map(
             map_entries(value)
                 .unwrap()
                 .into_iter()
-                .map(|(key, value)| Ok((schema_value_to_form(&key)?, schema_value_to_form(&value)?)))
+                .map(|(key, value)| {
+                    Ok((schema_value_to_form(&key)?, schema_value_to_form(&value)?))
+                })
                 .collect::<Result<_, String>>()?,
         )),
         value => value_to_form(value),
@@ -2199,20 +2200,22 @@ fn named_protocol_satisfies(name: &str, value: &Value) -> bool {
             value,
         );
     }
-    let Some((_, methods)) = FOUNDATION_PROTOCOLS
-        .iter()
-        .find(|(candidate, _)| *candidate == protocol_name)
-    else {
+    let Some(declaration) = crate::lang::protocol::find_protocol(protocol_name) else {
         return false;
     };
     protocol_satisfies(
         &GuestProtocol {
-            name: builtin_protocol_name(protocol_name),
-            methods: methods
+            name: declaration.runtime_name(),
+            methods: declaration
+                .methods
                 .iter()
-                .map(|(method, arity)| ((*method).to_owned(), *arity))
+                .map(|method| (method.name.to_owned(), method.arity.guest_arity()))
                 .collect(),
-            parents: Vec::new(),
+            parents: declaration
+                .parents
+                .iter()
+                .map(|parent| builtin_protocol_name(parent))
+                .collect(),
         },
         value,
     )

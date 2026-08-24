@@ -1,9 +1,15 @@
+use hara_protocol_macros::hara_protocol;
+
+#[hara_protocol(namespace = "std.protocol.ideps", name = "IDeps")]
 pub trait IDeps<K, E> {
     type Entries: Iterator<Item = K>;
     type Keys: Iterator<Item = K>;
 
+    #[hara_method(value = "dep-get", arity = 2)]
     fn dep_get(&self, key: &K) -> Option<E>;
+    #[hara_method(value = "dep-entries", arity = 2)]
     fn dep_entries(&self, key: &K) -> Self::Entries;
+    #[hara_method(value = "dep-keys", arity = 1)]
     fn dep_keys(&self) -> Self::Keys;
 }
 

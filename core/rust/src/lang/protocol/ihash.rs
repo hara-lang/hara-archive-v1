@@ -1,3 +1,5 @@
+use hara_protocol_macros::hara_protocol;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HashType {
     System,
@@ -6,9 +8,11 @@ pub enum HashType {
     Sip,
 }
 
+#[hara_protocol(namespace = "std.protocol.ihash", name = "IHash")]
 pub trait IHash {
     fn hash_calc(&self, hash_type: HashType) -> u64;
 
+    #[hara_method(value = "hash", arity = 1)]
     fn hash(&self) -> u64 {
         self.hash_calc(self.hash_type())
     }

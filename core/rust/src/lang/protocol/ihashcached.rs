@@ -1,7 +1,15 @@
 use super::ihash::{HashType, IHash};
+use hara_protocol_macros::hara_protocol;
 
+#[hara_protocol(
+    namespace = "std.protocol.ihashcached",
+    name = "IHashCached",
+    parents = ["IHash"]
+)]
 pub trait IHashCached: IHash {
+    #[hara_method(value = "hash-current", arity = 1)]
     fn hash_current(&self) -> u64;
+    #[hara_method(value = "hash-put", arity = 2)]
     fn hash_put(&self, hash: u64);
 
     fn hash_cached(&self) -> u64 {
