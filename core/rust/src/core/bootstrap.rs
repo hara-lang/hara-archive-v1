@@ -1,3 +1,24 @@
+fn builtin_protocol_owner_namespace(interface_namespace: &str) -> &str {
+    interface_namespace
+        .rsplit_once('.')
+        .map(|(owner, _)| owner)
+        .expect("builtin protocol interface namespace")
+}
+
+fn map_builtin_protocol_products(
+    namespaces: &NamespaceRegistry<Value>,
+    interface_namespace: &str,
+    local_name: &str,
+    var: crate::kernel::Var<Value>,
+) {
+    namespaces
+        .find_or_create(interface_namespace)
+        .map_var(Symbol::parse(local_name), var.clone());
+    namespaces
+        .find_or_create(builtin_protocol_owner_namespace(interface_namespace))
+        .map_var(Symbol::parse(local_name), var);
+}
+
 /// Installs the runtime-owned substrate required by canonical Foundation
 /// source. Ordinary Foundation functions and compatibility aliases are
 /// intentionally absent; they are defined by the source modules themselves.
@@ -30,22 +51,22 @@ pub fn minimal_namespace_registry() -> NamespaceRegistry<Value> {
     }
 
     for (name, protocol) in foundation_protocol_values() {
-        let namespace_name = builtin_protocol_namespace(&name);
-        let namespace = namespaces.find_or_create(&namespace_name);
+        let interface_namespace = builtin_protocol_namespace(&name);
         let var = crate::kernel::Var::with_metadata(
-            &namespace_name,
+            &interface_namespace,
             protocol,
             crate::kernel::VarMetadata {
                 origin: VarOrigin::RuntimePrimitive,
                 ..crate::kernel::VarMetadata::default()
             },
         );
-        namespace.map_var(Symbol::parse(&name), var);
+        map_builtin_protocol_products(&namespaces, &interface_namespace, &name, var);
     }
-    for (namespace, name, method) in builtin_protocol_method_values() {
-        namespaces
-            .find_or_create(namespace)
-            .intern_with_origin(name, method, VarOrigin::RuntimePrimitive);
+    for (interface_namespace, name, method) in builtin_protocol_method_values() {
+        let var = namespaces
+            .find_or_create(&interface_namespace)
+            .intern_with_origin(&name, method, VarOrigin::RuntimePrimitive);
+        map_builtin_protocol_products(&namespaces, &interface_namespace, &name, var);
     }
 
     namespaces
@@ -57,7 +78,7 @@ mod tests {
     use crate::lang::protocol::INamespaced;
 
     #[test]
-    fn intrinsic_type_vars_use_only_canonical_symbols() {
+    fn intrinsic_type_vars_publish_named_declaration_products() {
         let namespaces = minimal_namespace_registry();
 
         assert!(namespaces.find("std.foundation").is_none());
@@ -83,19 +104,35 @@ mod tests {
             assert!(namespace.resolve(&Symbol::parse(name)).is_none());
         }
 
-        let protocol = "std.protocol.iassoc.IAssoc";
-        let namespace = namespaces.find(protocol).expect("protocol namespace");
-        let var = namespace
-            .resolve(&Symbol::parse("IAssoc"))
-            .expect("canonical protocol");
-        assert_eq!(var.symbol().as_str(), protocol);
-        assert_eq!(var.origin(), VarOrigin::RuntimePrimitive);
-        assert!(namespace.resolve(&Symbol::parse("IAssoc")).is_none());
-        assert!(namespaces.resolve(&Symbol::parse("std.protocol.iassoc/assoc")).is_none());
-        assert!(
-            namespaces
-                .resolve(&Symbol::parse("std.protocol.iassoc.IAssoc/assoc"))
-                .is_some()
+        let interface_type = namespaces
+            .resolve(&Symbol::parse("std.protocol.iassoc.IAssoc"))
+            .expect("protocol interface type");
+        let protocol_var = namespaces
+            .resolve(&Symbol::parse("std.protocol.iassoc/IAssoc"))
+            .expect("protocol namespace var");
+        assert!(interface_type.same_identity(&protocol_var));
+        assert_eq!(
+            interface_type.symbol().as_str(),
+            "std.protocol.iassoc.IAssoc"
         );
+        assert_eq!(interface_type.origin(), VarOrigin::RuntimePrimitive);
+        assert_eq!(protocol_var.origin(), VarOrigin::RuntimePrimitive);
+
+        let interface_method = namespaces
+            .resolve(&Symbol::parse("std.protocol.iassoc.IAssoc/assoc"))
+            .expect("interface-qualified protocol method");
+        let protocol_method = namespaces
+            .resolve(&Symbol::parse("std.protocol.iassoc/assoc"))
+            .expect("namespace-qualified protocol method");
+        assert!(interface_method.same_identity(&protocol_method));
+        assert_eq!(
+            interface_method.symbol().as_str(),
+            "std.protocol.iassoc.IAssoc/assoc"
+        );
+        assert_eq!(interface_method.origin(), VarOrigin::RuntimePrimitive);
+        assert_eq!(protocol_method.origin(), VarOrigin::RuntimePrimitive);
+
+        assert!(namespaces.resolve(&Symbol::parse("IAssoc")).is_none());
+        assert!(namespaces.resolve(&Symbol::parse("assoc")).is_none());
     }
 }
