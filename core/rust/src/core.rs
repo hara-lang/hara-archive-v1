@@ -191,6 +191,7 @@ include!("core/provider.rs");
 include!("core/async_value.rs");
 include!("core/primitive.rs");
 include!("core/protocol.rs");
+include!("core/protocol_admission.rs");
 include!("core/operation.rs");
 include!("core/form.rs");
 include!("core/namespace.rs");
