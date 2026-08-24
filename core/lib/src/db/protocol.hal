@@ -28,8 +28,10 @@
   "Returns true for a complete, runtime-neutral provider descriptor."
   [value]
   (and (map? value)
-       (= (set (keys value))
-          #{:provider/id :provider/engine :provider/capabilities})
+       (= (count value) 3)
+       (not (nil? (get value :provider/id)))
+       (not (nil? (get value :provider/engine)))
+       (not (nil? (get value :provider/capabilities)))
        (keyword? (:provider/id value))
        (keyword? (:provider/engine value))
        (vector? (:provider/capabilities value))

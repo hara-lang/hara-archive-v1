@@ -84,7 +84,7 @@
         (protocol/db-provider-id descriptor)
         (protocol/db-provider-engine descriptor)
         (protocol/db-provider-supports? descriptor "sql")
-        (has? descriptor :credentials)]
+        (nil? (get descriptor :credentials))]
        => [true :mock :mock-sql true false]))
 
    (fact "provider registration is replaceable metadata only"

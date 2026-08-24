@@ -322,6 +322,20 @@ fn collect_source_file(
 ) -> Result<(), String> {
     validate_relative_path(source)?;
     let path = root.join(source);
+    let mut current = root.to_path_buf();
+    for component in source.components() {
+        if let Component::Normal(name) = component {
+            current.push(name);
+            let metadata = fs::symlink_metadata(&current)
+                .map_err(|error| format!("cannot read {}: {error}", source.display()))?;
+            if metadata.file_type().is_symlink() {
+                return Err(format!(
+                    "package entries must not be symbolic links: {}",
+                    source.display()
+                ));
+            }
+        }
+    }
     let metadata = fs::symlink_metadata(&path)
         .map_err(|error| format!("cannot read {}: {error}", source.display()))?;
     if metadata.file_type().is_symlink() {
