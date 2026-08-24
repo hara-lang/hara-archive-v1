@@ -3,6 +3,13 @@
   (:require [lang.common.grammar :as grammar]
             [lang.common.grammar-xtalk :as xtalk]))
 
+(fact "owns the complete source grammar profile"
+  [grammar/+version+
+   (count grammar/+features+)
+   (mapv (fn [op] (:op (get grammar/+features+ op)))
+         [:add :tfirst :x-add])]
+  => [1 301 [:add :tfirst :x-add]])
+
 ^{:refer lang.common.grammar/gen-ops :added "4.0"}
 (fact "discovers operator table vars"
   (vector? (grammar/gen-ops 'lang.common.grammar-spec "spec")) => true)

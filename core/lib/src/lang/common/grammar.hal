@@ -404,3 +404,13 @@
           :sections (grammar-sections reserved)
           :macros (grammar-macros reserved)
           :structure (grammar-structure reserved)}))
+
+^{:public true}
+(def +version+ 1)
+
+^{:public true}
+(def +features+
+  (merge-lookups
+   (map (fn [category]
+          (get +op-all+ category))
+        +op-order+)))

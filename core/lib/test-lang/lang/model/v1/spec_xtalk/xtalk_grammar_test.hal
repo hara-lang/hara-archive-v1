@@ -1,0 +1,14 @@
+(ns lang.model.v1.spec-xtalk.xtalk-grammar-test
+  (:use code.test)
+  (:require [lang.common.grammar :as common]
+            [lang.model.v1.spec-xtalk.xtalk-grammar :as grammar]))
+
+(fact "XTalk V1 consumes the source-owned common grammar profile"
+  [grammar/+grammar-version+
+   (:profile/version grammar/+profile+)
+   (:grammar/version grammar/+grammar+)
+   (count (:profile/operators grammar/+profile+))
+   (= common/+features+ (:profile/operators grammar/+profile+))]
+  => [1 1 1 301 true])
+
+(pr-str (run {:namespace "lang.model.v1.spec-xtalk.xtalk-grammar-test"}))

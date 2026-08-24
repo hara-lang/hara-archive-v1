@@ -1,12 +1,12 @@
 (ns lang.model.v1.spec-xtalk.xtalk-grammar
-  (:require [lang.base.v1.grammar-spec :as spec]
-            [lang.common.emit-helper :as helper]
+  (:require [lang.common.emit-helper :as helper]
+            [lang.common.grammar :as common]
             [lang.common.grammar-api :as grammar]
             [lang.common.registry :as registry]))
 
 (def +language+ :xtalk)
 (def +tag+ :xtalk)
-(def +grammar-version+ spec/+version+)
+(def +grammar-version+ common/+version+)
 
 (def +template+
   (grammar/emit-template
@@ -18,7 +18,7 @@
   (grammar/profile
    {:profile/id +tag+
     :profile/version +grammar-version+
-    :profile/operators spec/+features+}))
+    :profile/operators common/+features+}))
 
 (def +grammar+
   (grammar/definition
@@ -34,5 +34,4 @@
     :grammar/profiles
     [{:profile/id +tag+
       :profile/version +grammar-version+}]}))
-
 
