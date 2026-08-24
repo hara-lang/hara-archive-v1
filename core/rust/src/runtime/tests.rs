@@ -1193,7 +1193,7 @@ mod tests {
             .unwrap();
         assert_eq!(core::receiver_category(&value), "extension");
         runtime
-            .evaluator
+            .execution
             .environment_mut()
             .insert("r".into(), value);
         assert_eq!(runtime.eval_text("(iter-next (iter r))").unwrap(), "0");
@@ -1277,7 +1277,7 @@ mod tests {
             .construct("lazy-map", "request", &[core::Value::Number(42)])
             .unwrap();
         runtime
-            .evaluator
+            .execution
             .environment_mut()
             .insert("request".into(), value);
         assert_eq!(runtime.eval_text("(:value request)").unwrap(), "42");
