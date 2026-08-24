@@ -233,6 +233,25 @@ impl PackageManifest {
         &self.canonical_edn
     }
 
+    /// Returns the diagnostic emitted by non-JVM loaders when a package also
+    /// carries host-native flavor artifacts. Rust intentionally leaves those
+    /// artifacts untouched; only portable and Wasm routes are loaded here.
+    pub fn unsupported_host_flavors_warning(&self) -> Option<String> {
+        if self.flavors.is_empty() {
+            return None;
+        }
+        let flavors = self
+            .flavors
+            .keys()
+            .map(|flavor| format!(":{flavor}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        Some(format!(
+            "package/host-flavors-ignored: {} {} ({flavors}) are unavailable on the Rust/Wasm runtime",
+            self.identity, self.version
+        ))
+    }
+
     pub fn admit_catalog_bytes(
         &self,
         bytes: &[u8],

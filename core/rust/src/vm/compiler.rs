@@ -78,9 +78,9 @@ fn compile_spanned_forms(forms: &[SpannedForm]) -> Result<Program, CompileError>
 
 fn compile_spanned_forms_without_namespace_preparation(
     forms: &[SpannedForm],
-    excluded_intrinsics: HashSet<String>,
-) -> Result<Program, CompileError> {
-    let mut compiler = Compiler::new(excluded_intrinsics);
+    excluded_foundation_libraries: HashSet<String>,
+ ) -> Result<Program, CompileError> {
+    let mut compiler = Compiler::new(excluded_foundation_libraries);
     compiler.predeclare_top_level(forms);
     let children = compiler.children(forms);
     compiler.compile_sequence(&children, true)?;
@@ -158,7 +158,7 @@ fn compile_spanned_forms_with_config(
             .collect::<Vec<_>>();
         compile_spanned_forms_without_namespace_preparation(
             &rewritten,
-            config.excluded_intrinsics().clone(),
+            config.excluded_foundation_libraries().clone(),
         )
     })
 }
@@ -210,23 +210,23 @@ fn sync_registry_global_aliases(
     config: &mut crate::kernel::GeneratedNamespaceConfig,
     registry: &crate::kernel::NamespaceRegistry<crate::core::Value>,
 ) {
-    let excluded_intrinsics = config.excluded_intrinsics().clone();
+    let excluded_foundation_libraries = config.excluded_foundation_libraries().clone();
     let excluded_foundation = config.excluded_foundation().clone();
     let current = registry.current();
-    for library in &excluded_intrinsics {
-        if let Some(alias) = crate::kernel::generated::intrinsic_alias(library) {
+    for library in &excluded_foundation_libraries {
+        if let Some(alias) = crate::kernel::generated::foundation_library_alias(library) {
             current.unalias(alias);
         }
     }
     for (alias, target) in current.aliases() {
         let library = target.name().as_str().strip_prefix("std.foundation.");
-        if library.is_some_and(|library| excluded_intrinsics.contains(library)) {
+        if library.is_some_and(|library| excluded_foundation_libraries.contains(library)) {
             current.unalias(alias.as_str());
         }
     }
     for (alias, target) in current.lazy_aliases() {
         let library = target.as_str().strip_prefix("std.foundation.");
-        if library.is_some_and(|library| excluded_intrinsics.contains(library)) {
+        if library.is_some_and(|library| excluded_foundation_libraries.contains(library)) {
             current.unalias(alias.as_str());
         }
     }
@@ -239,7 +239,7 @@ fn sync_registry_global_aliases(
                     .as_str()
                     .strip_prefix("std.foundation.")
                     .unwrap_or_default();
-                !excluded_intrinsics.contains(library) && !excluded_foundation.contains(library)
+                !excluded_foundation_libraries.contains(library) && !excluded_foundation.contains(library)
             })
             .map(|(alias, namespace)| (alias.as_str().to_owned(), namespace.as_str().to_owned())),
     );
@@ -419,10 +419,10 @@ struct Compiler {
     /// visible to global references compiled after their defining form
     /// (issue #223 two-phase visibility).
     globals: Vec<String>,
-    /// Intrinsic libraries explicitly removed by the source namespace config.
+    /// Foundation child libraries explicitly removed by the source namespace config.
     /// This is checked before the process-wide global alias registry so an
     /// excluded `str/` (or equivalent) cannot be resurrected by lookup.
-    excluded_intrinsics: HashSet<String>,
+    excluded_foundation_libraries: HashSet<String>,
     /// Source-level forwarding shims opted into call-site lowering with
     /// `^{:inline target/name}`.
     inline_globals: HashMap<String, String>,
@@ -506,7 +506,7 @@ impl Compiler {
         }
     }
 
-    fn new(excluded_intrinsics: HashSet<String>) -> Compiler {
+    fn new(excluded_foundation_libraries: HashSet<String>) -> Compiler {
         let mut scopes = ScopeStack::new();
         scopes.push_scope();
         Compiler {
@@ -533,7 +533,7 @@ impl Compiler {
                 fallthrough: true,
             }],
             globals: Vec::new(),
-            excluded_intrinsics,
+            excluded_foundation_libraries,
             inline_globals: HashMap::new(),
             var_metadata: Vec::new(),
             top_level: true,

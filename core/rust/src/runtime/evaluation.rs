@@ -130,6 +130,9 @@ impl Runtime {
                     &package_manifest_path,
                 )
                 .map_err(|error| error.to_string())?;
+                if let Some(warning) = package_manifest.unsupported_host_flavors_warning() {
+                    eprintln!("warning: {warning}");
+                }
                 let module = package_manifest
                     .wasm_imports
                     .keys()
@@ -460,6 +463,9 @@ impl Runtime {
         }
         let manifest = package_manifest::PackageManifest::read(&package_manifest_path)
             .map_err(|error| error.to_string())?;
+        if let Some(warning) = manifest.unsupported_host_flavors_warning() {
+            eprintln!("warning: {warning}");
+        }
         let requirements = package_manifest::PackageRuntimeRequirements {
             supported_targets: ["wasm32-wasi-preview1".to_owned()].into_iter().collect(),
             supported_abis: ["core.v1".to_owned()].into_iter().collect(),

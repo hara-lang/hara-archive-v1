@@ -276,8 +276,6 @@ final class HaraAnalyzer {
           return analyzeDef(list);
         case "var":
           return analyzeVar(list);
-        case "deref":
-          return analyzeDeref(list);
         case "set!":
           return analyzeSetVar(list);
         case "defstruct":
@@ -1441,11 +1439,6 @@ final class HaraAnalyzer {
     return new HaraNodes.VarReference((Symbol) name);
   }
 
-  private HaraExpressionNode analyzeDeref(List<?> form) {
-    requireCount(form, 2, "deref");
-    return new HaraNodes.Deref(analyze(form.nth(1)));
-  }
-
   private HaraExpressionNode analyzeSetVar(List<?> form) {
     requireCount(form, 3, "set!");
     Object place = form.nth(1);
@@ -1989,7 +1982,7 @@ final class HaraAnalyzer {
   }
 
   /**
-   * Specializes get/nth/assoc call sites. Falls back to a plain invocation whenever the operator
+   * Specializes get/nth call sites. Falls back to a plain invocation whenever the operator
    * is lexically shadowed or the arity is outside the specialized shape, so error behavior for
    * unsupported arities is exactly that of the generic path.
    */
@@ -2003,9 +1996,6 @@ final class HaraAnalyzer {
         break;
       case NTH:
         supported = arity == 2;
-        break;
-      case ASSOC:
-        supported = arity == 3;
         break;
       default:
         throw new AssertionError(kind);

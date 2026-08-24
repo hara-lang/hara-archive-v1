@@ -19,9 +19,11 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
 import java.util.HexFormat;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -34,6 +36,8 @@ import java.util.zip.ZipOutputStream;
 final class HaraPackageTool {
   private static final Pattern NAMESPACE =
       Pattern.compile("\\(ns\\+?\\s+([a-zA-Z0-9_.-]+)");
+
+  private record JvmPackageInfo(String artifactPath) {}
 
   private HaraPackageTool() {}
 
@@ -119,11 +123,23 @@ final class HaraPackageTool {
     }
     if (!Files.isRegularFile(archive))
       throw new HaraException("package archive does not exist: " + archive);
+    HaraPackageManifest archiveManifest;
+    try (ZipFile zip = new ZipFile(archive.toFile(), StandardCharsets.UTF_8)) {
+      ZipEntry entry = zip.getEntry("package.edn");
+      if (entry == null) throw new HaraException("archive is missing package.edn");
+      try (InputStream archiveInput = zip.getInputStream(entry)) {
+        archiveManifest =
+            HaraPackageManifest.parse(
+                new String(archiveInput.readAllBytes(), StandardCharsets.UTF_8), archive.toString());
+      }
+    }
     String digest = sha256(Files.readAllBytes(archive));
+    String configuredRoot = System.getProperty("hara.dist.home", "");
+    if (configuredRoot.isBlank()) configuredRoot = System.getenv("HARA_DIST_HOME");
     Path root =
-        System.getenv("HARA_DIST_HOME") == null
+        configuredRoot == null || configuredRoot.isBlank()
             ? Path.of(System.getProperty("user.home"), ".hara", "dist")
-            : Path.of(System.getenv("HARA_DIST_HOME"));
+            : Path.of(configuredRoot);
     Path archiveTarget = root.resolve("archives/sha256/" + digest + ".harp");
     Path packageRoot = root.resolve("roots/sha256/" + digest);
     Files.createDirectories(archiveTarget.getParent());
@@ -133,30 +149,50 @@ final class HaraPackageTool {
     if (!Files.exists(packageRoot)) {
       Path staging = root.resolve("roots/sha256/." + digest + ".tmp-" + ProcessHandle.current().pid());
       Files.createDirectories(staging);
-      try (ZipInputStream zip =
-          new ZipInputStream(
-              new BufferedInputStream(Files.newInputStream(archiveTarget)),
-              StandardCharsets.UTF_8)) {
-        ZipEntry entry;
-        while ((entry = zip.getNextEntry()) != null) {
-          Path relative = Path.of(entry.getName()).normalize();
-          if (relative.isAbsolute() || relative.startsWith(".."))
-            throw new HaraException("archive contains an unsafe path");
-          Path destination = staging.resolve(relative).normalize();
-          if (!destination.startsWith(staging))
-            throw new HaraException("archive contains an unsafe path");
-          if (entry.isDirectory()) Files.createDirectories(destination);
-          else {
-            Files.createDirectories(destination.getParent());
-            try (OutputStream file =
-                new BufferedOutputStream(Files.newOutputStream(destination))) {
-              zip.transferTo(file);
+      try {
+        try (ZipInputStream zip =
+            new ZipInputStream(
+                new BufferedInputStream(Files.newInputStream(archiveTarget)),
+                StandardCharsets.UTF_8)) {
+          Set<String> extracted = new HashSet<>();
+          ZipEntry entry;
+          while ((entry = zip.getNextEntry()) != null) {
+            Path relative = Path.of(entry.getName()).normalize();
+            if (relative.isAbsolute() || relative.startsWith(".."))
+              throw new HaraException("archive contains an unsafe path");
+            if (!extracted.add(relative.toString().replace('\\', '/')))
+              throw new HaraException("archive contains a duplicate path: " + entry.getName());
+            Path destination = staging.resolve(relative).normalize();
+            if (!destination.startsWith(staging))
+              throw new HaraException("archive contains an unsafe path");
+            if (entry.isDirectory()) Files.createDirectories(destination);
+            else {
+              Files.createDirectories(destination.getParent());
+              try (OutputStream file =
+                  new BufferedOutputStream(Files.newOutputStream(destination))) {
+                zip.transferTo(file);
+              }
             }
           }
         }
+        HaraPackageManifest installedManifest = HaraPackageManifest.read(staging);
+        if (installedManifest == null) {
+          throw new HaraException("archive is missing package.edn");
+        }
+        installedManifest.verifyArchiveEntries(staging);
+        installedManifest.verifyFiles(staging);
+        if (installedManifest.jvmFlavor() != null) installedManifest.verifyJvmFlavor(staging);
+        Files.move(staging, packageRoot);
+      } catch (HaraException | IOException error) {
+        try {
+          deleteTree(staging);
+        } catch (IOException cleanup) {
+          error.addSuppressed(cleanup);
+        }
+        throw error;
       }
-      Files.move(staging, packageRoot);
     }
+    if (archiveManifest.jvmFlavor() != null) archiveManifest.verifyJvmFlavor(packageRoot);
     output.println("package install: " + packageRoot);
     return 0;
   }
@@ -180,8 +216,14 @@ final class HaraPackageTool {
     files.put(
         "project.edn",
         Files.readAllBytes(project.descriptor()));
+    JvmPackageInfo jvm = buildJvmPackage(project, files);
+    if (jvm != null) {
+      files.put(
+          "project.lock.edn",
+          jvmLock(project).getBytes(StandardCharsets.UTF_8));
+    }
     if (files.isEmpty()) throw new HaraException("package build found no declared files");
-    byte[] packageEdn = packageManifest(project, files).getBytes(StandardCharsets.UTF_8);
+    byte[] packageEdn = packageManifest(project, files, jvm).getBytes(StandardCharsets.UTF_8);
     if (output.getParent() != null) Files.createDirectories(output.getParent());
     try (ZipOutputStream zip =
         new ZipOutputStream(
@@ -208,7 +250,51 @@ final class HaraPackageTool {
     }
   }
 
-  private static String packageManifest(HaraProject project, Map<String, byte[]> contents) {
+  private static JvmPackageInfo buildJvmPackage(
+      HaraProject project, Map<String, byte[]> contents) throws IOException {
+    if (project.jvmEntryPoint() == null) return null;
+    HaraJvmProject.BuildResult result = HaraJvmProject.buildPackage(project, false);
+    if (result == null) return null;
+    String artifactPath = "artifacts/jvm/provider.jar";
+    putGenerated(contents, artifactPath, result.artifact());
+    for (Path dependency : result.dependencies()) {
+      byte[] bytes = Files.readAllBytes(dependency);
+      putGenerated(contents, "artifacts/jvm/dependencies/" + sha256(bytes) + ".jar", bytes);
+    }
+    return new JvmPackageInfo(artifactPath);
+  }
+
+  private static void putGenerated(Map<String, byte[]> contents, String path, Path source)
+      throws IOException {
+    putGenerated(contents, path, Files.readAllBytes(source));
+  }
+
+  private static void putGenerated(Map<String, byte[]> contents, String path, byte[] bytes) {
+    if (contents.put(path, bytes) != null) {
+      throw new HaraException("duplicate package archive path: " + path);
+    }
+  }
+
+  private static String jvmLock(HaraProject project) {
+    StringBuilder dependencies = new StringBuilder();
+    for (HaraProject.JvmDependency dependency :
+        project.jvmDependencies().stream()
+            .sorted(java.util.Comparator.comparing(HaraProject.JvmDependency::id))
+            .toList()) {
+      dependencies
+          .append("    ")
+          .append(dependency.id().replace(':', '/'))
+          .append(" {:version ")
+          .append(edn(dependency.version()))
+          .append("}\n");
+    }
+    return "{:lock/format \"0.0.0-alpha\"\n :runtime-sections {:jvm {:dependencies {:maven {\n"
+        + dependencies
+        + "}}}}}\n";
+  }
+
+  private static String packageManifest(
+      HaraProject project, Map<String, byte[]> contents, JvmPackageInfo jvm) {
     MessageDigest tree = digest();
     StringBuilder files = new StringBuilder();
     TreeMap<String, String> resources = new TreeMap<>();
@@ -244,19 +330,69 @@ final class HaraPackageTool {
                 .append(" ")
                 .append(edn(path))
                 .append("\n"));
+    String provenance =
+        jvm == null
+            ? ""
+            : " :provenance {:repository \"local/" + project.name().display() + "\" :commit \""
+                + sha256(contents.get("project.edn"))
+                + "\"}";
+    String flavor = jvm == null ? "" : jvmFlavor(project, contents, jvm);
     return "{:harp/format \"0.0.0-alpha\"\n :package {:identity "
         + edn(project.name().display())
         + " :version "
         + edn(project.version())
+        + provenance
         + "}\n :files {\n"
         + files
         + "} :resources {\n"
         + resourceEdn
         + "} :extensions "
         + project.extensionsEdn()
+        + flavor
         + "\n :integrity {:tree-sha256 \"sha256:"
         + HexFormat.of().formatHex(tree.digest())
         + "\"}}\n";
+  }
+
+  private static String jvmFlavor(
+      HaraProject project, Map<String, byte[]> contents, JvmPackageInfo jvm) {
+    StringBuilder dependencies = new StringBuilder();
+    for (HaraProject.JvmDependency dependency :
+        project.jvmDependencies().stream()
+            .sorted(java.util.Comparator.comparing(HaraProject.JvmDependency::id))
+            .toList()) {
+      dependencies
+          .append("          ")
+          .append(dependency.id().replace(':', '/'))
+          .append(" {:version ")
+          .append(edn(dependency.version()))
+          .append("}\n");
+    }
+    StringBuilder remote = new StringBuilder();
+    for (Map.Entry<String, byte[]> entry : contents.entrySet()) {
+      if (!entry.getKey().startsWith("artifacts/jvm/dependencies/")) continue;
+      remote
+          .append("    ")
+          .append(edn(entry.getKey()))
+          .append(" {:sha256 \"sha256:")
+          .append(sha256(entry.getValue()))
+          .append("\" :size ")
+          .append(entry.getValue().length)
+          .append("}\n");
+    }
+    return "\n :flavors {:jvm {:variant/artifact {:artifact/type :jar :artifact/path "
+        + edn(jvm.artifactPath())
+        + " :artifact/sha256 \"sha256:"
+        + sha256(contents.get(jvm.artifactPath()))
+        + "\" :artifact/target \"java-21\" :artifact/abi \""
+        + JvmPackageProvider.ABI
+        + "\" :artifact/entry-point "
+        + edn(project.jvmEntryPoint())
+        + "} :variant/required-capabilities #{} :variant/host-calls #{} :variant/exports #{}"
+        + " :variant/dependencies {:maven {\n"
+        + dependencies
+        + "}}}}}"
+        + (remote.length() == 0 ? "" : "\n :remote-artifacts {\n" + remote + "}");
   }
 
   private static void writeEntry(ZipOutputStream zip, String name, byte[] bytes)
@@ -266,6 +402,15 @@ final class HaraPackageTool {
     zip.putNextEntry(entry);
     zip.write(bytes);
     zip.closeEntry();
+  }
+
+  private static void deleteTree(Path root) throws IOException {
+    if (!Files.exists(root)) return;
+    try (var paths = Files.walk(root)) {
+      for (Path path : paths.sorted(java.util.Comparator.reverseOrder()).toList()) {
+        Files.deleteIfExists(path);
+      }
+    }
   }
 
   private static HaraProject project(Path input) {

@@ -324,6 +324,20 @@ pub struct Function {
     is_macro: bool,
 }
 
+impl Function {
+    /// Returns the symbol that identifies this callable's definition.
+    /// Named source functions use their defining namespace as the origin;
+    /// native callables may already carry a qualified display name.
+    pub(crate) fn origin_symbol(&self) -> Option<Symbol> {
+        let name = self.name.as_deref()?;
+        if name.contains('/') {
+            Some(Symbol::parse(name))
+        } else {
+            Some(Symbol::create(self.namespace.as_deref(), name))
+        }
+    }
+}
+
 #[derive(Clone)]
 pub(crate) struct MultiMethod {
     dispatch: Rc<Function>,
@@ -552,7 +566,7 @@ pub fn native_function(
     arity: usize,
     callback: impl Fn(Vec<Value>) -> Result<Value, String> + 'static,
 ) -> Value {
-    Value::Function(Rc::new(Function {
+    let function = Rc::new(Function {
         params: (0..arity).map(|index| format!("arg{index}")).collect(),
         variadic: None,
         patterns: Vec::new(),
@@ -566,7 +580,9 @@ pub fn native_function(
         clauses: Vec::new(),
         metadata: None,
         is_macro: false,
-    }))
+    });
+    debug_assert!(function.origin_symbol().is_some());
+    Value::Function(function)
 }
 
 /// A native function wrapper with an exact fixed parameter list and an
@@ -579,7 +595,7 @@ pub(crate) fn native_fixed_variadic_function(
     fixed_arity: usize,
     callback: impl Fn(Vec<Value>) -> Result<Value, String> + 'static,
 ) -> Value {
-    Value::Function(Rc::new(Function {
+    let function = Rc::new(Function {
         params: (0..fixed_arity)
             .map(|index| format!("arg{index}"))
             .collect(),
@@ -595,14 +611,16 @@ pub(crate) fn native_fixed_variadic_function(
         clauses: Vec::new(),
         metadata: None,
         is_macro: false,
-    }))
+    });
+    debug_assert!(function.origin_symbol().is_some());
+    Value::Function(function)
 }
 
 pub(crate) fn native_variadic_function(
     name: &str,
     callback: impl Fn(Vec<Value>) -> Result<Value, String> + 'static,
 ) -> Value {
-    Value::Function(Rc::new(Function {
+    let function = Rc::new(Function {
         params: Vec::new(),
         variadic: Some("arguments".into()),
         patterns: Vec::new(),
@@ -616,7 +634,9 @@ pub(crate) fn native_variadic_function(
         clauses: Vec::new(),
         metadata: None,
         is_macro: false,
-    }))
+    });
+    debug_assert!(function.origin_symbol().is_some());
+    Value::Function(function)
 }
 
 pub(crate) fn native_fiber_function(
@@ -626,7 +646,7 @@ pub(crate) fn native_fiber_function(
     callback: impl Fn(Vec<Value>) -> Result<Value, String> + 'static,
     fiber_callback: impl Fn(Vec<Value>, Cont) -> Step + 'static,
 ) -> Value {
-    Value::Function(Rc::new(Function {
+    let function = Rc::new(Function {
         params: (0..fixed_arity)
             .map(|index| format!("arg{index}"))
             .collect(),
@@ -642,7 +662,9 @@ pub(crate) fn native_fiber_function(
         clauses: Vec::new(),
         metadata: None,
         is_macro: false,
-    }))
+    });
+    debug_assert!(function.origin_symbol().is_some());
+    Value::Function(function)
 }
 
 pub(crate) fn exception_function_values() -> Vec<(&'static str, Value)> {
@@ -1419,7 +1441,6 @@ pub(crate) fn syntax_symbol(name: &str) -> bool {
         "extend-type",
         "field",
         "fn",
-        "fn*",
         "if",
         "let",
         "letfn",
@@ -1912,6 +1933,16 @@ impl StackTraceGuard {
         TRACE_STACK.with(|stack| stack.borrow_mut().clear());
         Self { previous }
     }
+}
+
+/// Runs an execution boundary with Hara stack collection enabled.
+///
+/// Stack collection belongs to callable invocation, not to a second tree
+/// evaluator. Fiber, bytecode, and other execution targets can share this
+/// boundary while retaining the same opt-in error contract.
+pub(crate) fn with_stack_trace<R>(operation: impl FnOnce() -> R) -> R {
+    let _guard = StackTraceGuard::enable();
+    operation()
 }
 
 impl Drop for StackTraceGuard {

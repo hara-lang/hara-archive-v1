@@ -937,20 +937,6 @@ public final class HaraNodes {
     }
   }
 
-  public static final class Deref extends HaraExpressionNode {
-    @Child private HaraExpressionNode value;
-
-    public Deref(HaraExpressionNode value) {
-      this.value = value;
-    }
-
-    @Override
-    public Object execute(VirtualFrame frame) {
-      Object receiver = HaraBox.unwrap(value.execute(frame));
-      return HaraLanguage.currentContext(this).invokeProtocol("IDeref", "deref", receiver);
-    }
-  }
-
   public static final class SetVar extends HaraExpressionNode {
     private final Symbol symbol;
     @Child private HaraExpressionNode value;
@@ -2486,8 +2472,8 @@ public final class HaraNodes {
   }
 
   /**
-   * Specialized node for the hot persistent-collection operations {@code get}, {@code nth}, and
-   * {@code assoc}. Emitted only when the operator is not lexically shadowed and the call arity
+   * Specialized node for the hot persistent-collection operations {@code get} and {@code nth}.
+   * Emitted only when the operator is not lexically shadowed and the call arity
    * matches the protocol method; on every execution the operator var's current value is compared
    * against the canonical builtin installed by the context, so redefining the var transparently
    * reverts the call site to a fully generic invocation. The fast path applies only to the
@@ -2499,7 +2485,7 @@ public final class HaraNodes {
     public enum Kind {
       GET("ILookup", "lookup"),
       NTH("INth", "nth"),
-      ASSOC("IAssoc", "assoc");
+      ;
 
       private final String protocolName;
       private final String methodName;
@@ -2562,8 +2548,6 @@ public final class HaraNodes {
               || receiver instanceof byte[];
         case NTH:
           return receiver instanceof hara.lang.protocol.INth || receiver instanceof byte[];
-        case ASSOC:
-          return receiver instanceof hara.lang.protocol.IAssoc;
         default:
           throw new AssertionError(kind);
       }
@@ -2575,8 +2559,6 @@ public final class HaraNodes {
           return intrinsicGet(receiver, values);
         case NTH:
           return intrinsicNth(receiver, values);
-        case ASSOC:
-          return intrinsicAssoc(receiver, values);
         default:
           throw new AssertionError(kind);
       }
@@ -2646,17 +2628,6 @@ public final class HaraNodes {
       return exact;
     }
 
-    @SuppressWarnings("unchecked")
-    private Object intrinsicAssoc(Object receiver, Object[] values) {
-      // Mirror BuiltinCollection.assoc: vector indices are coerced through the
-      // same checked path so a Long index works and non-numeric or out-of-range
-      // keys raise the same diagnostics as the generic invocation.
-      if (receiver instanceof hara.lang.data.types.IVectorType && !(values[1] instanceof Integer)) {
-        return ((hara.lang.protocol.IAssoc<Integer, Object>) receiver)
-            .assoc(hara.kernel.builtin.BuiltinCollection.assocIndex(values[1]), values[2]);
-      }
-      return ((hara.lang.protocol.IAssoc<Object, Object>) receiver).assoc(values[1], values[2]);
-    }
 
     private Object readOperator(HaraContext context) {
       if (context.hasNativeSymbol(symbol)) {

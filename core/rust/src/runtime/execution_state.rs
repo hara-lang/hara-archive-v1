@@ -23,19 +23,19 @@ impl RuntimeInstrumentation {
     }
 }
 
-/// Runtime-owned lexical evaluation and instrumentation state.
+/// Runtime-owned lexical environment and instrumentation state.
 ///
 /// Namespace, provider, package, Session, and Kernel state deliberately stay
 /// outside this type. The instrumentation hub follows the Runtime lifecycle
 /// here while remaining separate from the lexical environment and execution
 /// targets.
 #[derive(Default)]
-struct Evaluator {
+struct RuntimeExecutionState {
     environment: HashMap<String, core::Value>,
     instrumentation: RuntimeInstrumentation,
 }
 
-impl Evaluator {
+impl RuntimeExecutionState {
     fn new() -> Self {
         Self::default()
     }
@@ -59,10 +59,6 @@ impl Evaluator {
 
     fn instrumentation_handle(&self) -> Rc<RefCell<instrumentation::InstrumentationHub>> {
         self.instrumentation.handle()
-    }
-
-    fn eval_tree(&mut self, form: &Form) -> Result<core::Value, String> {
-        core::eval_traced(form, &mut self.environment)
     }
 
     fn start_fiber(&self, form: Form) -> Result<core::EvalFiber, String> {

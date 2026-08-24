@@ -39,7 +39,7 @@ fn expand_letfn(items: &[Form], next: &mut u64) -> Result<Option<Form>, String> 
         }
         let cell = temporary(next);
         cells.push(Form::Symbol(cell.clone()));
-        cells.push(call("std.foundation/atom", vec![Form::Nil]));
+        cells.push(call("std.native.Base/atom", vec![Form::Nil]));
         names.push((name.clone(), cell));
         parsed.push(parts.clone());
     }
@@ -64,7 +64,7 @@ fn expand_letfn(items: &[Form], next: &mut u64) -> Result<Option<Form>, String> 
                 .collect(),
         );
         initialization.push(call(
-            "std.foundation/reset!",
+            "std.protocol.ireset.IReset/reset",
             vec![Form::Symbol(cell), function],
         ));
     }
@@ -73,7 +73,10 @@ fn expand_letfn(items: &[Form], next: &mut u64) -> Result<Option<Form>, String> 
         .flat_map(|(name, cell)| {
             [
                 Form::Symbol(name.clone()),
-                call("std.foundation/deref", vec![Form::Symbol(cell.clone())]),
+                call(
+                    "std.protocol.ideref.IDeref/deref",
+                    vec![Form::Symbol(cell.clone())],
+                ),
             ]
         })
         .collect::<Vec<_>>();
@@ -94,7 +97,12 @@ fn replace_letfn_refs(form: &Form, names: &[(String, String)]) -> Form {
         Form::Symbol(symbol) => names
             .iter()
             .find(|(name, _)| name == symbol)
-            .map(|(_, cell)| call("std.foundation/deref", vec![Form::Symbol(cell.clone())]))
+            .map(|(_, cell)| {
+                call(
+                    "std.protocol.ideref.IDeref/deref",
+                    vec![Form::Symbol(cell.clone())],
+                )
+            })
             .unwrap_or_else(|| form.clone()),
         Form::List(items) if matches!(items.first(), Some(Form::Symbol(name)) if name == "quote" || name == "syntax-quote") => {
             form.clone()
@@ -365,7 +373,7 @@ fn bind_vector(
                 bind(
                     rest,
                     call(
-                        "std.foundation/drop",
+                        "std.native.Iter/iter-drop",
                         vec![Form::Number(index), source.clone()],
                     ),
                     output,
@@ -383,10 +391,7 @@ fn bind_vector(
             item => {
                 bind(
                     item,
-                    call(
-                        "std.foundation/get",
-                        vec![source.clone(), Form::Number(index)],
-                    ),
+                    lookup_form(&source, Form::Number(index), None),
                     output,
                     next,
                 )?;
@@ -459,7 +464,7 @@ fn lookup_form(source: &Form, key: Form, default: Option<Form>) -> Form {
     if let Some(default) = default {
         arguments.push(default);
     }
-    call("std.foundation/get", arguments)
+    call("std.protocol.ilookup.ILookup/lookup", arguments)
 }
 
 fn ensure_symbol(value: Form, output: &mut Vec<Form>, next: &mut u64) -> Form {

@@ -270,54 +270,6 @@ fn attach_metadata(value: Value, metadata: Rc<Metadata>) -> Result<Value, String
     attach_optional_metadata(value, Some(metadata))
 }
 
-fn eval_sequential_constructor(
-    name: &str,
-    forms: &[Form],
-    env: &mut HashMap<String, Value>,
-) -> Result<Value, String> {
-    let maximum = match name {
-        "pair" => Some(2),
-        "tup" => Some(5),
-        _ => None,
-    };
-    if let Some(maximum) = maximum {
-        let valid = if name == "pair" {
-            forms.len() == maximum
-        } else {
-            forms.len() <= maximum
-        };
-        if !valid {
-            return Err(if name == "pair" {
-                format!("pair expects two arguments, got {}", forms.len())
-            } else {
-                format!("tup expects at most 5 arguments, got {}", forms.len())
-            });
-        }
-    }
-    let values = forms
-        .iter()
-        .map(|form| eval(form, env))
-        .collect::<Result<Vec<_>, _>>()?;
-    Ok(match name {
-        "list" => Value::List(values.into()),
-        "vector" => Value::Vector(values.into()),
-        "pair" | "tup" => Value::Tuple(Box::new(PTuple::from_values(values)?)),
-        _ => unreachable!("guarded sequential constructor"),
-    })
-}
-
-fn eval_collection_constructor(
-    name: &str,
-    forms: &[Form],
-    env: &mut HashMap<String, Value>,
-) -> Result<Value, String> {
-    let values = forms
-        .iter()
-        .map(|form| eval(form, env))
-        .collect::<Result<Vec<_>, _>>()?;
-    collection_constructor_values(name, values)
-}
-
 fn collection_constructor_values(name: &str, values: Vec<Value>) -> Result<Value, String> {
     match name {
         "hash-map" | "ordered-map" | "priority-map" | "sorted-map" | "trie" => {
@@ -567,10 +519,6 @@ fn capture_environment(forms: &[Form], env: &HashMap<String, Value>) -> HashMap<
     }
     names
         .into_iter()
-        // `macroexpand-1` is an evaluator intrinsic whose result depends on
-        // the active macro registry. Capturing a Foundation fallback for it
-        // freezes the registry visible to closures such as `macroexpand`.
-        .filter(|name| name != "macroexpand-1")
         .filter_map(|name| env.get(&name).cloned().map(|value| (name, value)))
         .collect()
 }
@@ -853,19 +801,13 @@ fn binding_value(env: &HashMap<String, Value>, name: &str) -> Option<Value> {
 }
 
 fn foundation_fallback_omitted(env: &HashMap<String, Value>, name: &str) -> bool {
-    // Namespace introspection is implemented as an evaluator intrinsic, not
-    // as an optional Foundation fallback. Keep it available in restricted
-    // namespaces so the structural evaluator arms can enforce their own
-    // argument and visibility semantics.
+    // Runtime-native helpers are resolved through their qualified native type
+    // symbols, not through an unqualified Foundation fallback.
     const INTRINSIC_FORMS: &[&str] = &[
         "ns-alias-state",
         "ns-loaded?",
-        "ns-name",
-        "ns-publics",
         "ns-state",
         "resolve",
-        "special-symbol?",
-        "the-ns",
     ];
     if name.contains('/')
         || env.contains_key(name)

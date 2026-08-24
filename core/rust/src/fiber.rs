@@ -31,39 +31,33 @@ const SYNC_SPECIAL_FORMS: &[&str] = &[
     "extend-type",
     "field",
     "fn",
-    "fn*",
     "hash",
     "if",
     "intern-var",
     "let",
     "letfn",
     "loop",
-    "macroexpand-1",
     "ns",
     "ns+",
     "ns-alias-state",
-    "ns-loaded?",
-    "ns-name",
-    "ns-publics",
-    "ns-state",
     "read-forms",
     "recur",
     "require",
     "resolve",
     "set!",
-    "special-symbol?",
     "syntax-quote",
-    "the-ns",
     "throw",
     "try",
     "var",
     "var/set",
 ];
 
-/// All names that `core::eval` handles through its synchronous fallback.
-/// Ordinary callable precedence is decided inside `core::eval`; routing these
-/// names there avoids duplicating builtin implementations in the fiber.
-pub(crate) const CORE_SPECIAL_FORMS: &[&str] = &[
+/// Completion names retained for the evaluator-free core surface.
+///
+/// This is a user-interface inventory, not an evaluator dispatch table. Actual
+/// callable resolution goes through the Foundation namespace or the native
+/// callable catalog; only `SYNC_SPECIAL_FORMS` controls fiber fallback.
+pub(crate) const COMPLETION_SYMBOLS: &[&str] = &[
     "=",
     "+",
     "-",
@@ -81,7 +75,6 @@ pub(crate) const CORE_SPECIAL_FORMS: &[&str] = &[
     "acosh",
     "alter-var-root",
     "any?",
-    "apply",
     "array",
     "atom",
     "asin",
@@ -119,7 +112,6 @@ pub(crate) const CORE_SPECIAL_FORMS: &[&str] = &[
     "constantly",
     "cos",
     "cosh",
-    "count",
     "current-namespace",
     "cycle",
     "dec",
@@ -130,8 +122,6 @@ pub(crate) const CORE_SPECIAL_FORMS: &[&str] = &[
     "defmulti",
     "defn",
     "defn-",
-    "dissoc",
-    "deref",
     "do",
     "drop",
     "drop-while",
@@ -164,9 +154,6 @@ pub(crate) const CORE_SPECIAL_FORMS: &[&str] = &[
     "first",
     "floor",
     "fn",
-    "fn*",
-    "get",
-    "get-in",
     "hash",
     "identity",
     "if",
@@ -340,7 +327,7 @@ pub(crate) const CORE_SPECIAL_FORMS: &[&str] = &[
 ];
 
 pub(crate) fn completion_symbols() -> &'static [&'static str] {
-    CORE_SPECIAL_FORMS
+    COMPLETION_SYMBOLS
 }
 
 pub(crate) type Cont = Box<dyn FnOnce(Result<Value, String>) -> Step>;
@@ -1304,9 +1291,7 @@ fn application(v: Vec<Form>, env: Rc<RefCell<HashMap<String, Value>>>, k: Cont) 
         Form::Symbol(name) => Some(name.as_str()),
         _ => None,
     };
-    let bound = head_symbol.and_then(|name| {
-        binding_value(&env.borrow(), name).or_else(|| crate::core::direct_callable_value(name))
-    });
+    let bound = head_symbol.and_then(|name| binding_value(&env.borrow(), name));
     if let Some(Value::Function(function)) = bound {
         let call_form = Form::List(v.clone());
         let call_name = function

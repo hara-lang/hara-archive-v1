@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use super::Form;
 
-const LIBRARIES: &[(&str, &str, &str)] = &[
+const FOUNDATION_LIBRARIES: &[(&str, &str, &str)] = &[
     ("string", "std.foundation.string", "str"),
     ("promise", "std.foundation.promise", "promise"),
     ("bytes", "std.foundation.bytes", "bytes"),
@@ -10,8 +10,8 @@ const LIBRARIES: &[(&str, &str, &str)] = &[
     ("pretty", "std.foundation.pretty", "pretty"),
 ];
 
-pub(crate) fn intrinsic_alias(library: &str) -> Option<&'static str> {
-    LIBRARIES
+pub(crate) fn foundation_library_alias(library: &str) -> Option<&'static str> {
+    FOUNDATION_LIBRARIES
         .iter()
         .find(|(name, _, _)| *name == library)
         .map(|(_, _, alias)| *alias)
@@ -69,7 +69,7 @@ pub struct GeneratedNamespaceConfig {
     used_namespaces: Vec<String>,
     used_exclusions: HashMap<String, HashSet<String>>,
     internal_access: HashSet<String>,
-    excluded_intrinsics: HashSet<String>,
+    excluded_foundation_libraries: HashSet<String>,
     excluded_foundation: HashSet<String>,
     exposed_foundation: Option<HashSet<String>>,
     native_flavor: Option<String>,
@@ -93,7 +93,7 @@ impl GeneratedNamespaceConfig {
             used_namespaces: Vec::new(),
             used_exclusions: HashMap::new(),
             internal_access: HashSet::new(),
-            excluded_intrinsics: HashSet::new(),
+            excluded_foundation_libraries: HashSet::new(),
             excluded_foundation: HashSet::new(),
             exposed_foundation: None,
             native_flavor: None,
@@ -154,11 +154,6 @@ impl GeneratedNamespaceConfig {
                         &mut declared_global_imports,
                     )?;
                 }
-                "intrinsics" => {
-                    return Err(
-                        ":intrinsics is not a namespace configuration option; use :rename for Foundation library aliases".into(),
-                    );
-                }
                 "require" => requires.extend(values[1..].iter().cloned()),
                 "use" => uses.extend(values[1..].iter().cloned()),
                 "flavor" => {
@@ -187,13 +182,13 @@ impl GeneratedNamespaceConfig {
         for library in overrides.keys() {
             if excluded.contains(library) {
                 return Err(format!(
-                    "Intrinsic library cannot be both excluded and aliased: {library}"
+                    "Foundation library cannot be both excluded and aliased: {library}"
                 ));
             }
         }
 
         let mut config = Self::default();
-        config.excluded_intrinsics = excluded.clone();
+        config.excluded_foundation_libraries = excluded.clone();
         config.excluded_foundation = excluded_foundation;
         config.exposed_foundation = exposed_foundation;
         config.global_alias = global_alias;
@@ -203,7 +198,7 @@ impl GeneratedNamespaceConfig {
         config.native_flavor_imports = native_flavor_imports;
         config.role = role;
         config.blank = blank;
-        for (library, namespace, _) in LIBRARIES {
+        for (library, namespace, _) in FOUNDATION_LIBRARIES {
             if excluded.contains(*library) {
                 continue;
             }
@@ -246,8 +241,8 @@ impl GeneratedNamespaceConfig {
         &self.excluded_foundation
     }
 
-    pub fn excluded_intrinsics(&self) -> &HashSet<String> {
-        &self.excluded_intrinsics
+    pub fn excluded_foundation_libraries(&self) -> &HashSet<String> {
+        &self.excluded_foundation_libraries
     }
 
     pub fn exposed_foundation(&self) -> Option<&HashSet<String>> {
@@ -495,9 +490,9 @@ fn parse_native_flavor(values: &[Form]) -> Result<(String, Vec<(String, String)>
         Some(Form::Keyword(flavor)) => return Err(format!("native/invalid-flavor: :{flavor}")),
         _ => return Err(":flavor expects an unqualified host keyword".into()),
     };
-    let mut imports = Vec::new();
-    parse_native_imports(&values[2..], &mut imports)?;
-    Ok((flavor.clone(), imports))
+    Err(format!(
+        "native/unsupported-flavor: :{flavor} (host flavors are only available on JVM/.NET runtimes)"
+    ))
 }
 
 fn parse_native_imports(
@@ -676,7 +671,7 @@ fn parse_rename(
                         ":rename :exclude expects unqualified library symbols",
                     )?)?;
                     if !excluded.insert(library.into()) {
-                        return Err(format!("Duplicate intrinsic exclusion: {library}"));
+                        return Err(format!("Duplicate Foundation library exclusion: {library}"));
                     }
                 }
             }
@@ -691,12 +686,12 @@ fn parse_rename(
                         ":rename :alias expects library symbols",
                     )?)?;
                     let alias =
-                        symbol(alias_form, "Intrinsic aliases must be unqualified symbols")?;
+                        symbol(alias_form, "Foundation library aliases must be unqualified symbols")?;
                     if alias.contains('/') {
-                        return Err("Intrinsic aliases must be unqualified symbols".into());
+                        return Err("Foundation library aliases must be unqualified symbols".into());
                     }
                     if overrides.insert(library.into(), alias.into()).is_some() {
-                        return Err(format!("Duplicate intrinsic alias: {library}"));
+                        return Err(format!("Duplicate Foundation library alias: {library}"));
                     }
                 }
             }
@@ -735,13 +730,13 @@ fn qualified_symbol(value: &str) -> bool {
 }
 fn library(value: &str) -> Result<&str, String> {
     if value.contains('/') {
-        return Err("Intrinsic library names must be unqualified symbols".into());
+        return Err("Foundation library names must be unqualified symbols".into());
     }
-    LIBRARIES
+    FOUNDATION_LIBRARIES
         .iter()
         .find(|(library, _, _)| *library == value)
         .map(|(library, _, _)| *library)
-        .ok_or_else(|| format!("Unknown intrinsic library: {value}"))
+        .ok_or_else(|| format!("Unknown Foundation library: {value}"))
 }
 pub(crate) fn normalize_namespace(value: &str) -> &str {
     match value {
@@ -760,7 +755,7 @@ pub(crate) fn known_namespace(value: &str) -> bool {
         || value == "std.foundation.coroutine"
         || value == "std.native"
         || value.starts_with("std.native.")
-        || LIBRARIES
+        || FOUNDATION_LIBRARIES
             .iter()
             .any(|(_, namespace, _)| *namespace == value)
 }
@@ -779,7 +774,7 @@ fn canonical(namespace: &str, method: &str) -> String {
     if namespace == "std.foundation.coroutine" {
         return format!("std.foundation.coroutine/{method}");
     }
-    if LIBRARIES
+    if FOUNDATION_LIBRARIES
         .iter()
         .any(|(_, library_namespace, _)| *library_namespace == namespace)
     {

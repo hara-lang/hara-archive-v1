@@ -23,7 +23,7 @@ impl Runtime {
         let mut protocols = core::ProtocolRegistry::core();
         crate::work::guest::install(&mut protocols);
         Runtime {
-            evaluator: Evaluator::new(),
+            execution: RuntimeExecutionState::new(),
             test_runner: "code.test".into(),
             protocols,
             extensions: core::ExtensionRegistry::new(),
@@ -303,7 +303,7 @@ impl Runtime {
                     }
 
                     let registry_before = self.namespace_registry.snapshot();
-                    let environment_before = self.evaluator.snapshot();
+                    let environment_before = self.execution.snapshot();
                     let macros_before = self.macros.borrow().clone();
                     let configs_before = self.generated_configs.clone();
                     let loaded_before = self.loaded_resources.clone();
@@ -370,7 +370,7 @@ impl Runtime {
                         );
                         if let Err(error) = self.eval_form(require_form, traced) {
                             self.namespace_registry.restore(registry_before);
-                            self.evaluator.restore(environment_before);
+                            self.execution.restore(environment_before);
                             *self.macros.borrow_mut() = macros_before;
                             self.generated_configs = configs_before;
                             self.loaded_resources = loaded_before;
@@ -470,50 +470,10 @@ impl Runtime {
     }
 
     fn eval_form(&mut self, form: Form, traced: bool) -> Result<core::Value, String> {
-        let namespace_source = self.namespace_source();
         if traced {
-            return core::with_test_runner(&self.test_runner, || {
-                core::with_capability_providers(
-                    self.providers.file(),
-                    self.providers.socket(),
-                    self.providers.process(),
-                    self.providers.kernel(),
-                    || {
-                        core::with_package_catalog(&self.package_catalog, || {
-                            core::with_promise_provider(self.providers.promise(), || {
-                                core::with_macros(self.macros.clone(), || {
-                                    core::with_namespace_registry(&self.namespace_registry, || {
-                                        core::with_namespace_source(namespace_source, || {
-                                            core::with_protocols(&self.protocols, || {
-                                                #[cfg(all(
-                                                    target_arch = "wasm32",
-                                                    not(feature = "raw-wasm")
-                                                ))]
-                                                if let Some(handler) = &self.host_handler {
-                                                    let handler = handler.clone();
-                                                    return core::with_host_calls(
-                                                        host_call_bridge(handler),
-                                                        || self.evaluator.eval_tree(&form),
-                                                    );
-                                                }
-                                                #[cfg(not(target_arch = "wasm32"))]
-                                                if let Some(handler) = &self.native_host_handler {
-                                                    return core::with_host_calls(
-                                                        handler.clone(),
-                                                        || self.evaluator.eval_tree(&form),
-                                                    );
-                                                }
-                                                self.evaluator.eval_tree(&form)
-                                            })
-                                        })
-                                    })
-                                })
-                            })
-                        })
-                    },
-                )
-            });
+            return core::with_stack_trace(|| self.eval_form(form, false));
         }
+        let namespace_source = self.namespace_source();
         let (result, fiber) = core::with_test_runner(&self.test_runner, || {
             core::with_capability_providers(
                 self.providers.file(),
@@ -527,7 +487,7 @@ impl Runtime {
                                 core::with_namespace_registry(&self.namespace_registry, || {
                                     core::with_namespace_source(namespace_source, || {
                                         core::with_protocols(&self.protocols, || -> Result<(Result<core::Value, String>, core::EvalFiber), String> {
-                                    let mut fiber = self.evaluator.start_fiber(form)?;
+                                    let mut fiber = self.execution.start_fiber(form)?;
                                     #[cfg(all(target_arch = "wasm32", not(feature = "raw-wasm")))]
                                     if let Some(handler) = &self.host_handler {
                                         let handler = handler.clone();
@@ -554,21 +514,21 @@ impl Runtime {
                 },
             )
         })?;
-        self.evaluator.finish_fiber(&fiber);
+        self.execution.finish_fiber(&fiber);
         result
     }
 
     fn refresh_qualified_bindings(&mut self) {
         core::refresh_namespace_environment(
             &self.namespace_registry,
-            self.evaluator.environment_mut(),
+            self.execution.environment_mut(),
         );
     }
 
     fn save_namespace(&mut self) {
         core::save_namespace_environment(
             &self.namespace_registry,
-            self.evaluator.environment_mut(),
+            self.execution.environment_mut(),
         );
     }
 
@@ -624,7 +584,7 @@ impl Runtime {
                     .is_some_and(|var| var.symbol().get_namespace() == Some("std.foundation"))
                 {
                     target.unmap(&local);
-                    self.evaluator.environment_mut().remove(&excluded);
+                    self.execution.environment_mut().remove(&excluded);
                 }
                 self.macros
                     .borrow_mut()
@@ -634,7 +594,7 @@ impl Runtime {
         core::apply_global_imports(&self.namespace_registry, name);
         core::select_namespace_environment(
             &self.namespace_registry,
-            self.evaluator.environment_mut(),
+            self.execution.environment_mut(),
             name,
         );
         self.sync_generated_aliases(&config);
@@ -1036,7 +996,7 @@ impl Runtime {
                     core::with_namespace_registry(&self.namespace_registry, || {
                         core::require_namespace(
                             &self.namespace_registry,
-                            self.evaluator.environment_mut(),
+                            self.execution.environment_mut(),
                             &name,
                         )
                     })
@@ -1139,7 +1099,7 @@ impl Runtime {
     fn resource_snapshot(&self) -> ResourceSnapshot {
         ResourceSnapshot {
             namespace_registry: self.namespace_registry.snapshot(),
-            environment: self.evaluator.snapshot(),
+            environment: self.execution.snapshot(),
             protocols: self.protocols.snapshot(),
             multimethods: core::snapshot_multimethods(),
             macros: self.macros.borrow().clone(),
@@ -1150,7 +1110,7 @@ impl Runtime {
 
     fn restore_resource_snapshot(&mut self, snapshot: ResourceSnapshot) {
         self.namespace_registry.restore(snapshot.namespace_registry);
-        self.evaluator.restore(snapshot.environment);
+        self.execution.restore(snapshot.environment);
         self.protocols.restore(snapshot.protocols);
         core::restore_multimethods(snapshot.multimethods);
         *self.macros.borrow_mut() = snapshot.macros;

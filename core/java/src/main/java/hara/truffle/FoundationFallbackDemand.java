@@ -133,7 +133,6 @@ final class FoundationFallbackDemand {
         case "or":
         case "recur":
         case "throw":
-        case "deref":
         case "->":
         case "->>":
           return scanRange(form, 1, lexical, globals);

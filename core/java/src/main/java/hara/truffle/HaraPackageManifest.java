@@ -2,6 +2,7 @@ package hara.truffle;
 
 import hara.kernel.base.Parser;
 import hara.lang.data.Keyword;
+import hara.lang.data.Symbol;
 import hara.lang.data.types.IMapType;
 import hara.lang.data.types.ISetType;
 import java.io.IOException;
@@ -19,7 +20,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/** Verified view of the generated package.edn index used by Wasm imports. */
+/** Verified view of the generated package.edn index used by Wasm imports and JVM flavors. */
 final class HaraPackageManifest {
   private static final String FORMAT = "0.0.0-alpha";
   private static final long MAX_MANIFEST_BYTES = 4 * 1024 * 1024;
@@ -27,18 +28,27 @@ final class HaraPackageManifest {
 
   private final String identity;
   private final String version;
+  private final String repository;
+  private final String commit;
   private final Map<String, FileEntry> files;
   private final Map<String, WasmImport> wasmImports;
+  private final Map<String, JvmFlavor> flavors;
 
   private HaraPackageManifest(
       String identity,
       String version,
+      String repository,
+      String commit,
       Map<String, FileEntry> files,
-      Map<String, WasmImport> wasmImports) {
+      Map<String, WasmImport> wasmImports,
+      Map<String, JvmFlavor> flavors) {
     this.identity = identity;
     this.version = version;
+    this.repository = repository;
+    this.commit = commit;
     this.files = Map.copyOf(files);
     this.wasmImports = Map.copyOf(wasmImports);
+    this.flavors = Map.copyOf(flavors);
   }
 
   static HaraPackageManifest read(Path root) {
@@ -70,6 +80,14 @@ final class HaraPackageManifest {
     IMapType<?, ?> packageMap = requireMap(packageValue, "package", origin);
     String identity = requireString(packageMap, "identity", origin);
     String version = requireString(packageMap, "version", origin);
+    String repository = null;
+    String commit = null;
+    Object provenanceValue = lookup(packageMap, "provenance");
+    if (provenanceValue != null) {
+      IMapType<?, ?> provenance = requireMap(provenanceValue, "provenance", origin);
+      repository = requireString(provenance, "repository", origin);
+      commit = requireString(provenance, "commit", origin);
+    }
     IMapType<?, ?> fileMap = requireMap(lookup(root, "files"), "files", origin);
     Map<String, FileEntry> files = new LinkedHashMap<>();
     for (Map.Entry<?, ?> entry : entries(fileMap)) {
@@ -95,7 +113,26 @@ final class HaraPackageManifest {
         }
       }
     }
-    return new HaraPackageManifest(identity, version, files, imports);
+    Map<String, JvmFlavor> flavors = new LinkedHashMap<>();
+    Object flavorsValue = lookup(root, "flavors");
+    if (flavorsValue != null) {
+      IMapType<?, ?> flavorMap = requireMap(flavorsValue, "flavors", origin);
+      for (Map.Entry<?, ?> entry : entries(flavorMap)) {
+        String flavor = identifier(entry.getKey(), origin, "flavor name");
+        if ("wasm".equals(flavor)) throw invalid(origin, ":wasm is reserved and is not a host flavor");
+        if (flavors.put(flavor, parseFlavor(entry.getValue(), files, origin)) != null) {
+          throw invalid(origin, "duplicate flavor " + flavor);
+        }
+      }
+    }
+    if (!flavors.isEmpty() && (repository == null || commit == null)) {
+      throw invalid(origin, "packages with host flavors require :package :provenance");
+    }
+    if (!flavors.isEmpty()
+        && !commit.matches("(?:[0-9a-f]{40}|[0-9a-f]{64})")) {
+      throw invalid(origin, ":package :provenance :commit must be a hexadecimal digest");
+    }
+    return new HaraPackageManifest(identity, version, repository, commit, files, imports, flavors);
   }
 
   String identity() {
@@ -104,6 +141,20 @@ final class HaraPackageManifest {
 
   String version() {
     return version;
+  }
+
+  JvmFlavor jvmFlavor() {
+    return flavors.get("jvm");
+  }
+
+  List<Path> jvmDependencyFiles(Path root) {
+    ArrayList<Path> result = new ArrayList<>();
+    for (String path : files.keySet()) {
+      if (path.startsWith("artifacts/jvm/dependencies/") && path.endsWith(".jar")) {
+        result.add(root.resolve(path).normalize());
+      }
+    }
+    return List.copyOf(result);
   }
 
   WasmImport wasmImport(String logical) {
@@ -128,6 +179,45 @@ final class HaraPackageManifest {
     }
     for (Map.Entry<String, FileEntry> entry : files.entrySet()) verifyFile(root, entry.getKey(), entry.getValue());
     return root.resolve(selected.path).normalize();
+  }
+
+  Path verifyJvmFlavor(Path root) {
+    JvmFlavor selected = jvmFlavor();
+    if (selected == null) throw new HaraException("package/missing-flavor: :jvm");
+    if (!"jar".equals(selected.artifactType())) {
+      throw new HaraException("package/artifact-type-mismatch: expected :jar");
+    }
+    if (!"java-21".equals(selected.target())) {
+      throw new HaraException("package/target-mismatch: JVM flavor requires java-21");
+    }
+    if (!JvmPackageProvider.ABI.equals(selected.abi())) {
+      throw new HaraException("package/abi-mismatch: " + selected.abi());
+    }
+    for (Map.Entry<String, FileEntry> entry : files.entrySet()) verifyFile(root, entry.getKey(), entry.getValue());
+    return root.resolve(selected.path()).normalize();
+  }
+
+  void verifyFiles(Path root) {
+    for (Map.Entry<String, FileEntry> entry : files.entrySet()) {
+      verifyFile(root, entry.getKey(), entry.getValue());
+    }
+  }
+
+  void verifyArchiveEntries(Path root) {
+    try (var paths = Files.walk(root)) {
+      Set<String> actual =
+          paths
+              .filter(Files::isRegularFile)
+              .map(path -> root.relativize(path).toString().replace('\\', '/'))
+              .collect(java.util.stream.Collectors.toSet());
+      Set<String> expected = new java.util.HashSet<>(files.keySet());
+      expected.add("package.edn");
+      if (!actual.equals(expected)) {
+        throw new HaraException("package/archive-files-mismatch: declared files differ from archive");
+      }
+    } catch (IOException error) {
+      throw new HaraException("package/archive-unavailable: " + root + " (" + error + ")");
+    }
   }
 
   private void verifyFile(Path root, String relative, FileEntry expected) {
@@ -182,6 +272,64 @@ final class HaraPackageManifest {
     Set<String> hostCalls = identifiers(lookup(variant, "variant/host-calls"), origin, "host calls");
     Set<String> exports = identifiers(lookup(variant, "variant/exports"), origin, "exports");
     return new WasmImport(artifactType, path, sha256, target, abi, entryPoint, capabilities, hostCalls, exports);
+  }
+
+  private static JvmFlavor parseFlavor(
+      Object value, Map<String, FileEntry> files, String origin) {
+    IMapType<?, ?> variant = requireMap(value, "JVM flavor", origin);
+    IMapType<?, ?> artifact = requireMap(lookup(variant, "variant/artifact"), "variant/artifact", origin);
+    String artifactType = requireKeyword(artifact, "artifact/type", origin);
+    String path = requireString(artifact, "artifact/path", origin);
+    if (!safeRelative(path) || !path.endsWith(".jar")) {
+      throw invalid(origin, "JVM flavor artifact must be a relative .jar file");
+    }
+    String sha256 = requireString(artifact, "artifact/sha256", origin);
+    String target = requireString(artifact, "artifact/target", origin);
+    String abi = requireString(artifact, "artifact/abi", origin);
+    String entryPoint = requireString(artifact, "artifact/entry-point", origin);
+    FileEntry file = files.get(path);
+    if (file == null) throw invalid(origin, "artifact path is not declared in :files: " + path);
+    if (!file.sha256.equals(sha256)) throw invalid(origin, "artifact digest differs from :files: " + path);
+    Object capabilityValue = lookup(variant, "variant/required-capabilities");
+    if (capabilityValue == null) {
+      throw invalid(origin, "JVM flavor requires :variant/required-capabilities");
+    }
+    Set<String> capabilities = identifiers(capabilityValue, origin, "capabilities");
+    Set<String> hostCalls = identifiers(lookup(variant, "variant/host-calls"), origin, "host calls");
+    Set<String> exports = identifiers(lookup(variant, "variant/exports"), origin, "exports");
+    Map<String, String> dependencies = mavenDependencies(lookup(variant, "variant/dependencies"), origin);
+    return new JvmFlavor(
+        artifactType,
+        path,
+        sha256,
+        target,
+        abi,
+        entryPoint,
+        capabilities,
+        hostCalls,
+        exports,
+        dependencies);
+  }
+
+  private static Map<String, String> mavenDependencies(Object value, String origin) {
+    if (value == null) return Map.of();
+    IMapType<?, ?> dependencyGroups = requireMap(value, "variant/dependencies", origin);
+    Object mavenValue = lookup(dependencyGroups, "maven");
+    if (mavenValue == null) return Map.of();
+    IMapType<?, ?> maven = requireMap(mavenValue, "variant/dependencies :maven", origin);
+    Map<String, String> result = new LinkedHashMap<>();
+    for (Map.Entry<?, ?> entry : entries(maven)) {
+      String coordinate;
+      if (entry.getKey() instanceof Symbol symbol) coordinate = symbol.display();
+      else if (entry.getKey() instanceof String string && !string.isBlank()) coordinate = string;
+      else throw invalid(origin, "Maven dependency coordinates must be symbols or strings");
+      IMapType<?, ?> declaration = requireMap(entry.getValue(), "Maven dependency", origin);
+      String version = requireString(declaration, "version", origin);
+      if (result.put(coordinate, version) != null) {
+        throw invalid(origin, "duplicate Maven dependency " + coordinate);
+      }
+    }
+    return Map.copyOf(result);
   }
 
   private static Set<String> identifiers(Object value, String origin, String field) {
@@ -272,6 +420,25 @@ final class HaraPackageManifest {
   }
 
   record FileEntry(String sha256, long size) {}
+
+  record JvmFlavor(
+      String artifactType,
+      String path,
+      String sha256,
+      String target,
+      String abi,
+      String entryPoint,
+      Set<String> requiredCapabilities,
+      Set<String> hostCalls,
+      Set<String> exports,
+      Map<String, String> mavenDependencies) {
+    JvmFlavor {
+      requiredCapabilities = Set.copyOf(requiredCapabilities);
+      hostCalls = Set.copyOf(hostCalls);
+      exports = Set.copyOf(exports);
+      mavenDependencies = Map.copyOf(mavenDependencies);
+    }
+  }
 
   record WasmImport(
       String artifactType,

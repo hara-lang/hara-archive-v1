@@ -14,7 +14,7 @@ public class NativeTypeBoundaryTest {
     for (String name : new String[] {"Instrumentation", "Env", "Duplex", "Builtins", "Seq"}) {
       assertFalse(
           "Unexpected native descriptor: " + name,
-          HaraBuiltinCatalog.NATIVE_METHODS.containsKey(name));
+          HaraNativeDeclarations.METHODS.containsKey(name));
       assertFalse(
           "Unexpected native annotation: " + name,
           HaraNativeDeclarations.bindings().stream()

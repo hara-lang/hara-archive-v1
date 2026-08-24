@@ -34,8 +34,8 @@ alias with `(:config {:set-global-alias alias})`; the Rust runtime records and
 applies those declarations but does not seed `str`, `bytes`, `promise`, `co`,
 or `pretty` as native defaults. Explicit `:require` aliases remain available
 for local naming. Use `:set-global` for qualified Vars imported by terminal
-name. `:intrinsics` remains reserved for native/runtime intrinsic symbols;
-Foundation library aliasing belongs under `:rename`.
+name. Foundation child library aliases and exclusions belong under `:rename`;
+there is no separate `:load-aliases` or `:intrinsics` namespace pathway.
 
 ## Native static objects
 
@@ -62,6 +62,17 @@ reflection operations. Derived helpers such as `pair`, `unreduced`,
 `reduce-kv` and `select-keys` use it to retain mutable construction speed.
 `reduce-in` is not a Base method because its source is reduced through the
 existing source-dispatched protocol.
+
+## Callable ownership
+
+A function symbol always has a defining symbol in addition to its Var
+provenance. Rust source functions derive that symbol from their defining
+namespace and name; native Rust callables retain the qualified name supplied
+by their registry entry, or combine an unqualified registry name with the
+active namespace. Java builtins receive the owning `namespace/name`
+when they are inserted into a namespace, so aliases and generated exports do
+not erase ownership. Anonymous closures are values rather than function
+symbols and therefore intentionally have no defining symbol.
 
 `OS` remains the migration direction for the former `std.foundation.os` API, but availability and export shape are runtime-profile concerns to be proven by cross-runtime conformance. A process handle is a runtime value, not an automatic `Process` static-object alias. Neither should be presented as part of the common native-object inventory without profile evidence.
 

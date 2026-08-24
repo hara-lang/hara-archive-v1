@@ -1,17 +1,5 @@
 thread_local! {
     static PRINTER_CAPTURES: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
-    #[cfg(test)]
-    static EVALUATOR_INVOCATIONS: Cell<usize> = const { Cell::new(0) };
-}
-
-#[cfg(test)]
-pub(crate) fn with_evaluator_invocation_count<R>(operation: impl FnOnce() -> R) -> (R, usize) {
-    EVALUATOR_INVOCATIONS.with(|count| {
-        let previous = count.replace(0);
-        let result = operation();
-        let invocations = count.replace(previous);
-        (result, invocations)
-    })
 }
 
 fn printer_write(text: &str) -> Result<(), String> {
@@ -38,8 +26,6 @@ fn printer_write(text: &str) -> Result<(), String> {
 // stack-safe execution path for ordinary evaluation.
 #[inline(never)]
 pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, String> {
-    #[cfg(test)]
-    EVALUATOR_INVOCATIONS.with(|count| count.set(count.get() + 1));
     check_evaluation_interrupt()?;
     match form {
         Form::Number(v) => Ok(Value::Number(*v)),
@@ -106,7 +92,7 @@ pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, Stri
                     force_lazy_alias(&registry, env, n)?;
                 }
             }
-            if let Some(value) = binding_value(env, n).or_else(|| direct_callable_value(n)) {
+            if let Some(value) = binding_value(env, n) {
                 return Ok(value);
             }
             if !n.contains('/') {
@@ -142,7 +128,7 @@ pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, Stri
                 }
             }
             match operator {
-                Form::Symbol(n) if n == "fn" || n == "fn*" => {
+                Form::Symbol(n) if n == "fn" => {
                     if fs.len() < 3 {
                         return Err("fn expects parameters and a body".into());
                     }
@@ -287,22 +273,7 @@ pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, Stri
                         .collect::<Result<Vec<_>, _>>()?;
                     Ok(Value::Vector(PVector::from_iter(values)))
                 }
-                Form::Symbol(n) if n == "eval" => {
-                    if fs.len() != 2 {
-                        return Err("eval expects one form".into());
-                    }
-                    eval_value(eval(&fs[1], env)?, env)
-                }
-                Form::Symbol(n) if n == "load-string" => {
-                    if fs.len() != 2 {
-                        return Err("load-string expects one string".into());
-                    }
-                    match eval(&fs[1], env)? {
-                        Value::String(source) => eval_value_text(&source, env),
-                        _ => Err("load-string expects a string".into()),
-                    }
-                }
-                Form::Symbol(n) if n == "var-sym" || n.ends_with("/var-sym") => {
+                Form::Symbol(n) if n.ends_with("/var-sym") => {
                     if fs.len() != 2 {
                         return Err("var-sym expects one var".into());
                     }
@@ -317,233 +288,6 @@ pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, Stri
                         Value::Var(var) => Ok(Value::Symbol(var.symbol().clone())),
                         value => Err(format!("var-sym expects a var, got {}", value.display())),
                     }
-                }
-                Form::Symbol(n) if n == "resolve" && !env.contains_key(n) => {
-                    if fs.len() != 2 {
-                        return Err("resolve expects one symbol".into());
-                    }
-                    let symbol = match eval(&fs[1], env)? {
-                        Value::Symbol(value) => value,
-                        _ => return Err("resolve expects a symbol".into()),
-                    };
-                    let registry = namespace_registry()?;
-                    force_lazy_alias(&registry, env, symbol.path_string().as_str())?;
-                    Ok(registry
-                        .resolve(&symbol)
-                        .map(Value::Var)
-                        .unwrap_or(Value::Nil))
-                }
-                Form::Symbol(n) if n == "special-symbol?" && !env.contains_key(n) => {
-                    if fs.len() != 2 {
-                        return Err("special-symbol? expects one symbol".into());
-                    }
-                    match eval(&fs[1], env)? {
-                        Value::Symbol(value) => Ok(Value::Bool(syntax_symbol(value.as_str()))),
-                        _ => Err("special-symbol? expects a symbol".into()),
-                    }
-                }
-                Form::Symbol(n) if n == "the-ns" && !env.contains_key(n) => {
-                    if fs.len() != 2 {
-                        return Err("the-ns expects one symbol".into());
-                    }
-                    match eval(&fs[1], env)? {
-                        Value::Symbol(value) if value.get_namespace().is_none() => {
-                            Ok(namespace_registry()?
-                                .find(value.as_str())
-                                .map(|namespace| Value::Namespace(Rc::new(namespace)))
-                                .unwrap_or(Value::Nil))
-                        }
-                        _ => Err("the-ns expects an unqualified symbol".into()),
-                    }
-                }
-                Form::Symbol(n) if n == "ns-name" && !env.contains_key(n) => {
-                    if fs.len() != 2 {
-                        return Err("ns-name expects one namespace".into());
-                    }
-                    match eval(&fs[1], env)? {
-                        Value::Namespace(value) => Ok(Value::Symbol(value.name().clone())),
-                        Value::Symbol(value)
-                            if value.get_namespace().is_none()
-                                && namespace_registry()?.find(value.as_str()).is_some() =>
-                        {
-                            Ok(Value::Symbol(value))
-                        }
-                        _ => Err("ns-name expects a namespace".into()),
-                    }
-                }
-                Form::Symbol(n) if n == "ns-state" || n == "ns-loaded?" => {
-                    if fs.len() != 2 {
-                        return Err(format!("{n} expects one namespace"));
-                    }
-                    let name = match eval(&fs[1], env)? {
-                        Value::Symbol(value) => value.as_str().to_owned(),
-                        Value::String(value) => value,
-                        _ => return Err(format!("{n} expects a namespace symbol or string")),
-                    };
-                    let registry = namespace_registry()?;
-                    let state = registry
-                        .load_state(&name)
-                        .or_else(|| registry.find(&name).map(|_| NamespaceLoadState::Loaded));
-                    let loaded = state == Some(NamespaceLoadState::Loaded);
-                    if n == "ns-loaded?" {
-                        Ok(Value::Bool(loaded))
-                    } else {
-                        Ok(Value::Keyword(
-                            state
-                                .map(NamespaceLoadState::as_str)
-                                .unwrap_or("unknown")
-                                .into(),
-                        ))
-                    }
-                }
-                Form::Symbol(n) if n == "ns-alias-state" => {
-                    if fs.len() != 2 && fs.len() != 3 {
-                        return Err("ns-alias-state expects alias or namespace and alias".into());
-                    }
-                    let registry = namespace_registry()?;
-                    let (owner, alias_form) = if fs.len() == 3 {
-                        let owner = match eval(&fs[1], env)? {
-                            Value::Symbol(value) => value.as_str().to_owned(),
-                            Value::String(value) => value,
-                            _ => {
-                                return Err(
-                                    "ns-alias-state expects a namespace symbol or string".into()
-                                )
-                            }
-                        };
-                        (owner, &fs[2])
-                    } else {
-                        (registry.current().name().as_str().to_owned(), &fs[1])
-                    };
-                    let alias = match eval(alias_form, env)? {
-                        Value::Symbol(value) if value.get_namespace().is_none() => value,
-                        _ => {
-                            return Err("ns-alias-state expects an unqualified alias symbol".into())
-                        }
-                    };
-                    let Some(namespace) = registry.find(&owner) else {
-                        return Ok(Value::Nil);
-                    };
-                    let target = namespace.lazy_target(alias.as_str()).or_else(|| {
-                        namespace
-                            .aliases()
-                            .into_iter()
-                            .find(|(name, _)| name == &alias)
-                            .map(|(_, target)| target.name().clone())
-                    });
-                    let Some(target) = target else {
-                        return Ok(Value::Nil);
-                    };
-                    let state = registry
-                        .load_state(target.as_str())
-                        .or_else(|| {
-                            registry
-                                .find(target.as_str())
-                                .map(|_| NamespaceLoadState::Loaded)
-                        })
-                        .map(NamespaceLoadState::as_str)
-                        .unwrap_or("unknown");
-                    Ok(Value::Map(PMap::from_iter([
-                        (Value::Keyword("alias".into()), Value::Symbol(alias)),
-                        (Value::Keyword("target".into()), Value::Symbol(target)),
-                        (Value::Keyword("state".into()), Value::Keyword(state.into())),
-                    ])))
-                }
-                Form::Symbol(n) if n == "eval-in-ns" => {
-                    if fs.len() != 3 {
-                        return Err("eval-in-ns expects namespace and forms".into());
-                    }
-                    let target = match eval(&fs[1], env)? {
-                        Value::Symbol(name) => name.as_str().to_owned(),
-                        Value::String(name) => name,
-                        _ => return Err("eval-in-ns expects a namespace symbol or string".into()),
-                    };
-                    let forms = iterator_values(eval(&fs[2], env)?)?
-                        .into_iter()
-                        .map(|value| value_to_form(&value))
-                        .collect::<Result<Vec<_>, _>>()?;
-                    let registry = namespace_registry()?;
-                    if registry.find(&target).is_none() {
-                        return Err(format!(
-                            "eval-in-ns requires an existing namespace: {target}"
-                        ));
-                    }
-                    let previous = registry.current().name().as_str().to_owned();
-                    select_namespace_environment(&registry, env, &target);
-                    let result = (|| {
-                        let mut result = Value::Nil;
-                        for form in &forms {
-                            result = eval(form, env)?;
-                        }
-                        Ok(result)
-                    })();
-                    select_namespace_environment(&registry, env, &previous);
-                    result
-                }
-                Form::Symbol(n) if n == "intern-var" => {
-                    if fs.len() != 4 && fs.len() != 5 {
-                        return Err(
-                            "intern-var expects namespace, symbol, var, and optional metadata"
-                                .into(),
-                        );
-                    }
-                    let target = match eval(&fs[1], env)? {
-                        Value::Symbol(name) => name.as_str().to_owned(),
-                        Value::String(name) => name,
-                        _ => return Err("intern-var expects a namespace symbol or string".into()),
-                    };
-                    let name = match eval(&fs[2], env)? {
-                        Value::Symbol(name) if name.get_namespace().is_none() => name,
-                        _ => return Err("intern-var expects an unqualified target symbol".into()),
-                    };
-                    let registry = namespace_registry()?;
-                    let source = match eval(&fs[3], env)? {
-                        Value::Var(var) => var,
-                        _ => match &fs[3] {
-                            Form::List(var_form)
-                                if var_form.len() == 2
-                                    && matches!(&var_form[0], Form::Symbol(form) if form == "var") =>
-                            {
-                                let Form::Symbol(source) = &var_form[1] else {
-                                    return Err("intern-var expects a source Var".into());
-                                };
-                                registry
-                                    .resolve(&crate::lang::data::Symbol::parse(source))
-                                    .ok_or_else(|| "intern-var expects a source Var".to_string())?
-                            }
-                            _ => return Err("intern-var expects a source Var".into()),
-                        },
-                    };
-                    let mut metadata = source.metadata();
-                    if fs.len() == 5 {
-                        match eval(&fs[4], env)? {
-                            Value::OrderedMap(entries) => {
-                                for (key, value) in entries.iter() {
-                                    metadata.extra.insert(key.display(), value.display());
-                                }
-                            }
-                            _ => return Err("intern-var metadata extension must be a map".into()),
-                        }
-                    }
-                    let value = source.deref_value();
-                    if let Value::Function(function) = &value {
-                        if function.is_macro {
-                            ACTIVE_MACROS.with(|active| {
-                                if let Some(macros) = active.borrow().as_ref() {
-                                    macros.borrow_mut().insert(
-                                        (target.clone(), name.as_str().to_owned()),
-                                        function.clone(),
-                                    );
-                                }
-                            });
-                        }
-                    }
-                    let output = registry.find_or_create(&target).intern_with_metadata(
-                        name.as_str(),
-                        value,
-                        metadata,
-                    );
-                    Ok(Value::Var(output))
                 }
                 Form::Symbol(n) if n == "var" => {
                     if fs.len() != 2 {
@@ -569,103 +313,8 @@ pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, Stri
                         binding_var(env, name).ok_or_else(|| format!("unbound symbol: {name}"))?;
                     Ok(Value::Var(cell))
                 }
-                Form::Symbol(n)
-                    if [
-                        "type",
-                        "compare",
-                        "hash",
-                        "meta",
-                        "with-meta",
-                        "macroexpand-1",
-                        "gensym",
-                    ]
-                    .contains(&n.as_str()) =>
-                {
+                Form::Symbol(n) if n == "hash" => {
                     eval_basic_object_form(n, fs, env)
-                }
-                Form::Symbol(n) if ["atom", "atom:basic"].contains(&n.as_str()) => {
-                    eval_atom_form(n, fs, env)
-                }
-                Form::Symbol(n) if n == "reset!" => {
-                    if fs.len() != 3 {
-                        return Err("reset! expects a reference and value".into());
-                    }
-                    protocol_reset(&[eval(&fs[1], env)?, eval(&fs[2], env)?])
-                }
-                Form::Symbol(n) if n == "cas!" => {
-                    if fs.len() != 4 {
-                        return Err("cas! expects a reference, old value, and new value".into());
-                    }
-                    protocol_cas(&[eval(&fs[1], env)?, eval(&fs[2], env)?, eval(&fs[3], env)?])
-                }
-                Form::Symbol(n) if n == "swap!" => {
-                    if fs.len() < 3 {
-                        return Err(
-                            "swap! expects a reference, function, and optional arguments".into(),
-                        );
-                    }
-                    let reference = eval(&fs[1], env)?;
-                    let function = eval(&fs[2], env)?;
-                    if !matches!(function, Value::Function(_)) {
-                        return Err("swap! expects a function".into());
-                    }
-                    let arguments = fs[3..]
-                        .iter()
-                        .map(|form| eval(form, env))
-                        .collect::<Result<Vec<_>, _>>()?;
-                    loop {
-                        let old_value = protocol_deref(std::slice::from_ref(&reference))?;
-                        let mut call_arguments = Vec::with_capacity(arguments.len() + 1);
-                        call_arguments.push(old_value.clone());
-                        call_arguments.extend(arguments.iter().cloned());
-                        let new_value = call_value(function.clone(), call_arguments)?;
-                        if protocol_cas(&[reference.clone(), old_value, new_value.clone()])?
-                            == Value::Bool(true)
-                        {
-                            break Ok(new_value);
-                        }
-                    }
-                }
-                Form::Symbol(n) if n == "deref" => {
-                    if fs.len() != 2 {
-                        return Err("deref expects a var".into());
-                    }
-                    let target = match &fs[1] {
-                        Form::Symbol(name) => match env.get(name) {
-                            Some(Value::Var(cell))
-                                if cell.symbol().get_name() != Symbol::parse(name).get_name() =>
-                            {
-                                Value::Var(cell.clone())
-                            }
-                            _ => eval(&fs[1], env)?,
-                        },
-                        _ => eval(&fs[1], env)?,
-                    };
-                    match target {
-                        Value::Var(value) => Ok(value.deref_value()),
-                        Value::Atom(value) => Ok(value.deref_value()),
-                        Value::Promise(promise) => match promise.wait_state() {
-                            PromiseState::Fulfilled(value) => Ok(value),
-                            PromiseState::Rejected(error) => Err(promise_rejection_error(error)),
-                            PromiseState::Pending => Err(
-                                "deref cannot block on a pending promise outside an HTA fiber"
-                                    .into(),
-                            ),
-                        },
-                        Value::Pointer(pointer) => pointer_context_call(
-                            &pointer,
-                            pointer_default(&pointer)?,
-                            "pointer/deref",
-                            &[],
-                        ),
-                        Value::Schema(schema) => {
-                            form_to_value(&crate::lang::protocol::IDeref::deref(&schema.ast))
-                        }
-                        value => Err(format!(
-                            "deref expects a var, atom, promise, pointer, or schema, got {}",
-                            value.display()
-                        )),
-                    }
                 }
                 Form::Symbol(n) if n == "set!" || n == "var/set" => {
                     if fs.len() != 3 {
@@ -709,29 +358,6 @@ pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, Stri
                         ));
                     }
                     cell.reset_value(value.clone());
-                    Ok(value)
-                }
-                Form::Symbol(n) if n == "alter-var-root" => {
-                    if fs.len() < 3 {
-                        return Err("alter-var-root expects a var and function".into());
-                    }
-                    let target = match eval(&fs[1], env)? {
-                        Value::Var(cell) => cell,
-                        _ => return Err("alter-var-root expects a var".into()),
-                    };
-                    let function = match eval(&fs[2], env)? {
-                        Value::Function(function) => function,
-                        _ => return Err("alter-var-root expects a function".into()),
-                    };
-                    let mut arguments = vec![target.deref_value()];
-                    arguments.extend(
-                        fs[3..]
-                            .iter()
-                            .map(|form| eval(form, env))
-                            .collect::<Result<Vec<_>, _>>()?,
-                    );
-                    let value = call_function(&function, arguments)?;
-                    target.reset_value(value.clone());
                     Ok(value)
                 }
                 Form::Symbol(n) if n == "__throw-at" => {
@@ -1046,14 +672,6 @@ pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, Stri
                     };
                     let value = eval(&fs[1], env)?;
                     mutable_field_value(&value, field)
-                }
-                Form::Symbol(n) if n == "instance?" => {
-                    if fs.len() != 3 {
-                        return Err("instance? expects a named type and value".into());
-                    }
-                    let ty = eval(&fs[1], env)?;
-                    let value = eval(&fs[2], env)?;
-                    named_instance_of(&ty, &value)
                 }
                 Form::Symbol(n) if n == "defprotocol" => {
                     if fs.len() < 3 {
@@ -1483,68 +1101,8 @@ pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, Stri
                     }
                     Ok(Value::Nil)
                 }
-                Form::Symbol(n) if n == "=" => {
-                    if fs.len() < 3 {
-                        return Err("= expects at least 2 arguments".into());
-                    }
-                    let first = eval(&fs[1], env)?;
-                    let rest = fs[2..]
-                        .iter()
-                        .map(|form| eval(form, env))
-                        .collect::<Result<Vec<_>, _>>()?;
-                    let mut arguments = Vec::with_capacity(rest.len() + 1);
-                    arguments.push(first);
-                    arguments.extend(rest);
-                    apply_primitive(Primitive::Equal, &arguments)
-                }
                 Form::Symbol(n) if n == "ns" || n == "ns+" || n == "require" => {
                     eval_namespace_form(fs, env)
-                }
-                Form::Symbol(n) if n == "current-namespace" => {
-                    if fs.len() != 1 {
-                        return Err("current-namespace expects no arguments".into());
-                    }
-                    Ok(Value::String(
-                        namespace_registry()?.current().name().as_str().to_owned(),
-                    ))
-                }
-                Form::Symbol(n) if n == "ns-publics" => {
-                    if fs.len() != 2 {
-                        return Err("ns-publics expects one namespace".into());
-                    }
-                    let namespace = match eval(&fs[1], env)? {
-                        Value::Symbol(name) if name.get_namespace().is_none() => {
-                            name.get_name().to_owned()
-                        }
-                        Value::String(name) => name,
-                        Value::Namespace(namespace) => namespace.name().as_str().to_owned(),
-                        _ => return Err("ns-publics expects a namespace symbol or string".into()),
-                    };
-                    let registry = namespace_registry()?;
-                    let target = registry
-                        .find(&namespace)
-                        .ok_or_else(|| format!("No such namespace: {namespace}"))?;
-                    let mut mappings = target.mappings();
-                    mappings.retain(|(_, var)| var.symbol().get_namespace() == Some(&namespace));
-                    mappings.sort_by(|(left, _), (right, _)| left.as_str().cmp(right.as_str()));
-                    Ok(Value::OrderedMap(Box::new(POrderedMap::from_iter(
-                        mappings.into_iter().map(|(name, var)| {
-                            (
-                                Value::Symbol(Symbol::create(None, name.as_str())),
-                                Value::Var(var),
-                            )
-                        }),
-                    ))))
-                }
-                Form::Symbol(n) if n == "std.foundation.coroutine/create" => {
-                    if fs.len() != 2 {
-                        return Err("coroutine/create expects one function".into());
-                    }
-                    let body = eval(&fs[1], env)?;
-                    match body {
-                        Value::Function(_) => Ok(Value::Coroutine(Rc::new(Coroutine::new(body)))),
-                        _ => Err("coroutine/create expects a function".into()),
-                    }
                 }
                 Form::Symbol(n) if n == "std.foundation.coroutine/coroutine?" => {
                     if fs.len() != 2 {
@@ -1576,25 +1134,6 @@ pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, Stri
                         _ => Err("coroutine/close expects a coroutine".into()),
                     }
                 }
-                Form::Symbol(n)
-                    if n == "std.foundation.coroutine/resume"
-                        || n == "std.protocol.icoroutine.ICoroutine/resume" =>
-                {
-                    if fs.len() < 2 {
-                        return Err("coroutine/resume expects a coroutine".into());
-                    }
-                    let coroutine = eval(&fs[1], env)?;
-                    let arguments = fs[2..]
-                        .iter()
-                        .map(|form| eval(form, env))
-                        .collect::<Result<Vec<_>, _>>()?;
-                    match coroutine {
-                        Value::Coroutine(coroutine) => {
-                            fiber::coroutine::resume_sync(coroutine, arguments)
-                        }
-                        _ => Err("coroutine/resume expects a coroutine".into()),
-                    }
-                }
                 Form::Symbol(n) if n == "std.foundation.coroutine/yield" => {
                     Err("coroutine/yield requires the fiber evaluator".into())
                 }
@@ -1604,19 +1143,16 @@ pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, Stri
                 Form::Symbol(n)
                     if resolve_macro(n).is_none()
                         && binding_value(env, n)
-                            .or_else(|| direct_callable_value(n))
                             .is_some_and(|value| matches!(value, Value::Function(_))) =>
                 {
-                    let function = binding_value(env, n)
-                        .or_else(|| direct_callable_value(n))
-                        .expect("direct or namespace function binding was checked");
+                    let function = binding_value(env, n).expect("namespace function binding was checked");
                     let arguments = fs[1..]
                         .iter()
                         .map(|form| eval(form, env))
                         .collect::<Result<Vec<_>, _>>()?;
                     call_value(function, arguments)
                 }
-                Form::Symbol(n) if n == "promise" || n == "promise/run" => {
+                Form::Symbol(n) if n == "promise/run" => {
                     if fs.len() != 2 {
                         return Err("promise expects one function".into());
                     }
@@ -1627,12 +1163,6 @@ pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, Stri
                     let provider = promise_provider();
                     let task = Rc::new(move || call_function(&function, Vec::new()));
                     Ok(Value::Promise(provider.run(task)))
-                }
-                Form::Symbol(n) if n == "promise?" => {
-                    if fs.len() != 2 {
-                        return Err("promise? expects one value".into());
-                    }
-                    Ok(Value::Bool(matches!(eval(&fs[1], env)?, Value::Promise(_))))
                 }
                 Form::Symbol(n)
                     if ["bytes?", "array?", "object?", "regexp?", "uuid?"]
@@ -1652,32 +1182,6 @@ pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, Stri
                         _ => unreachable!(),
                     }))
                 }
-                Form::Symbol(n) if n == "promise/new" => {
-                    if fs.len() != 2 {
-                        return Err("promise/new expects one function".into());
-                    }
-                    let function = match eval(&fs[1], env)? {
-                        Value::Function(function) => function,
-                        _ => return Err("promise/new expects a function".into()),
-                    };
-                    let promise = Promise::new();
-                    let resolving = promise.clone();
-                    let resolve = native_function("promise-resolve", 1, move |mut values| {
-                        let value = values.remove(0);
-                        settle_promise_result(&resolving, Ok(value.clone()));
-                        Ok(value)
-                    });
-                    let rejecting = promise.clone();
-                    let reject = native_function("promise-reject", 1, move |mut values| {
-                        let value = values.remove(0);
-                        rejecting.reject_value(value.clone());
-                        Ok(value)
-                    });
-                    if let Err(error) = call_function(&function, vec![resolve, reject]) {
-                        promise.reject(error);
-                    }
-                    Ok(Value::Promise(promise))
-                }
                 Form::Symbol(n) if n == "promise/from" => {
                     if fs.len() != 2 {
                         return Err("promise/from expects one value".into());
@@ -1692,24 +1196,6 @@ pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, Stri
                     Ok(Value::Promise(promise_all(iterator_values(eval(
                         &fs[1], env,
                     )?)?)))
-                }
-                Form::Symbol(n) if n == "promise/delay" => {
-                    if fs.len() != 3 {
-                        return Err("promise/delay expects milliseconds and a function".into());
-                    }
-                    let millis_value = eval(&fs[1], env)?;
-                    let millis =
-                        value_u64_integer(&millis_value, "promise/delay").map_err(|_| {
-                            "promise/delay expects non-negative milliseconds".to_string()
-                        })?;
-                    let function = match eval(&fs[2], env)? {
-                        Value::Function(function) => function,
-                        _ => return Err("promise/delay expects milliseconds and a function".into()),
-                    };
-                    let task = Rc::new(move || call_function(&function, Vec::new()));
-                    Ok(Value::Promise(
-                        promise_provider().delay(std::time::Duration::from_millis(millis), task),
-                    ))
                 }
                 Form::Symbol(n) if n == "promise/state" => {
                     if fs.len() != 2 {
@@ -1750,94 +1236,12 @@ pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, Stri
                     Ok(Value::Promise(promise_chain(source, n, function)))
                 }
                 Form::Symbol(n) if n.starts_with("ns:") => eval_namespace_operation(n, fs, env),
-                Form::Symbol(n) if n == "pointer" => {
-                    if fs.len() != 2 {
-                        return Err("pointer expects one descriptor map".into());
-                    }
-                    pointer_from_descriptor(eval(&fs[1], env)?)
-                }
-                Form::Symbol(n) if n == "keyword" || n == "symbol" => {
-                    if fs.len() != 2 && fs.len() != 3 {
-                        return Err(format!("{n} expects a name or namespace and name"));
-                    }
-                    let parts = fs[1..]
-                        .iter()
-                        .map(|form| match eval(form, env)? {
-                            Value::String(value) => Ok(value),
-                            _ => Err(format!("{n} expects string arguments")),
-                        })
-                        .collect::<Result<Vec<_>, _>>()?;
-                    match (n.as_str(), parts.as_slice()) {
-                        ("keyword", [name]) => Keyword::parse(name)
-                            .map(Value::Keyword)
-                            .map_err(|error| format!("keyword failed: {error}")),
-                        ("keyword", [namespace, name]) => Keyword::create(Some(namespace), name)
-                            .map(Value::Keyword)
-                            .map_err(|error| format!("keyword failed: {error}")),
-                        ("symbol", [name]) => Ok(Value::Symbol(Symbol::parse(name))),
-                        ("symbol", [namespace, name]) => {
-                            Ok(Value::Symbol(Symbol::create(Some(namespace), name)))
-                        }
-                        _ => unreachable!(),
-                    }
-                }
-                Form::Symbol(n) if n == "name" => {
-                    if fs.len() != 2 {
-                        return Err("name expects one value".into());
-                    }
-                    match eval(&fs[1], env)? {
-                        Value::Keyword(value) => Ok(Value::String(value.get_name().into())),
-                        Value::Symbol(value) => Ok(Value::String(value.get_name().into())),
-                        _ => Err("name expects a keyword or symbol".into()),
-                    }
-                }
-                Form::Symbol(n) if n == "namespace" => {
-                    if fs.len() != 2 {
-                        return Err("namespace expects one value".into());
-                    }
-                    protocol_namespaced_namespace(&[eval(&fs[1], env)?])
-                }
-                Form::Symbol(n) if ["list", "vector", "pair", "tup"].contains(&n.as_str()) => {
-                    eval_sequential_constructor(n, &fs[1..], env)
-                }
-                Form::Symbol(n) if ["hash-map", "hash-set"].contains(&n.as_str()) => {
-                    eval_collection_constructor(n, &fs[1..], env)
-                }
-                Form::Symbol(n) if n == "array" => {
-                    let values = fs[1..]
-                        .iter()
-                        .map(|form| eval(form, env))
-                        .collect::<Result<Vec<_>, _>>()?;
-                    Ok(Value::Array(Rc::new(RefCell::new(values))))
-                }
-                Form::Symbol(n) if n == "object" => {
-                    if fs.len() % 2 != 1 {
-                        return Err("object expects key/value pairs".into());
-                    }
-                    let mut values = Vec::new();
-                    for pair in fs[1..].chunks(2) {
-                        let key = marker_key(&eval(&pair[0], env)?, "object")?;
-                        values.push((key, eval(&pair[1], env)?));
-                    }
-                    Ok(Value::Object(Rc::new(RefCell::new(values))))
-                }
                 Form::Symbol(n) if n == "." => {
                     if fs.len() != 3 {
                         return Err("dot expects a receiver and method".into());
                     }
                     let receiver = eval(&fs[1], env)?;
                     dot_call(receiver, &fs[2], env)
-                }
-                Form::Symbol(n) if n == "bytes" => {
-                    let values = fs[1..]
-                        .iter()
-                        .map(|form| eval(form, env))
-                        .collect::<Result<Vec<_>, _>>()?;
-                    let values = values
-                        .iter()
-                        .map(|value| byte_input(value, "bytes"))
-                        .collect::<Result<Vec<_>, _>>()?;
-                    Ok(Value::ByteBuffer(Rc::new(RefCell::new(values))))
                 }
                 Form::Symbol(n)
                     if [
@@ -1898,34 +1302,7 @@ pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, Stri
                 {
                     file_operation(n, &fs[1..], env)
                 }
-                Form::Symbol(n) if n == "str" => {
-                    if fs.len() == 1 {
-                        return Ok(Value::String(String::new()));
-                    }
-                    let values = fs[1..]
-                        .iter()
-                        .map(|form| eval(form, env))
-                        .collect::<Result<Vec<_>, _>>()?;
-                    Ok(Value::String(
-                        values
-                            .iter()
-                            .map(|value| match value {
-                                Value::Nil => String::new(),
-                                Value::String(text) => text.clone(),
-                                Value::Character(character) => character.to_string(),
-                                _ => value.display(),
-                            })
-                            .collect::<Vec<_>>()
-                            .join(""),
-                    ))
-                }
-                Form::Symbol(n) if n == "pr-str" => {
-                    if fs.len() != 2 {
-                        return Err("pr-str expects one value".into());
-                    }
-                    Ok(Value::String(eval(&fs[1], env)?.display()))
-                }
-                Form::Symbol(n) if n == "capture" || n == "Printer/capture" => {
+                Form::Symbol(n) if n == "Printer/capture" => {
                     if fs.len() != 2 {
                         return Err("Printer/capture expects one callable".into());
                     }
@@ -1939,41 +1316,6 @@ pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, Stri
                             .expect("Printer/capture stack must contain the active capture")
                     });
                     result.map(|_| Value::String(output))
-                }
-                Form::Symbol(n) if n == "p" => {
-                    let values = fs[1..]
-                        .iter()
-                        .map(|form| eval(form, env))
-                        .collect::<Result<Vec<_>, _>>()?;
-                    let text = values
-                        .iter()
-                        .map(|value| match value {
-                            Value::Nil => String::new(),
-                            Value::String(text) => text.clone(),
-                            Value::Character(character) => character.to_string(),
-                            _ => value.display(),
-                        })
-                        .collect::<Vec<_>>()
-                        .join("");
-                    printer_write(&text)?;
-                    Ok(Value::Nil)
-                }
-                Form::Symbol(n) if n == "println" => {
-                    let values = fs[1..]
-                        .iter()
-                        .map(|form| eval(form, env))
-                        .collect::<Result<Vec<_>, _>>()?;
-                    let text = values
-                        .iter()
-                        .map(|value| match value {
-                            Value::Nil => "nil".to_owned(),
-                            Value::String(text) => text.clone(),
-                            _ => value.display(),
-                        })
-                        .collect::<Vec<_>>()
-                        .join(" ");
-                    printer_write(&format!("{text}\n"))?;
-                    Ok(Value::Nil)
                 }
                 Form::Symbol(n)
                     if [
@@ -2097,12 +1439,6 @@ pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, Stri
                         raw as i8 as i64
                     }))
                 }
-                Form::Symbol(n) if n == "iter" => {
-                    if fs.len() != 2 {
-                        return Err("iter expects one argument".into());
-                    }
-                    make_iterator(eval(&fs[1], env)?)
-                }
                 Form::Symbol(n) if n == "iter-finite?" => {
                     if fs.len() != 2 {
                         return Err("iter-finite? expects one argument".into());
@@ -2114,48 +1450,6 @@ pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, Stri
                         return Err("iter-materialize expects one argument".into());
                     }
                     Ok(Value::Vector(iterator_to_vec(eval(&fs[1], env)?)?.into()))
-                }
-                Form::Symbol(n) if n == "seq" => {
-                    if fs.len() != 2 && fs.len() != 3 {
-                        return Err("seq expects a source, or a transform and source".into());
-                    }
-                    let source = eval(&fs[fs.len() - 1], env)?;
-                    let lazy = iterator_seq(source)?;
-                    if fs.len() == 2 {
-                        Ok(lazy)
-                    } else {
-                        match eval(&fs[1], env)? {
-                            Value::Function(function) => {
-                                let result = call_function(&function, vec![lazy])?;
-                                iterator_seq(result)
-                            }
-                            _ => Err("seq expects a function and source".into()),
-                        }
-                    }
-                }
-                Form::Symbol(n) if n == "seq?" || n == "iter?" => {
-                    if fs.len() != 2 {
-                        return Err(format!("{n} expects one value"));
-                    }
-                    let value = eval(&fs[1], env)?;
-                    let result = if n == "seq?" {
-                        matches!(value, Value::Seq(_))
-                    } else {
-                        matches!(value, Value::Iterator(_))
-                    };
-                    Ok(Value::Bool(result))
-                }
-                Form::Symbol(n) if n == "iter-next?" => {
-                    if fs.len() != 2 {
-                        return Err("iter-next? expects one argument".into());
-                    }
-                    iterator_has_next(&eval(&fs[1], env)?)
-                }
-                Form::Symbol(n) if n == "iter-next" => {
-                    if fs.len() != 2 {
-                        return Err("iter-next expects one argument".into());
-                    }
-                    iterator_next(&eval(&fs[1], env)?)
                 }
                 Form::Symbol(n) if n == "iter-close" => {
                     if fs.len() != 2 {
@@ -2618,30 +1912,6 @@ pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, Stri
                 {
                     bit_operation(n, &fs[1..], env)
                 }
-                Form::Symbol(n) if n == "read-string" => {
-                    if fs.len() != 2 {
-                        return Err(format!("{n} expects one string"));
-                    }
-                    match eval(&fs[1], env)? {
-                        Value::String(source) => read_edn(&source),
-                        _ => Err(format!("{n} expects a string")),
-                    }
-                }
-                Form::Symbol(n) if ["inc", "dec"].contains(&n.as_str()) => {
-                    if fs.len() != 2 {
-                        return Err(format!("{n} expects one number"));
-                    }
-                    let value = eval(&fs[1], env)?;
-                    apply_binary_primitive(
-                        if n == "inc" {
-                            Primitive::Add
-                        } else {
-                            Primitive::Subtract
-                        },
-                        &value,
-                        &Value::Number(1),
-                    )
-                }
                 Form::Symbol(n) if n == "__map-transform" => {
                     if fs.len() != 3 {
                         return Err("map transform expects a function and source".into());
@@ -2776,214 +2046,6 @@ pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, Stri
                     }
                     Ok(Value::Bool(n.contains("every?")))
                 }
-                Form::Symbol(n) if n == "constantly" => {
-                    if fs.len() != 2 {
-                        return Err("constantly expects one value".into());
-                    }
-                    let value = eval(&fs[1], env)?;
-                    let mut captured = env.clone();
-                    captured.insert("__constant".into(), value);
-                    Ok(Value::Function(Rc::new(Function {
-                        params: Vec::new(),
-                        variadic: Some("_rest".into()),
-                        patterns: Vec::new(),
-                        variadic_pattern: None,
-                        body: vec![Form::Symbol("__constant".into())],
-                        captured: Rc::new(RefCell::new(captured)),
-                        name: None,
-                        namespace: function_definition_namespace(),
-                        native: None,
-                        fiber_native: None,
-                        clauses: Vec::new(),
-                        metadata: None,
-                        is_macro: false,
-                    })))
-                }
-                Form::Symbol(n) if n == "complement" => {
-                    if fs.len() != 2 {
-                        return Err("complement expects one function".into());
-                    }
-                    let predicate = eval(&fs[1], env)?;
-                    if !matches!(predicate, Value::Function(_)) {
-                        return Err("complement expects a function".into());
-                    }
-                    Ok(generated_function(
-                        vec!["value".into()],
-                        vec![Form::List(vec![
-                            Form::Symbol("not".into()),
-                            Form::List(vec![
-                                Form::Symbol("__predicate".into()),
-                                Form::Symbol("value".into()),
-                            ]),
-                        ])],
-                        env.clone(),
-                        vec![("__predicate", predicate)],
-                    ))
-                }
-                Form::Symbol(n) if n == "comp" || n == "comp2" || n == "comp3" => {
-                    let arity = fs.len() - 1;
-                    let expected = match n.as_str() {
-                        "comp2" => arity == 2,
-                        "comp3" => arity == 3,
-                        _ => arity >= 2,
-                    };
-                    if !expected {
-                        let arities = if n == "comp" {
-                            "2 or more"
-                        } else if n == "comp2" {
-                            "2"
-                        } else {
-                            "3"
-                        };
-                        return Err(format!("{n} expects {arities} functions"));
-                    }
-                    let functions = fs[1..]
-                        .iter()
-                        .map(|form| eval(form, env))
-                        .collect::<Result<Vec<_>, _>>()?;
-                    if functions
-                        .iter()
-                        .any(|value| !matches!(value, Value::Function(_)))
-                    {
-                        return Err(format!("{n} expects functions"));
-                    }
-                    let mut body = Form::Symbol("value".into());
-                    let mut captured = env.clone();
-                    for (index, function) in functions.into_iter().enumerate().rev() {
-                        let binding = format!("__comp_{index}");
-                        body = Form::List(vec![Form::Symbol(binding.clone()), body]);
-                        captured.insert(binding, function);
-                    }
-                    Ok(generated_function(
-                        vec!["value".into()],
-                        vec![body],
-                        captured,
-                        Vec::new(),
-                    ))
-                }
-                Form::Symbol(n) if n == "identity" => {
-                    if fs.len() != 2 {
-                        return Err("identity expects one value".into());
-                    }
-                    eval(&fs[1], env)
-                }
-                Form::Symbol(n) if n == "apply" => {
-                    if fs.len() < 3 {
-                        return Err("apply expects a function and arguments".into());
-                    }
-                    let builtin = match &fs[1] {
-                        Form::Symbol(name) => Primitive::from_symbol(name),
-                        _ => None,
-                    };
-                    let function = if builtin.is_none() {
-                        Some(eval(&fs[1], env)?)
-                    } else {
-                        None
-                    };
-                    let mut arguments = Vec::new();
-                    for form in &fs[2..fs.len() - 1] {
-                        arguments.push(eval(form, env)?);
-                    }
-                    arguments.extend(iterator_values(eval(&fs[fs.len() - 1], env)?)?);
-                    match function {
-                        Some(Value::Var(var)) => match var.deref_value() {
-                            callable => call_value(callable, arguments),
-                        },
-                        Some(callable) => call_value(callable, arguments),
-                        None => apply_primitive(builtin.unwrap(), &arguments),
-                    }
-                }
-                Form::Symbol(n) if n == "key" || n == "val" => {
-                    if fs.len() != 2 {
-                        return Err(format!("{n} expects an entry"));
-                    }
-                    let entry = eval(&fs[1], env)?;
-                    match pair_parts(&entry) {
-                        Some((key, value)) => Ok(if n == "key" { key } else { value }),
-                        None => Err(format!("{n} expects a pair")),
-                    }
-                }
-                Form::Symbol(n) if n == "reverse" => {
-                    if fs.len() != 2 {
-                        return Err("reverse expects one collection".into());
-                    }
-                    let mut values = iterator_to_vec(eval(&fs[1], env)?)?;
-                    values.reverse();
-                    Ok(Value::List(values.into_iter().collect()))
-                }
-                Form::Symbol(n) if n == "keys" => {
-                    if fs.len() != 2 {
-                        return Err("keys expects one collection".into());
-                    }
-                    collection_keys(&eval(&fs[1], env)?)
-                }
-                Form::Symbol(n) if n == "vals" => {
-                    if fs.len() != 2 {
-                        return Err("vals expects one collection".into());
-                    }
-                    collection_vals(&eval(&fs[1], env)?)
-                }
-                Form::Symbol(n) if n == "not" => {
-                    if fs.len() != 2 {
-                        return Err("not expects one argument".into());
-                    }
-                    Ok(Value::Bool(!eval(&fs[1], env)?.truthy()))
-                }
-                Form::Symbol(n) if ["<", ">", "<=", ">="].contains(&n.as_str()) => {
-                    comparison(n, &fs[1..], env)
-                }
-                Form::Symbol(n) if n == "first" => {
-                    if fs.len() != 2 {
-                        return Err("first expects one argument".into());
-                    }
-                    collection_first(eval(&fs[1], env)?)
-                }
-                Form::Symbol(n) if n == "second" => {
-                    if fs.len() != 2 {
-                        return Err("second expects one argument".into());
-                    }
-                    collection_second(eval(&fs[1], env)?)
-                }
-                Form::Symbol(n) if n == "rest" => {
-                    if fs.len() != 2 {
-                        return Err("rest expects one argument".into());
-                    }
-                    collection_rest(eval(&fs[1], env)?)
-                }
-                Form::Symbol(n) if n == "last" => {
-                    if fs.len() != 2 {
-                        return Err("last expects one argument".into());
-                    }
-                    collection_last(eval(&fs[1], env)?)
-                }
-                Form::Symbol(n) if n == "peek" => {
-                    if fs.len() != 2 {
-                        return Err("peek expects one argument".into());
-                    }
-                    collection_first(eval(&fs[1], env)?)
-                }
-                Form::Symbol(n) if n == "empty?" => {
-                    if fs.len() != 2 {
-                        return Err("empty? expects one argument".into());
-                    }
-                    collection_empty(eval(&fs[1], env)?)
-                }
-                Form::Symbol(n) if n == "empty" => {
-                    if fs.len() != 2 {
-                        return Err("empty expects one argument".into());
-                    }
-                    collection_empty_value(eval(&fs[1], env)?)
-                }
-                Form::Symbol(n) if n == "satisfies?" => {
-                    if fs.len() != 3 {
-                        return Err("satisfies? expects a protocol and value".into());
-                    }
-                    let Value::Protocol(protocol) = eval(&fs[1], env)? else {
-                        return Err("satisfies? expects a protocol and value".into());
-                    };
-                    let value = eval(&fs[2], env)?;
-                    Ok(Value::Bool(protocol_satisfies(&protocol, &value)))
-                }
                 Form::Symbol(n) if named_predicate_protocol(n).is_some() => {
                     if fs.len() != 2 {
                         return Err(format!("{n} expects one argument"));
@@ -2992,35 +2054,14 @@ pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, Stri
                     Ok(Value::Bool(named_protocol_satisfies(n, &value)))
                 }
                 Form::Symbol(n)
-                    if [
-                        "list?",
-                        "cons?",
-                        "vector?",
-                        "tuple?",
-                        "sequential?",
-                        "map?",
-                        "set?",
-                        "keyword?",
-                        "symbol?",
-                        "pointer?",
-                        "string?",
-                        "char?",
-                        "number?",
-                        "long?",
-                        "double?",
-                        "boolean?",
-                        "function?",
-                    ]
-                    .contains(&n.as_str()) =>
+                    if ["cons?", "tuple?", "sequential?", "pointer?"].contains(&n.as_str()) =>
                 {
                     if fs.len() != 2 {
                         return Err(format!("{n} expects one argument"));
                     }
                     let value = eval(&fs[1], env)?;
                     Ok(Value::Bool(match n.as_str() {
-                        "list?" => matches!(value, Value::List(_)),
                         "cons?" => matches!(value, Value::Cons(_)),
-                        "vector?" => matches!(value, Value::Vector(_) | Value::Tuple(_)),
                         "tuple?" => matches!(value, Value::Tuple(_)),
                         "sequential?" => matches!(
                             value,
@@ -3032,166 +2073,19 @@ pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, Stri
                                 | Value::Tuple(_)
                                 | Value::Seq(_)
                         ),
-                        "map?" => match &value {
-                            Value::Map(_)
-                            | Value::OrderedMap(_)
-                            | Value::SortedMap(_)
-                            | Value::Trie(_)
-                            | Value::PriorityMap(_) => true,
-                            Value::Extension(receiver) => extension_has_category(receiver, "map"),
-                            _ => false,
-                        },
-                        "set?" => matches!(
-                            value,
-                            Value::Set(_) | Value::OrderedSet(_) | Value::SortedSet(_)
-                        ),
-                        "keyword?" => matches!(value, Value::Keyword(_)),
-                        "symbol?" => matches!(value, Value::Symbol(_)),
-                        "pointer?" => matches!(value, Value::Pointer(_)),
-                        "string?" => matches!(value, Value::String(_)),
-                        "char?" => matches!(value, Value::Character(_)),
-                        "number?" => numeric::is_numeric_value(&value),
-                        "long?" => numeric::to_i64_exact(&value).is_ok(),
-                        "double?" => matches!(value, Value::Float(_)),
-                        "boolean?" => matches!(value, Value::Bool(_)),
-                        "function?" => matches!(value, Value::Function(_)),
                         _ => unreachable!(),
                     }))
                 }
-                Form::Symbol(n) if n == "not-empty" => {
+                Form::Symbol(n) if n == "to-mutable" || n == "to-persistent" => {
                     if fs.len() != 2 {
-                        return Err("not-empty expects one argument".into());
+                        return Err(format!("{n} expects one argument"));
                     }
                     let value = eval(&fs[1], env)?;
-                    Ok(if collection_empty(value.clone())?.truthy() {
-                        Value::Nil
+                    if n == "to-mutable" {
+                        collection_to_mutable(&value)
                     } else {
-                        value
-                    })
-                }
-                Form::Symbol(n) if n == "count" => {
-                    if fs.len() != 2 {
-                        return Err("count expects one argument".into());
+                        collection_to_persistent(&value)
                     }
-                    collection_count(&eval(&fs[1], env)?)
-                }
-                Form::Symbol(n) if n == "to-mutable" => {
-                    if fs.len() != 2 {
-                        return Err("to-mutable expects one argument".into());
-                    }
-                    collection_to_mutable(&eval(&fs[1], env)?)
-                }
-                Form::Symbol(n) if n == "to-persistent" => {
-                    if fs.len() != 2 {
-                        return Err("to-persistent expects one argument".into());
-                    }
-                    collection_to_persistent(&eval(&fs[1], env)?)
-                }
-                Form::Symbol(n) if n == "get" => {
-                    if fs.len() != 3 && fs.len() != 4 {
-                        return Err("get expects 2 or 3 arguments".into());
-                    }
-                    let value = eval(&fs[1], env)?;
-                    let key = eval(&fs[2], env)?;
-                    let default = if fs.len() == 4 {
-                        eval(&fs[3], env)?
-                    } else {
-                        Value::Nil
-                    };
-                    collection_get(&value, &key, default)
-                }
-                Form::Symbol(n) if n == "nth" => {
-                    if fs.len() != 3 {
-                        return Err("nth expects two arguments".into());
-                    }
-                    collection_nth(&eval(&fs[1], env)?, &eval(&fs[2], env)?)
-                }
-                Form::Symbol(n) if n == "assoc" => {
-                    if fs.len() < 4 || fs.len() % 2 != 0 {
-                        return Err("assoc expects a collection and key/value pairs".into());
-                    }
-                    let mut value = eval(&fs[1], env)?;
-                    for pair in fs[2..].chunks(2) {
-                        let key = eval(&pair[0], env)?;
-                        let replacement = eval(&pair[1], env)?;
-                        value = collection_assoc(&value, &key, replacement)?;
-                    }
-                    Ok(value)
-                }
-                Form::Symbol(n) if n == "dissoc" => {
-                    if fs.len() < 3 {
-                        return Err("dissoc expects a map and at least one key".into());
-                    }
-                    let value = eval(&fs[1], env)?;
-                    let keys = fs[2..]
-                        .iter()
-                        .map(|form| eval(form, env))
-                        .collect::<Result<Vec<_>, _>>()?;
-                    collection_dissoc(&value, &keys)
-                }
-                Form::Symbol(n) if n == "get-in" => {
-                    if fs.len() != 3 {
-                        return Err("get-in expects a collection and keys".into());
-                    }
-                    let value = eval(&fs[1], env)?;
-                    let keys = iterator_values(eval(&fs[2], env)?)?;
-                    collection_get_in(value, &keys)
-                }
-                Form::Symbol(n) if n == "assoc-in" => {
-                    if fs.len() != 4 {
-                        return Err("assoc-in expects a collection, keys, and value".into());
-                    }
-                    let value = eval(&fs[1], env)?;
-                    let keys = iterator_values(eval(&fs[2], env)?)?;
-                    let replacement = eval(&fs[3], env)?;
-                    collection_assoc_in(value, &keys, replacement)
-                }
-                Form::Symbol(n) if n == "update" || n == "update-in" => {
-                    if (n == "update" && fs.len() < 4) || (n == "update-in" && fs.len() < 4) {
-                        return Err(format!("{n} expects a collection, key path, and function"));
-                    }
-                    let value = eval(&fs[1], env)?;
-                    let (keys, function_form, extra_forms) = if n == "update" {
-                        (vec![eval(&fs[2], env)?], &fs[3], &fs[4..])
-                    } else {
-                        (iterator_values(eval(&fs[2], env)?)?, &fs[3], &fs[4..])
-                    };
-                    let current = collection_get_in(value.clone(), &keys)?;
-                    let function = eval(function_form, env)?;
-                    let mut args = vec![current];
-                    args.extend(
-                        extra_forms
-                            .iter()
-                            .map(|form| eval(form, env))
-                            .collect::<Result<Vec<_>, _>>()?,
-                    );
-                    let replacement = match function {
-                        Value::Function(function) => call_function(&function, args)?,
-                        _ => return Err(format!("{n} expects a function")),
-                    };
-                    if n == "update" {
-                        collection_assoc(&value, &keys[0], replacement)
-                    } else {
-                        collection_assoc_in(value, &keys, replacement)
-                    }
-                }
-                Form::Symbol(n) if n == "conj" => {
-                    if fs.len() < 2 {
-                        return Err("conj expects a collection".into());
-                    }
-                    let mut collection = eval(&fs[1], env)?;
-                    for form in &fs[2..] {
-                        collection = protocol_conj(&[collection, eval(form, env)?])?;
-                    }
-                    Ok(collection)
-                }
-                Form::Symbol(n) if n == "cons" => {
-                    if fs.len() != 3 {
-                        return Err("cons expects two arguments".into());
-                    }
-                    let item = eval(&fs[1], env)?;
-                    let collection = eval(&fs[2], env)?;
-                    protocol_cons(&[collection, item])
                 }
                 Form::Symbol(n) if n == "recur" => {
                     if fs.len() < 2 {
@@ -3386,22 +2280,6 @@ pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, Stri
                         }
                     }
                     result
-                }
-                Form::Symbol(n) if ["+", "-", "*", "/", "%"].contains(&n.as_str()) => {
-                    arithmetic(n, &fs[1..], env)
-                }
-                Form::Symbol(n) if ["quot", "rem", "mod"].contains(&n.as_str()) => {
-                    if fs.len() != 3 {
-                        return Err(format!("{n} expects two numbers"));
-                    }
-                    let left = eval(&fs[1], env)?;
-                    let right = eval(&fs[2], env)?;
-                    match n.as_str() {
-                        "quot" => numeric::numeric_quotient(&left, &right),
-                        "rem" => apply_binary_primitive(Primitive::Remainder, &left, &right),
-                        "mod" => numeric::numeric_binary(ArithmeticOp::Remainder, &left, &right),
-                        _ => unreachable!(),
-                    }
                 }
                 _ => {
                     if let Form::Symbol(name) = &fs[0] {

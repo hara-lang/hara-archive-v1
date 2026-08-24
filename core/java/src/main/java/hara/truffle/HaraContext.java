@@ -9,6 +9,7 @@ import hara.kernel.builtin.BuiltinStruct;
 import hara.kernel.flavor.NativeCapability;
 import hara.kernel.flavor.NativeFlavorAccess;
 import hara.kernel.flavor.NativeFlavorException;
+import hara.kernel.flavor.NativeFlavorImportSpecs;
 import hara.kernel.flavor.NativeFlavorProvider;
 import hara.kernel.flavor.NativeFlavorRegistry;
 import hara.kernel.jvm.JvmFlavorProvider;
@@ -107,6 +108,9 @@ public final class HaraContext {
   private volatile HaraProject project;
   private volatile boolean projectDiscovered;
   private final Map<String, HaraExtensionRuntime> loadedExtensions = new ConcurrentHashMap<>();
+  private final Map<String, JvmPackageLoader.LoadedArtifact> loadedJvmFlavors =
+      new ConcurrentHashMap<>();
+  private volatile ClassLoader nativeFlavorLoader;
   private final Map<String, ModuleRecord> modules = new ConcurrentHashMap<>();
   private final Map<String, Set<String>> moduleDependencies = new ConcurrentHashMap<>();
   private final Map<String, Object> libraryStates = new ConcurrentHashMap<>();
@@ -340,6 +344,15 @@ public final class HaraContext {
     instrumentationRuntime.close();
     evaluationRuntime.close();
     closeExtensions();
+    for (JvmPackageLoader.LoadedArtifact loaded : loadedJvmFlavors.values()) {
+      try {
+        loaded.close();
+      } catch (Exception ignored) {
+        // Context teardown is terminal; the loader has no remaining authority after close.
+      }
+    }
+    loadedJvmFlavors.clear();
+    nativeFlavorLoader = null;
     if (ownedFilesystem == null) return;
     filesystemRuntime.close();
     try {
@@ -457,7 +470,8 @@ public final class HaraContext {
       installNativeExportGroup(
           "Runtime",
           exports,
-          java.util.List.of("load-string", "macroexpand-1", "gensym"),
+          java.util.List.of(
+              "load-string", "macroexpand-1", "gensym", "ns-publics", "the-ns", "ns-name"),
           Map.of());
       installNativeExportGroup(
           "Printer", exports, HaraNativeDeclarations.methods("Printer"), Map.of());
@@ -591,7 +605,39 @@ public final class HaraContext {
     runtime.define("intern-var", new VariadicBuiltin("std.native.Runtime/intern-var", this::internVar));
     runtime.define("eval-in", new VariadicBuiltin("std.native.Runtime/eval-in", this::evalInNamespace));
     runtime.define("eval", new UnaryBuiltin("std.native.Runtime/eval", this::evalForm));
+    runtime.define(
+        "gensym",
+        new VariadicBuiltin(
+            "std.native.Runtime/gensym",
+            values -> {
+              if (values.length > 1) {
+                throw new HaraException("gensym expects zero or one prefix");
+              }
+              return gensym(values.length == 0 ? null : String.valueOf(HaraBox.unwrap(values[0])));
+            }));
+    runtime.define(
+        "macroexpand-1",
+        new UnaryBuiltin("std.native.Runtime/macroexpand-1", value -> macroExpand(value, false)));
+    runtime.define(
+        "ns-publics",
+        new UnaryBuiltin("std.native.Runtime/ns-publics", this::namespacePublics));
+    runtime.define("the-ns", new UnaryBuiltin("std.native.Runtime/the-ns", this::theNamespace));
+    runtime.define("ns-name", new UnaryBuiltin("std.native.Runtime/ns-name", this::namespaceName));
     namespaceStates.put("std.native.Runtime", NamespaceLoadState.LOADED);
+
+    HaraNamespace base = namespace("std.native.Base");
+    base.define(
+        "apply",
+        new VariadicBuiltin("std.native.Base/apply", this::applyFunction));
+    base.define(
+        "special-symbol?",
+        new UnaryBuiltin(
+            "std.native.Base/special-symbol?",
+            value -> {
+              Object raw = HaraBox.unwrap(value);
+              return raw instanceof Symbol symbol && isSpecialSymbol(symbol);
+            }));
+    namespaceStates.put("std.native.Base", NamespaceLoadState.LOADED);
 
     HaraNamespace packages = namespace("std.native.Package");
     packages.define("catalog", new VariadicBuiltin("std.native.Package/catalog", values -> packageUnsupported("catalog", values, 0)));
@@ -887,9 +933,9 @@ public final class HaraContext {
         .removeIf(entry -> HaraBuiltinCatalog.GENERATED_LIBRARIES.containsValue(entry.getValue()));
     namespaceAliases.keySet().removeAll(globalAliases.keySet());
     for (Map.Entry<String, String> library : HaraBuiltinCatalog.GENERATED_LIBRARIES.entrySet()) {
-      if (declaration.excludedIntrinsics.contains(library.getKey())) continue;
+      if (declaration.excludedFoundationLibraries.contains(library.getKey())) continue;
       String alias =
-          declaration.intrinsicAliases.getOrDefault(
+          declaration.foundationAliases.getOrDefault(
               library.getKey(), HaraBuiltinCatalog.DEFAULT_LIBRARY_ALIASES.get(library.getKey()));
       putAlias(namespaceAliases, alias, library.getValue());
     }
@@ -902,7 +948,7 @@ public final class HaraContext {
       String library = global.getValue().startsWith("std.foundation.")
           ? global.getValue().substring("std.foundation.".length())
           : null;
-      if (library != null && declaration.excludedIntrinsics.contains(library)) continue;
+      if (library != null && declaration.excludedFoundationLibraries.contains(library)) continue;
       if (!currentNamespace.name().equals(global.getValue())) {
         namespaceAliases.putIfAbsent(global.getKey(), global.getValue());
       }
@@ -1050,39 +1096,24 @@ public final class HaraContext {
       if ("wasm".equals(flavor.getName())) {
         throw new HaraException(":wasm is not a host flavor; use :import for Wasm modules");
       }
-      nativeFlavorRegistry.require(flavor.getName());
-      nativeFlavors.put(currentNamespace.name(), flavor.getName());
-      Map<String, Object> hostImports =
-          nativeImports.computeIfAbsent(
-              currentNamespace.name(), ignored -> new ConcurrentHashMap<>());
+      if ("jvm".equals(flavor.getName())) activateJvmFlavor();
+      NativeFlavorProvider provider = nativeFlavorRegistry.require(flavor.getName());
+      java.util.ArrayList<Object> specifications = new java.util.ArrayList<>();
       for (int i = 2; i < flavorClause.count(); i++) {
-        Object spec = flavorClause.nth(i);
-        if (spec instanceof Symbol) {
-          importNativeType(nativeFlavorRegistry.require(flavor.getName()), hostImports,
-              ((Symbol) spec).display());
-        } else if (spec instanceof ILinearType<?>) {
-          ILinearType<?> group = (ILinearType<?>) spec;
-          if (group.count() == 0) continue;
-          Object packageValue = group.nth(0);
-          String packageName =
-              packageValue instanceof Symbol
-                  ? ((Symbol) packageValue).display()
-                  : String.valueOf(packageValue);
-          for (int j = 1; j < group.count(); j++) {
-            Object classValue = group.nth(j);
-            String className =
-                classValue instanceof Symbol
-                    ? ((Symbol) classValue).display()
-                    : String.valueOf(classValue);
-            importNativeType(
-                nativeFlavorRegistry.require(flavor.getName()),
-                hostImports,
-                packageName + "." + className);
-          }
-        } else {
-          throw new HaraException(":flavor expects host import symbols or package vectors");
-        }
+        specifications.add(flavorClause.nth(i));
       }
+      java.util.List<NativeFlavorImportSpecs.Spec> imports;
+      try {
+        imports = NativeFlavorImportSpecs.parse(specifications);
+      } catch (IllegalArgumentException error) {
+        throw new HaraException(error.getMessage());
+      }
+      Map<String, Object> resolved = new LinkedHashMap<>();
+      for (NativeFlavorImportSpecs.Spec specification : imports) {
+        importNativeType(provider, resolved, specification);
+      }
+      nativeFlavors.put(currentNamespace.name(), flavor.getName());
+      nativeImports.put(currentNamespace.name(), new ConcurrentHashMap<>(resolved));
     }
 
     for (Object clauseValue : clauses) {
@@ -1142,13 +1173,60 @@ public final class HaraContext {
   }
 
   private void importNativeType(
-      NativeFlavorProvider provider, Map<String, Object> imports, String name) {
-    Object type = provider.resolveType(name, nativeAccess());
-    String simpleName = name.substring(name.lastIndexOf('.') + 1);
-    Object previous = imports.putIfAbsent(simpleName, type);
+      NativeFlavorProvider provider,
+      Map<String, Object> imports,
+      NativeFlavorImportSpecs.Spec specification) {
+    Object type = provider.resolveType(specification.typeName(), nativeAccess());
+    Object previous = imports.putIfAbsent(specification.localName(), type);
     if (previous != null && previous != type) {
-      throw new HaraException("Native import already exists: " + simpleName);
+      throw new HaraException("Native import already exists: " + specification.localName());
     }
+  }
+
+  private void activateJvmFlavor() {
+    HaraExtensionRegistry.JvmFlavorPackage candidate = extensionRegistry.discoverJvmFlavor();
+    if (candidate == null) return;
+    HaraPackageManifest.JvmFlavor flavor = candidate.manifest().jvmFlavor();
+    if (!flavor.hostCalls().isEmpty()) {
+      throw new HaraException("package/host-call-denied: JVM flavors cannot request host calls");
+    }
+    if (!flavor.requiredCapabilities().isEmpty()) {
+      HaraProject currentProject = project();
+      if (currentProject == null) {
+        throw new HaraException(
+            "package/capability-denied: JVM flavor requires project capabilities");
+      }
+      for (String capability : flavor.requiredCapabilities()) {
+        if (!currentProject.hasCapability(capability)) {
+          throw new HaraException("package/capability-denied: " + capability);
+        }
+      }
+    }
+    String key = candidate.manifest().identity() + "@" + candidate.manifest().version();
+    JvmPackageLoader.LoadedArtifact loaded = loadedJvmFlavors.get(key);
+    if (loaded == null) {
+      Path artifact = candidate.manifest().verifyJvmFlavor(candidate.root());
+      JvmPackageLoader.FlavorSelection selection =
+          new JvmPackageLoader.FlavorSelection(
+              candidate.manifest().identity(),
+              artifact,
+              flavor.sha256(),
+              flavor.target(),
+              flavor.abi(),
+              flavor.entryPoint(),
+              candidate.manifest().jvmDependencyFiles(candidate.root()));
+      loaded = JvmPackageLoader.loadFlavor(selection);
+      JvmPackageLoader.LoadedArtifact previous = loadedJvmFlavors.putIfAbsent(key, loaded);
+      if (previous != null) {
+        try {
+          loaded.close();
+        } catch (IOException error) {
+          throw new HaraException("package/JVM-loader-close-failed: " + error.getMessage());
+        }
+        loaded = previous;
+      }
+    }
+    nativeFlavorLoader = loaded.classLoader();
   }
 
   private void initializeUserNamespace(HaraNamespace target) {
@@ -2042,7 +2120,8 @@ public final class HaraContext {
   }
 
   private NativeFlavorAccess nativeAccess() {
-    ClassLoader loader = Thread.currentThread().getContextClassLoader();
+    ClassLoader loader = nativeFlavorLoader;
+    if (loader == null) loader = Thread.currentThread().getContextClassLoader();
     if (loader == null) loader = HaraContext.class.getClassLoader();
     Set<NativeCapability> capabilities =
         hostInteropAllowed() ? Set.of(NativeCapability.REFLECTION) : Set.of();
@@ -2777,29 +2856,6 @@ public final class HaraContext {
     target.define("require", new VariadicBuiltin("require", this::requireModule));
     target.define("refer", new UnaryBuiltin("refer", this::referNamespace));
     target.define(
-        "meta",
-        new UnaryBuiltin(
-            "meta",
-            value -> {
-              Object unwrapped = HaraBox.unwrap(value);
-              if (unwrapped == null || unwrapped == HaraNull.SINGLETON) return null;
-              if (unwrapped instanceof HaraVar) return ((HaraVar) unwrapped).meta();
-              if (unwrapped instanceof hara.lang.protocol.IObjType) {
-                return ((hara.lang.protocol.IObjType) unwrapped).meta();
-              }
-              return null;
-            }));
-    target.define(
-        "with-meta",
-        new VariadicBuiltin(
-            "with-meta",
-            values -> {
-              if (values.length != 2) {
-                throw new HaraException("with-meta expects a value and metadata");
-              }
-              return protocolCall("IObjType", "with-meta", values);
-            }));
-    target.define(
         "name",
         new UnaryBuiltin(
             "name", value -> protocolCall("INamespaced", "name", new Object[] {value})));
@@ -2809,9 +2865,6 @@ public final class HaraContext {
             "namespace",
             value -> protocolCall("INamespaced", "namespace", new Object[] {value})));
     target.define("in-ns", new UnaryBuiltin("in-ns", this::inNamespace));
-    target.define("the-ns", new UnaryBuiltin("the-ns", this::theNamespace));
-    target.define("ns-name", new UnaryBuiltin("ns-name", this::namespaceName));
-    target.define("ns-publics", new UnaryBuiltin("ns-publics", this::namespacePublics));
     target.define("ns-aliases", new UnaryBuiltin("ns-aliases", this::namespaceAliases));
     target.define("intern-var", new VariadicBuiltin("intern-var", this::internVar));
     target.define("ns-state", new UnaryBuiltin("ns-state", this::namespaceState));
@@ -2828,14 +2881,6 @@ public final class HaraContext {
                 throw new HaraException("resolve expects a symbol");
               }
               return resolve(symbol);
-            }));
-    target.define(
-        "special-symbol?",
-        new UnaryBuiltin(
-            "special-symbol?",
-            value -> {
-              Object raw = HaraBox.unwrap(value);
-              return raw instanceof Symbol symbol && isSpecialSymbol(symbol);
             }));
     target.define(
         "current-namespace",
@@ -2900,21 +2945,9 @@ public final class HaraContext {
         "reduced?",
         new UnaryBuiltin("Base/reduced?", value -> Reduced.isReduced(HaraBox.unwrap(value))));
     target.define("alter-var-root", new VariadicBuiltin("alter-var-root", this::alterVarRoot));
-    target.define("apply", new VariadicBuiltin("apply", this::applyFunction));
-    target.define(
-        "deref",
-        new UnaryBuiltin(
-            "deref", value -> protocolCall("IDeref", "deref", new Object[] {value})));
     target.define("module-revision", new UnaryBuiltin("module-revision", this::moduleRevision));
     target.define(
         "module-dependencies", new UnaryBuiltin("module-dependencies", this::moduleDependencies));
-    target.define(
-        "count",
-        new UnaryBuiltin("count", value -> protocolCall("ICount", "count", new Object[] {value})));
-    VariadicBuiltin getBuiltin =
-        new VariadicBuiltin("get", values -> protocolCall("ILookup", "lookup", values));
-    target.define("get", getBuiltin);
-    intrinsicCollectionBuiltins.put("get", getBuiltin);
     target.define(
         "find", new VariadicBuiltin("find", values -> protocolCall("IFind", "find", values)));
     target.define(
@@ -2927,9 +2960,6 @@ public final class HaraContext {
               }
               return !HaraBox.isNil(protocolCall("IFind", "find", values));
             }));
-    VariadicBuiltin assocBuiltin = new VariadicBuiltin("assoc", this::associateValues);
-    target.define("assoc", assocBuiltin);
-    intrinsicCollectionBuiltins.put("assoc", assocBuiltin);
     target.define("conj", new VariadicBuiltin("conj", this::conjoin));
     target.define(
         "cons",
@@ -2948,24 +2978,6 @@ public final class HaraContext {
     target.define(
         "empty",
         new UnaryBuiltin("empty", value -> protocolCall("IEmpty", "empty", new Object[] {value})));
-    target.define(
-        "dissoc",
-        new VariadicBuiltin(
-            "dissoc",
-            values -> {
-              if (values.length < 1) {
-                throw new HaraException("dissoc expects a collection and at least one key");
-              }
-              Object result = values[0];
-              for (int i = 1; i < values.length; i++) {
-                if (HaraBox.unwrap(result) == null
-                    || HaraBox.unwrap(result) == HaraNull.SINGLETON) {
-                  return result;
-                }
-                result = protocolCall("IDissoc", "dissoc", new Object[] {result, values[i]});
-              }
-              return result;
-            }));
     target.define(
         "peek",
         new UnaryBuiltin(
@@ -3306,12 +3318,6 @@ public final class HaraContext {
         "pointer?",
         new UnaryBuiltin(
             "pointer?", value -> HaraBox.unwrap(value) instanceof hara.lang.data.Pointer));
-    target.define("gensym", new VariadicBuiltin("gensym", values -> {
-      if (values.length > 1) throw new HaraException("gensym expects zero or one prefix");
-      return gensym(values.length == 0 ? null : String.valueOf(HaraBox.unwrap(values[0])));
-    }));
-    target.define(
-        "macroexpand-1", new UnaryBuiltin("macroexpand-1", value -> macroExpand(value, false)));
     target.define(
         "pr-str",
         new UnaryBuiltin(
@@ -6647,7 +6653,7 @@ public final class HaraContext {
 
   /**
    * The canonical builtin instance currently specializing simple-name collection operations
-   * (get/nth/assoc), or null when the operation has no specialized node support. Specialized
+   * (get/nth), or null when the operation has no specialized node support. Specialized
    * nodes compare the operator var's current value against this instance on every call and fall
    * back to a generic invocation when it differs (e.g. after redefinition).
    */
@@ -8159,6 +8165,11 @@ public final class HaraContext {
     }
     Map<String, String> globalAliasValues = new LinkedHashMap<>(globalAliases);
     Map<String, String> globalImportValues = new LinkedHashMap<>(globalImports);
+    Map<String, String> nativeFlavorValues = new LinkedHashMap<>(nativeFlavors);
+    Map<String, Map<String, Object>> nativeImportValues = new LinkedHashMap<>();
+    for (Map.Entry<String, Map<String, Object>> entry : nativeImports.entrySet()) {
+      nativeImportValues.put(entry.getKey(), new LinkedHashMap<>(entry.getValue()));
+    }
     Map<String, Set<String>> dependencyValues = new LinkedHashMap<>();
     for (Map.Entry<String, Set<String>> entry : moduleDependencies.entrySet()) {
       dependencyValues.put(entry.getKey(), new LinkedHashSet<>(entry.getValue()));
@@ -8174,6 +8185,8 @@ public final class HaraContext {
         aliasValues,
         globalAliasValues,
         globalImportValues,
+        nativeFlavorValues,
+        nativeImportValues,
         new LinkedHashMap<>(modules),
         dependencyValues,
         new LinkedHashMap<>(namespaceStates),
@@ -8211,6 +8224,12 @@ public final class HaraContext {
     globalAliases.putAll(snapshot.globalAliases);
     globalImports.clear();
     globalImports.putAll(snapshot.globalImports);
+    nativeFlavors.clear();
+    nativeFlavors.putAll(snapshot.nativeFlavors);
+    nativeImports.clear();
+    for (Map.Entry<String, Map<String, Object>> entry : snapshot.nativeImports.entrySet()) {
+      nativeImports.put(entry.getKey(), new ConcurrentHashMap<>(entry.getValue()));
+    }
     modules.clear();
     modules.putAll(snapshot.modules);
     moduleDependencies.clear();
@@ -8256,6 +8275,8 @@ public final class HaraContext {
     private final Map<String, Map<String, String>> aliases;
     private final Map<String, String> globalAliases;
     private final Map<String, String> globalImports;
+    private final Map<String, String> nativeFlavors;
+    private final Map<String, Map<String, Object>> nativeImports;
     private final Map<String, ModuleRecord> modules;
     private final Map<String, Set<String>> moduleDependencies;
     private final Map<String, NamespaceLoadState> namespaceStates;
@@ -8272,6 +8293,8 @@ public final class HaraContext {
         Map<String, Map<String, String>> aliases,
         Map<String, String> globalAliases,
         Map<String, String> globalImports,
+        Map<String, String> nativeFlavors,
+        Map<String, Map<String, Object>> nativeImports,
         Map<String, ModuleRecord> modules,
         Map<String, Set<String>> moduleDependencies,
         Map<String, NamespaceLoadState> namespaceStates,
@@ -8286,6 +8309,8 @@ public final class HaraContext {
       this.aliases = aliases;
       this.globalAliases = globalAliases;
       this.globalImports = globalImports;
+      this.nativeFlavors = nativeFlavors;
+      this.nativeImports = nativeImports;
       this.modules = modules;
       this.moduleDependencies = moduleDependencies;
       this.namespaceStates = namespaceStates;
@@ -8753,10 +8778,12 @@ public final class HaraContext {
   private static final class UnaryBuiltin implements IFn<Object, Object, Object>, HaraBuiltinFunction {
     private final String name;
     private final Function<Object, Object> implementation;
+    private volatile String origin;
 
     private UnaryBuiltin(String name, Function<Object, Object> implementation) {
       this.name = name;
       this.implementation = implementation;
+      this.origin = name.contains("/") ? name : null;
     }
 
     @Override
@@ -8772,6 +8799,16 @@ public final class HaraContext {
     }
 
     @Override
+    public String origin() {
+      return origin;
+    }
+
+    @Override
+    public void setOrigin(String origin) {
+      this.origin = origin;
+    }
+
+    @Override
     public String toString() {
       return "#<builtin " + name + ">";
     }
@@ -8782,6 +8819,7 @@ public final class HaraContext {
     private final String name;
     private final Function<Object[], Object> implementation;
     private final boolean recordsExceptionCreation;
+    private volatile String origin;
 
     private VariadicBuiltin(String name, Function<Object[], Object> implementation) {
       this(name, implementation, false);
@@ -8792,6 +8830,7 @@ public final class HaraContext {
       this.name = name;
       this.implementation = implementation;
       this.recordsExceptionCreation = recordsExceptionCreation;
+      this.origin = name.contains("/") ? name : null;
     }
 
     @Override
@@ -8819,6 +8858,16 @@ public final class HaraContext {
     @SuppressWarnings({"rawtypes", "unchecked"})
     public Object apply(Object[] arguments) {
       return IFn.applyAsArray(this, arguments);
+    }
+
+    @Override
+    public String origin() {
+      return origin;
+    }
+
+    @Override
+    public void setOrigin(String origin) {
+      this.origin = origin;
     }
 
     @Override
@@ -8876,6 +8925,14 @@ public final class HaraContext {
     @TruffleBoundary
     private HaraVar define(
         String symbolName, Object value, IMetadata metadata, HaraVar.Origin origin) {
+      if (value instanceof HaraBuiltinFunction builtin) {
+        // A collected builtin may be exposed by several native namespaces. Preserve the
+        // defining namespace recorded when it first enters the inventory; an export alias is
+        // not a new function origin.
+        if (builtin.origin() == null) {
+          builtin.setOrigin(name + "/" + symbolName);
+        }
+      }
       if (collectingBuiltins && name.equals(collectingBuiltinNamespace)) {
         registerBuiltin(name, symbolName, value, metadata, origin);
         return new HaraVar(name, symbolName, value, metadata, origin);

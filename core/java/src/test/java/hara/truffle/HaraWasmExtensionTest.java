@@ -29,7 +29,7 @@ public class HaraWasmExtensionTest {
   };
 
   @Test
-  public void coreWasmReceivesPortableEnvironmentImports() throws Exception {
+  public void coreWasmRejectsHtaEnvironmentImports() throws Exception {
     Path root = Files.createTempDirectory("hara-wasm-env-import-");
     Path extension = root.resolve("demo/time");
     Files.createDirectories(extension);
@@ -47,9 +47,9 @@ public class HaraWasmExtensionTest {
               project.extensionManifestSource("demo.time"), descriptor.toString());
       HaraExtensionPackage extensionPackage =
           new HaraExtensionPackage(manifest, descriptor.toUri().toURL());
-      try (HaraWasmExtension wasm = new HaraWasmExtension(extensionPackage)) {
-        assertTrue(((Number) wasm.invoke("now", new Object[0])).longValue() >= 0);
-      }
+      HaraException error =
+          assertThrows(HaraException.class, () -> new HaraWasmExtension(extensionPackage));
+      assertTrue(error.getMessage().startsWith("extension/module-invalid"));
     } finally {
       deleteTree(root);
     }

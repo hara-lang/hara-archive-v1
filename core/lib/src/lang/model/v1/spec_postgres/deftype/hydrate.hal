@@ -194,4 +194,3 @@
                               :static/schema-seed schema-seed
                               :static/columns columns})]
         [hydration next-form]))))
-

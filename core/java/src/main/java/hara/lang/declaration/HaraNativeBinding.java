@@ -17,6 +17,8 @@ public @interface HaraNativeBinding {
 
   String name();
 
+  String[] methods() default {};
+
   HaraAvailability availability() default HaraAvailability.PORTABLE;
 
   String capability() default "";

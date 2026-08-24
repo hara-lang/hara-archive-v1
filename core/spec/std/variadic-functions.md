@@ -7,7 +7,9 @@ and core call shapes into Hara. It is descriptive, not a second API manifest:
 the canonical implementation remains
 [`core/lib/src/std/foundation.hal`](../../lib/src/std/foundation.hal), and
 runtime-owned forms remain defined by the Rust evaluator and primitive
-implementation.
+implementation. `assoc` and `dissoc` are deliberately not runtime-owned:
+their public owners are the Foundation Vars below, and those Vars dispatch
+through the protocol registry.
 
 Do not infer a Hara call shape from a Clojure Var name. First determine whether
 the call resolves to a Foundation Var, a runtime intrinsic, a protocol method,
@@ -18,13 +20,13 @@ arities, which is a different contract.
 ## Associative collection boundary
 
 These operations are intentionally recorded together because their apparent
-Clojure shapes do not share one Hara owner.
+Clojure shapes are variadic while their protocol methods are fixed-arity.
 
 | Call surface | Owner and declared contract | Translation consequence | Evidence |
 | --- | --- | --- | --- |
-| `std.foundation/assoc` | HAL Var with `[value key new-value & more]`; each pair forwards to `IAssoc/assoc` | The qualified Foundation Var accepts one or more key/value pairs and rejects an incomplete tail. The protocol method itself remains fixed at three arguments. | [`foundation.hal:730`](../../lib/src/std/foundation.hal#L730), [`inventory.rs:880`](../../rust/src/core/inventory.rs#L880), [`foundation_test.hal`](../../lib/test/std/foundation_test.hal) |
-| unqualified evaluator `assoc` | Runtime intrinsic accepts a collection followed by one or more key/value pairs | Direct root/evaluator forms such as `(assoc m :a 1 :b 2)` and the Foundation Var now share the multi-pair behavior. | [`evaluator.rs:3090`](../../rust/src/core/evaluator.rs#L3090), [`primitive.rs:241`](../../rust/src/core/primitive.rs#L241), [`runtime/tests.rs:8521`](../../rust/src/runtime/tests.rs#L8521) |
-| unqualified `dissoc` | Runtime intrinsic accepts a map followed by one or more keys; `IDissoc/dissoc` itself is a two-argument protocol method | Multi-key direct and indirect calls are supported. There is no `std.foundation/dissoc` definition in the canonical Foundation source. | [`evaluator.rs:3102`](../../rust/src/core/evaluator.rs#L3102), [`runtime/tests.rs:5296`](../../rust/src/runtime/tests.rs#L5296), [`foundation.hal`](../../lib/src/std/foundation.hal) |
+| `std.foundation/assoc` | HAL Var with `[value key new-value & more]`; each pair forwards to `IAssoc/assoc` | The qualified Foundation Var accepts one or more key/value pairs and rejects an incomplete tail. The protocol method itself remains fixed at three arguments. | [`foundation.hal:730`](../../lib/src/std/foundation.hal#L730), [`environment.rs:435`](../../rust/src/core/environment.rs#L435), [`foundation_test.hal`](../../lib/test/std/foundation_test.hal) |
+| `std.foundation/dissoc` | HAL Var with `[value key & more]`; each key forwards to `IDissoc/dissoc` | The qualified Foundation Var accepts one or more keys. `nil` remains a nil-preserving boundary, while the protocol method itself remains fixed at two arguments. | [`foundation.hal:745`](../../lib/src/std/foundation.hal#L745), [`environment.rs:438`](../../rust/src/core/environment.rs#L438), [`foundation_test.hal`](../../lib/test/std/foundation_test.hal) |
+| unqualified `assoc` / `dissoc` | Namespace resolution to the corresponding `std.foundation` Var | There is one public callable pathway: ordinary symbol resolution finds the Foundation Var, which then dispatches through `IAssoc/assoc` or `IDissoc/dissoc`. No evaluator structural arm or runtime callable owns either name. | [`evaluator.rs`](../../rust/src/core/evaluator.rs), [`direct_callable_catalog.rs`](../../rust/src/core/direct_callable_catalog.rs), [`foundation.hal`](../../lib/src/std/foundation.hal) |
 | `std.foundation/assoc-in` | HAL Var with `[value keys new-value]` | Nested paths are one vector argument plus the replacement; it is not a variadic key-path form. | [`foundation.hal:747`](../../lib/src/std/foundation.hal#L747) |
 | `std.foundation/update` | HAL Var with `[value key function & args]` | The update function receives the current value followed by the variadic tail. | [`foundation.hal:761`](../../lib/src/std/foundation.hal#L761) |
 | `std.foundation/update-in` | HAL Var with `[value keys function & args]` | The update function receives the current path value followed by the variadic tail. | [`foundation.hal:768`](../../lib/src/std/foundation.hal#L768) |
@@ -66,8 +68,8 @@ list, but their call shapes still need source/runtime evidence:
 
 | Operation | Contract | Evidence |
 | --- | --- | --- |
-| `get` | Runtime intrinsic with two- and three-argument forms | [`evaluator.rs:3071`](../../rust/src/core/evaluator.rs#L3071) |
-| `nth` | Runtime intrinsic with exactly two arguments | [`evaluator.rs:3084`](../../rust/src/core/evaluator.rs#L3084) |
+| `get` | Runtime intrinsic with two- and three-argument forms | [`primitive.rs`](../../rust/src/core/primitive.rs) |
+| `nth` | Runtime intrinsic with exactly two arguments | [`primitive.rs`](../../rust/src/core/primitive.rs) |
 | `conj` | Runtime intrinsic with a collection and zero or more values | [`evaluator.rs:3159`](../../rust/src/core/evaluator.rs#L3159) |
 | `cons` | Runtime intrinsic with exactly an item and a collection | [`evaluator.rs:3169`](../../rust/src/core/evaluator.rs#L3169) |
 | `filter`, `take`, `drop`, `mapcat`, `keep`, `every?`, `any?` | Foundation multi-arity forms: unary form returns a reusable transform; collection form executes it | [`foundation.hal:958-1087`](../../lib/src/std/foundation.hal#L958-L1087) |

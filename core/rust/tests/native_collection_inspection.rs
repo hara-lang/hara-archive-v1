@@ -18,8 +18,8 @@ fn native_set_inspection_accepts_literal_and_constructed_families() {
     for source in [
         "#{:alpha :beta}",
         "(hash-set :alpha :beta)",
-        "(ordered-set :beta :alpha)",
-        "(sorted-set :beta :alpha)",
+        "(std.native.Algo/ordered-set :beta :alpha)",
+        "(std.native.Algo/sorted-set :beta :alpha)",
     ] {
         let value = runtime.eval_native_value(source).unwrap();
         assert_eq!(

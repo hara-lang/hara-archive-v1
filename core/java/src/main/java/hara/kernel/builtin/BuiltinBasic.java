@@ -18,11 +18,6 @@ public interface BuiltinBasic {
     return new Atom.Standard<V>(val);
   }
 
-  @Module.Fn(name = "atom:basic", complete = true)
-  public static <V> Atom.Basic<V> atomBasic(V val) {
-    return new Atom.Basic<V>(val);
-  }
-
   @Module.Fn(name = "volatile", complete = true)
   public static <V> hara.lang.base.primitive.Volatile<V> atomVolatile(V val) {
     return new hara.lang.base.primitive.Volatile<V>(val);

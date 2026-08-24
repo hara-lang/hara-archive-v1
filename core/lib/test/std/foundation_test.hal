@@ -12,6 +12,27 @@
    :test (fn [] (std.foundation/vector 1 2 3))
    :expected [1 2 3]}])
 
+^{:refer std.foundation/apply}
+(Test/run
+ [{:name "applies leading arguments and a final sequence"
+   :test (fn [] (std.foundation/apply + 1 [2 3]))
+   :expected 6}])
+
+^{:refer std.foundation/get}
+(Test/run
+ [{:name "dispatches associative access through ILookup"
+   :test (fn [] [(std.foundation/get {:a 1} :a)
+                 (std.foundation/get {:a 1} :missing)
+                 (std.foundation/get {:a 1} :missing :fallback)])
+   :expected [1 nil :fallback]}])
+
+^{:refer std.foundation/count}
+(Test/run
+ [{:name "dispatches collection size through ICount"
+   :test (fn [] [(std.foundation/count [1 2 3])
+                 (std.foundation/count {})])
+   :expected [3 0]}])
+
 ^{:refer std.foundation/tuple}
 (Test/run
  [{:name "constructs a fixed-width tuple from all values"
@@ -103,6 +124,46 @@
    :test (fn [] (std.foundation/env-resolve 'missing/value))
    :expected nil}])
 
+^{:refer std.foundation/special-symbol?}
+(Test/run
+ [{:name "recognizes language special symbols"
+   :test (fn [] [(std.foundation/special-symbol? 'comment)
+                 (std.foundation/special-symbol? 'ordinary)])
+   :expected [true false]}])
+
+^{:refer std.foundation/the-ns}
+(Test/run
+ [{:name "returns a loaded namespace"
+   :test (fn [] (std.foundation/ns-name (std.foundation/the-ns 'std.foundation)))
+   :expected 'std.foundation}])
+
+^{:refer std.foundation/ns-name}
+(Test/run
+ [{:name "returns the symbol naming a loaded namespace"
+   :test (fn [] (std.foundation/ns-name 'std.foundation))
+   :expected 'std.foundation}])
+
+^{:refer std.foundation/ns-publics}
+(Test/run
+ [{:name "returns public Vars for a loaded namespace"
+   :test (fn [] (not (nil? (get (std.foundation/ns-publics 'std.foundation) 'assoc))))
+   :expected true}])
+
+^{:refer std.foundation/gensym}
+(Test/run
+ [{:name "returns distinct symbols with the requested prefix"
+   :test (fn [] (let [first-symbol (std.foundation/gensym "test")
+                      second-symbol (std.foundation/gensym "test")]
+                  [(not= first-symbol second-symbol)
+                   (= "test" (std.foundation/subs (name first-symbol) 0 4))]))
+   :expected [true true]}])
+
+^{:refer std.foundation/macroexpand-1}
+(Test/run
+ [{:name "expands one macro layer"
+   :test (fn [] (std.foundation/macroexpand-1 '(when true 1)))
+   :expected (if true 1 nil)}])
+
 ^{:refer std.foundation/ns-alias-state}
 (Test/run [])
 
@@ -142,7 +203,10 @@
    :expected {:tag :sample}}])
 
 ^{:refer std.foundation/with-meta}
-(Test/run [])
+(Test/run
+ [{:name "attaches metadata through IObjType"
+   :test (fn [] (std.foundation/meta (std.foundation/with-meta [1] {:tag :sample})))
+   :expected {:tag :sample}}])
 
 ^{:refer std.foundation/T}
 (Test/run [])
@@ -393,7 +457,11 @@
 (Test/run [])
 
 ^{:refer std.foundation/get-in}
-(Test/run [])
+(Test/run
+ [{:name "walks nested associative values through get"
+   :test (fn [] [(std.foundation/get-in {:a {:b 42}} [:a :b])
+                 (std.foundation/get-in {:a {}} [:a :missing])])
+   :expected [42 nil]}])
 
 ^{:refer std.foundation/assoc}
 (Test/run
@@ -411,6 +479,24 @@
              (std.foundation/assoc {:a 1} :b 2 :c)
              (catch Throwable error :arity-error)))
    :expected :arity-error}])
+
+^{:refer std.foundation/dissoc}
+(Test/run
+ [{:name "removes one key"
+   :test (fn [] (std.foundation/dissoc {:a 1 :b 2} :a))
+   :expected {:b 2}}
+  {:name "removes multiple keys"
+   :test (fn [] (std.foundation/dissoc {:a 1 :b 2 :c 3} :a :c))
+   :expected {:b 2}}
+  {:name "returns nil when removing from nil"
+   :test (fn [] (std.foundation/dissoc nil :a))
+   :expected nil}])
+
+^{:refer std.foundation/deref}
+(Test/run
+ [{:name "dereferences an atom"
+   :test (fn [] (std.foundation/deref (atom 7)))
+   :expected 7}])
 
 ^{:refer std.foundation/assoc-in}
 (Test/run [])

@@ -14,7 +14,7 @@ import java.util.Set;
 
 /** Fully validated, immutable interpretation of an ns declaration. */
 final class HaraNamespaceDeclaration {
-  private static final Set<String> INTRINSIC_LIBRARIES =
+  private static final Set<String> FOUNDATION_LIBRARIES =
       Set.of("string", "bytes", "promise", "coroutine", "pretty");
 
   final Symbol name;
@@ -22,8 +22,8 @@ final class HaraNamespaceDeclaration {
   final Set<String> excludedFoundation;
   final boolean selectiveFoundation;
   final Set<String> exposedFoundation;
-  final Set<String> excludedIntrinsics;
-  final Map<String, String> intrinsicAliases;
+  final Set<String> excludedFoundationLibraries;
+  final Map<String, String> foundationAliases;
   final String role;
   final String globalAlias;
   final Set<String> globalImports;
@@ -35,8 +35,8 @@ final class HaraNamespaceDeclaration {
       Set<String> excludedFoundation,
       boolean selectiveFoundation,
       Set<String> exposedFoundation,
-      Set<String> excludedIntrinsics,
-      Map<String, String> intrinsicAliases,
+      Set<String> excludedFoundationLibraries,
+      Map<String, String> foundationAliases,
       String role,
       String globalAlias,
       Set<String> globalImports,
@@ -46,8 +46,8 @@ final class HaraNamespaceDeclaration {
     this.excludedFoundation = Set.copyOf(excludedFoundation);
     this.selectiveFoundation = selectiveFoundation;
     this.exposedFoundation = Set.copyOf(exposedFoundation);
-    this.excludedIntrinsics = Set.copyOf(excludedIntrinsics);
-    this.intrinsicAliases = Map.copyOf(intrinsicAliases);
+    this.excludedFoundationLibraries = Set.copyOf(excludedFoundationLibraries);
+    this.foundationAliases = Map.copyOf(foundationAliases);
     this.role = role;
     this.globalAlias = globalAlias;
     this.globalImports = Set.copyOf(globalImports);
@@ -155,9 +155,6 @@ final class HaraNamespaceDeclaration {
           || "flavor".equals(clauseName)
           || "import".equals(clauseName)) {
         structural.add(clause);
-      } else if ("intrinsics".equals(clauseName)) {
-        throw new HaraException(
-            ":intrinsics is not a namespace configuration option; use :rename for Foundation library aliases");
       } else {
         throw new HaraException("Unsupported ns clause: :" + clauseName);
       }
@@ -165,7 +162,7 @@ final class HaraNamespaceDeclaration {
     for (String library : aliases.keySet()) {
       if (excluded.contains(library)) {
         throw new HaraException(
-            "Intrinsic library cannot be both excluded and aliased: " + library);
+            "Foundation library cannot be both excluded and aliased: " + library);
       }
     }
     if (blank && overrideSeen) {
@@ -250,7 +247,7 @@ final class HaraNamespaceDeclaration {
       for (Object item : vector) {
         String library = libraryName(item, ":config :rename :exclude");
         if (!excluded.add(library)) {
-          throw new HaraException("Duplicate intrinsic exclusion: " + library);
+          throw new HaraException("Duplicate Foundation library exclusion: " + library);
         }
       }
     }
@@ -264,13 +261,13 @@ final class HaraNamespaceDeclaration {
         java.util.Map.Entry<?, ?> entry = (java.util.Map.Entry<?, ?>) entryValue;
         String library = libraryName(entry.getKey(), ":config :rename :alias");
         if (!(entry.getValue() instanceof Symbol alias) || alias.getNamespace() != null) {
-          throw new HaraException("Intrinsic aliases must be unqualified symbols");
+          throw new HaraException("Foundation library aliases must be unqualified symbols");
         }
         if (!usedAliases.add(alias.getName())) {
-          throw new HaraException("Duplicate intrinsic alias target: " + alias.getName());
+          throw new HaraException("Duplicate Foundation library alias target: " + alias.getName());
         }
         if (aliases.put(library, alias.getName()) != null) {
-          throw new HaraException("Duplicate intrinsic alias: " + library);
+          throw new HaraException("Duplicate Foundation library alias: " + library);
         }
       }
     }
@@ -280,8 +277,8 @@ final class HaraNamespaceDeclaration {
     if (!(value instanceof Symbol symbol) || symbol.getNamespace() != null) {
       throw new HaraException(operation + " expects unqualified library symbols");
     }
-    if (!INTRINSIC_LIBRARIES.contains(symbol.getName())) {
-      throw new HaraException("Unknown intrinsic library: " + symbol.getName());
+    if (!FOUNDATION_LIBRARIES.contains(symbol.getName())) {
+      throw new HaraException("Unknown Foundation library: " + symbol.getName());
     }
     return symbol.getName();
   }

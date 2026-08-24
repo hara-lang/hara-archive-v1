@@ -222,7 +222,7 @@ impl Runtime {
         let current = self.namespace_registry.current().name().as_str().to_owned();
         core::select_namespace_environment(
             &self.namespace_registry,
-            self.evaluator.environment_mut(),
+            self.execution.environment_mut(),
             &current,
         );
         result
@@ -315,7 +315,7 @@ impl Runtime {
         let current = self.namespace_registry.current().name().as_str().to_owned();
         core::select_namespace_environment(
             &self.namespace_registry,
-            self.evaluator.environment_mut(),
+            self.execution.environment_mut(),
             &current,
         );
         result

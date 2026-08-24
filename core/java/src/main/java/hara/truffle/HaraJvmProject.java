@@ -20,10 +20,19 @@ import javax.tools.JavaCompiler;
 import javax.tools.JavaFileObject;
 import javax.tools.StandardJavaFileManager;
 import javax.tools.ToolProvider;
+import java.util.jar.JarEntry;
+import java.util.jar.JarOutputStream;
 import org.eclipse.aether.resolution.DependencyResolutionException;
 
 /** Prepares the Maven graph and Java boundary code for one Hara project invocation. */
 final class HaraJvmProject implements AutoCloseable {
+  record BuildResult(Path artifact, List<Path> dependencies, int compiledSources) {
+    BuildResult {
+      artifact = artifact.toAbsolutePath().normalize();
+      dependencies = List.copyOf(dependencies);
+    }
+  }
+
   private final ClassLoader previousLoader;
   private final URLClassLoader projectLoader;
   private final List<Path> artifacts;
@@ -57,6 +66,32 @@ final class HaraJvmProject implements AutoCloseable {
     URLClassLoader loader = new URLClassLoader(urls.toArray(URL[]::new), parent);
     Thread.currentThread().setContextClassLoader(loader);
     return new HaraJvmProject(previous, loader, artifacts, compiledSources);
+  }
+
+  static BuildResult buildPackage(HaraProject project, boolean offline) {
+    if (project.jvmEntryPoint() == null) return null;
+    List<Path> artifacts = resolveDependencies(project, offline);
+    int compiledSources = compileJava(project, artifacts);
+    if (compiledSources == 0) return null;
+    Path entryPoint =
+        project
+            .jvmTargetPath()
+            .resolve(project.jvmEntryPoint().replace('.', java.io.File.separatorChar) + ".class")
+            .normalize();
+    if (!entryPoint.startsWith(project.jvmTargetPath()) || !Files.isRegularFile(entryPoint)) {
+      throw new HaraException(
+          "JVM package entry point was not compiled: " + project.jvmEntryPoint());
+    }
+    Path artifact =
+        project
+            .jvmTargetPath()
+            .resolveSibling(
+                project.name().display().replace('/', '-')
+                    + "-"
+                    + project.version()
+                    + ".jar");
+    writeJar(project.jvmTargetPath(), artifact);
+    return new BuildResult(artifact, artifacts, compiledSources);
   }
 
   static List<Path> resolveDependencies(HaraProject project, boolean offline) {
@@ -135,6 +170,26 @@ final class HaraJvmProject implements AutoCloseable {
       return sources.size();
     } catch (IOException error) {
       throw new HaraException("Unable to compile JVM sources: " + error.getMessage());
+    }
+  }
+
+  private static void writeJar(Path classes, Path artifact) {
+    try {
+      if (artifact.getParent() != null) Files.createDirectories(artifact.getParent());
+      try (JarOutputStream output = new JarOutputStream(Files.newOutputStream(artifact))) {
+        try (Stream<Path> paths = Files.walk(classes)) {
+          for (Path path : paths.filter(Files::isRegularFile).sorted().toList()) {
+            String name = classes.relativize(path).toString().replace('\\', '/');
+            JarEntry entry = new JarEntry(name);
+            entry.setTime(0L);
+            output.putNextEntry(entry);
+            Files.copy(path, output);
+            output.closeEntry();
+          }
+        }
+      }
+    } catch (IOException error) {
+      throw new HaraException("Unable to build JVM package JAR: " + error.getMessage());
     }
   }
 

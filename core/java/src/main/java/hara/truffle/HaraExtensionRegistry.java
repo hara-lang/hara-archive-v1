@@ -12,6 +12,8 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /** Discovers extension manifests from the classpath and configured project roots. */
 final class HaraExtensionRegistry {
+  record JvmFlavorPackage(Path root, HaraPackageManifest manifest) {}
+
   private final List<Path> roots;
   private final Map<String, HaraExtensionPackage> packages = new ConcurrentHashMap<>();
 
@@ -92,6 +94,21 @@ final class HaraExtensionRegistry {
       throw new HaraException("package/entry-point-mismatch: " + logical);
     }
     return extension;
+  }
+
+  /** Finds the one installed JVM flavor available to the current package context. */
+  JvmFlavorPackage discoverJvmFlavor() {
+    ArrayList<JvmFlavorPackage> candidates = new ArrayList<>();
+    for (Path root : HaraPackageManifest.installedRoots()) {
+      HaraPackageManifest manifest = HaraPackageManifest.read(root);
+      if (manifest == null || manifest.jvmFlavor() == null) continue;
+      manifest.verifyJvmFlavor(root);
+      candidates.add(new JvmFlavorPackage(root, manifest));
+    }
+    if (candidates.size() > 1) {
+      throw new HaraException("package/ambiguous-jvm-flavor: multiple installed packages provide :jvm");
+    }
+    return candidates.isEmpty() ? null : candidates.get(0);
   }
 
   private static void addCandidates(

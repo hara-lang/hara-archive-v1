@@ -3,8 +3,154 @@ use quote::{format_ident, quote};
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
 use syn::{
-    parse_macro_input, Error, Ident, ItemTrait, LitBool, LitInt, LitStr, Result, Token, TraitItem,
+    parse_macro_input, Error, Ident, ItemMod, ItemTrait, LitBool, LitInt, LitStr, Result, Token,
+    TraitItem,
 };
+
+struct NativeArgs {
+    namespace: Option<LitStr>,
+    name: Option<LitStr>,
+    methods: Vec<LitStr>,
+    availability: LitStr,
+    capability: Option<LitStr>,
+}
+
+impl Default for NativeArgs {
+    fn default() -> Self {
+        Self {
+            namespace: None,
+            name: None,
+            methods: Vec::new(),
+            availability: LitStr::new("portable", proc_macro2::Span::call_site()),
+            capability: None,
+        }
+    }
+}
+
+impl Parse for NativeArgs {
+    fn parse(input: ParseStream<'_>) -> Result<Self> {
+        let mut args = Self::default();
+        while !input.is_empty() {
+            let key: Ident = input.parse()?;
+            input.parse::<Token![=]>()?;
+            match key.to_string().as_str() {
+                "namespace" => args.namespace = Some(input.parse()?),
+                "name" => args.name = Some(input.parse()?),
+                "availability" => args.availability = input.parse()?,
+                "capability" => args.capability = Some(input.parse()?),
+                "methods" => {
+                    let content;
+                    syn::bracketed!(content in input);
+                    args.methods = Punctuated::<LitStr, Token![,]>::parse_terminated(&content)?
+                        .into_iter()
+                        .collect();
+                }
+                _ => return Err(Error::new(key.span(), "unknown hara_native option")),
+            }
+            if input.peek(Token![,]) {
+                input.parse::<Token![,]>()?;
+            }
+        }
+        Ok(args)
+    }
+}
+
+fn native_availability_variant(value: &LitStr) -> Result<proc_macro2::TokenStream> {
+    match value.value().as_str() {
+        "portable" => Ok(quote!(crate::core::NativeAvailability::Portable)),
+        "capability-gated" => Ok(quote!(crate::core::NativeAvailability::CapabilityGated)),
+        "inventory-only" => Ok(quote!(crate::core::NativeAvailability::InventoryOnly)),
+        _ => Err(Error::new_spanned(
+            value,
+            "availability must be portable, capability-gated, or inventory-only",
+        )),
+    }
+}
+
+#[proc_macro_attribute]
+pub fn hara_native_registry(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(item as ItemMod);
+    match expand_native_registry(input) {
+        Ok(tokens) => tokens.into(),
+        Err(error) => error.into_compile_error().into(),
+    }
+}
+
+fn expand_native_registry(mut input: ItemMod) -> Result<proc_macro2::TokenStream> {
+    let (_, items) = input
+        .content
+        .as_mut()
+        .ok_or_else(|| Error::new_spanned(&input.ident, "hara_native_registry requires an inline module"))?;
+
+    let mut declarations = Vec::new();
+    let original_items = std::mem::take(items);
+    let mut retained_items = Vec::with_capacity(original_items.len());
+    for item in original_items {
+        let syn::Item::Struct(native_type) = item else {
+            retained_items.push(item);
+            continue;
+        };
+        let Some(attribute_index) = native_type
+            .attrs
+            .iter()
+            .position(|attribute| attribute.path().is_ident("hara_native"))
+        else {
+            retained_items.push(syn::Item::Struct(native_type));
+            continue;
+        };
+        let attribute = &native_type.attrs[attribute_index];
+        let args = attribute.parse_args::<NativeArgs>()?;
+        let namespace = args
+            .namespace
+            .ok_or_else(|| Error::new_spanned(&native_type.ident, "hara_native requires namespace"))?;
+        let name = args
+            .name
+            .ok_or_else(|| Error::new_spanned(&native_type.ident, "hara_native requires name"))?;
+        let availability = native_availability_variant(&args.availability)?;
+        let capability = match args.capability {
+            Some(value) => quote!(Some(#value)),
+            None => quote!(None),
+        };
+        let methods = args.methods;
+        declarations.push(quote! {
+            crate::core::NativeDeclaration {
+                namespace: #namespace,
+                name: #name,
+                methods: &[#(#methods),*],
+                availability: #availability,
+                capability: #capability,
+            }
+        });
+    }
+    *items = retained_items;
+
+    if declarations.is_empty() {
+        return Err(Error::new_spanned(
+            &input.ident,
+            "hara_native_registry requires at least one annotated struct",
+        ));
+    }
+
+    let declaration_table = format_ident!("{}_DECLARATIONS", input.ident.to_string().to_uppercase());
+    let type_table = format_ident!("{}_TYPES", input.ident.to_string().to_uppercase());
+    let declaration_methods = declarations.iter().map(|declaration| {
+        quote!(((#declaration).name, (#declaration).methods))
+    });
+
+    Ok(quote! {
+        #input
+
+        #[doc(hidden)]
+        pub(crate) const #declaration_table: &[crate::core::NativeDeclaration] = &[
+            #(#declarations),*
+        ];
+
+        #[doc(hidden)]
+        pub(crate) const #type_table: &[(&str, &[&str])] = &[
+            #(#declaration_methods),*
+        ];
+    })
+}
 
 struct ProtocolArgs {
     namespace: Option<LitStr>,

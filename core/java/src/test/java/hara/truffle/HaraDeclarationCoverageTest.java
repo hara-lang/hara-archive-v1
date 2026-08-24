@@ -138,8 +138,16 @@ public class HaraDeclarationCoverageTest {
     for (NativeSpec spec : expected.values()) {
       HaraNativeBinding binding = actual.get(spec.name);
       assertEquals(spec.availability, binding.availability());
+      assertEquals(
+          "Native method surface differs for " + spec.name,
+          spec.methods,
+          List.of(binding.methods()));
+      assertEquals(
+          "Native capability differs for " + spec.name,
+          spec.capability,
+          binding.capability());
     }
-    assertEquals(expected.keySet(), HaraBuiltinCatalog.NATIVE_METHODS.keySet());
+    assertEquals(expected.keySet(), HaraNativeDeclarations.METHODS.keySet());
   }
 
   private static Map<String, ProtocolSpec> protocolSpecs(IMapType contract) {
@@ -185,13 +193,20 @@ public class HaraDeclarationCoverageTest {
     for (int index = 0; index < entries.count(); index++) {
       IMapType entry = (IMapType) entries.nth(index);
       String name = symbol(entry.lookup(keyword("name")));
+      List<String> methods = symbols(entry.lookup(keyword("methods")), name + " :methods");
       String availability = ((Keyword) entry.lookup(keyword("availability"))).getName();
       HaraAvailability mapped =
           availability.equals("capability-gated")
               ? HaraAvailability.CAPABILITY_GATED
               : HaraAvailability.PORTABLE;
       assertFalse("Duplicate native type: " + name, result.containsKey(name));
-      result.put(name, new NativeSpec(name, mapped));
+      result.put(
+          name,
+          new NativeSpec(
+              name,
+              methods,
+              mapped,
+              mapped == HaraAvailability.CAPABILITY_GATED ? "native-runtime" : ""));
     }
     return result;
   }
@@ -227,7 +242,8 @@ public class HaraDeclarationCoverageTest {
       HaraAvailability availability,
       String capability) {}
 
-  private record NativeSpec(String name, HaraAvailability availability) {}
+  private record NativeSpec(
+      String name, List<String> methods, HaraAvailability availability, String capability) {}
 
   private static final String PROTOCOLS_SPEC =
       "01-lang/001-language/draft/conformance/protocols.edn";

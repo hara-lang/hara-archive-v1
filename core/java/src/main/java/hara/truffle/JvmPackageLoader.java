@@ -23,7 +23,18 @@ final class JvmPackageLoader {
       String sha256,
       String abi,
       String entryPoint,
-      Set<String> allowedCapabilities) {
+      Set<String> allowedCapabilities,
+      List<Path> dependencies) {
+    Selection(
+        String identity,
+        Path artifact,
+        String sha256,
+        String abi,
+        String entryPoint,
+        Set<String> allowedCapabilities) {
+      this(identity, artifact, sha256, abi, entryPoint, allowedCapabilities, List.of());
+    }
+
     Selection {
       identity = requireText(identity, "package identity");
       artifact = Objects.requireNonNull(artifact, "package artifact").toAbsolutePath().normalize();
@@ -31,6 +42,27 @@ final class JvmPackageLoader {
       abi = requireText(abi, "package ABI");
       entryPoint = requireText(entryPoint, "package entry point");
       allowedCapabilities = Set.copyOf(Objects.requireNonNull(allowedCapabilities, "capabilities"));
+      dependencies = normalizeDependencies(dependencies);
+    }
+  }
+
+  /** Selection for a host flavor whose entry point is loaded without provider registration. */
+  record FlavorSelection(
+      String identity,
+      Path artifact,
+      String sha256,
+      String target,
+      String abi,
+      String entryPoint,
+      List<Path> dependencies) {
+    FlavorSelection {
+      identity = requireText(identity, "package identity");
+      artifact = Objects.requireNonNull(artifact, "package artifact").toAbsolutePath().normalize();
+      sha256 = requireDigest(sha256);
+      target = requireText(target, "package target");
+      abi = requireText(abi, "package ABI");
+      entryPoint = requireText(entryPoint, "package entry point");
+      dependencies = normalizeDependencies(dependencies);
     }
   }
 
@@ -54,6 +86,10 @@ final class JvmPackageLoader {
 
     String identity() {
       return provider.identity();
+    }
+
+    ClassLoader classLoader() {
+      return classLoader;
     }
 
     @Override
@@ -83,6 +119,30 @@ final class JvmPackageLoader {
     }
   }
 
+  static final class LoadedArtifact implements AutoCloseable {
+    private final String identity;
+    private final URLClassLoader classLoader;
+    private final AtomicBoolean closed = new AtomicBoolean();
+
+    LoadedArtifact(String identity, URLClassLoader classLoader) {
+      this.identity = identity;
+      this.classLoader = classLoader;
+    }
+
+    String identity() {
+      return identity;
+    }
+
+    ClassLoader classLoader() {
+      return classLoader;
+    }
+
+    @Override
+    public void close() throws IOException {
+      if (closed.compareAndSet(false, true)) classLoader.close();
+    }
+  }
+
   private JvmPackageLoader() {}
 
   static LoadedProvider load(Selection selection, FilesystemProviderRegistry filesystems) {
@@ -95,7 +155,8 @@ final class JvmPackageLoader {
     try {
       loader =
           new URLClassLoader(
-              new URL[] {selection.artifact().toUri().toURL()}, JvmPackageProvider.class.getClassLoader());
+              urls(selection.artifact(), selection.dependencies()),
+              JvmPackageProvider.class.getClassLoader());
       Class<?> entry = Class.forName(selection.entryPoint(), true, loader);
       if (!JvmPackageProvider.class.isAssignableFrom(entry)) {
         throw failure("PACKAGE_JVM_ENTRYPOINT_INVALID", selection.entryPoint());
@@ -127,18 +188,78 @@ final class JvmPackageLoader {
     }
   }
 
+  static LoadedArtifact loadFlavor(FlavorSelection selection) {
+    Objects.requireNonNull(selection, "flavor selection");
+    if (!"java-21".equals(selection.target())) {
+      throw failure("PACKAGE_JVM_TARGET_MISMATCH", selection.target());
+    }
+    if (!JvmPackageProvider.ABI.equals(selection.abi())) {
+      throw failure("PACKAGE_JVM_ABI_MISMATCH", selection.abi());
+    }
+    verifyArtifact(selection.artifact(), selection.sha256());
+    for (Path dependency : selection.dependencies()) {
+      if (!Files.isRegularFile(dependency)) {
+        throw failure("PACKAGE_JVM_DEPENDENCY_MISSING", dependency.toString());
+      }
+    }
+    URLClassLoader loader = null;
+    try {
+      loader =
+          new URLClassLoader(
+              urls(selection.artifact(), selection.dependencies()),
+              JvmPackageProvider.class.getClassLoader());
+      Class.forName(selection.entryPoint(), false, loader);
+      return new LoadedArtifact(selection.identity(), loader);
+    } catch (Throwable error) {
+      if (loader != null) {
+        try {
+          loader.close();
+        } catch (IOException close) {
+          error.addSuppressed(close);
+        }
+      }
+      if (error instanceof IllegalArgumentException exception) throw exception;
+      throw failure("PACKAGE_JVM_INITIALIZATION_FAILED", message(error), error);
+    }
+  }
+
   private static void verifyArtifact(Selection selection) {
-    if (!Files.isRegularFile(selection.artifact())) {
-      throw failure("PACKAGE_JVM_ARTIFACT_MISSING", selection.artifact().toString());
+    verifyArtifact(selection.artifact(), selection.sha256());
+    for (Path dependency : selection.dependencies()) {
+      if (!Files.isRegularFile(dependency)) {
+        throw failure("PACKAGE_JVM_DEPENDENCY_MISSING", dependency.toString());
+      }
+    }
+  }
+
+  private static void verifyArtifact(Path artifact, String expectedDigest) {
+    if (!Files.isRegularFile(artifact)) {
+      throw failure("PACKAGE_JVM_ARTIFACT_MISSING", artifact.toString());
     }
     try {
-      String actual = "sha256:" + HexFormat.of().formatHex(digest().digest(Files.readAllBytes(selection.artifact())));
-      if (!selection.sha256().equals(actual)) {
+      String actual = "sha256:" + HexFormat.of().formatHex(digest().digest(Files.readAllBytes(artifact)));
+      if (!expectedDigest.equals(actual)) {
         throw failure("PACKAGE_JVM_DIGEST_MISMATCH", actual);
       }
     } catch (IOException exception) {
-      throw failure("PACKAGE_JVM_ARTIFACT_UNREADABLE", selection.artifact().toString(), exception);
+      throw failure("PACKAGE_JVM_ARTIFACT_UNREADABLE", artifact.toString(), exception);
     }
+  }
+
+  private static URL[] urls(Path artifact, List<Path> dependencies) throws IOException {
+    ArrayList<URL> urls = new ArrayList<>();
+    urls.add(artifact.toUri().toURL());
+    for (Path dependency : dependencies) urls.add(dependency.toUri().toURL());
+    return urls.toArray(URL[]::new);
+  }
+
+  private static List<Path> normalizeDependencies(List<Path> dependencies) {
+    Objects.requireNonNull(dependencies, "package dependencies");
+    ArrayList<Path> normalized = new ArrayList<>();
+    for (Path dependency : dependencies) {
+      normalized.add(Objects.requireNonNull(dependency, "package dependency").toAbsolutePath().normalize());
+    }
+    return List.copyOf(normalized);
   }
 
   private static MessageDigest digest() {

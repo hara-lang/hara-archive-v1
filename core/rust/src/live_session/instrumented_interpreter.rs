@@ -80,8 +80,8 @@ impl InstrumentedInterpreterLiveSession {
         let owner_session_id = required_text(owner_session_id.into(), "owner session id")?;
         let session_id = required_text(session_id.into(), "session id")?;
         let context = InterpreterRuntimeContext::from_runtime(runtime);
-        let initial_environment = runtime.evaluator.snapshot();
-        let hub = runtime.evaluator.instrumentation_handle();
+        let initial_environment = runtime.execution.snapshot();
+        let hub = runtime.execution.instrumentation_handle();
         let target_id = target_id(&owner_session_id, &session_id);
         let instrument_id = instrument_id(&owner_session_id, &session_id);
         let registration = controller_registration(&owner_session_id, &instrument_id, &target_id);

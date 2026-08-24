@@ -460,13 +460,13 @@ mod tests {
     #[test]
     fn evaluator_owns_lexical_state_without_owning_namespace_state() {
         let registry = kernel::NamespaceRegistry::<core::Value>::new("user");
-        let mut evaluator = Evaluator::new();
+        let mut execution = RuntimeExecutionState::new();
         evaluator
             .environment_mut()
             .insert("local".into(), core::Value::Number(42));
 
         assert_eq!(
-            evaluator.environment().get("local"),
+            execution.environment().get("local"),
             Some(&core::Value::Number(42))
         );
         assert!(registry.current().mappings().is_empty());
@@ -1193,7 +1193,7 @@ mod tests {
             .unwrap();
         assert_eq!(core::receiver_category(&value), "extension");
         runtime
-            .evaluator
+            .execution
             .environment_mut()
             .insert("r".into(), value);
         assert_eq!(runtime.eval_text("(iter-next (iter r))").unwrap(), "0");
@@ -1277,7 +1277,7 @@ mod tests {
             .construct("lazy-map", "request", &[core::Value::Number(42)])
             .unwrap();
         runtime
-            .evaluator
+            .execution
             .environment_mut()
             .insert("request".into(), value);
         assert_eq!(runtime.eval_text("(:value request)").unwrap(), "42");
@@ -1721,12 +1721,12 @@ mod tests {
         runtime
             .eval_text("(def ^{:dynamic true} answer 41)")
             .unwrap();
-        let local = match runtime.evaluator.environment().get("answer").unwrap() {
+        let local = match runtime.execution.environment().get("answer").unwrap() {
             core::Value::Var(var) => var.clone(),
             _ => panic!("definition must be a Var"),
         };
         assert_eq!(local.symbol().as_str(), "alpha/answer");
-        let qualified = match runtime.evaluator.environment().get("alpha/answer").unwrap() {
+        let qualified = match runtime.execution.environment().get("alpha/answer").unwrap() {
             core::Value::Var(var) => var.clone(),
             _ => panic!("qualified definition must be a Var"),
         };
@@ -1734,7 +1734,7 @@ mod tests {
         assert!(qualified.is_dynamic());
         runtime.use_namespace("user");
         runtime.alias_namespace("a", "alpha");
-        let alias = match runtime.evaluator.environment().get("a/answer").unwrap() {
+        let alias = match runtime.execution.environment().get("a/answer").unwrap() {
             core::Value::Var(var) => var.clone(),
             _ => panic!("alias must resolve to a Var"),
         };
@@ -3170,9 +3170,10 @@ mod tests {
     }
 
     #[test]
-    fn fn_star_and_eval_forms_execute_while_hash_dispatch_extensions_are_rejected() {
+    fn fn_forms_and_eval_forms_execute_while_hash_dispatch_extensions_are_rejected() {
         let mut runtime = Runtime::new();
-        assert_eq!(runtime.eval_text("((fn* [x] (+ x 1)) 4)").unwrap(), "5");
+        assert_eq!(runtime.eval_text("((fn [x] (+ x 1)) 4)").unwrap(), "5");
+        assert!(runtime.eval_text("((fn* [x] (+ x 1)) 4)").is_err());
         assert!(runtime
             .eval_text("#=(+ 2 3)")
             .unwrap_err()
@@ -4570,7 +4571,7 @@ mod tests {
             runtime
                 .eval_text("(ns wrong.runtime (:flavor :jvm) (:import java.lang.String))")
                 .unwrap_err(),
-            "native/import-missing: java.lang.String"
+            "native/unsupported-flavor: :jvm (host flavors are only available on JVM/.NET runtimes)"
         );
         assert_eq!(
             runtime

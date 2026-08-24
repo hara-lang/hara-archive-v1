@@ -1152,6 +1152,10 @@ fn native_base_values(operation: &str, values: &[Value]) -> Result<Value, String
             }
             _ => Err("Base/satisfies? expects a protocol and value".into()),
         },
+        "special-symbol?" => match values {
+            [Value::Symbol(symbol)] => Ok(Value::Bool(syntax_symbol(symbol.as_str()))),
+            _ => Err("Base/special-symbol? expects one symbol".into()),
+        },
         "type" => match values {
             [value] => Ok(Value::Keyword(portable_type_keyword(value)?)),
             _ => Err("Base/type expects one value".into()),
@@ -2267,17 +2271,6 @@ fn named_protocol_satisfies(name: &str, value: &Value) -> bool {
         },
         value,
     )
-}
-
-pub(crate) fn direct_protocol_predicate_function_value(name: &str) -> Option<Value> {
-    named_predicate_protocol(name)?;
-    let operation = name.to_owned();
-    Some(native_function(name, 1, move |arguments| {
-        Ok(Value::Bool(named_protocol_satisfies(
-            &operation,
-            &arguments[0],
-        )))
-    }))
 }
 
 fn promise_value(value: &Value, operation: &str) -> Result<Promise, String> {

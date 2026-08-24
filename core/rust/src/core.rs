@@ -175,7 +175,8 @@ mod native_crypto {
 pub(crate) use fiber::Cont;
 pub use fiber::{EvalFiber, EvalFiberState, Step};
 
-include!("core/inventory.rs");
+include!("core/registry.rs");
+include!("core/native_declarations.rs");
 include!("core/value.rs");
 include!("core/vm_tool.rs");
 #[cfg(all(feature = "bytecode-vm", not(feature = "raw-wasm")))]
@@ -194,13 +195,9 @@ include!("core/protocol.rs");
 include!("core/operation.rs");
 include!("core/form.rs");
 include!("core/namespace.rs");
-include!("core/evaluator.rs");
-include!("core/direct_callable.rs");
-include!("core/direct_callable_catalog.rs");
-include!("core/direct_callable_impl.rs");
-include!("core/direct_callable_operations.rs");
+// Synchronous declaration and compatibility forms remain isolated from the
+// fiber execution target. Runtime source evaluation enters through EvalFiber;
+// this module is only the small compatibility seam used by namespace and
+// bytecode declaration machinery.
+include!("core/special_forms.rs");
 include!("core/bootstrap.rs");
-#[cfg(test)]
-include!("core/direct_callable_probe.rs");
-#[cfg(test)]
-include!("core/direct_callable_tests.rs");

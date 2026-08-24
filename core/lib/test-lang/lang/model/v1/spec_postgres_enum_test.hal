@@ -159,4 +159,3 @@
      => true)])
 
 (pr-str (run '[lang.model.v1.spec-postgres-enum-test]))
-
