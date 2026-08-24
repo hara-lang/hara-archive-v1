@@ -342,6 +342,7 @@ fn closed(arguments: &[Value]) -> Result<Value, String> {
 }
 
 pub(crate) fn install(protocols: &mut ProtocolRegistry) {
+    crate::core::install_native_collection_protocol_admission(protocols);
     protocols.register_extension(PROVIDER, HOST_TYPE, "IWorkHost", "work-submit", work_submit);
     protocols.register_extension(
         PROVIDER,
