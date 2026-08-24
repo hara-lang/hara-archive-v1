@@ -122,11 +122,11 @@
             end-line   (try (cond-> (get lines (dec end)) end-col (subs 0 end-col))
                          (catch Throwable
                            t
-                           (env/prn {:start     start
-                                     :start-col start-col
-                                     :count     (count lines)
-                                     :end-col   end-col
-                                     :end       end})
+                           (env/println {:start     start
+                                         :start-col start-col
+                                         :count     (count lines)
+                                         :end-col   end-col
+                                         :end       end})
                            (throw t)))]
         (vec (concat [(str (apply str (repeat (dec start-col) " ")) start-line)]
                (subvec lines start (dec end))
@@ -310,7 +310,7 @@
       (and (even? (count errors)) (every? :pair-id errors))
       (edit/create-mismatch-edits errors)
       :else
-      (do (env/prn) (env/prf info) (throw (ex :generic {:info info} :ex/message "Not Supported"))))))
+      (do (env/println) (env/println info) (throw (ex :generic {:info info} :ex/message "Not Supported"))))))
 
 (defn heal-content-single-pass
   "heals the content in a single pass"
@@ -358,7 +358,7 @@
                              (catch Throwable
                                t
                                (mapv (fn [{:as info :keys [at]}]
-                                       (env/prn info)
+                                       (env/println info)
                                        (throw (ex :generic {:info info} :ex/message "Not Supported")))
                                  errored)
                                (throw t)))]

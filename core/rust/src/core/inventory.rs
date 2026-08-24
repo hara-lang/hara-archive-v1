@@ -150,7 +150,7 @@ pub(crate) const RUNTIME_CALLABLE_INVENTORY: &[&str] = &[
     "mod",
     "Coroutine/create",
     "Coroutine/resume",
-    "std.protocol.icoroutine/resume",
+    "std.protocol.icoroutine.ICoroutine/resume",
     "name",
     "namespace",
     "neg?",

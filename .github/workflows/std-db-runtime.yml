@@ -4,10 +4,9 @@ on:
   pull_request:
     branches: [main, testing]
     paths:
-      - "core/lib/src/std/db.hal"
-      - "core/lib/src/std/db/protocol.hal"
-      - "core/lib/src/std/db/node/**"
-      - "core/lib/test/std/db/node/**"
+      - "core/lib/src/db/protocol.hal"
+      - "core/lib/src/db/node/**"
+      - "core/lib/test/db/node/**"
       - "core/java/src/test/java/hara/truffle/HaraDbRuntimeTest.java"
       - "core/rust/web/db-runtime-endpoint.mjs"
       - "core/rust/web/db-runtime-endpoint.test.mjs"

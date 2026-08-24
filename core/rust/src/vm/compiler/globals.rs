@@ -271,6 +271,15 @@ impl Compiler {
         if self.excluded_intrinsic_symbol(name) || !crate::core::is_bytecode_callable(name) {
             return false;
         }
+        let bootstrap_callable = |candidate: &str| {
+            crate::core::foundation_bootstrap_callable_names().any(|callable| callable == candidate)
+                || candidate
+                    .strip_prefix("std.foundation/")
+                    .is_some_and(|local| {
+                        crate::core::foundation_bootstrap_callable_names()
+                            .any(|callable| callable == local)
+                    })
+        };
         crate::core::namespace_registry()
             .map(|registry| {
                 let current = registry
@@ -280,6 +289,7 @@ impl Compiler {
                     .resolve(&crate::lang::data::Symbol::parse(name))
                     .or_else(|| current.resolve(&crate::lang::data::Symbol::parse(name)))
                     .is_some()
+                    || bootstrap_callable(name)
             })
             .unwrap_or(true)
     }

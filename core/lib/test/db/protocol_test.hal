@@ -28,6 +28,29 @@
     {:operation :close
      :id (:id connection)}))
 
+(extend-type MockConnection protocol/IDatabaseProvider
+  (db-provider-contract [connection]
+    (protocol/db-provider-descriptor :mock :mock-sql ["sql"])))
+
+(extend-type MockConnection protocol/IDatabaseLifecycle
+  (db-reset [connection]
+    {:operation :reset
+     :id (:id connection)}))
+
+(defstruct TransactionConnection
+  [events])
+
+(extend-type TransactionConnection protocol/IDatabase
+  (db-engine [_] :mock-sql)
+  (db-provider [_] :mock)
+  (db-info [_] {:engine :mock-sql :provider :mock})
+  (db-exec [connection sql parameters]
+    (do
+      (swap! (:events connection) conj [sql parameters])
+      sql))
+  (db-query [_ sql _] sql)
+  (db-close [_] :closed))
+
 (def connection (db.protocol-test/MockConnection 7))
 
 (def results
@@ -53,6 +76,58 @@
 
    (fact "close dispatches directly through IDatabase"
      (protocol/db-close connection)
-     => {:operation :close :id 7})])
+     => {:operation :close :id 7})
+
+   (fact "provider contracts contain only identity and capabilities"
+     (let [descriptor (protocol/db-provider-contract connection)]
+       [(protocol/db-provider-descriptor? descriptor)
+        (protocol/db-provider-id descriptor)
+        (protocol/db-provider-engine descriptor)
+        (protocol/db-provider-supports? descriptor "sql")
+        (nil? (get descriptor :credentials))]
+       => [true :mock :mock-sql true false]))
+
+   (fact "provider registration is replaceable metadata only"
+     (let [descriptor (protocol/db-provider-descriptor :mock :mock-sql [:sql])
+           registry (protocol/db-register-provider {} descriptor)]
+       [(protocol/db-registered-provider registry :mock)
+        (protocol/db-provider-capabilities
+         (protocol/db-registered-provider registry :mock))]
+       => [descriptor [:sql]]))
+
+   (fact "result and error envelopes round-trip their stable fields"
+     (let [result (protocol/db-result ["id"] [[7]] 1)
+           error (protocol/db-error :syntax "invalid SQL" {:statement "select"})]
+       [(protocol/db-result? result)
+        (protocol/db-result-columns result)
+        (protocol/db-result-rows result)
+        (protocol/db-result-affected result)
+        (protocol/db-error? error)
+        (protocol/db-error-type error)
+        (protocol/db-error-message error)
+        (protocol/db-error-data error)]
+       => [true ["id"] [[7]] 1 true :syntax "invalid SQL" {:statement "select"}]))
+
+   (fact "transaction helpers use canonical SQL and rollback failures"
+     (let [events (atom [])
+           tx (db.protocol-test/TransactionConnection events)
+           success (protocol/db-transaction tx (fn [_] :ok))
+           failure (try
+                     (protocol/db-transaction
+                      tx
+                      (fn [_]
+                        (throw
+                         (ex :database {} :ex/message "failed"))))
+                     (catch Throwable error
+                       (ex-message error)))]
+       [success failure (deref events)])
+     => [:ok "failed"
+         [["begin" []] ["commit" []] ["begin" []] ["rollback" []]]])
+
+   (fact "safe close and reset are deterministic at the lifecycle boundary"
+     [(protocol/db-close-safe nil)
+      (protocol/db-close-safe connection)
+      (protocol/db-reset-safe connection)]
+     => [nil {:operation :close :id 7} {:operation :reset :id 7}])])
 
 (pr-str (run '[db.protocol-test]))

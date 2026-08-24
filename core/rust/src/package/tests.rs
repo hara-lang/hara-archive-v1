@@ -148,6 +148,77 @@ fn validates_and_builds_deterministic_archive() {
 }
 
 #[test]
+fn packages_only_explicit_source_files_from_custom_manifest() {
+    let root = fixture();
+    fs::write(root.join("src/example/provider.hal"), "(ns example.provider) 7\n").unwrap();
+    fs::write(
+        root.join("portable.edn"),
+        "{:hara/type :project :hara/version \"1.0.0\" :project/id \"hara:example/portable\" :project/version \"1.0.0\" :project/source-paths [] :project/source-files [\"src/example/main.hal\"] :project/test-paths [] :project/extension-paths [] :project/capabilities #{} :project/dependencies {}}",
+    )
+    .unwrap();
+    let project = read_project(&root.join("portable.edn")).unwrap();
+    let archive = root.join("portable.harp");
+    build_archive(&project, &archive).unwrap();
+    let file = File::open(&archive).unwrap();
+    let mut zip = ZipArchive::new(file).unwrap();
+    assert!(zip.by_name("project.edn").is_ok());
+    assert!(zip.by_name("src/example/main.hal").is_ok());
+    assert!(zip.by_name("src/example/provider.hal").is_err());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn canonical_database_packages_exclude_runtime_providers() {
+    let root = fixture();
+    let database_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../lib/src/db");
+    for (manifest, expected_sources) in [
+        ("protocol.project.edn", vec!["protocol.hal"]),
+        (
+            "text.project.edn",
+            vec![
+                "text/base_check.hal",
+                "text/base_flatten.hal",
+                "text/base_graph.hal",
+                "text/base_schema.hal",
+                "text/base_scope.hal",
+                "text/base_tree.hal",
+                "text/base_util.hal",
+                "text/sql_call.hal",
+                "text/sql_graph.hal",
+                "text/sql_raw.hal",
+                "text/sql_tree.hal",
+                "text/sql_util.hal",
+                "text/sql_view.hal",
+            ],
+        ),
+    ] {
+        let project = read_project(&database_root.join(manifest)).unwrap();
+        let archive = root.join(manifest.replace(".project.edn", ".harp"));
+        build_archive(&project, &archive).unwrap();
+        let file = File::open(&archive).unwrap();
+        let mut zip = ZipArchive::new(file).unwrap();
+        let mut names = (0..zip.len())
+            .map(|index| zip.by_index(index).unwrap().name().to_owned())
+            .collect::<Vec<_>>();
+        names.sort();
+        let mut expected = expected_sources
+            .into_iter()
+            .map(str::to_owned)
+            .collect::<Vec<_>>();
+        expected.extend(["project.edn".to_owned(), "project.lock.edn".to_owned()]);
+        expected.push("package.edn".to_owned());
+        expected.sort();
+        assert_eq!(names, expected);
+        assert!(!names.iter().any(|name| {
+            name.contains("/postgres/")
+                || name.contains("/sqlite/")
+                || name.contains("/node/")
+        }));
+    }
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn rejects_missing_project_keys_and_bad_ranges() {
     let root = fixture();
     fs::write(root.join("project.edn"), "{:hara/type :project}").unwrap();

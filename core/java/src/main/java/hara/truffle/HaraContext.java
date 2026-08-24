@@ -1565,6 +1565,16 @@ public final class HaraContext {
         namespaceName == null ? currentNamespace : namespaces.get(namespaceName);
     HaraVar variable = namespace == null ? null : namespace.lookup(symbol.getName());
     if (variable == null
+        && namespaceName == null
+        && symbol.getName().startsWith(PROTOCOL_NAMESPACE_PREFIX)) {
+      HaraNamespace protocolNamespace = namespaces.get(symbol.getName());
+      if (protocolNamespace != null) {
+        String protocolName =
+            symbol.getName().substring(symbol.getName().lastIndexOf('.') + 1);
+        variable = protocolNamespace.lookup(protocolName);
+      }
+    }
+    if (variable == null
         && namespaceName != null
         && (bytecodeLibrary.provides(namespaceName) || libraryLoader.provides(namespaceName))
         && namespaceStates.get(namespaceName) != NamespaceLoadState.LOADING) {
@@ -1794,7 +1804,7 @@ public final class HaraContext {
       String name, Map<String, Integer> methodArities, java.util.List<HaraProtocol> parents) {
     String canonicalNamespace = builtinProtocolNamespace(name);
     HaraProtocol protocol =
-        new HaraProtocol(canonicalNamespace + "/" + name, methodArities, parents);
+        new HaraProtocol(canonicalNamespace, methodArities, parents);
     namespace(canonicalNamespace).define(name, protocol, null, definitionOrigin);
     namespace(FOUNDATION_NAMESPACE).define(name, protocol, null, definitionOrigin);
     defineBuiltinProtocolMethods(canonicalNamespace, protocol, definitionOrigin);
@@ -1804,8 +1814,7 @@ public final class HaraContext {
   private HaraProtocol defineProtocol(
       String name, Map<String, Integer> methodArities, HaraVar.Origin origin) {
     String canonicalNamespace = builtinProtocolNamespace(name);
-    HaraProtocol protocol =
-        new HaraProtocol(canonicalNamespace + "/" + name, methodArities);
+    HaraProtocol protocol = new HaraProtocol(canonicalNamespace, methodArities);
     namespace(canonicalNamespace).define(name, protocol, null, origin);
     namespace(FOUNDATION_NAMESPACE).define(name, protocol, null, origin);
     defineBuiltinProtocolMethods(canonicalNamespace, protocol, origin);
@@ -1862,7 +1871,11 @@ public final class HaraContext {
   }
 
   private static String builtinProtocolNamespace(String protocolName) {
-    return PROTOCOL_NAMESPACE_PREFIX + protocolName.toLowerCase(java.util.Locale.ROOT);
+    return
+        PROTOCOL_NAMESPACE_PREFIX
+            + protocolName.toLowerCase(java.util.Locale.ROOT)
+            + "."
+            + protocolName;
   }
 
   private void defineBuiltinProtocolMethods(

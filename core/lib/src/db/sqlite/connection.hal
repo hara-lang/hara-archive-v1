@@ -53,6 +53,17 @@
   (db-close [value]
     (invoke value :close [])))
 
+(extend-type SQLiteConnection protocol/IDatabaseProvider
+  (db-provider-contract [value]
+    (protocol/db-provider-descriptor
+     (:provider value)
+     :sqlite
+     (or (:capabilities value) []))))
+
+(extend-type SQLiteConnection protocol/IDatabaseLifecycle
+  (db-reset [value]
+    (protocol/db-close-safe value)))
+
 (defn exec
   ([value sql]
    (exec value sql []))
@@ -71,6 +82,6 @@
 (defn work-call [value operation arguments]
   (invoke value :work-call [operation arguments]))
 
-(defn begin [value] (exec value "begin"))
-(defn commit [value] (exec value "commit"))
-(defn rollback [value] (exec value "rollback"))
+(defn begin [value] (protocol/db-begin value))
+(defn commit [value] (protocol/db-commit value))
+(defn rollback [value] (protocol/db-rollback value))
