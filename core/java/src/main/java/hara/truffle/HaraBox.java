@@ -192,7 +192,7 @@ public final class HaraBox implements TruffleObject, IEquality {
     if (!(value instanceof IFn)) {
       throw UnsupportedMessageException.create();
     }
-    return export(HaraJavaAdapters.invokeFunction(value, arguments));
+    return export(HaraFunctionDispatch.invoke(value, arguments));
   }
 
   @ExportMessage

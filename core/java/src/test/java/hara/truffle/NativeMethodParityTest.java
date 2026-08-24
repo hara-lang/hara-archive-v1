@@ -65,8 +65,7 @@ public class NativeMethodParityTest {
           classified);
       if (!type.halWrappers.isEmpty()) {
         assertNotNull("HAL wrappers require a source: " + type.name, type.wrapperSource);
-        Path wrapperSource = Path.of(type.wrapperSource);
-        if (!Files.isRegularFile(wrapperSource)) wrapperSource = Path.of("core").resolve(wrapperSource);
+        Path wrapperSource = resolveWrapperSource(type.wrapperSource);
         String source = Files.readString(wrapperSource);
         for (String method : type.halWrappers) {
           assertTrue(
@@ -214,6 +213,18 @@ public class NativeMethodParityTest {
       if (Files.isDirectory(candidate)) return candidate;
     }
     return Path.of("../../hara-specs-registry");
+  }
+
+  private static Path resolveWrapperSource(String source) {
+    Path directory = Path.of("").toAbsolutePath().normalize();
+    while (directory != null) {
+      for (Path candidate :
+          List.of(directory.resolve(source), directory.resolve("core").resolve(source))) {
+        if (Files.isRegularFile(candidate)) return candidate;
+      }
+      directory = directory.getParent();
+    }
+    throw new IllegalStateException("Missing HAL wrapper source: " + source);
   }
 
   private record NativeTypeSpec(

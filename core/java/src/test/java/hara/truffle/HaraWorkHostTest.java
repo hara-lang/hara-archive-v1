@@ -23,7 +23,7 @@ public class HaraWorkHostTest {
           "(do "
               + "(def delay-fired (atom false)) "
               + "(def delay-run "
-              + "  (IWorkHost/work-submit work.native/default-host :timer nil "
+              + "  (IWorkHost/work-submit (Work/default-host) :timer nil "
               + "    {:work/execute (fn [work input options id] "
               + "      (promise/then "
               + "       (promise/delay 150 (fn [] (reset! delay-fired true))) identity))})) nil)");
@@ -49,7 +49,7 @@ public class HaraWorkHostTest {
           "(do "
               + "(def active-process (atom nil)) "
               + "(def process-run "
-              + "  (IWorkHost/work-submit work.native/default-host :process nil "
+              + "  (IWorkHost/work-submit (Work/default-host) :process nil "
               + "    {:work/execute (fn [work input options id] "
               + "      (let [process (Process/spawn [\"/bin/sh\" \"-c\" \"sleep 30\"])] "
               + "        (reset! active-process process) "
@@ -78,12 +78,12 @@ public class HaraWorkHostTest {
               .eval(
                   HaraLanguage.ID,
                   "(let [run (IWorkHost/work-submit "
-                      + "work.native/default-host :payload 42 "
+                      + "(Work/default-host) :payload 42 "
                       + "{:id \"jvm-scope-functions\" "
                       + ":work/execute (fn [work input options id] "
-                      + "[(IWorkRef/work-id (work.native/current-run)) "
-                      + " (work.native/cancelled?) "
-                      + " (work.native/on-close (fn [context] nil)) input])})] "
+                      + "[(IWorkRef/work-id (Work/current-run)) "
+                      + " (Work/cancelled?) "
+                      + " (Work/on-close (fn [context] nil)) input])})] "
                       + "(deref (IWorkRun/work-result run)))")
               .toString());
     }
@@ -152,7 +152,7 @@ public class HaraWorkHostTest {
           context
               .eval(
                   HaraLanguage.ID,
-                  "(let [run (IWorkHost/work-submit work.native/default-host "
+                  "(let [run (IWorkHost/work-submit (Work/default-host) "
                       + "              :payload 42 {:id \""
                       + id
                       + "\" :work/execute (fn [work input options id] input)}) "
@@ -180,7 +180,7 @@ public class HaraWorkHostTest {
                   HaraLanguage.ID,
                   "(do "
                       + "(def live-run "
-                      + "  (IWorkHost/work-submit work.native/default-host "
+                      + "  (IWorkHost/work-submit (Work/default-host) "
                       + "    :payload 7 "
                       + "    {:id \""
                       + id
@@ -218,7 +218,7 @@ public class HaraWorkHostTest {
                   HaraLanguage.ID,
                   "(do "
                       + "(def cross-run "
-                      + "  (IWorkHost/work-submit work.native/default-host "
+                      + "  (IWorkHost/work-submit (Work/default-host) "
                       + "    :payload nil "
                       + "    {:id \""
                       + id
@@ -233,7 +233,7 @@ public class HaraWorkHostTest {
           second
               .eval(
                   HaraLanguage.ID,
-                  "(let [run (IWorkHost/work-resolve work.native/default-host \""
+                  "(let [run (IWorkHost/work-resolve (Work/default-host) \""
                       + id
                       + "\")] "
                       + "  [(IWorkRef/work-id run) "
@@ -251,7 +251,7 @@ public class HaraWorkHostTest {
       context.eval(
           HaraLanguage.ID,
           "(def failed-run "
-              + "  (IWorkHost/work-submit work.native/default-host "
+              + "  (IWorkHost/work-submit (Work/default-host) "
               + "    :payload nil "
               + "    {:id \""
               + id
@@ -283,7 +283,7 @@ public class HaraWorkHostTest {
                   HaraLanguage.ID,
                   "(do "
                       + "(def terminal-run "
-                      + "  (IWorkHost/work-submit work.native/default-host "
+                      + "  (IWorkHost/work-submit (Work/default-host) "
                       + "    :payload nil "
                       + "    {:id \""
                       + id

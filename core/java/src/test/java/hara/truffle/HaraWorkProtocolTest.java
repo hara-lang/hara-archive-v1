@@ -31,9 +31,9 @@ public class HaraWorkProtocolTest {
   @Test
   public void adaptsJavaWorkAndReferenceValues() {
     HaraProtocol work = new HaraProtocol("IWork", Map.of("work-spec", 1));
-    WorkProtocolLibraryProvider.installWork(work);
+    HaraProtocolRuntime.installForTest(work);
     HaraProtocol reference = new HaraProtocol("IWorkRef", Map.of("work-id", 1));
-    WorkProtocolLibraryProvider.installWorkRef(reference);
+    HaraProtocolRuntime.installForTest(reference);
 
     IWork workValue = () -> Map.of("op", "pure");
     IWorkRef referenceValue = () -> "run-1";
@@ -46,11 +46,11 @@ public class HaraWorkProtocolTest {
   public void adaptsJavaExecutorAndStoreValues() {
     HaraProtocol executor =
         new HaraProtocol("IWorkExecutor", Map.of("work-execute", 2));
-    WorkProtocolLibraryProvider.installWorkExecutor(executor);
+    HaraProtocolRuntime.installForTest(executor);
     HaraProtocol store =
         new HaraProtocol(
             "IWorkStore", Map.of("work-query", 2, "work-transact", 2));
-    WorkProtocolLibraryProvider.installWorkStore(store);
+    HaraProtocolRuntime.installForTest(store);
 
     IWorkExecutor executorValue = request -> Map.of("executed", request);
     IWorkStore storeValue =
@@ -103,12 +103,12 @@ public class HaraWorkProtocolTest {
   @Test
   public void legacyWorkValuesUseUnqualifiedNativeProtocols() {
     try (Context context = Context.newBuilder(HaraLanguage.ID).build()) {
-      assertTrue(context.eval(HaraLanguage.ID, "IWork").toString().contains("/IWork"));
+      assertTrue(context.eval(HaraLanguage.ID, "IWork").toString().contains("IWork"));
       assertTrue(
           context
               .eval(HaraLanguage.ID, "(ns work.protocol.legacy) IWork")
               .toString()
-              .contains("/IWork"));
+              .contains("IWork"));
       assertEquals(
           "[{:op :pure} \"run-legacy\"]",
           context

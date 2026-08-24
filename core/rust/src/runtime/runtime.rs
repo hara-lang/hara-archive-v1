@@ -1,6 +1,8 @@
 #[cfg(feature = "bytecode-vm")]
-const EMBEDDED_FOUNDATION_BYTECODE: &[u8] =
-    include_bytes!(concat!(env!("HARA_SOURCE_ROOT"), "/assets/std.foundation.hbx"));
+const EMBEDDED_FOUNDATION_BYTECODE: &[u8] = include_bytes!(concat!(
+    env!("HARA_SOURCE_ROOT"),
+    "/assets/std.foundation.hbx"
+));
 
 #[cfg_attr(not(feature = "raw-wasm"), wasm_bindgen)]
 impl Runtime {
@@ -14,8 +16,7 @@ impl Runtime {
         for (name, value) in core::package_tool_provider_values() {
             package_provider.intern_with_origin(name, value, kernel::VarOrigin::RuntimePrimitive);
         }
-        let work_native = namespace_registry.find_or_create("work.native");
-        work_native.intern("default-host", crate::work::guest::default_host_value());
+        let work_native = namespace_registry.find_or_create("std.native.Work");
         for (name, value) in crate::work::guest::values() {
             work_native.intern(name, value);
         }
@@ -72,7 +73,7 @@ impl Runtime {
     pub(crate) fn sandbox() -> Runtime {
         const FORBIDDEN: &[&str] = &[
             "Runtime", "Kernel", "Sandbox", "Package", "Crypto", "OS", "Process", "File", "Socket",
-            "Host",
+            "Host", "Work",
         ];
         let runtime = Runtime::new();
         for name in FORBIDDEN {
@@ -116,8 +117,7 @@ impl Runtime {
         #[cfg(feature = "bytecode-vm")]
         {
             let mut source_fallback = false;
-            match vm::eval_bytecode_bundle(self, EMBEDDED_FOUNDATION_BYTECODE)
-            {
+            match vm::eval_bytecode_bundle(self, EMBEDDED_FOUNDATION_BYTECODE) {
                 Ok(()) => {
                     self.loaded_resources.insert("std.foundation".into());
                     for &name in EAGER_HAL_RESOURCES {
@@ -308,7 +308,8 @@ impl Runtime {
                     let configs_before = self.generated_configs.clone();
                     let loaded_before = self.loaded_resources.clone();
                     if let Some(alias) = config.global_alias() {
-                        self.namespace_registry.register_global_alias(alias, &name)?;
+                        self.namespace_registry
+                            .register_global_alias(alias, &name)?;
                     }
                     self.generated_configs.insert(name.clone(), config);
                     self.use_namespace(&name);
@@ -478,7 +479,10 @@ impl Runtime {
                                     core::with_namespace_registry(&self.namespace_registry, || {
                                         core::with_namespace_source(namespace_source, || {
                                             core::with_protocols(&self.protocols, || {
-                                                #[cfg(all(target_arch = "wasm32", not(feature = "raw-wasm")))]
+                                                #[cfg(all(
+                                                    target_arch = "wasm32",
+                                                    not(feature = "raw-wasm")
+                                                ))]
                                                 if let Some(handler) = &self.host_handler {
                                                     let handler = handler.clone();
                                                     return core::with_host_calls(

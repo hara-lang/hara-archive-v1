@@ -149,7 +149,6 @@ work.flow.task.engine
 work.flow.task.report
 work.flow.task.result
 work.flow.task.selector
-work.native
 work.provider.ephemeral
 work.provider.inline
 work.provider.memory

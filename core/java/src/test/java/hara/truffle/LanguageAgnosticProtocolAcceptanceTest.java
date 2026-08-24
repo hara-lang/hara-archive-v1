@@ -35,23 +35,23 @@ public class LanguageAgnosticProtocolAcceptanceTest {
   @Test
   public void adaptsFunctionStateAndMetadataProtocolsThroughTheSameBoundary() {
     HaraProtocol ifn = new HaraProtocol("IFn", java.util.Map.of("invoke", -1));
-    HaraJavaAdapters.registerIFn(ifn);
+    HaraProtocolRuntime.installForTest(ifn);
     Map.Standard<String, String> map = Map.Standard.from(null, "key", "value");
     assertEquals("value", ifn.invoke("invoke", map, new Object[] {"key"}));
 
     HaraProtocol deref = new HaraProtocol("IDeref", java.util.Map.of("deref", 1));
-    HaraJavaAdapters.installDeref(deref);
+    HaraProtocolRuntime.installForTest(deref);
     Atom.Basic<Long> atom = new Atom.Basic<>(41L);
     assertEquals(41L, deref.invoke("deref", atom, new Object[0]));
 
     HaraProtocol reset = new HaraProtocol("IReset", java.util.Map.of("reset", 2));
-    HaraJavaAdapters.installReset(reset);
+    HaraProtocolRuntime.installForTest(reset);
     assertEquals(42L, reset.invoke("reset", atom, new Object[] {42L}));
     assertEquals(42L, deref.invoke("deref", atom, new Object[0]));
 
     HaraProtocol metadata =
         new HaraProtocol("IObjType", java.util.Map.of("meta", 1, "with-meta", 2));
-    HaraJavaAdapters.installMetadata(metadata);
+    HaraProtocolRuntime.installForTest(metadata);
     Keyword keyword = Keyword.create("core/value");
     assertNull(metadata.invoke("meta", keyword, new Object[0]));
 
@@ -63,7 +63,7 @@ public class LanguageAgnosticProtocolAcceptanceTest {
     HaraStruct value = new HaraStruct(type, new Object[] {41L});
 
     HaraProtocol ifn = new HaraProtocol("IFn", java.util.Map.of("invoke", -1));
-    HaraJavaAdapters.registerIFn(ifn);
+    HaraProtocolRuntime.installForTest(ifn);
     ifn.extend(type, "invoke", (receiver, arguments) -> 41L + ((Number) arguments[0]).longValue());
     assertEquals(43L, ifn.invoke("invoke", value, new Object[] {2L}));
 

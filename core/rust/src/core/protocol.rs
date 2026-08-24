@@ -166,6 +166,64 @@ fn protocol_with_meta(arguments: &[Value]) -> Result<Value, String> {
     attach_optional_metadata(arguments[0].clone(), metadata)
 }
 
+fn collection_delimiters(value: &Value) -> Option<(&'static str, &'static str)> {
+    match value {
+        Value::List(_) | Value::Cons(_) | Value::Seq(_) => Some(("(", ")")),
+        Value::Queue(_) | Value::Deque(_) | Value::Tuple(_) | Value::Vector(_) => Some(("[", "]")),
+        Value::Map(_) | Value::OrderedMap(_) | Value::SortedMap(_) | Value::PriorityMap(_) => {
+            Some(("{", "}"))
+        }
+        Value::Trie(_) | Value::Set(_) | Value::OrderedSet(_) | Value::SortedSet(_) => {
+            Some(("#{", "}"))
+        }
+        _ => None,
+    }
+}
+
+fn protocol_coll_start(arguments: &[Value]) -> Result<Value, String> {
+    match arguments {
+        [value] => collection_delimiters(value)
+            .map(|(start, _)| Value::String(start.into()))
+            .ok_or_else(|| "IColl/start-string expects a collection".into()),
+        _ => Err("IColl/start-string expects one collection".into()),
+    }
+}
+
+fn protocol_coll_end(arguments: &[Value]) -> Result<Value, String> {
+    match arguments {
+        [value] => collection_delimiters(value)
+            .map(|(_, end)| Value::String(end.into()))
+            .ok_or_else(|| "IColl/end-string expects a collection".into()),
+        _ => Err("IColl/end-string expects one collection".into()),
+    }
+}
+
+fn protocol_coll_sep(arguments: &[Value]) -> Result<Value, String> {
+    match arguments {
+        [_] => Ok(Value::String(" ".into())),
+        _ => Err("IColl/sep-string expects one collection".into()),
+    }
+}
+
+fn protocol_metatype(arguments: &[Value]) -> Result<Value, String> {
+    let [value] = arguments else {
+        return Err("IMetadata/metatype expects one value".into());
+    };
+    if !Value::supports_native_iobjtype(value) {
+        return Err("IMetadata/metatype expects a metadata-capable value".into());
+    }
+    let name = match value {
+        Value::Map(_)
+        | Value::OrderedMap(_)
+        | Value::SortedMap(_)
+        | Value::Trie(_)
+        | Value::PriorityMap(_) => "map",
+        Value::Keyword(_) | Value::Symbol(_) => "string",
+        _ => "object",
+    };
+    Ok(Value::Keyword(Keyword::from(name)))
+}
+
 fn protocol_count(arguments: &[Value]) -> Result<Value, String> {
     if arguments.len() == 1 {
         collection_count(&arguments[0])
@@ -2103,6 +2161,7 @@ fn native_protocol_supports(protocol: &str, value: &Value) -> bool {
         .unwrap_or(protocol);
     match name {
         "IColl" => Value::supports_native_icoll(value),
+        "IMetadata" => Value::supports_native_iobjtype(value),
         "IConj" => Value::supports_native_iconj(value),
         "ICons" => Value::supports_native_icons(value),
         "IEmpty" => Value::supports_native_iempty(value),
@@ -2190,16 +2249,6 @@ fn named_protocol_satisfies(name: &str, value: &Value) -> bool {
     let Some(protocol_name) = named_predicate_protocol(name) else {
         return false;
     };
-    if protocol_name == "IColl" {
-        return protocol_satisfies(
-            &GuestProtocol {
-                name: builtin_protocol_name(protocol_name),
-                methods: HashMap::new(),
-                parents: Vec::new(),
-            },
-            value,
-        );
-    }
     let Some(declaration) = crate::lang::protocol::find_protocol(protocol_name) else {
         return false;
     };

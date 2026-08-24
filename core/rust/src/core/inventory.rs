@@ -849,6 +849,19 @@ pub const NATIVE_TYPES: &[(&str, &[&str])] = &[
             "iter-iterate",
         ],
     ),
+    (
+        "Work",
+        &[
+            "default-host",
+            "current-run",
+            "cancelled?",
+            "check-cancelled",
+            "deadline-nanos",
+            "emit",
+            "submit-child",
+            "on-close",
+        ],
+    ),
 ];
 
 pub fn native_type_values() -> Vec<(String, Value)> {
@@ -874,7 +887,7 @@ pub(crate) fn protocol_declarations() -> &'static [crate::lang::protocol::Protoc
 pub fn builtin_protocol_namespace(protocol: &str) -> String {
     let simple = protocol.strip_prefix("std.foundation/").unwrap_or(protocol);
     crate::lang::protocol::find_protocol(simple)
-        .map(|declaration| declaration.runtime_name())
+        .map(|declaration| declaration.namespace.to_owned())
         .unwrap_or_else(|| {
             if simple.starts_with("std.protocol.") {
                 simple.to_owned()

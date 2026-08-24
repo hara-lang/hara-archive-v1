@@ -4,7 +4,8 @@ use hara_protocol_macros::hara_protocol;
 #[hara_protocol(
     namespace = "std.protocol.icoll",
     name = "IColl",
-    availability = "inventory-only"
+    parents = ["IEquality", "IConj", "IEmpty", "ICount", "IHash", "IDisplay"],
+    availability = "portable"
 )]
 pub trait IColl<E>:
     IntoIterator<Item = E> + IEquality + IConj<E> + IEmpty + ICount + IHash + IDisplay
@@ -14,7 +15,7 @@ pub trait IColl<E>:
     #[hara_method(value = "end-string", arity = 1)]
     fn end_string(&self) -> &'static str;
 
-    #[hara_method(value = "separator", arity = 1)]
+    #[hara_method(value = "sep-string", arity = 1)]
     fn separator(&self) -> &'static str {
         " "
     }

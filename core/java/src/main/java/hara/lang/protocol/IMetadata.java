@@ -1,9 +1,11 @@
 package hara.lang.protocol;
 
-import hara.lang.declaration.HaraHostSupport;
+import hara.lang.declaration.HaraMethod;
+import hara.lang.declaration.HaraProtocolBinding;
 
-@HaraHostSupport(reason = "Java metadata carrier used by host adapters; not a guest protocol")
+@HaraProtocolBinding(namespace = "std.protocol.imetadata", name = "IMetadata")
 public interface IMetadata {
 
+  @HaraMethod(value = "metatype", arity = 1)
   Constant.MetaType getMetatype();
 }

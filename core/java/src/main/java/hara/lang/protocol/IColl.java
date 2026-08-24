@@ -1,19 +1,30 @@
 package hara.lang.protocol;
 
 import hara.lang.base.Iter;
-import hara.lang.declaration.HaraHostSupport;
+import hara.lang.declaration.HaraMethod;
+import hara.lang.declaration.HaraProtocolBinding;
+import java.util.Iterator;
 
-@HaraHostSupport(reason = "Java collection adapter helper; collection behavior is not a guest protocol")
+@HaraProtocolBinding(
+    namespace = "std.protocol.icoll",
+    name = "IColl",
+    parents = {"IEquality", "IConj", "IEmpty", "ICount", "IHash", "IDisplay"})
 public interface IColl<E>
     extends Iterable<E>, IEquality, IConj<E>, IEmpty, ICount, IHash, IDisplay {
 
+  @HaraMethod(value = "start-string", arity = 1)
   String startString();
 
+  @HaraMethod(value = "end-string", arity = 1)
   String endString();
 
+  @HaraMethod(value = "sep-string", arity = 1)
   default String sepString() {
     return " ";
   }
+
+  @Override
+  Iterator<E> iterator();
 
   @Override
   default String display() {

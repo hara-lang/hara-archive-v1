@@ -419,6 +419,33 @@ final class InstrumentationHub implements AutoCloseable {
     return attachments.keySet().stream().anyMatch(key -> key.target().equals(targetState.handle));
   }
 
+  /**
+   * Whether generated HBC operations may retain the passive instrumentation path.
+   *
+   * <p>Control, suspension, call, and exception subscriptions need the resumable machine state.
+   * They therefore select the portable machine before a generated root is built. The native tier
+   * currently emits instruction and terminal events only.
+   */
+  synchronized boolean hbcNativeExecutionAllowed(TargetHandle target) {
+    requireOpen();
+    TargetState targetState = requireTarget(target);
+    for (InstrumentState instrumentState : instruments.values()) {
+      AttachmentKey key = new AttachmentKey(instrumentState.handle, targetState.handle);
+      if (!attachments.containsKey(key)
+          || !instrumentState.registration.filter().matches(targetState.descriptor)) {
+        continue;
+      }
+      InstrumentRegistration registration = instrumentState.registration;
+      if (registration.mode() != InstrumentMode.PASSIVE) return false;
+      for (EventKind event : registration.events()) {
+        if (event != EventKind.INSTRUCTION_EXECUTE && event != EventKind.EXECUTION_TERMINAL) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
   synchronized TargetHandle targetFor(String targetId) {
     requireOpen();
     TargetState state = targets.get(targetId);

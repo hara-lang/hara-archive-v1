@@ -1,6 +1,7 @@
 package hara.truffle;
 
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
+import com.oracle.truffle.api.RootCallTarget;
 import com.oracle.truffle.api.interop.TruffleObject;
 import com.oracle.truffle.api.library.ExportLibrary;
 import com.oracle.truffle.api.library.ExportMessage;
@@ -15,6 +16,7 @@ import hara.lang.protocol.IExInfo;
 import hara.lang.data.types.ILinearType;
 import hara.lang.data.types.IMapType;
 import hara.truffle.bytecode.HbcFormatException;
+import hara.truffle.bytecode.HbcBytecodeRootNode;
 import hara.truffle.bytecode.HbcProgram;
 import hara.truffle.bytecode.HbcProgram.Function;
 import hara.truffle.bytecode.HbcProgram.Instruction;
@@ -68,6 +70,12 @@ public final class HbcMachine {
         arguments,
         captures,
         new HbcContinuation(program, functionIndex, arguments, captures));
+  }
+
+  /** Executes a static HBC function at a generated call boundary without exporting its result. */
+  public static Object invokeFunction(
+      HbcProgram program, HaraContext context, int functionIndex, Object[] arguments) {
+    return call(program, context, functionIndex, arguments, new Object[0]);
   }
 
   private static Object call(
@@ -390,12 +398,7 @@ public final class HbcMachine {
                     null, popArguments(stack, index(instruction.first()))));
         case CONCAT_LIST -> {
           Object[] values = popArguments(stack, index(instruction.first()));
-          ArrayList<Object> concatenated = new ArrayList<>();
-          for (Object value : values) {
-            Iterator<?> iterator = (Iterator<?>) context.iterValue(value);
-            while (iterator.hasNext()) concatenated.add(iterator.next());
-          }
-          stack.add(hara.lang.data.List.Standard.from(null, concatenated.toArray()));
+          stack.add(HbcPrimitiveRuntime.concatList(context, values));
         }
         case TO_VECTOR -> stack.add(invokeGlobal(context, "vec", new Object[] {pop(stack)}));
         case MAKE_MULTI_ARITY -> {
@@ -612,7 +615,7 @@ public final class HbcMachine {
     throw new HaraException("HBC execution terminated by instrumentation");
   }
 
-  private static Object invokeGlobal(HaraContext context, String name, Object[] arguments) {
+  public static Object invokeGlobal(HaraContext context, String name, Object[] arguments) {
     return context.invokeCallable(resolve(context, name).deref(), arguments);
   }
 
@@ -909,7 +912,7 @@ public final class HbcMachine {
     };
   }
 
-  private static Object invokePrimitive(HaraContext context, int id, Object[] arguments) {
+  public static Object invokePrimitive(HaraContext context, int id, Object[] arguments) {
     HbcProgram.Primitive primitive = HbcProgram.Primitive.fromId(id);
     if (primitive == HbcProgram.Primitive.EQUAL) {
       if (arguments.length < 2) throw new HaraException("= expects at least 2 arguments");
@@ -978,6 +981,7 @@ public final class HbcMachine {
     final int prototype;
     final Object[] captures;
     final String namespace;
+    private volatile RootCallTarget nativeTarget;
 
     HbcClosure(HbcProgram program, HaraContext context, int prototype, Object[] captures) {
       this.program = program;
@@ -990,6 +994,14 @@ public final class HbcMachine {
     @TruffleBoundary
     Object invoke(Object[] arguments) {
       Function function = program.functions().get(prototype);
+      RootCallTarget target = nativeTarget;
+      if (target == null) {
+        target =
+            HbcBytecodeRootNode.compileFunction(
+                HaraLanguage.currentLanguage(), program, prototype);
+        if (target != null) nativeTarget = target;
+      }
+      if (target != null) return target.call(arguments);
       if (function.asyncFunction()) {
         return context.hbcAsync(() -> call(program, context, prototype, arguments, captures));
       }

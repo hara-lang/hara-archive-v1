@@ -74,6 +74,12 @@ final class HaraInstrumentationRuntime implements AutoCloseable {
     return target != null && sessionKernel.instrumentationHub().hasSubscribers(target, event);
   }
 
+  boolean hbcNativeExecutionAllowed() {
+    if (!ready) return true;
+    TargetHandle target = target(InstrumentationModel.TargetKind.HBC);
+    return target == null || sessionKernel.instrumentationHub().hbcNativeExecutionAllowed(target);
+  }
+
   InstrumentDirective pollHbcDirective() {
     if (!ready) return null;
     TargetHandle target = target(InstrumentationModel.TargetKind.HBC);

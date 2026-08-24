@@ -10,14 +10,12 @@ pub enum MetaType {
 #[hara_protocol(
     namespace = "std.protocol.imetadata",
     name = "IMetadata",
-    availability = "inventory-only"
+    availability = "portable"
 )]
 pub trait IMetadata: Sized {
     type Metadata: Clone;
 
-    #[hara_method(value = "meta", arity = 1)]
     fn meta(&self) -> Option<&Self::Metadata>;
-    #[hara_method(value = "with-meta", arity = 2)]
     fn with_meta(&self, metadata: Option<Self::Metadata>) -> Self;
 
     #[hara_method(value = "metatype", arity = 1)]

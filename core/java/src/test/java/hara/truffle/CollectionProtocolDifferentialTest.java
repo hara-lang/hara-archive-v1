@@ -25,12 +25,12 @@ public class CollectionProtocolDifferentialTest {
   @Test
   public void protocolCountAndIterationMatchJavaValues() {
     HaraProtocol count = new HaraProtocol("ICount", java.util.Map.of("count", 1));
-    HaraJavaAdapters.registerCount(count);
+    HaraProtocolRuntime.installForTest(count);
     HaraProtocol collection =
         new HaraProtocol(
             "IColl",
             java.util.Map.of("start-string", 1, "end-string", 1, "sep-string", 1, "iterator", 1));
-    HaraJavaAdapters.installCollection(collection);
+    HaraProtocolRuntime.installForTest(collection);
 
     Object[] values = {
       Map.Standard.from(null, "a", 1, "b", 2),
@@ -61,15 +61,15 @@ public class CollectionProtocolDifferentialTest {
   @Test
   public void nilAndUnsupportedValuesHaveExplicitProtocolBoundaries() {
     HaraProtocol lookup = new HaraProtocol("ILookup", java.util.Map.of("lookup", -1));
-    HaraJavaAdapters.registerLookup(lookup);
+    HaraProtocolRuntime.installForTest(lookup);
     HaraProtocol count = new HaraProtocol("ICount", java.util.Map.of("count", 1));
-    HaraJavaAdapters.registerCount(count);
+    HaraProtocolRuntime.installForTest(count);
     HaraProtocol conj = new HaraProtocol("IConj", java.util.Map.of("conj", 2));
-    HaraJavaAdapters.registerConj(conj);
+    HaraProtocolRuntime.installForTest(conj);
     HaraProtocol empty = new HaraProtocol("IEmpty", java.util.Map.of("empty", 1));
-    HaraJavaAdapters.registerEmpty(empty);
+    HaraProtocolRuntime.installForTest(empty);
     HaraProtocol assoc = new HaraProtocol("IAssoc", java.util.Map.of("assoc", 3));
-    HaraJavaAdapters.registerAssoc(assoc);
+    HaraProtocolRuntime.installForTest(assoc);
 
     assertEquals(0L, count.invoke("count", null, new Object[0]));
     assertEquals("fallback", lookup.invoke("lookup", null, new Object[] {"key", "fallback"}));
@@ -90,7 +90,7 @@ public class CollectionProtocolDifferentialTest {
   @Test
   public void invalidIndexesDuplicatesAndMapEntryShapeMatchJavaValues() {
     HaraProtocol nth = new HaraProtocol("INth", java.util.Map.of("nth", 2));
-    HaraJavaAdapters.registerNth(nth);
+    HaraProtocolRuntime.installForTest(nth);
     Vector.Standard<String> vector = Vector.Standard.from(null, "only");
     assertThrows(RuntimeException.class, () -> nth.invoke("nth", vector, new Object[] {-1L}));
     assertThrows(RuntimeException.class, () -> nth.invoke("nth", vector, new Object[] {1L}));
@@ -120,9 +120,9 @@ public class CollectionProtocolDifferentialTest {
   @Test
   public void lookupAndInvocationPreserveNullAndNotFoundSemantics() {
     HaraProtocol lookup = new HaraProtocol("ILookup", java.util.Map.of("lookup", -1));
-    HaraJavaAdapters.registerLookup(lookup);
+    HaraProtocolRuntime.installForTest(lookup);
     HaraProtocol ifn = new HaraProtocol("IFn", java.util.Map.of("invoke", -1));
-    HaraJavaAdapters.registerIFn(ifn);
+    HaraProtocolRuntime.installForTest(ifn);
 
     Map.Standard<String, String> map = Map.Standard.from(null, "present", null);
     ILookup<String, String> javaMap = map;
@@ -134,7 +134,7 @@ public class CollectionProtocolDifferentialTest {
   @Test
   public void indexedAndSetInvocationMatchDirectValues() {
     HaraProtocol ifn = new HaraProtocol("IFn", java.util.Map.of("invoke", -1));
-    HaraJavaAdapters.registerIFn(ifn);
+    HaraProtocolRuntime.installForTest(ifn);
 
     Vector.Standard<String> vector = Vector.Standard.from(null, "zero", "one");
     assertEquals(vector.nth(1L), ifn.invoke("invoke", vector, new Object[] {1L}));

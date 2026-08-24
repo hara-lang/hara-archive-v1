@@ -164,7 +164,7 @@ public final class HaraContext {
           HaraProtocolDeclarations.Registry registry = HaraProtocolDeclarations.install(this);
           ifnProtocol = registry.protocols().get("IFn");
           if (ifnProtocol == null) throw new HaraException("Missing injected IFn protocol");
-          HaraJavaAdapters.install(this, registry);
+          HaraProtocolRuntime.install(this, registry);
           installNativeStreamBuiltins();
           collectBuiltins(
               FOUNDATION_NAMESPACE,
@@ -213,6 +213,10 @@ public final class HaraContext {
 
   boolean hbcInstrumentationEnabled(InstrumentationModel.EventKind event) {
     return instrumentationRuntime.hbcInstrumentationEnabled(event);
+  }
+
+  public boolean hbcNativeExecutionAllowed() {
+    return instrumentationRuntime.hbcNativeExecutionAllowed();
   }
 
   InstrumentationModel.InstrumentDirective pollHbcDirective() {
@@ -1600,7 +1604,7 @@ public final class HaraContext {
     String namespace = symbol.getNamespace();
     if (namespace != null) return sandboxForbiddenNamespace(namespace);
     return switch (symbol.getName()) {
-      case "Runtime", "Kernel", "Sandbox", "Package", "Crypto", "OS", "Process", "File", "Socket", "Host" -> true;
+      case "Runtime", "Kernel", "Sandbox", "Package", "Crypto", "OS", "Process", "File", "Socket", "Host", "Work" -> true;
       default -> false;
     };
   }
@@ -1616,7 +1620,8 @@ public final class HaraContext {
           "std.native.Process",
           "std.native.OS",
           "std.native.Package",
-          "std.native.Host" -> true;
+          "std.native.Host",
+          "std.native.Work" -> true;
       default -> false;
     };
   }
@@ -4025,6 +4030,7 @@ public final class HaraContext {
 
   private void installNativeLibraries() {
     NativeCrypto.install(this, "std.native.Crypto");
+    HaraNativeWork.install(this);
     HaraNamespace document = namespace("std.native.Document");
     for (String method : HaraNativeDeclarations.methods("Document")) {
       document.define(
@@ -6593,7 +6599,8 @@ public final class HaraContext {
       return parseAndExecute((String) value, "<string>");
     } catch (RuntimeException error) {
       restore(snapshot);
-      throw error;
+      throw HaraException.withCause(
+          "Unable to evaluate Hara source: " + error.getMessage(), error);
     }
   }
 
@@ -7939,24 +7946,27 @@ public final class HaraContext {
 
   private boolean protocolSatisfies(String protocolName, Object value) {
     Object receiver = HaraBox.unwrap(value);
-    if ("IFn".equals(protocolName)) {
-      return isFunctionValue(receiver);
-    }
-    if ("IConj".equals(protocolName) && receiver instanceof hara.lang.data.Seq<?>) {
-      return false;
-    }
-    // Sets answer ILookup/lookup (get) but, matching the native runtime, do not satisfy ILookup.
-    if ("ILookup".equals(protocolName) && receiver instanceof hara.lang.data.types.ISetType<?>) {
-      return false;
-    }
-    if ("IColl".equals(protocolName)) {
-      return receiver instanceof hara.lang.protocol.IColl;
-    }
+    Boolean policy = protocolSatisfactionPolicy(protocolName, receiver);
+    if (policy != null) return policy;
     HaraNamespace foundation = namespaces.get(FOUNDATION_NAMESPACE);
     HaraVar variable = foundation == null ? null : foundation.lookup(protocolName);
     Object descriptor = variable == null ? null : HaraBox.unwrap(variable.deref());
     return descriptor instanceof HaraProtocol protocol
         && protocol.satisfies(receiver);
+  }
+
+  /**
+   * Keeps the two compatibility rules that are not expressible as Java-interface dispatch:
+   * callable guest values include runtime wrappers that cannot implement IFn, while sets expose
+   * get-like membership without being key/value lookupables.
+   */
+  private Boolean protocolSatisfactionPolicy(String protocolName, Object receiver) {
+    if ("IFn".equals(protocolName)) return isFunctionValue(receiver);
+    if ("ILookup".equals(protocolName)
+        && receiver instanceof hara.lang.data.types.ISetType<?>) {
+      return false;
+    }
+    return null;
   }
 
   private UnaryBuiltin typePredicate(String name, Class<?> type) {

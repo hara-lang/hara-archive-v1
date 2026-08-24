@@ -58,6 +58,9 @@ import java.util.Set;
 @HaraNativeBinding(namespace = "std.native", name = "Base")
 @HaraNativeBinding(namespace = "std.native", name = "Algo")
 @HaraNativeBinding(namespace = "std.native", name = "Iter")
+@HaraNativeBinding(
+    namespace = "std.native", name = "Work", availability = HaraAvailability.CAPABILITY_GATED,
+    capability = "native-runtime")
 final class HaraBuiltinCatalog {
   /** Closed accounting inventory for forms; this is not a std.native type. */
   static final Map<String, java.util.List<String>> LANGUAGE_BUILTINS =
@@ -238,7 +241,12 @@ final class HaraBuiltinCatalog {
                   "iter-every?", "iter-any?", "iter-take", "iter-drop", "iter-zip",
                   "iter-cycle", "iter-partition-pair", "iter-partition-all",
                   "iter-partition", "iter-range", "iter-constantly",
-                  "iter-repeatedly", "iter-iterate")));
+                  "iter-repeatedly", "iter-iterate")),
+          Map.entry(
+              "Work",
+              java.util.List.of(
+                  "default-host", "current-run", "cancelled?", "check-cancelled",
+                  "deadline-nanos", "emit", "submit-child", "on-close")));
 
   private HaraBuiltinCatalog() {}
 }

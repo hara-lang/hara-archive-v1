@@ -113,6 +113,7 @@ const SUBSTRATE_RESOURCES: &[(&str, &str)] = &[
 
 const SANDBOX_FORBIDDEN_NATIVE_TYPES: &[&str] = &[
     "Runtime", "Kernel", "Sandbox", "Package", "Crypto", "OS", "Process", "File", "Socket", "Host",
+    "Work",
 ];
 const MAX_SANDBOX_SOURCE_BYTES: usize = 1_048_576;
 
@@ -2996,13 +2997,13 @@ mod tests {
 
     #[test]
     fn raw_kernels_expose_the_foundation_data_namespaces() {
-        assert_eq!(hara_runtime::core::NATIVE_TYPES.len(), 33);
+        assert_eq!(hara_runtime::core::NATIVE_TYPES.len(), 34);
         assert_eq!(
             hara_runtime::core::NATIVE_TYPES
                 .iter()
                 .map(|(_, methods)| methods.len())
                 .sum::<usize>(),
-            389
+            397
         );
         let mut runtime = Session::new();
         assert!(runtime.env.contains_key("std.native.Edn/write"));
@@ -3035,6 +3036,7 @@ mod tests {
             "Error",
             "Base",
             "Iter",
+            "Work",
         ] {
             assert!(
                 runtime

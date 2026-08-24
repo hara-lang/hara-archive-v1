@@ -876,6 +876,13 @@ pub(crate) fn direct_function_value(name: &str) -> Option<Value> {
 /// native → facade recursion.
 pub fn native_type_function_value(native_type: &str, method: &str) -> Result<Value, String> {
     let display_name = format!("std.native.{native_type}/{method}");
+    if native_type == "Work" {
+        return crate::work::guest::values()
+            .into_iter()
+            .find(|(name, _)| *name == method)
+            .map(|(_, value)| value)
+            .ok_or_else(|| format!("unknown std.native.Work operation: {method}"));
+    }
     let value = match native_type {
         "Base" => {
             let method = method.to_owned();

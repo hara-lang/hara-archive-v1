@@ -71,6 +71,10 @@ public final class HbcValidator {
     validateHandlers(function, heights);
   }
 
+  static int[] stackHeightsForCodegen(HbcProgram program, Function function) {
+    return stackHeights(program, function);
+  }
+
   private static int[] stackHeights(HbcProgram program, Function function) {
     List<Instruction> code = function.code();
     if (code.isEmpty()) fail("function has no code");

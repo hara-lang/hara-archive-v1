@@ -2,8 +2,7 @@
   (:require [work.base.model :as base]
             [work.base.receipt :as receipt]
             [work.base.result :as result]
-            [work.base.store :as store]
-            [work.native :as native]))
+            [work.base.store :as store]))
 
 (defn native-runtime?
   [runtime]
@@ -151,7 +150,7 @@
   [runtime frame]
   (cond
     (native-runtime? runtime)
-    (native/cancelled?)
+    (std.native.Work/cancelled?)
 
     (nil? (base/runtime-store runtime))
     false

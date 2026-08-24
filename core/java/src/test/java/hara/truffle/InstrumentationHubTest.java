@@ -270,6 +270,50 @@ public class InstrumentationHubTest {
     assertEquals(Code.RUNTIME_CLOSED, error.code());
   }
 
+  @Test
+  public void nativeHbcInstrumentationOnlyRetainsPassiveInstructionAndTerminalEvents() {
+    try (InstrumentationHub hub = new InstrumentationHub()) {
+      TargetHandle target =
+          hub.registerTarget(
+              new TargetDescriptor(
+                  "hbc",
+                  "session",
+                  TargetKind.HBC,
+                  new RuntimeBackend("java-hbc"),
+                  Set.of(
+                      Capability.EVENT_INSTRUCTION,
+                      Capability.EVENT_CALL,
+                      Capability.EVENT_LIFECYCLE)));
+      InstrumentHandle nativeTrace =
+          hub.registerInstrument(
+              new InstrumentRegistration(
+                  "native-trace",
+                  "session",
+                  InstrumentMode.PASSIVE,
+                  Set.of(Capability.EVENT_INSTRUCTION, Capability.EVENT_LIFECYCLE),
+                  Set.of(EventKind.INSTRUCTION_EXECUTE, EventKind.EXECUTION_TERMINAL),
+                  InstrumentFilter.all(),
+                  ProjectionRequest.none(),
+                  EventDelivery.queue(8)));
+      hub.attach(nativeTrace, target);
+      assertTrue(hub.hbcNativeExecutionAllowed(target));
+
+      InstrumentHandle callTrace =
+          hub.registerInstrument(
+              new InstrumentRegistration(
+                  "call-trace",
+                  "session",
+                  InstrumentMode.PASSIVE,
+                  Set.of(Capability.EVENT_CALL),
+                  Set.of(EventKind.CALL_ENTER),
+                  InstrumentFilter.all(),
+                  ProjectionRequest.none(),
+                  EventDelivery.queue(8)));
+      hub.attach(callTrace, target);
+      assertTrue(!hub.hbcNativeExecutionAllowed(target));
+    }
+  }
+
   private static TargetDescriptor interpreterTarget(
       String id, String session) {
     return new TargetDescriptor(

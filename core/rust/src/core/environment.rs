@@ -416,7 +416,6 @@ impl ProtocolRegistry {
     /// Returns the built-in collection protocol registry used by evaluator dispatch.
     pub fn core() -> Self {
         let mut registry = Self::new();
-        registry.register_marker_declared("IColl", Value::supports_native_icoll);
         registry.register_marker_declared("IMutable", |value| {
             native_protocol_supports("IMutable", value)
         });
@@ -576,6 +575,18 @@ impl ProtocolRegistry {
             "with-meta",
             protocol_with_meta,
         );
+        registry.register(
+            "std.protocol.imetadata.IMetadata",
+            "metatype",
+            protocol_metatype,
+        );
+        registry.register(
+            "std.protocol.icoll.IColl",
+            "start-string",
+            protocol_coll_start,
+        );
+        registry.register("std.protocol.icoll.IColl", "end-string", protocol_coll_end);
+        registry.register("std.protocol.icoll.IColl", "sep-string", protocol_coll_sep);
         registry.register("std.protocol.ideref.IDeref", "deref", protocol_deref);
         registry.register(
             "std.protocol.iapplicable.IApplicable",

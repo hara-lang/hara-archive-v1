@@ -1,7 +1,6 @@
 (ns work.provider.ephemeral
   (:require [work.base.host :as host]
-            [work.base.execution.ephemeral :as execution]
-            [work.native :as native]))
+            [work.base.execution.ephemeral :as execution]))
 
 (def default-locator
   {:host/type :ephemeral
@@ -20,7 +19,7 @@
    (provider {}))
   ([options]
    (let [native-host (or (:native-host options)
-                         native/default-host)
+                         (std.native.Work/default-host))
          locator
          (host/normalise-locator
           {:host/type :ephemeral

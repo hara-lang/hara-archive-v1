@@ -1240,6 +1240,12 @@ public final class HaraNodes {
     @Override
     public Object execute(VirtualFrame frame) {
       Object error = value.execute(frame);
+      if (error instanceof RuntimeException runtime) {
+        throw runtime;
+      }
+      if (error instanceof Error fatal) {
+        throw fatal;
+      }
       if (!(error instanceof IExInfo)) {
         throw new HaraException("throw expects an Exception value created by ex", this);
       }

@@ -41,7 +41,7 @@ jobs:
         VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' core/rust/Cargo.toml | head -n 1)
         [ "$("$BIN" --version)" = "hara lite $VERSION" ]
         [ "$("$BIN" --project core eval '(+ 19 23)')" = "42" ]
-        OUTPUT=$("$BIN" --project core eval '(let [run (IWorkHost/work-submit work.native/default-host (fn [work input options id] input) 42 {:id "release-lite-work"})] (deref (IWorkRun/work-result run)))')
+        OUTPUT=$("$BIN" --project core eval '(let [run (IWorkHost/work-submit (std.native.Work/default-host) (fn [work input options id] input) 42 {:id "release-lite-work"})] (deref (IWorkRun/work-result run)))')
         [ "$OUTPUT" = "42" ]
     - name: Package hara-lite
       run: |

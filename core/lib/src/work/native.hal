@@ -1,4 +1,0 @@
-(ns work.native)
-
-;; Native runtimes install the process-owned ephemeral host and scope helpers
-;; in this namespace. Work protocol identities are referred to by Type.

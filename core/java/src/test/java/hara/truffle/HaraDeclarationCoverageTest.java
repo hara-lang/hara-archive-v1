@@ -11,7 +11,6 @@ import hara.lang.data.Symbol;
 import hara.lang.data.types.ILinearType;
 import hara.lang.data.types.IMapType;
 import hara.lang.declaration.HaraAvailability;
-import hara.lang.declaration.HaraHostSupport;
 import hara.lang.declaration.HaraMethod;
 import hara.lang.declaration.HaraNativeBinding;
 import hara.lang.declaration.HaraProtocolBinding;
@@ -46,9 +45,9 @@ public class HaraDeclarationCoverageTest {
       assertNotNull("compatibility snapshot is missing", input);
       json = new String(input.readAllBytes());
     }
-    assertTrue(json, json.contains("\"protocolCount\": 70"));
-    assertTrue(json, json.contains("\"declaredMethodCount\": 125"));
-    assertTrue(json, json.contains("\"nativeTypeCount\": 33"));
+    assertTrue(json, json.contains("\"protocolCount\": 72"));
+    assertTrue(json, json.contains("\"declaredMethodCount\": 129"));
+    assertTrue(json, json.contains("\"nativeTypeCount\": 34"));
     assertTrue(json, json.contains("\"IEncodeVisitor\""));
     assertTrue(json, json.contains("\"IStringLike\""));
   }
@@ -58,7 +57,7 @@ public class HaraDeclarationCoverageTest {
     IMapType contract = readMap(specsRegistry().resolve(PROTOCOLS_SPEC));
     Map<String, ProtocolSpec> expected = protocolSpecs(contract);
 
-    assertEquals("Java protocol closure must equal the specs inventory", 70, expected.size());
+    assertEquals("Java protocol closure must equal the specs inventory", 72, expected.size());
 
     for (ProtocolSpec spec : expected.values()) {
       Class<?> type = Class.forName(PROTOCOL_PACKAGE + spec.name);
@@ -102,15 +101,16 @@ public class HaraDeclarationCoverageTest {
 
   @Test
   public void runtimeDiscoveryFindsTheSameClosedProtocolSet() {
-    assertEquals(70, HaraProtocolDeclarations.discover().size());
+    Map<String, Class<?>> declarations = HaraProtocolDeclarations.discover();
+    assertEquals(72, declarations.size());
+    assertNotNull(declarations.get("IColl").getAnnotation(HaraProtocolBinding.class));
+    assertNotNull(declarations.get("IMetadata").getAnnotation(HaraProtocolBinding.class));
   }
 
   @Test
-  public void hostAndKernelInterfacesCannotAccidentallyBecomeGuestProtocols() {
-    HaraHostSupport collection = hara.lang.protocol.IColl.class.getAnnotation(HaraHostSupport.class);
-    HaraHostSupport metadata = hara.lang.protocol.IMetadata.class.getAnnotation(HaraHostSupport.class);
-    assertNotNull(collection);
-    assertNotNull(metadata);
+  public void collectionAndMetadataInterfacesAreOrdinaryAnnotatedProtocols() {
+    assertNotNull(hara.lang.protocol.IColl.class.getAnnotation(HaraProtocolBinding.class));
+    assertNotNull(hara.lang.protocol.IMetadata.class.getAnnotation(HaraProtocolBinding.class));
     assertFalse(hara.kernel.protocol.IEnv.class.isAnnotationPresent(HaraProtocolBinding.class));
     assertFalse(hara.kernel.protocol.IRuntime.class.isAnnotationPresent(HaraProtocolBinding.class));
     assertFalse(hara.kernel.protocol.IRedirect.class.isAnnotationPresent(HaraProtocolBinding.class));
@@ -123,7 +123,7 @@ public class HaraDeclarationCoverageTest {
     HaraNativeBinding[] bindings =
         HaraBuiltinCatalog.class.getAnnotationsByType(HaraNativeBinding.class);
 
-    assertEquals("Native annotation closure must equal native.edn", 33, expected.size());
+    assertEquals("Native annotation closure must equal native.edn", 34, expected.size());
     assertEquals(expected.size(), bindings.length);
 
     Map<String, HaraNativeBinding> actual = new LinkedHashMap<>();

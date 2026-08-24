@@ -3,6 +3,7 @@ package hara.truffle;
 import hara.lang.data.Keyword;
 import hara.lang.protocol.ICoroutine;
 import hara.lang.protocol.IDeref;
+import com.oracle.truffle.api.bytecode.ContinuationResult;
 import java.util.concurrent.SynchronousQueue;
 import org.graalvm.nativeimage.ImageInfo;
 
@@ -124,6 +125,13 @@ public final class StdFoundationCoroutine {
       CURRENT.set(this);
       try {
         Object result = context.invokeInContext(() -> context.invokeCallable(function, args));
+        while (result instanceof ContinuationResult continuation) {
+          status = STATUS_SUSPENDED;
+          putOutput(new Transfer(continuation.getResult(), null));
+          Object resumeValue = takeInput();
+          result =
+              context.invokeInContext(() -> continuation.continueWith(resumeValue));
+        }
         status = STATUS_DEAD;
         putOutput(new Transfer(result, null));
       } catch (CoroutineClosed closed) {
@@ -280,6 +288,13 @@ public final class StdFoundationCoroutine {
       throw new HaraException("coroutine/yield: cannot yield outside a coroutine");
     }
     return coroutine.doYield(values[0]);
+  }
+
+  /** Checks the guest continuation boundary used by native HBC yield operations. */
+  public static void requireYieldContext() {
+    if (CURRENT.get() == null) {
+      throw new HaraException("coroutine/yield: cannot yield outside a coroutine");
+    }
   }
 
   public static Object await(HaraContext context, Object[] values) {

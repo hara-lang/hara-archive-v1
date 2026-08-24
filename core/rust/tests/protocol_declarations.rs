@@ -16,19 +16,18 @@ fn annotated_protocols_close_the_specs_surface() {
             .iter()
             .filter(|protocol| protocol.availability != ProtocolAvailability::InventoryOnly)
             .count(),
-        70
+        72
     );
     assert_eq!(
         actual
             .iter()
             .map(|protocol| protocol.methods.len())
             .sum::<usize>(),
-        131
+        129
     );
 
     let actual_names = actual
         .iter()
-        .filter(|protocol| protocol.availability != ProtocolAvailability::InventoryOnly)
         .map(|protocol| protocol.name)
         .collect::<BTreeSet<_>>();
     assert_eq!(actual_names, expected.keys().copied().collect());
@@ -54,34 +53,6 @@ fn annotated_protocols_close_the_specs_surface() {
         assert_eq!(declaration.availability, expected.availability);
         assert_eq!(declaration.capability, expected.capability);
     }
-
-    for name in ["IColl", "IMetadata"] {
-        let declaration = find_protocol(name).expect("inventory-only protocol declaration");
-        assert_eq!(
-            declaration.availability,
-            ProtocolAvailability::InventoryOnly
-        );
-        assert!(!declaration.availability.is_guest_visible());
-        assert!(!declaration.methods.is_empty());
-    }
-    assert_eq!(
-        find_protocol("IColl")
-            .unwrap()
-            .methods
-            .iter()
-            .map(|method| method.name)
-            .collect::<BTreeSet<_>>(),
-        BTreeSet::from(["start-string", "end-string", "separator"])
-    );
-    assert_eq!(
-        find_protocol("IMetadata")
-            .unwrap()
-            .methods
-            .iter()
-            .map(|method| method.name)
-            .collect::<BTreeSet<_>>(),
-        BTreeSet::from(["meta", "with-meta", "metatype"])
-    );
 }
 
 #[test]

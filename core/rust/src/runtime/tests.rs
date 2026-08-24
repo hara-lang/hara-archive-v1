@@ -66,12 +66,12 @@ mod tests {
     }
 
     fn canonicalize_protocol_method_paths(source: &str) -> String {
-        core::FOUNDATION_PROTOCOLS
+        core::protocol_declarations()
             .iter()
-            .fold(source.to_owned(), |source, (protocol, _)| {
+            .fold(source.to_owned(), |source, declaration| {
                 source.replace(
-                    &format!("std.protocol.{}/", protocol.to_ascii_lowercase()),
-                    &format!("{}/", core::builtin_protocol_namespace(protocol)),
+                    &format!("std.protocol.{}/", declaration.name.to_ascii_lowercase()),
+                    &format!("{}/", declaration.runtime_name()),
                 )
             })
     }
@@ -99,7 +99,10 @@ mod tests {
 
         const ADD: &[u8] =
             b"\0asm\x01\0\0\0\x01\x07\x01\x60\x02\x7e\x7e\x01\x7e\x03\x02\x01\0\x07\x07\x01\x03add\0\0\x0a\x09\x01\x07\0\x20\0\x20\x01\x7c\x0b";
-        let root = std::env::temp_dir().join(format!("hara-runtime-package-import-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!(
+            "hara-runtime-package-import-{}",
+            std::process::id()
+        ));
         if root.exists() {
             std::fs::remove_dir_all(&root).unwrap();
         }
@@ -689,7 +692,11 @@ mod tests {
             });
         let directory = root.join("rust");
         std::fs::create_dir_all(&directory).expect("create Rust conformance report directory");
-        let status = if failures.is_empty() { ":passed" } else { ":failed" };
+        let status = if failures.is_empty() {
+            ":passed"
+        } else {
+            ":failed"
+        };
         let report = format!(
             "{{:report/schema :hara.conformance.runtime/0-alpha :report/suite :hal/stack-safety :report/runtime :rust :report/status {status} :report/passed {} :report/total {} :report/cases [{}]}}\n",
             passed,
@@ -783,9 +790,12 @@ mod tests {
                     .join("conformance")
             });
         let directory = root.join("bytecode");
-        std::fs::create_dir_all(&directory)
-            .expect("create bytecode conformance report directory");
-        let status = if failures.is_empty() { ":passed" } else { ":failed" };
+        std::fs::create_dir_all(&directory).expect("create bytecode conformance report directory");
+        let status = if failures.is_empty() {
+            ":passed"
+        } else {
+            ":failed"
+        };
         let report = format!(
             "{{:report/schema :hara.conformance.runtime/0-alpha :report/suite :hal/stack-safety :report/runtime :bytecode :report/status {status} :report/passed {} :report/total {} :report/cases [{}]}}\n",
             passed,
@@ -1394,7 +1404,10 @@ mod tests {
             runtime.eval_text("(path/parent \"/a/b\")").unwrap(),
             "\"/a\""
         );
-        assert_eq!(runtime.eval_text("(File/parent \"/a/b\")").unwrap(), "\"/a\"");
+        assert_eq!(
+            runtime.eval_text("(File/parent \"/a/b\")").unwrap(),
+            "\"/a\""
+        );
         assert_eq!(runtime.eval_text("(File/parent \"/\")").unwrap(), "nil");
         assert_eq!(
             runtime.eval_text("(path/join \"/a\" \"b\")").unwrap(),
@@ -1949,7 +1962,9 @@ mod tests {
             "\"X\""
         );
         assert_eq!(
-            runtime.eval_text("(get (ns-alias-state 'bytes) :state)").unwrap(),
+            runtime
+                .eval_text("(get (ns-alias-state 'bytes) :state)")
+                .unwrap(),
             "nil"
         );
         assert_eq!(
@@ -2292,7 +2307,7 @@ mod tests {
             return;
         };
         let fixture = canonicalize_protocol_method_paths(
-            repo_text("01-lang/001-language/draft/conformance/fixtures/protocol_surface.hal")
+            &repo_text("01-lang/001-language/draft/conformance/fixtures/protocol_surface.hal")
                 .expect("the specs-owned protocol surface fixture must be available"),
         );
         let foundation = runtime
@@ -2307,14 +2322,21 @@ mod tests {
         let mut portable_method_count = 0usize;
         let mut capability_protocol_count = 0usize;
         let mut capability_method_count = 0usize;
-        for (name, methods) in core::FOUNDATION_PROTOCOLS {
+        for declaration in core::protocol_declarations() {
+            let name = declaration.name;
             let in_contract = portable_contract.contains(&format!(":name {name}"));
-            if in_contract {
-                portable_protocol_count += 1;
-                portable_method_count += methods.len();
-            } else {
-                capability_protocol_count += 1;
-                capability_method_count += methods.len();
+            match declaration.availability {
+                crate::lang::protocol::ProtocolAvailability::Portable if in_contract => {
+                    portable_protocol_count += 1;
+                    portable_method_count += declaration.methods.len();
+                }
+                crate::lang::protocol::ProtocolAvailability::CapabilityGated if !in_contract => {
+                    capability_protocol_count += 1;
+                    capability_method_count += declaration.methods.len();
+                }
+                availability => {
+                    panic!("unexpected protocol availability for {name}: {availability:?}");
+                }
             }
             let namespace_name = core::builtin_protocol_namespace(name);
             let namespace = runtime
@@ -2329,7 +2351,7 @@ mod tests {
                 panic!("{namespace_name}/{name} is not a protocol");
             };
             assert_eq!(descriptor.name, core::builtin_protocol_name(name));
-            assert_eq!(descriptor.methods.len(), methods.len());
+            assert_eq!(descriptor.methods.len(), declaration.methods.len());
             assert!(descriptor
                 .methods
                 .keys()
@@ -2340,53 +2362,59 @@ mod tests {
                     .is_none(),
                 "std.foundation/{name} must not be a protocol alias"
             );
-            for (method, _) in *methods {
+            for method in declaration.methods {
                 let canonical_method = namespace
-                    .resolve(&lang::data::Symbol::parse(method))
-                    .unwrap_or_else(|| panic!("missing {namespace_name}/{method}"))
+                    .resolve(&lang::data::Symbol::parse(method.name))
+                    .unwrap_or_else(|| panic!("missing {namespace_name}/{}", method.name))
                     .deref_value();
                 assert_eq!(
                     runtime
                         .namespace_registry
-                        .resolve(&lang::data::Symbol::parse(&format!("{namespace_name}/{method}")))
-                        .unwrap_or_else(|| panic!("missing {namespace_name}/{method}"))
+                        .resolve(&lang::data::Symbol::parse(&format!(
+                            "{namespace_name}/{}",
+                            method.name
+                        )))
+                        .unwrap_or_else(|| panic!("missing {namespace_name}/{}", method.name))
                         .deref_value(),
                     canonical_method
                 );
                 assert!(
                     foundation
-                        .resolve(&lang::data::Symbol::parse(&format!("{name}/{method}")))
+                        .resolve(&lang::data::Symbol::parse(&format!(
+                            "{name}/{}",
+                            method.name
+                        )))
                         .is_none(),
-                    "std.foundation/{name}/{method} must not be a protocol alias"
+                    "std.foundation/{name}/{} must not be a protocol alias",
+                    method.name
                 );
                 assert!(
                     runtime
                         .namespace_registry
                         .resolve(&lang::data::Symbol::parse(&format!(
                             "std.protocol.{}/{}",
-                            protocol.to_ascii_lowercase(),
-                            method
+                            declaration.name.to_ascii_lowercase(),
+                            method.name
                         )))
                         .is_none(),
                     "legacy protocol method path must not be intrinsic"
                 );
                 if in_contract {
                     assert!(
-                        fixture.contains(&format!("({namespace_name}/{method} fixture")),
-                        "shared fixture does not directly call {namespace_name}/{method}"
+                        fixture.contains(&format!("({namespace_name}/{} fixture", method.name)),
+                        "shared fixture does not directly call {namespace_name}/{}",
+                        method.name
                     );
                 }
             }
         }
-        assert_eq!(portable_protocol_count, 55);
-        assert_eq!(portable_method_count, 105);
+        assert_eq!(portable_protocol_count, 57);
+        assert_eq!(portable_method_count, 109);
         assert_eq!(capability_protocol_count, 15);
         assert_eq!(capability_method_count, 20);
         assert!(contract.contains(":capability-specific-protocol-count 15"));
         assert!(contract.contains(":capability-specific 20"));
         for protocol in [
-            "IColl",
-            "IMetadata",
             "IHasRuntime",
             "IRanged",
             "IValidate",
@@ -2468,7 +2496,8 @@ mod tests {
     #[test]
     fn every_native_std_protocol_interface_is_requireable() {
         let mut runtime = Runtime::new();
-        for (protocol, methods) in core::FOUNDATION_PROTOCOLS {
+        for declaration in core::protocol_declarations() {
+            let protocol = declaration.name;
             let namespace = core::builtin_protocol_namespace(protocol);
             runtime
                 .eval_text(&format!("(require [{namespace}])"))
@@ -2486,10 +2515,13 @@ mod tests {
                 ),
                 "missing {namespace}/{protocol}"
             );
-            for (method, _) in *methods {
+            for method in declaration.methods {
                 assert!(
-                    loaded.resolve(&lang::data::Symbol::parse(method)).is_some(),
-                    "missing {namespace}/{method}"
+                    loaded
+                        .resolve(&lang::data::Symbol::parse(method.name))
+                        .is_some(),
+                    "missing {namespace}/{}",
+                    method.name
                 );
             }
         }
@@ -2634,7 +2666,7 @@ mod tests {
     fn shared_foundation_protocol_conformance_fixture_runs_in_the_native_runtime() {
         let mut runtime = Runtime::new();
         let source = canonicalize_protocol_method_paths(
-            repo_text("01-lang/001-language/draft/conformance/fixtures/protocol_surface.hal")
+            &repo_text("01-lang/001-language/draft/conformance/fixtures/protocol_surface.hal")
                 .expect("the specs-owned protocol surface fixture must be available"),
         );
         assert!(
@@ -2643,7 +2675,7 @@ mod tests {
         );
         let result = runtime.eval_text(&source).unwrap();
         assert!(!result.contains(":pass false"), "{result}");
-        assert_eq!(result.matches(":pass true").count(), 55, "{result}");
+        assert_eq!(result.matches(":pass true").count(), 57, "{result}");
 
         #[cfg(feature = "bytecode-vm")]
         {
@@ -2653,7 +2685,7 @@ mod tests {
                 !bytecode_result.contains(":pass false"),
                 "{bytecode_result}"
             );
-            assert_eq!(bytecode_result.matches(":pass true").count(), 55);
+            assert_eq!(bytecode_result.matches(":pass true").count(), 57);
         }
     }
 
@@ -2689,7 +2721,7 @@ mod tests {
         let mut runtime = Runtime::new();
         let result = runtime.eval_text(&source).unwrap();
         assert!(!result.contains(":pass false"), "{result}");
-        assert_eq!(result.matches(":pass true").count(), 105, "{result}");
+        assert_eq!(result.matches(":pass true").count(), 109, "{result}");
         let capability_result = runtime.eval_text("(capability-protocol-results)").unwrap();
         assert!(
             !capability_result.contains(":pass false"),
@@ -2738,7 +2770,7 @@ mod tests {
             );
             assert_eq!(
                 bytecode_result.matches(":pass true").count(),
-                105,
+                109,
                 "compiled protocol corpus did not close the authoritative method surface: {bytecode_result}"
             );
             let bytecode_capability_result = bytecode_runtime
@@ -3235,9 +3267,13 @@ mod tests {
                 _ => vec![path],
             };
             for candidate in candidates {
-                if let Some(source) = EMBEDDED_HAL_RESOURCES.iter().find_map(
-                    |(_, resource_path, source)| (*resource_path == candidate).then_some(*source),
-                ) {
+                if let Some(source) =
+                    EMBEDDED_HAL_RESOURCES
+                        .iter()
+                        .find_map(|(_, resource_path, source)| {
+                            (*resource_path == candidate).then_some(*source)
+                        })
+                {
                     return source.to_owned();
                 }
                 let local = std::path::Path::new(env!("HARA_SOURCE_ROOT"))
@@ -4070,7 +4106,9 @@ mod tests {
             .expect("identity fallback is installed");
         assert_eq!(canonical.origin(), kernel::VarOrigin::HalFallback);
         let user = runtime.namespace_registry.find("user").unwrap();
-        assert!(user.resolve(&crate::lang::data::Symbol::parse("identity")).is_none());
+        assert!(user
+            .resolve(&crate::lang::data::Symbol::parse("identity"))
+            .is_none());
         let fallback = runtime
             .namespace_registry
             .resolve(&crate::lang::data::Symbol::parse("identity"))
@@ -4159,7 +4197,12 @@ mod tests {
             .eval_text("(require [xt.collision-probe :as probe-again])")
             .unwrap();
 
-        assert_eq!(runtime.namespace_registry.module_revision("xt.collision-probe"), 1);
+        assert_eq!(
+            runtime
+                .namespace_registry
+                .module_revision("xt.collision-probe"),
+            1
+        );
         assert_eq!(runtime.eval_text("(probe/do 42)").unwrap(), "42");
         assert_eq!(runtime.eval_text("(probe-again/try 7)").unwrap(), "7");
 
@@ -4377,7 +4420,9 @@ mod tests {
             (initial_namespace_count + 1).to_string()
         );
         assert_eq!(
-            runtime.eval_text("(Runtime/namespace 'missing.lib)").unwrap(),
+            runtime
+                .eval_text("(Runtime/namespace 'missing.lib)")
+                .unwrap(),
             "nil"
         );
         runtime.alias_namespace("lib", "example.lib");
@@ -4409,14 +4454,26 @@ mod tests {
                 .unwrap(),
             "42"
         );
-        let imports = runtime.namespace_registry.find("direct.imports").unwrap().imports();
+        let imports = runtime
+            .namespace_registry
+            .find("direct.imports")
+            .unwrap()
+            .imports();
         assert_eq!(imports.len(), 3);
         assert_eq!(
-            imports.into_iter().collect::<std::collections::HashMap<_, _>>(),
+            imports
+                .into_iter()
+                .collect::<std::collections::HashMap<_, _>>(),
             std::collections::HashMap::from([
                 (crate::lang::data::Symbol::parse("math"), "math".into()),
-                (crate::lang::data::Symbol::parse("Vector"), "vendor.numeric.Vector".into()),
-                (crate::lang::data::Symbol::parse("Matrix"), "vendor.numeric.Matrix".into()),
+                (
+                    crate::lang::data::Symbol::parse("Vector"),
+                    "vendor.numeric.Vector".into()
+                ),
+                (
+                    crate::lang::data::Symbol::parse("Matrix"),
+                    "vendor.numeric.Matrix".into()
+                ),
             ])
         );
         assert_eq!(
@@ -6844,14 +6901,20 @@ mod tests {
             runtime.eval_text("(ns-state 'example.lazy)").unwrap(),
             ":loaded"
         );
-        assert_eq!(runtime.namespace_registry.module_revision("example.lazy"), 1);
+        assert_eq!(
+            runtime.namespace_registry.module_revision("example.lazy"),
+            1
+        );
 
         runtime.register_resource("example.lazy", "(ns example.lazy) (def answer 43)");
         runtime
             .eval_text("(require [example.lazy :as lazy :reload true])")
             .unwrap();
         assert_eq!(runtime.eval_text("lazy/answer").unwrap(), "43");
-        assert_eq!(runtime.namespace_registry.module_revision("example.lazy"), 2);
+        assert_eq!(
+            runtime.namespace_registry.module_revision("example.lazy"),
+            2
+        );
 
         runtime.register_resource(
             "example.lazy",
@@ -6861,7 +6924,10 @@ mod tests {
             .eval_text("(require [example.lazy :as lazy :reload true])")
             .is_err());
         assert_eq!(runtime.eval_text("lazy/answer").unwrap(), "43");
-        assert_eq!(runtime.namespace_registry.module_revision("example.lazy"), 2);
+        assert_eq!(
+            runtime.namespace_registry.module_revision("example.lazy"),
+            2
+        );
         assert_eq!(
             runtime.eval_text("(ns-state 'example.lazy)").unwrap(),
             ":loaded"
@@ -6973,7 +7039,12 @@ mod tests {
             .eval_text("(require [graph.root :as graph])")
             .unwrap();
         assert_eq!(runtime.eval_text("graph/answer").unwrap(), "42");
-        assert_eq!(runtime.namespace_registry.module_revision("graph.dependency"), 1);
+        assert_eq!(
+            runtime
+                .namespace_registry
+                .module_revision("graph.dependency"),
+            1
+        );
         assert_eq!(runtime.namespace_registry.module_revision("graph.root"), 1);
         assert_eq!(
             runtime
@@ -7014,7 +7085,10 @@ mod tests {
         assert!(runtime.namespace_registry.find("cycle.first").is_none());
         assert!(runtime.namespace_registry.find("cycle.second").is_none());
         assert_eq!(runtime.namespace_registry.module_revision("cycle.first"), 0);
-        assert_eq!(runtime.namespace_registry.module_revision("cycle.second"), 0);
+        assert_eq!(
+            runtime.namespace_registry.module_revision("cycle.second"),
+            0
+        );
         assert!(runtime
             .namespace_registry
             .module_dependencies("cycle.first")
@@ -7272,8 +7346,22 @@ mod tests {
                 .unwrap(),
             "false"
         );
-        assert_eq!(kernel.session(&alpha).unwrap().module_revision("session.module").unwrap(), 1);
-        assert_eq!(kernel.session(&beta).unwrap().module_revision("session.module").unwrap(), 0);
+        assert_eq!(
+            kernel
+                .session(&alpha)
+                .unwrap()
+                .module_revision("session.module")
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            kernel
+                .session(&beta)
+                .unwrap()
+                .module_revision("session.module")
+                .unwrap(),
+            0
+        );
         assert!(kernel.eval(&beta, "(chosen)").is_err());
     }
 
@@ -7962,9 +8050,7 @@ mod tests {
                         .expect("the shared agent protocol fixture must be available");
                 let mut runtime = development_runtime();
                 runtime.eval_text(&source).unwrap();
-                let output = runtime
-                    .eval_text("(map Result/success? results)")
-                    .unwrap();
+                let output = runtime.eval_text("(map Result/success? results)").unwrap();
                 assert_eq!(output, "[true true true true true true true]");
             })
             .unwrap()
@@ -8033,7 +8119,7 @@ mod tests {
         assert_eq!(
             runtime
                 .eval_text(
-                    "(let [host work.native/default-host
+                    "(let [host (std.native.Work/default-host)
                            run (IWorkHost/work-submit
                                 host
                                 (fn [work input options id] input)
@@ -8059,15 +8145,15 @@ mod tests {
             runtime
                 .eval_text(
                     "(let [run (IWorkHost/work-submit
-                                 work.native/default-host
+                                 (std.native.Work/default-host)
                                  :payload
                                  42
                                  {:id \"guest-scope-functions\"
                                   :work/execute
                                   (fn [work input options id]
-                                    [(IWorkRef/work-id (work.native/current-run))
-                                     (work.native/cancelled?)
-                                     (work.native/on-close (fn [run] nil))
+                                    [(IWorkRef/work-id (std.native.Work/current-run))
+                                     (std.native.Work/cancelled?)
+                                     (std.native.Work/on-close (fn [run] nil))
                                      input])})]
                        (deref (IWorkRun/work-result run)))",
                 )
@@ -8692,29 +8778,27 @@ mod tests {
     fn integer_arithmetic_promotes_machine_integer_overflow() {
         let mut runtime = Runtime::new();
         assert_eq!(
-            runtime
-                .eval_text("(inc 9223372036854775807)")
-                .unwrap(),
+            runtime.eval_text("(inc 9223372036854775807)").unwrap(),
             "9223372036854775808"
         );
         assert_eq!(
-            runtime
-                .eval_text("(dec -9223372036854775808)")
-                .unwrap(),
+            runtime.eval_text("(dec -9223372036854775808)").unwrap(),
             "-9223372036854775809"
         );
         assert_eq!(
-            runtime
-                .eval_text("(* 9223372036854775807 2)")
-                .unwrap(),
+            runtime.eval_text("(* 9223372036854775807 2)").unwrap(),
             "18446744073709551614"
         );
         assert_eq!(
-            runtime.eval_text("(+ 9223372036854775808 -9223372036854775807)").unwrap(),
+            runtime
+                .eval_text("(+ 9223372036854775808 -9223372036854775807)")
+                .unwrap(),
             "1"
         );
         assert_eq!(
-            runtime.eval_text("(integer? (inc 9223372036854775807))").unwrap(),
+            runtime
+                .eval_text("(integer? (inc 9223372036854775807))")
+                .unwrap(),
             "true"
         );
     }

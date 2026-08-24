@@ -116,7 +116,7 @@ RESULT=$("$WORK/lite-bin/hara-lite" eval '(+ 19 23)' 2>/dev/null || true)
 check "installed hara-lite evaluates (+ 19 23) => 42" test "$RESULT" = "42"
 RESULT=$("$WORK/lite-bin/hara-lite" eval '(do (require [work.base :as work]) (:op (work/work-spec (work/pure :identity identity))))' 2>/dev/null || true)
 check "installed hara-lite loads pure work primitives" test "$RESULT" = ":pure"
-RESULT=$("$WORK/lite-bin/hara-lite" eval '(let [run (IWorkHost/work-submit work.native/default-host (fn [work input options id] input) 42 {:id "installed-lite-work"})] (deref (IWorkRun/work-result run)))' 2>/dev/null || true)
+RESULT=$("$WORK/lite-bin/hara-lite" eval '(let [run (IWorkHost/work-submit (std.native.Work/default-host) (fn [work input options id] input) 42 {:id "installed-lite-work"})] (deref (IWorkRun/work-result run)))' 2>/dev/null || true)
 check "installed hara-lite submits native work" test "$RESULT" = "42"
 case "$OUT" in
   *EXIT:*) not_ok "lite installer exit status was 0" ;;

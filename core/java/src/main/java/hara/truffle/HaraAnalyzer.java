@@ -1241,10 +1241,10 @@ final class HaraAnalyzer {
       Object selector = catchForm.nth(1);
       Symbol binding;
       int bodyStart;
-      if (selector instanceof Symbol symbol
-          && symbol.getNamespace() == null
-          && !"Exception".equals(symbol.getName())
-          && !"Throwable".equals(symbol.getName())) {
+      if (catchForm.count() == 3) {
+        if (!(selector instanceof Symbol symbol) || symbol.getNamespace() != null) {
+          throw error("unconditional catch expects an unqualified binding and body", catchForm);
+        }
         selector = null;
         binding = symbol;
         bodyStart = 2;
@@ -1276,7 +1276,9 @@ final class HaraAnalyzer {
   private void validateCatchSelector(Object selector, Object form) {
     if (selector instanceof Symbol symbol
         && symbol.getNamespace() == null
-        && ("Exception".equals(symbol.getName()) || "Throwable".equals(symbol.getName()))) {
+        && ("Exception".equals(symbol.getName())
+            || "Throwable".equals(symbol.getName())
+            || context.hasNativeSymbol(symbol))) {
       return;
     }
     if (selector instanceof Keyword keyword) {

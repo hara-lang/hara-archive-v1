@@ -4,7 +4,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::time::Duration;
 
-const PROVIDER: &str = "work.native";
+const PROVIDER: &str = "std.native.Work";
 const HOST_TYPE: &str = "WorkHost";
 const RUN_TYPE: &str = "WorkRun";
 const HOST_HANDLE: u64 = 1;
@@ -35,8 +35,14 @@ pub(crate) fn default_host_value() -> Value {
 pub(crate) fn values() -> Vec<(&'static str, Value)> {
     vec![
         (
+            "default-host",
+            crate::core::native_function("std.native.Work/default-host", 0, |_| {
+                Ok(default_host_value())
+            }),
+        ),
+        (
             "current-run",
-            crate::core::native_function("work.native/current-run", 0, |_| {
+            crate::core::native_function("std.native.Work/current-run", 0, |_| {
                 Ok(current_work_context()
                     .map(|context| register_run(context.run))
                     .unwrap_or(Value::Nil))
@@ -44,7 +50,7 @@ pub(crate) fn values() -> Vec<(&'static str, Value)> {
         ),
         (
             "cancelled?",
-            crate::core::native_function("work.native/cancelled?", 0, |_| {
+            crate::core::native_function("std.native.Work/cancelled?", 0, |_| {
                 current_work_context()
                     .map(|context| Value::Bool(context.cancelled()))
                     .ok_or_else(|| "cancelled? requires an active native work context".into())
@@ -52,7 +58,7 @@ pub(crate) fn values() -> Vec<(&'static str, Value)> {
         ),
         (
             "check-cancelled",
-            crate::core::native_function("work.native/check-cancelled", 0, |_| {
+            crate::core::native_function("std.native.Work/check-cancelled", 0, |_| {
                 current_work_context()
                     .ok_or_else(|| {
                         "check-cancelled requires an active native work context".to_string()
@@ -64,7 +70,7 @@ pub(crate) fn values() -> Vec<(&'static str, Value)> {
         ),
         (
             "deadline-nanos",
-            crate::core::native_function("work.native/deadline-nanos", 0, |_| {
+            crate::core::native_function("std.native.Work/deadline-nanos", 0, |_| {
                 let context = current_work_context().ok_or_else(|| {
                     "deadline-nanos requires an active native work context".to_string()
                 })?;
@@ -76,7 +82,7 @@ pub(crate) fn values() -> Vec<(&'static str, Value)> {
         ),
         (
             "emit",
-            crate::core::native_function("work.native/emit", 2, |arguments| {
+            crate::core::native_function("std.native.Work/emit", 2, |arguments| {
                 let context = current_work_context()
                     .ok_or_else(|| "emit requires an active native work context".to_string())?;
                 Ok(Value::Bool(
@@ -87,7 +93,7 @@ pub(crate) fn values() -> Vec<(&'static str, Value)> {
         (
             "submit-child",
             crate::core::native_fixed_variadic_function(
-                "work.native/submit-child",
+                "std.native.Work/submit-child",
                 2,
                 |arguments| {
                     if !(2..=3).contains(&arguments.len()) {
@@ -126,7 +132,7 @@ pub(crate) fn values() -> Vec<(&'static str, Value)> {
         ),
         (
             "on-close",
-            crate::core::native_function("work.native/on-close", 1, |arguments| {
+            crate::core::native_function("std.native.Work/on-close", 1, |arguments| {
                 let context = current_work_context()
                     .ok_or_else(|| "on-close requires an active native work context".to_string())?;
                 let Value::Function(function) = arguments[0].clone() else {
