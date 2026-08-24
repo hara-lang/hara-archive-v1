@@ -14,9 +14,11 @@
 
 (defn makefile-parse [config]
   (let [result
-        (sh/run ["/bin/bash" "-c"
-                 "grep -oE '^[a-zA-Z0-9_-]+:([^=]|$)' Makefile | sed 's/[^a-zA-Z0-9_-]*$//'" ]
-                {:cwd (common/make-dir config)})]
+        (sh/require-success
+         "Makefile parsing failed"
+         (sh/run ["/bin/bash" "-c"
+                  "grep -oE '^[a-zA-Z0-9_-]+:([^=]|$)' Makefile | sed 's/[^a-zA-Z0-9_-]*$//'" ]
+                 {:cwd (common/make-dir config)}))]
     (string/split-lines (string/trim (:stdout result)))))
 
 (defn build-default [config]

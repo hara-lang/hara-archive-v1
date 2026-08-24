@@ -15,6 +15,14 @@
   [argv options]
   {:command argv :stdout "out\n" :stderr "err\n" :exit 7})
 
+(defn result-failing-runner
+  [argv options]
+  (Result/create
+   :error
+   (ex :dependency
+       {:command argv :stdout "out\n" :stderr "err\n" :exit 7})
+   {:tool.sh/operation :run}))
+
 (def results
   [(test-check
     "legacy :root is normalized to cwd rather than git -C"
@@ -79,6 +87,14 @@
        :stdout "out\n"
        :stderr "err\n"
        :exit 7}
-      :hara/host]])])
+      :hara/host]])
+
+   (test-check
+    "native Result failures normalize to the legacy Git record"
+    (git/git-result ["status"] {:tool.sh/runner result-failing-runner})
+    {:command ["git" "status"]
+     :stdout "out\n"
+     :stderr "err\n"
+     :exit 7})])
 
 results

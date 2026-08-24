@@ -133,7 +133,8 @@
 (defn command-result
   [language root]
   (try
-    (sh/run (get +runtime-commands+ language) {:cwd root})
+    (sh/result-record
+     (sh/run (get +runtime-commands+ language) {:cwd root}))
     (catch error
       {:exit -1
        :stdout ""

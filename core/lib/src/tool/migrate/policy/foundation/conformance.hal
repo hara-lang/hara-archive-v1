@@ -389,7 +389,7 @@
 
 (defn host-read-existing
   [file]
-  (let [result (sh/run ["/bin/test" "-f" file])]
+  (let [result (sh/result-record (sh/run ["/bin/test" "-f" file]))]
     (if (= 0 (:exit result))
       (host-read file)
       nil)))

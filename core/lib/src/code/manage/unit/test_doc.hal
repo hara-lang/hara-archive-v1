@@ -581,10 +581,11 @@
             ready (filter (fn [entry] (= :generated (:status entry))) generated)
             validation
             (if (empty? ready)
-              {:exit 0 :stdout "" :stderr ""}
+              (Result/create :success {:exit 0 :stdout "" :stderr ""})
               (validate-generated (:generated-root options) options))
             deleted
-            (if (= 0 (:exit validation))
+            (if (and (Result/success? validation)
+                     (= 0 (:exit (Result/data validation))))
               (delete-verified generated test-root)
               [])]
         {:exported (frequencies (map :status exported))

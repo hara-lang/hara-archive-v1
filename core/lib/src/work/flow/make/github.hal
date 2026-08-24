@@ -14,7 +14,7 @@
     {:cwd (str (:root value) "/" (:build value))}))
 
 (defn- gh-run [argv options]
-  (let [result (sh/run argv options)]
+  (let [result (sh/result-record (sh/run argv options))]
     (if (or (= 0 (:exit result)) (not *verbose*))
       result
       (throw (ex :host result :ex/message "GitHub command failed")))))

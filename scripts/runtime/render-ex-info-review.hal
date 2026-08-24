@@ -4,12 +4,16 @@
             [tool.sh :as sh]))
 
 (defn host-read [file]
-  (let [result (sh/run ["/bin/cat" file] {:trim false})]
-    (if (= 0 (:exit result))
-      (:stdout result)
-      (throw (ex :tool.migrate/review-read
-                 {:ex/message "Cannot read classified ex-info catalog"
-                  :path file})))))
+  (let [outcome (sh/run ["/bin/cat" file])]
+    (if (Result/success? outcome)
+      (:stdout (Result/data outcome))
+      (let [error (Result/error-value outcome)
+            data (ex-data error)]
+        (if (and (map? data) (has? data :exit))
+          (throw (ex :tool.migrate/review-read
+                     {:ex/message "Cannot read classified ex-info catalog"
+                      :path file}))
+          (throw error))))))
 
 (defn host-write [file text]
   (let [process (Process/spawn ["/usr/bin/tee" file])]

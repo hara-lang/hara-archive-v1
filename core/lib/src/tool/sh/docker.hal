@@ -17,7 +17,8 @@
   ([argv]
    (command-result argv {}))
   ([argv value]
-   ((execution-runner value) argv (execution-options value))))
+   (sh/result-record
+    ((execution-runner value) argv (execution-options value)))))
 
 (defn command
   "Executes Docker argv and rejects non-zero results."
