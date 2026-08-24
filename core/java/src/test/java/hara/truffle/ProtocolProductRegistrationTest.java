@@ -5,7 +5,10 @@ import static org.junit.Assert.assertEquals;
 import org.graalvm.polyglot.Context;
 import org.junit.Test;
 
-/** Focused coverage for the paired products emitted by one built-in protocol declaration. */
+/**
+ * Proves that one built-in protocol declaration emits dotted and slash products backed by the
+ * same protocol descriptor and dispatch behavior.
+ */
 public class ProtocolProductRegistrationTest {
   @Test
   public void dottedAndSlashProductsResolveAndShareProtocolDispatch() {
