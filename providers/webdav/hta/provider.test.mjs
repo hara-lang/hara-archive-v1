@@ -298,3 +298,41 @@ test("trusted host configuration rejects credential-bearing or insecure roots", 
     /invalid escaping/
   );
 });
+
+test("trusted host binds mount teardown to the owning HTA context", async () => {
+  const fixture = createFixture({ hangingRead: true });
+  let originalCloses = 0;
+  const kernelContext = {
+    async close() {
+      originalCloses += 1;
+    }
+  };
+  const host = createWebdavFetchHost({
+    rootUrl: "https://dav.example.test/dav/",
+    fetch: fixture.fetch,
+    capabilities: ["read", "entries"]
+  });
+  const provider = createWebdavProvider();
+  const context = {
+    signal: new AbortController().signal,
+    hostCall(service, method, args) {
+      const handler = host.hostCalls[`${service}/${method}`];
+      return handler.call({ kernelContext }, ...args);
+    }
+  };
+  const opened = await provider.call("browser", "open", [{}], context);
+  const pending = provider.call("browser", "read", [opened.id, "/docs/alpha.txt"], context);
+  await new Promise(resolve => setTimeout(resolve, 0));
+
+  const first = kernelContext.close();
+  const second = kernelContext.close();
+  await assert.rejects(pending, /file\/cancelled/);
+  await Promise.all([first, second]);
+
+  assert.equal(originalCloses, 1);
+  assert.equal(fixture.readAborted(), true);
+  await assert.rejects(
+    provider.call("browser", "stat", [opened.id, "/docs"], context),
+    /file\/provider-closed/
+  );
+});
