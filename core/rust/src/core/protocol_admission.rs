@@ -115,15 +115,15 @@ mod protocol_admission_tests {
         protocols
     }
 
-    fn invoke_assoc(protocols: &ProtocolRegistry, receiver: Value) -> Result<Value, String> {
+    fn invoke_assoc(
+        protocols: &ProtocolRegistry,
+        receiver: Value,
+        key: Value,
+    ) -> Result<Value, String> {
         protocols.invoke(
             "std.protocol.iassoc.IAssoc",
             "assoc",
-            &[
-                receiver,
-                Value::Number(0),
-                Value::String("replacement".into()),
-            ],
+            &[receiver, key, Value::String("replacement".into())],
         )
     }
 
@@ -131,16 +131,28 @@ mod protocol_admission_tests {
     fn assoc_admission_matches_implemented_immutable_receivers() {
         let protocols = registry();
         let values = [
-            Value::Nil,
-            Value::Tuple(Box::new(PTuple::Tup1([Value::Number(1)]))),
-            Value::Vector([Value::Number(1)].into_iter().collect()),
-            Value::Deque(Box::new([Value::Number(1)].into_iter().collect())),
-            Value::Map(PMap::new()),
-            Value::Object(Rc::new(RefCell::new(Vec::new()))),
+            (Value::Nil, Value::Number(0)),
+            (
+                Value::Tuple(Box::new(PTuple::Tup1([Value::Number(1)]))),
+                Value::Number(0),
+            ),
+            (
+                Value::Vector([Value::Number(1)].into_iter().collect()),
+                Value::Number(0),
+            ),
+            (
+                Value::Deque(Box::new([Value::Number(1)].into_iter().collect())),
+                Value::Number(0),
+            ),
+            (Value::Map(PMap::new()), Value::Number(0)),
+            (
+                Value::Object(Rc::new(RefCell::new(Vec::new()))),
+                Value::String("field".into()),
+            ),
         ];
-        for value in values {
+        for (value, key) in values {
             assert!(
-                invoke_assoc(&protocols, value).is_ok(),
+                invoke_assoc(&protocols, value, key).is_ok(),
                 "admitted assoc receiver must invoke the implementation"
             );
         }
@@ -154,7 +166,7 @@ mod protocol_admission_tests {
             Value::Set(PSet::new()),
             Value::List(PList::new()),
         ] {
-            let error = invoke_assoc(&protocols, value).unwrap_err();
+            let error = invoke_assoc(&protocols, value, Value::Number(0)).unwrap_err();
             assert!(error.contains("protocol/unsupported-receiver"), "{error}");
         }
     }
