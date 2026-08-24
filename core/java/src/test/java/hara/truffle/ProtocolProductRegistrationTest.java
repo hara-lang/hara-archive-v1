@@ -7,7 +7,7 @@ import org.junit.Test;
 
 /**
  * Proves that one built-in protocol declaration emits dotted and slash products backed by the
- * same protocol descriptor and dispatch behavior.
+ * same Vars and protocol dispatch behavior.
  */
 public class ProtocolProductRegistrationTest {
   @Test
@@ -19,6 +19,22 @@ public class ProtocolProductRegistrationTest {
               .eval(
                   HaraLanguage.ID,
                   "(= std.protocol.iassoc.IAssoc std.protocol.iassoc/IAssoc)")
+              .toString());
+      assertEquals(
+          "true",
+          context
+              .eval(
+                  HaraLanguage.ID,
+                  "(= (var std.protocol.iassoc.IAssoc) "
+                      + "(var std.protocol.iassoc/IAssoc))")
+              .toString());
+      assertEquals(
+          "true",
+          context
+              .eval(
+                  HaraLanguage.ID,
+                  "(= (var std.protocol.iassoc.IAssoc/assoc) "
+                      + "(var std.protocol.iassoc/assoc))")
               .toString());
       assertEquals(
           "true",
