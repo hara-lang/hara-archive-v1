@@ -1805,9 +1805,9 @@ public class HaraLanguageTest {
         assertTrue(
             protocol,
             context
-                .eval(HaraLanguage.ID, protocolNamespace + "/" + protocol)
+                .eval(HaraLanguage.ID, protocolNamespace + "." + protocol + "/" + protocol)
                 .toString()
-                .contains(protocolNamespace + "/" + protocol));
+                .contains(protocolNamespace + "." + protocol));
         assertTrue(
             protocol,
             context
@@ -1825,25 +1825,25 @@ public class HaraLanguageTest {
       assertEquals(
           3L,
           context
-              .eval(HaraLanguage.ID, "(std.protocol.icount/count [1 2 3])")
+              .eval(HaraLanguage.ID, "(std.protocol.icount.ICount/count [1 2 3])")
               .asLong());
       assertTrue(
           context
-              .eval(HaraLanguage.ID, "(std.protocol.icas/cas (atom 1) 1 2)")
+              .eval(HaraLanguage.ID, "(std.protocol.icas.ICas/cas (atom 1) 1 2)")
               .asBoolean());
       assertEquals(
           6L,
           context
               .eval(
                   HaraLanguage.ID,
-                  "(std.protocol.ireduce/reduce [1 2 3] + 0)")
+                  "(std.protocol.ireduce.IReduce/reduce [1 2 3] + 0)")
               .asLong());
       assertEquals(
           ":fulfilled",
           context
               .eval(
                   HaraLanguage.ID,
-                  "(std.protocol.ipromise/state (std.foundation.promise/from 7))")
+                  "(std.protocol.ipromise.IPromise/state (std.foundation.promise/from 7))")
               .toString());
       assertEquals(
           ":loaded",
@@ -1864,7 +1864,7 @@ public class HaraLanguageTest {
                 () ->
                     context.eval(
                         HaraLanguage.ID,
-                        hiddenNamespace + "/" + unavailableProtocol));
+                        hiddenNamespace + "." + unavailableProtocol + "/" + unavailableProtocol));
         assertTrue(hiddenCanonical.getMessage().contains("Unbound symbol"));
         PolyglotException hiddenFoundation =
             assertThrows(
@@ -2031,7 +2031,7 @@ public class HaraLanguageTest {
           context
               .eval(
                   HaraLanguage.ID,
-                  "(try (std.protocol.icount/count) false "
+                  "(try (std.protocol.icount.ICount/count) false "
                       + "(catch Throwable error true))")
               .asBoolean());
     }

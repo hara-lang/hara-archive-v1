@@ -712,7 +712,9 @@ fn list(v: Vec<Form>, env: Rc<RefCell<HashMap<String, Value>>>, k: Cont) -> Step
         Some("std.foundation.coroutine/status") => coroutine::status_form(v, env, k),
         Some("std.foundation.coroutine/close") => coroutine::close_form(v, env, k),
         Some("std.foundation.coroutine/resume") => coroutine::resume_form(v, env, k),
-        Some("std.protocol.icoroutine/resume") => coroutine::resume_protocol_form(v, env, k),
+        Some("std.protocol.icoroutine.ICoroutine/resume") => {
+            coroutine::resume_protocol_form(v, env, k)
+        }
         Some("std.foundation.coroutine/yield")
         | Some("std.native.Coroutine/yield")
         | Some("Coroutine/yield") => coroutine::yield_form(v, env, k),

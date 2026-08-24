@@ -1794,7 +1794,7 @@ public final class HaraContext {
       String name, Map<String, Integer> methodArities, java.util.List<HaraProtocol> parents) {
     String canonicalNamespace = builtinProtocolNamespace(name);
     HaraProtocol protocol =
-        new HaraProtocol(canonicalNamespace + "/" + name, methodArities, parents);
+        new HaraProtocol(canonicalNamespace, methodArities, parents);
     namespace(canonicalNamespace).define(name, protocol, null, definitionOrigin);
     namespace(FOUNDATION_NAMESPACE).define(name, protocol, null, definitionOrigin);
     defineBuiltinProtocolMethods(canonicalNamespace, protocol, definitionOrigin);
@@ -1804,8 +1804,7 @@ public final class HaraContext {
   private HaraProtocol defineProtocol(
       String name, Map<String, Integer> methodArities, HaraVar.Origin origin) {
     String canonicalNamespace = builtinProtocolNamespace(name);
-    HaraProtocol protocol =
-        new HaraProtocol(canonicalNamespace + "/" + name, methodArities);
+    HaraProtocol protocol = new HaraProtocol(canonicalNamespace, methodArities);
     namespace(canonicalNamespace).define(name, protocol, null, origin);
     namespace(FOUNDATION_NAMESPACE).define(name, protocol, null, origin);
     defineBuiltinProtocolMethods(canonicalNamespace, protocol, origin);

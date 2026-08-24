@@ -2413,20 +2413,20 @@ mod tests {
         }
         assert_eq!(
             runtime
-                .eval_text("(std.protocol.icount/count [1 2 3])")
+                .eval_text("(std.protocol.icount.ICount/count [1 2 3])")
                 .unwrap(),
             "3"
         );
         assert_eq!(
             runtime
-                .eval_text("(std.protocol.icas/cas (atom 1) 1 2)")
+                .eval_text("(std.protocol.icas.ICas/cas (atom 1) 1 2)")
                 .unwrap(),
             "true"
         );
         assert_eq!(
             runtime
                 .eval_text(
-                    "(std.protocol.ireduce/reduce \
+                    "(std.protocol.ireduce.IReduce/reduce \
                        [1 2 3] (fn [left right] (+ left right)) 0)",
                 )
                 .unwrap(),
@@ -2434,7 +2434,9 @@ mod tests {
         );
         assert_eq!(
             runtime
-                .eval_text("(std.protocol.ipromise/state (std.foundation.promise/from 7))")
+                .eval_text(
+                    "(std.protocol.ipromise.IPromise/state (std.foundation.promise/from 7))",
+                )
                 .unwrap(),
             ":fulfilled"
         );
@@ -2872,7 +2874,7 @@ mod tests {
         assert_eq!(
             runtime
                 .eval_text(
-                    "(try (std.protocol.icount/count) false \
+                    "(try (std.protocol.icount.ICount/count) false \
                        (catch Throwable error true))"
                 )
                 .unwrap(),
@@ -4897,7 +4899,9 @@ mod tests {
         );
         assert_eq!(
             runtime
-                .eval_text("(std.protocol.ifind/find #ptr {:context :kernel :id \"ROOT\"} :id)")
+                .eval_text(
+                    "(std.protocol.ifind.IFind/find #ptr {:context :kernel :id \"ROOT\"} :id)",
+                )
                 .unwrap(),
             "[:id \"ROOT\"]"
         );
