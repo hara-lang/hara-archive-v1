@@ -2487,12 +2487,11 @@ public final class HaraContext {
                 throw new HaraException("ex expects a code, attributes map, and key/value pairs");
               }
               Object codeValue = values[0];
-              Object attributesValue;
-              if (values.length == 2) {
-                attributesValue = values[1];
-              } else {
+              Object attributesValue = values[1];
+              if (values.length > 2) {
                 Object[] assocValues = new Object[values.length - 1];
-                System.arraycopy(values, 1, assocValues, 0, assocValues.length);
+                assocValues[0] = attributesValue;
+                System.arraycopy(values, 2, assocValues, 1, values.length - 2);
                 attributesValue = associateValues(assocValues);
               }
               Object rawCode = HaraBox.unwrap(codeValue);
