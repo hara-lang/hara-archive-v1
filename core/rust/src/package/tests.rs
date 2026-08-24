@@ -148,6 +148,26 @@ fn validates_and_builds_deterministic_archive() {
 }
 
 #[test]
+fn packages_only_explicit_source_files_from_custom_manifest() {
+    let root = fixture();
+    fs::write(root.join("src/example/provider.hal"), "(ns example.provider) 7\n").unwrap();
+    fs::write(
+        root.join("portable.edn"),
+        "{:hara/type :project :hara/version \"1.0.0\" :project/id \"hara:example/portable\" :project/version \"1.0.0\" :project/source-paths [] :project/source-files [\"src/example/main.hal\"] :project/test-paths [] :project/extension-paths [] :project/capabilities #{} :project/dependencies {}}",
+    )
+    .unwrap();
+    let project = read_project(&root.join("portable.edn")).unwrap();
+    let archive = root.join("portable.harp");
+    build_archive(&project, &archive).unwrap();
+    let file = File::open(&archive).unwrap();
+    let mut zip = ZipArchive::new(file).unwrap();
+    assert!(zip.by_name("project.edn").is_ok());
+    assert!(zip.by_name("src/example/main.hal").is_ok());
+    assert!(zip.by_name("src/example/provider.hal").is_err());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn rejects_missing_project_keys_and_bad_ranges() {
     let root = fixture();
     fs::write(root.join("project.edn"), "{:hara/type :project}").unwrap();

@@ -50,6 +50,11 @@ pub struct Project {
     /// Whether the intentionally portable workspace declaration is a package
     /// resource.  This never includes a live Studio workspace or cache.
     pub package_workspace: bool,
+    /// Optional explicit HAL files to include when building a package.
+    ///
+    /// This keeps package projects rooted next to canonical sources without
+    /// recursively archiving runtime-specific siblings.
+    pub source_files: Option<Vec<PathBuf>>,
     pub main: Option<String>,
     pub default_profile: Option<String>,
     pub profiles: BTreeMap<String, ProjectProfile>,
@@ -258,6 +263,9 @@ pub fn read(input: &Path) -> Result<Project, String> {
         .map(package_workspace)
         .transpose()?
         .unwrap_or(false);
+    let source_files = lookup(entries, "project/source-files")
+        .map(|value| paths(value, "project/source-files"))
+        .transpose()?;
     let main = lookup(entries, "project/main")
         .map(|value| scalar(value, "project.edn :project/main"))
         .transpose()?;
@@ -341,6 +349,7 @@ pub fn read(input: &Path) -> Result<Project, String> {
         artifact_paths,
         archive_root,
         package_workspace,
+        source_files,
         main,
         default_profile,
         profiles,

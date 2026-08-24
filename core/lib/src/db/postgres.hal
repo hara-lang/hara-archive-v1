@@ -30,6 +30,7 @@
 
 (def describe connection/describe)
 (def capabilities connection/capabilities)
+(def provider-descriptor connection/provider-descriptor)
 (def version connection/version)
 (def wait-ready connection/wait-ready)
 

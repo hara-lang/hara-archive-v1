@@ -10,3 +10,158 @@
   (db-exec [connection sql parameters])
   (db-query [connection sql parameters])
   (db-close [connection]))
+
+(defprotocol IDatabaseProvider
+  (db-provider-contract [connection]))
+
+(defprotocol IDatabaseLifecycle
+  (db-reset [connection]))
+
+(defn ^{:public true} db-provider-descriptor
+  "Constructs a provider descriptor without runtime-owned state."
+  [provider engine capabilities]
+  {:provider/id provider
+   :provider/engine engine
+   :provider/capabilities (vec capabilities)})
+
+(defn ^{:public true} db-provider-descriptor?
+  "Returns true for a complete, runtime-neutral provider descriptor."
+  [value]
+  (and (map? value)
+       (= (set (keys value))
+          #{:provider/id :provider/engine :provider/capabilities})
+       (keyword? (:provider/id value))
+       (keyword? (:provider/engine value))
+       (vector? (:provider/capabilities value))
+       (every? (fn [capability]
+                 (or (keyword? capability) (string? capability)))
+               (:provider/capabilities value))))
+
+(defn ^{:public true} db-provider-id
+  [descriptor]
+  (:provider/id descriptor))
+
+(defn ^{:public true} db-provider-engine
+  [descriptor]
+  (:provider/engine descriptor))
+
+(defn ^{:public true} db-provider-capabilities
+  [descriptor]
+  (:provider/capabilities descriptor))
+
+(defn ^{:public true} db-provider-supports?
+  [descriptor capability]
+  (and (db-provider-descriptor? descriptor)
+       (some (fn [candidate] (= candidate capability))
+             (:provider/capabilities descriptor))))
+
+(defn ^{:public true} db-register-provider
+  "Registers only provider identity and capabilities, never runtime handles."
+  [registry descriptor]
+  (if (db-provider-descriptor? descriptor)
+    (assoc registry (:provider/id descriptor) descriptor)
+    (throw
+     (ex :argument {:descriptor descriptor}
+         :ex/message "Invalid database provider descriptor"))))
+
+(defn ^{:public true} db-registered-provider
+  [registry provider]
+  (get registry provider))
+
+(defn ^{:public true} db-result
+  "Constructs the stable database result shape used by all providers."
+  ([rows]
+   (db-result [] rows 0))
+  ([columns rows affected]
+   {:columns (vec (or columns []))
+    :rows (vec (or rows []))
+    :affected affected}))
+
+(defn ^{:public true} db-result?
+  [value]
+  (and (map? value)
+       (vector? (:columns value))
+       (vector? (:rows value))
+       (number? (:affected value))))
+
+(defn ^{:public true} db-result-columns
+  [result]
+  (:columns result))
+
+(defn ^{:public true} db-result-rows
+  [result]
+  (:rows result))
+
+(defn ^{:public true} db-result-affected
+  [result]
+  (:affected result))
+
+(defn ^{:public true} db-error
+  "Constructs a stable, provider-neutral database error value."
+  ([type message]
+   (db-error type message {}))
+  ([type message data]
+   {:db/type type
+    :db/message message
+    :db/data data}))
+
+(defn ^{:public true} db-error?
+  [value]
+  (and (map? value)
+       (keyword? (:db/type value))
+       (string? (:db/message value))
+       (map? (:db/data value))))
+
+(defn ^{:public true} db-error-type
+  [error]
+  (:db/type error))
+
+(defn ^{:public true} db-error-message
+  [error]
+  (:db/message error))
+
+(defn ^{:public true} db-error-data
+  [error]
+  (:db/data error))
+
+(defn ^{:public true} db-begin
+  [connection]
+  (db-exec connection "begin" []))
+
+(defn ^{:public true} db-commit
+  [connection]
+  (db-exec connection "commit" []))
+
+(defn ^{:public true} db-rollback
+  [connection]
+  (db-exec connection "rollback" []))
+
+(defn ^{:public true} db-close-safe
+  "Closes a connection when present; providers must make close idempotent."
+  [connection]
+  (if (nil? connection)
+    nil
+    (db-close connection)))
+
+(defn ^{:public true} db-reset-safe
+  "Restores the provider baseline, falling back to a deterministic close."
+  [connection]
+  (if (nil? connection)
+    nil
+    (if (satisfies? IDatabaseLifecycle connection)
+      (db-reset connection)
+      (db-close connection))))
+
+(defn ^{:public true} db-transaction
+  "Runs a function in a transaction and rolls back when it fails."
+  [connection function]
+  (db-begin connection)
+  (try
+    (let [result (function connection)]
+      (db-commit connection)
+      result)
+    (catch Throwable error
+      (try
+        (db-rollback connection)
+        (catch Throwable ignored nil))
+      (throw error))))

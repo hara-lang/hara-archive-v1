@@ -10,9 +10,15 @@ use zip::{CompressionMethod, ZipWriter};
 
 pub(super) fn build_archive(project: &Project, output: &Path) -> Result<(), String> {
     let mut entries = Vec::new();
-    for source_path in &project.source_paths {
-        let base = project.root.join(source_path);
-        collect_files(&base, &project.root, false, false, &mut entries)?;
+    if let Some(source_files) = &project.source_files {
+        for source_file in source_files {
+            collect_source_file(source_file, &project.root, &mut entries)?;
+        }
+    } else {
+        for source_path in &project.source_paths {
+            let base = project.root.join(source_path);
+            collect_files(&base, &project.root, false, false, &mut entries)?;
+        }
     }
     for artifact_path in &project.artifact_paths {
         let base = project.root.join(artifact_path);
@@ -20,7 +26,12 @@ pub(super) fn build_archive(project: &Project, output: &Path) -> Result<(), Stri
     }
     // A release archive must be self-describing. These entries intentionally
     // stay at its root even when :project/archive-root relocates artifacts.
-    entries.push(PathBuf::from("project.edn"));
+    let manifest_source = project
+        .manifest_path
+        .strip_prefix(&project.root)
+        .map(PathBuf::from)
+        .map_err(|_| "project manifest must be inside its project root".to_owned())?;
+    entries.push(manifest_source.clone());
     if let Some(recipe) = &project.recipe {
         entries.push(recipe.clone());
     }
@@ -46,9 +57,14 @@ pub(super) fn build_archive(project: &Project, output: &Path) -> Result<(), Stri
     }
     let mut archive_entries = Vec::new();
     for source in entries {
-        let archive = if matches!(source.as_path(), path if path == Path::new("project.edn") || path == Path::new("project.lock.edn") || path == Path::new("workspace.edn"))
+        let archive = if source == manifest_source
+            || matches!(source.as_path(), path if path == Path::new("project.lock.edn") || path == Path::new("workspace.edn"))
         {
-            source.clone()
+            if source == manifest_source {
+                PathBuf::from("project.edn")
+            } else {
+                source.clone()
+            }
         } else {
             match &project.archive_root {
                 Some(root) => source
@@ -75,7 +91,7 @@ pub(super) fn build_archive(project: &Project, output: &Path) -> Result<(), Stri
     }
     if archive_entries.is_empty() {
         return Err(
-            "package build found no files in :project/source-paths or :project/artifact-paths"
+            "package build found no files in :project/source-paths, :project/source-files, or :project/artifact-paths"
                 .into(),
         );
     }
@@ -296,6 +312,37 @@ pub(super) fn collect_files(
             entries.push(relative.to_path_buf());
         }
     }
+    Ok(())
+}
+
+fn collect_source_file(
+    source: &Path,
+    root: &Path,
+    entries: &mut Vec<PathBuf>,
+) -> Result<(), String> {
+    validate_relative_path(source)?;
+    let path = root.join(source);
+    let metadata = fs::symlink_metadata(&path)
+        .map_err(|error| format!("cannot read {}: {error}", source.display()))?;
+    if metadata.file_type().is_symlink() {
+        return Err(format!(
+            "package entries must not be symbolic links: {}",
+            source.display()
+        ));
+    }
+    if !metadata.is_file() {
+        return Err(format!(
+            "declared package source file is not a file: {}",
+            source.display()
+        ));
+    }
+    if path.extension().and_then(|extension| extension.to_str()) != Some("hal") {
+        return Err(format!(
+            "declared package source file must be a .hal file: {}",
+            source.display()
+        ));
+    }
+    entries.push(source.to_path_buf());
     Ok(())
 }
 
