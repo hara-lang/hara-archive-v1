@@ -1,0 +1,212 @@
+(ns tool.migrate.policy.foundation.review.generation-test
+  (:use code.test)
+  (:require [tool.migrate.policy.foundation.review.generation :as generation]))
+
+(def registry-root
+  "/registry/conformance/libraries")
+
+(def registry-index
+  {:document/id :hara/foundation-library-conformance
+   :conformance/review-import "../reviews/index.edn"})
+
+(def review-import
+  {:document/id :foundation.review-import/historical-clojure
+   :document/type :foundation-conformance-review-import
+   :document/version "alpha"
+   :document/status :draft
+   :conformance/authority :hara-specs-registry
+   :current/target
+   {:foundation/revision "f55f39855d5e9ea1b22f1d116df684c584323f80"
+    :foundation/tree "3beb10f32e7d57139910ee9c9de1370e966ca935"
+    :hara/revision "fd382c506348c1e96412e7398ac4cba7029b7885"
+    :family/index "../libraries/index.edn"}
+   :review/imports
+   [{:review/id :historical/clojure-core-compatibility
+     :review/kind :clojure-core-symbol-compatibility
+     :review/status :historical-reviewed-evidence
+     :source/repository "hara-lang/hara"
+     :source/revision "2167569e9577c0b1f6e00ba7af1e5f186dd4f582"
+     :promotion/status :pending-current-family-review
+     :review/renamed []
+     :review/changed
+     [{:clojure/symbol "map"
+       :hara/symbol "map"
+       :classification :adapted
+       :dimensions [:arity :evaluation]
+       :summary "Hara collection transforms differ from Clojure transducers."}]}
+    {:review/id :historical/foundation-external-baa75a
+     :review/kind :external-clojure-dependency-routes
+     :review/status :historical-reviewed-evidence
+     :source/repository "hara-lang/hara"
+     :source/revision "546371c47fef69be2d5d347c67a2b02f1b0c8e5e"
+     :promotion/status :pending-current-source-reconciliation
+     :promotion/source-policy
+     {:same-blob :eligible-for-carry-forward-review
+      :changed-blob :historical-evidence-only}
+     :review/reusable
+     [{:external/namespace "clojure.string"
+       :candidate/namespace "std.foundation.string"
+       :candidate/classification :portable-substitute
+       :candidate/safety :review
+       :hara/evidence
+       {:source/path "core/lib/src/std/foundation/string.hal"
+        :source/blob "c89fdd4d1d23e407507fd98b88912328ad78f0c1"
+        :test/path "core/lib/test/std/foundation/string_test.hal"
+        :test/blob "482ddef026cd6f07f51088f90cf3b4c3ab9ab188"}
+       :symbol/mappings [{:source "join" :target "join"}]}]}]
+   :promotion/invariants
+   [:historical-review-does-not-satisfy-current-review
+    :runtime-status-remains-pending-until-executed]})
+
+(def core-observation
+  {:core/id "demo/src/demo.clj#source-0"
+   :core/name "map"
+   :core/status :derived
+   :core/symbol "clojure.core/map"
+   :review/disposition :pending})
+
+(def external-observation
+  {:external/id "demo/src/demo.clj#source-1"
+   :external/namespace "clojure.string"
+   :referenced/symbols ["clojure.string/join"]
+   :extraction/status :emitted
+   :review/disposition :pending})
+
+(def artifacts
+  {:metadata {:document/id :foundation.metadata/demo}
+   :origin {:document/id :foundation.origin/demo}
+   :contract
+   {:document/id :foundation.conformance/demo
+    :conformance/status :pending
+    :runtime/status {:jvm :pending :rust :pending :wasm :pending}
+    :conformance/core-references [core-observation]
+    :conformance/external-dependencies [external-observation]}
+   :metadata/source "old-metadata\n"
+   :origin/source "immutable-origin\n"
+   :contract/source "old-contract\n"
+   :origin/digest "sha256:immutable"
+   :report {:family/id :demo}})
+
+^{:refer tool.migrate.policy.foundation.review.generation/review-index-path}
+(fact "review index paths resolve from the registry libraries root"
+  (generation/review-index-path registry-root)
+  => "/registry/conformance/libraries/index.edn")
+
+^{:refer tool.migrate.policy.foundation.review.generation/review-import-relative-path}
+(fact "review import selection requires an explicit family-index locator"
+  [(generation/review-import-relative-path registry-index)
+   (try
+     (generation/review-import-relative-path {:document/id :missing})
+     false
+     (catch Throwable error
+       (= :tool.migrate/review-import-not-declared
+          (ex-class error))))]
+  => ["../reviews/index.edn" true])
+
+^{:refer tool.migrate.policy.foundation.review.generation/review-import-path}
+(fact "relative review paths resolve beside the libraries directory"
+  (generation/review-import-path registry-root registry-index)
+  => "/registry/conformance/reviews/index.edn")
+
+^{:refer tool.migrate.policy.foundation.review.generation/read-review-import}
+(fact "review imports are read through the family index and validated"
+  (let [sources
+        {"/registry/conformance/libraries/index.edn" (pr-str registry-index)
+         "/registry/conformance/reviews/index.edn" (pr-str review-import)}
+        result
+        (generation/read-review-import
+         (fn [path] (get sources path))
+         registry-root)]
+    [(:path result)
+     (get-in result [:document :document/id])
+     (mapv :review/id (get-in result [:document :review/imports]))])
+  => ["../reviews/index.edn"
+      :foundation.review-import/historical-clojure
+      [:historical/clojure-core-compatibility
+       :historical/foundation-external-baa75a]])
+
+^{:refer tool.migrate.policy.foundation.review.generation/candidate-observation?}
+(fact "candidate observations require a structured review candidate"
+  [(generation/candidate-observation?
+    {:review/candidate {:candidate/status :historical-review}})
+   (generation/candidate-observation? {:review/candidate nil})]
+  => [true false])
+
+^{:refer tool.migrate.policy.foundation.review.generation/candidate-count}
+(fact "candidate counts ignore observations without imported evidence"
+  (generation/candidate-count
+   [{:review/candidate {:candidate/status :historical-review}}
+    {:review/disposition :pending}
+    {:review/candidate {:candidate/status :historical-review}}])
+  => 2)
+
+^{:refer tool.migrate.policy.foundation.review.generation/annotate-artifacts}
+(fact "artifact annotation preserves origin bytes and pending runtime status"
+  (let [output
+        (generation/annotate-artifacts
+         {:path "../reviews/index.edn" :document review-import}
+         artifacts)]
+    [(:origin output)
+     (:origin/source output)
+     (:origin/digest output)
+     (get-in output [:contract :conformance/status])
+     (get-in output [:contract :runtime/status])
+     (get-in output [:contract :review/import])
+     (get-in output [:metadata :review/import])
+     (get-in output [:report :review/core-candidates])
+     (get-in output [:report :review/external-candidates])
+     (= (:metadata output)
+        (Edn/read (:metadata/source output)))
+     (= (:contract output)
+        (Edn/read (:contract/source output)))])
+  => [{:document/id :foundation.origin/demo}
+      "immutable-origin\n"
+      "sha256:immutable"
+      :pending
+      {:jvm :pending :rust :pending :wasm :pending}
+      {:document/id :foundation.review-import/historical-clojure
+       :review/ids
+       [:historical/clojure-core-compatibility
+        :historical/foundation-external-baa75a]
+       :status :candidate-only
+       :runtime/status :not-executed
+       :path "../reviews/index.edn"}
+      {:document/id :foundation.review-import/historical-clojure
+       :review/ids
+       [:historical/clojure-core-compatibility
+        :historical/foundation-external-baa75a]
+       :status :candidate-only
+       :runtime/status :not-executed
+       :path "../reviews/index.edn"}
+      1
+      1
+      true
+      true])
+
+^{:refer tool.migrate.policy.foundation.review.generation/generate-family-artifacts}
+(fact "injected generation reads the import and annotates one family result"
+  (let [sources
+        {"/registry/conformance/libraries/index.edn" (pr-str registry-index)
+         "/registry/conformance/reviews/index.edn" (pr-str review-import)}
+        result
+        (generation/generate-family-artifacts
+         (fn [baseline descriptor foundation-root registry-root]
+           (assoc artifacts
+                  :generator/inputs
+                  [baseline descriptor foundation-root registry-root]))
+         (fn [path] (get sources path))
+         :baseline
+         :descriptor
+         "/foundation.git"
+         registry-root)]
+    [(:generator/inputs result)
+     (get-in result [:metadata :review/import :status])
+     (get-in result [:contract :review/import :status])
+     (get-in result [:report :review/core-candidates])])
+  => [[:baseline :descriptor "/foundation.git" registry-root]
+      :candidate-only
+      :candidate-only
+      1])
+
+(pr-str
+ (run {:namespace "tool.migrate.policy.foundation.review.generation-test"}))

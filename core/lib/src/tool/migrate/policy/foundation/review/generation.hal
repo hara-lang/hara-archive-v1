@@ -1,0 +1,91 @@
+(ns tool.migrate.policy.foundation.review.generation
+  (:config {:role :internal})
+  (:require [tool.migrate.policy.foundation.conformance :as conformance]
+            [tool.migrate.policy.foundation.review :as review]))
+
+(defn review-index-path
+  "Returns the registry family-index path from the configured libraries root."
+  [registry-root]
+  (conformance/host-path registry-root "index.edn"))
+
+(defn review-import-relative-path
+  "Returns the review import selected by the registry family index."
+  [index]
+  (let [path (:conformance/review-import index)]
+    (if (not (string? path))
+      (throw
+       (ex :tool.migrate/review-import-not-declared
+           {:index/document-id (:document/id index)}
+           :ex/message "Foundation family index does not declare a review import")))
+    path))
+
+(defn review-import-path
+  "Resolves the review import relative to the registry libraries root."
+  [registry-root index]
+  (conformance/host-path
+   registry-root
+   (review-import-relative-path index)))
+
+(defn read-review-import
+  "Reads and validates the registry-selected review import through an injected
+   text boundary. The returned path remains relative to the family index."
+  [read-text registry-root]
+  (let [index
+        (Edn/read
+         (read-text (review-index-path registry-root)))
+        relative-path (review-import-relative-path index)
+        document
+        (review/assert-review-import
+         (Edn/read
+          (read-text (review-import-path registry-root index))))]
+    {:path relative-path
+     :document document}))
+
+(defn candidate-observation?
+  [observation]
+  (map? (:review/candidate observation)))
+
+(defn candidate-count
+  [observations]
+  (count
+   (filter candidate-observation?
+           (vec (or observations [])))))
+
+(defn annotate-artifacts
+  "Adds candidate-only review evidence to generated metadata and contract
+   documents without changing immutable origin evidence or runtime status."
+  [review-import artifacts]
+  (let [document (:document review-import)
+        import-path (:path review-import)
+        base-contract
+        (review/annotate-contract document (:contract artifacts))
+        import-reference
+        (assoc (:review/import base-contract) :path import-path)
+        contract (assoc base-contract :review/import import-reference)
+        metadata
+        (assoc (:metadata artifacts) :review/import import-reference)
+        core-candidates
+        (candidate-count (:conformance/core-references contract))
+        external-candidates
+        (candidate-count (:conformance/external-dependencies contract))
+        report
+        (merge
+         (:report artifacts)
+         {:review/import import-reference
+          :review/core-candidates core-candidates
+          :review/external-candidates external-candidates})]
+    (merge
+     artifacts
+     {:metadata metadata
+      :contract contract
+      :metadata/source (conformance/document-source metadata)
+      :contract/source (conformance/document-source contract)
+      :report report})))
+
+(defn generate-family-artifacts
+  "Runs an injected family generator and annotates its artifacts from the
+   registry-selected historical review import."
+  [generate read-text baseline descriptor foundation-root registry-root]
+  (annotate-artifacts
+   (read-review-import read-text registry-root)
+   (generate baseline descriptor foundation-root registry-root)))
