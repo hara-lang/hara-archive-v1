@@ -8,6 +8,12 @@ on:
       - "core/java/src/main/java/hara/truffle/IFilesystem*.java"
       - "core/java/src/main/java/hara/truffle/Webdav*.java"
       - "core/java/src/test/java/hara/truffle/Webdav*.java"
+      - "core/rust/web/entries/webdav-browser.mjs"
+      - "core/rust/web/package.json"
+      - "core/rust/web/package-lock.json"
+      - "core/rust/web/packages/hta/**"
+      - "core/rust/web/vite.webdav-browser.config.js"
+      - "providers/webdav/**"
   pull_request:
     paths:
       - ".github/workflows/webdav-filesystem.yml"
@@ -15,6 +21,12 @@ on:
       - "core/java/src/main/java/hara/truffle/IFilesystem*.java"
       - "core/java/src/main/java/hara/truffle/Webdav*.java"
       - "core/java/src/test/java/hara/truffle/Webdav*.java"
+      - "core/rust/web/entries/webdav-browser.mjs"
+      - "core/rust/web/package.json"
+      - "core/rust/web/package-lock.json"
+      - "core/rust/web/packages/hta/**"
+      - "core/rust/web/vite.webdav-browser.config.js"
+      - "providers/webdav/**"
   workflow_dispatch:
 
 permissions:
@@ -51,3 +63,32 @@ jobs:
         run: >-
           mvn -B -f core/java/pom.xml -Ptruffle
           -Dtest=WebdavFilesystemTest,WebdavHttpClientTest,WebdavFilesystemSessionKernelTest test
+
+  browser-hta:
+    name: Browser HTA provider, route, and worker build
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: core/rust/web/package-lock.json
+
+      - name: Install browser dependencies
+        run: npm ci --prefix core/rust/web
+
+      - name: Test HTA provider host-call bridge
+        run: npm --prefix core/rust/web run test:hta-provider-browser
+
+      - name: Test WebDAV provider semantics and trusted transport
+        run: npm --prefix core/rust/web run test:webdav-provider
+
+      - name: Validate WebDAV HTA route declaration
+        run: npm --prefix core/rust/web run test:webdav-route
+
+      - name: Build WebDAV browser worker
+        run: npm --prefix core/rust/web run build:webdav-browser

@@ -1,0 +1,11 @@
+{
+  "name": "@hara-lang/fs-webdav",
+  "version": "0.1.0",
+  "description": "WebDAV HTA Wasm IFilesystem provider for Hara",
+  "license": "Apache-2.0",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": "./index.mjs"
+  }
+}
