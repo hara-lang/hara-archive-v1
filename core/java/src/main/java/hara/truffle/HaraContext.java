@@ -713,6 +713,11 @@ public final class HaraContext {
         .define(symbolName, value, metadata, HaraVar.Origin.JAVA_LIBRARY);
   }
 
+/** Maps one existing runtime Var into another generated namespace product. */
+void referLibraryVar(String namespaceName, String name, HaraVar variable) {
+  namespace(namespaceName).refer(name, variable);
+}
+
   void defineLibraryMacro(
       String namespaceName,
       String symbolName,
