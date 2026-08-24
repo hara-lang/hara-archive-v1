@@ -729,7 +729,7 @@ public class HaraGeneratedLibrariesTest {
       assertErrorContains(
           context,
           "(ns a (:config {:rename {:exclude [unknown]}}))",
-          "Unknown intrinsic library");
+          "Unknown Foundation library");
       assertErrorContains(
           context,
           "(ns b (:config {:rename {:exclude [bytes] :alias {bytes data}}}))",
@@ -737,7 +737,7 @@ public class HaraGeneratedLibrariesTest {
       assertErrorContains(
           context,
           "(ns c (:config {:rename {:alias {string data bytes data}}}))",
-          "Duplicate intrinsic alias target");
+          "Duplicate Foundation library alias target");
       assertErrorContains(
           context, "(ns d (:config {}) (:config {}))", "only one :config clause");
       assertErrorContains(

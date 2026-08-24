@@ -43,181 +43,6 @@ pub(crate) const LANGUAGE_BUILTINS: &[(&str, &[&str])] = &[
     ("interop", &["new", "field", "."]),
 ];
 
-/// Closed accounting inventory for ordinary runtime-owned callable Vars.
-///
-/// This intentionally lives separately from `DIRECT_CALLABLE_CATALOG`: runtime
-/// startup and tests compare the two sets so a new evaluator/native operation
-/// cannot silently acquire a structural fallback.
-pub(crate) const RUNTIME_CALLABLE_INVENTORY: &[&str] = &[
-    "%",
-    "*",
-    "+",
-    "-",
-    "/",
-    "<",
-    "<=",
-    "=",
-    ">",
-    ">=",
-    "alter-var-root",
-    "any?",
-    "apply",
-    "array",
-    "assoc",
-    "assoc-in",
-    "atom",
-    "bit-and",
-    "bit-not",
-    "bit-or",
-    "bit-shift-left",
-    "bit-shift-right",
-    "bit-xor",
-    "boolean",
-    "boolean?",
-    "bytes",
-    "capture",
-    "cas!",
-    "char?",
-    "comp",
-    "comp2",
-    "comp3",
-    "compare",
-    "complement",
-    "concat",
-    "conj",
-    "cons",
-    "constantly",
-    "count",
-    "current-namespace",
-    "cycle",
-    "dec",
-    "deref",
-    "dissoc",
-    "double",
-    "double?",
-    "drop",
-    "drop-while",
-    "empty",
-    "empty?",
-    "eval",
-    "eval-in-ns",
-    "even?",
-    "every?",
-    "ex",
-    "ex-cause",
-    "ex-class",
-    "ex-data",
-    "ex-info",
-    "ex-message",
-    "ex-native-type",
-    "ex-provenance",
-    "false?",
-    "filter",
-    "first",
-    "fn?",
-    "function?",
-    "get",
-    "get-in",
-    "hash-map",
-    "hash-set",
-    "identity",
-    "inc",
-    "instance?",
-    "interleave",
-    "intern-var",
-    "interpose",
-    "iter",
-    "iter-next",
-    "iter-next?",
-    "iter?",
-    "iterate",
-    "keep",
-    "key",
-    "keys",
-    "keyword",
-    "keyword?",
-    "last",
-    "list",
-    "list?",
-    "load-string",
-    "long",
-    "long?",
-    "map",
-    "map?",
-    "mapcat",
-    "meta",
-    "mod",
-    "Coroutine/create",
-    "Coroutine/resume",
-    "std.protocol.icoroutine.ICoroutine/resume",
-    "name",
-    "namespace",
-    "neg?",
-    "nil?",
-    "not",
-    "not-empty",
-    "not=",
-    "ns-alias-state",
-    "ns-loaded?",
-    "ns-state",
-    "ns:create",
-    "nth",
-    "number?",
-    "object",
-    "odd?",
-    "p",
-    "pair",
-    "partition",
-    "partition-all",
-    "partition-pair",
-    "peek",
-    "pointer",
-    "pos?",
-    "pr-str",
-    "println",
-    "promise",
-    "promise/delay",
-    "promise/new",
-    "promise?",
-    "quot",
-    "range",
-    "read-string",
-    "reduce",
-    "rem",
-    "repeat",
-    "repeatedly",
-    "reset!",
-    "resolve",
-    "rest",
-    "reverse",
-    "second",
-    "seq",
-    "seq?",
-    "set?",
-    "satisfies?",
-    "str",
-    "string?",
-    "swap!",
-    "symbol",
-    "symbol?",
-    "take",
-    "take-while",
-    "true?",
-    "tup",
-    "type",
-    "tuple?",
-    "update",
-    "update-in",
-    "val",
-    "vals",
-    "var-sym",
-    "vector",
-    "vector?",
-    "with-meta",
-    "zero?",
-    "zip",
-];
-
 pub(crate) fn invoke_function_sync(
     function: Rc<Function>,
     arguments: Vec<Value>,
@@ -644,6 +469,9 @@ pub const NATIVE_TYPES: &[(&str, &[&str])] = &[
             "load-string",
             "macroexpand-1",
             "gensym",
+            "ns-publics",
+            "the-ns",
+            "ns-name",
             "var-sym",
             "current",
             "snapshot",
@@ -788,6 +616,7 @@ pub const NATIVE_TYPES: &[(&str, &[&str])] = &[
             "sequential?",
             "coll?",
             "satisfies?",
+            "special-symbol?",
             "type",
             "instance?",
         ],
@@ -935,6 +764,41 @@ pub(crate) fn canonical_intrinsic_symbol(symbol: &str) -> Option<String> {
             .any(|(candidate, _)| *candidate == native_type)
             .then(|| format!("std.native.{native_type}/{method}"))
     })
+}
+
+/// Returns the canonical identity of a callable owned by the native or
+/// protocol registries. Ordinary Foundation functions deliberately do not
+/// appear here: they must resolve through their namespace Vars after
+/// `std.foundation` has been loaded.
+pub(crate) fn canonical_intrinsic_callable_symbol(symbol: &str) -> Option<String> {
+    let canonical = canonical_intrinsic_symbol(symbol).unwrap_or_else(|| symbol.to_owned());
+    if let Some(native) = canonical.strip_prefix("std.native.") {
+        let (native_type, method) = native.split_once('/')?;
+        if NATIVE_TYPES.iter().any(|(candidate, methods)| {
+            *candidate == native_type && methods.iter().any(|candidate| *candidate == method)
+        }) {
+            return Some(canonical);
+        }
+    }
+    let (namespace, method) = canonical.split_once('/')?;
+    protocol_declarations()
+        .iter()
+        .find(|declaration| builtin_protocol_namespace(declaration.name) == namespace)
+        .filter(|declaration| declaration.methods.iter().any(|candidate| candidate.name == method))
+        .map(|_| canonical)
+}
+
+/// Resolves a canonical native/protocol callable for bytecode instructions.
+/// The registry is the only source of these values; no unqualified fallback
+/// catalog is consulted.
+pub(crate) fn bytecode_callable_value(name: &str) -> Result<Value, String> {
+    let canonical = canonical_intrinsic_callable_symbol(name)
+        .ok_or_else(|| format!("unknown canonical builtin: {name}"))?;
+    let registry = namespace_registry()?;
+    registry
+        .resolve(&crate::lang::data::Symbol::parse(&canonical))
+        .map(|var| var.deref_value())
+        .ok_or_else(|| format!("unbound canonical builtin: {canonical}"))
 }
 
 pub fn foundation_protocol_values() -> Vec<(String, Value)> {

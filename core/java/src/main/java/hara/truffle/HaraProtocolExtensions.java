@@ -158,6 +158,18 @@ final class HaraProtocolExtensions {
   }
 
   @HaraProtocolExtension(
+      protocol = IObjType.class,
+      method = "with-meta",
+      receiver = IObjType.class,
+      intrinsic = true)
+  static Object withMetaProtocol(Object receiver, Object[] arguments) {
+    if (arguments.length != 1 || !(arguments[0] instanceof IMetadata metadata)) {
+      throw new HaraException("IObjType/with-meta expects a metadata value");
+    }
+    return ((IObjType) receiver).withMeta(metadata);
+  }
+
+  @HaraProtocolExtension(
       protocol = IStringLike.class, method = "to-string", receiver = Keyword.class)
   static Object keywordToString(Object receiver, Object[] arguments) {
     Keyword keyword = (Keyword) receiver;

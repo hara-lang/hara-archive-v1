@@ -26,11 +26,11 @@ fn configures_defaults_exclusions_aliases_and_requires_without_sources() {
 }
 
 #[test]
-fn rejects_standalone_intrinsics_clause() {
+fn rejects_removed_namespace_clause_without_intrinsics_compatibility() {
     let forms = parse_forms("(:intrinsics :all)").unwrap();
     assert!(GeneratedNamespaceConfig::configure(&forms)
         .unwrap_err()
-        .contains(":intrinsics is not a namespace configuration option"));
+        .contains("Unsupported ns clause: :intrinsics"));
 }
 
 #[test]
@@ -83,33 +83,22 @@ fn require_access_accepts_only_literal_true() {
 }
 
 #[test]
-fn separates_wasm_imports_from_host_flavor_imports() {
-    let config = GeneratedNamespaceConfig::configure(
-        &parse_forms(
-            "(:flavor :jvm [java.lang String RuntimeException]) \
-             (:import vendor.numeric.Vector)",
+fn rejects_host_flavors_on_the_rust_runtime() {
+    for flavor in ["jvm", "dotnet"] {
+        let error = GeneratedNamespaceConfig::configure(
+            &parse_forms(&format!(
+                "(:flavor :{flavor} [java.lang String]) (:import vendor.numeric.Vector)"
+            ))
+            .unwrap(),
         )
-        .unwrap(),
-    )
-    .unwrap();
-    assert_eq!(config.native_flavor(), Some("jvm"));
-    assert_eq!(
-        config.native_flavor_imports(),
-        &[
-            ("String".into(), "java.lang.String".into()),
-            (
-                "RuntimeException".into(),
-                "java.lang.RuntimeException".into()
-            ),
-        ]
-    );
-    assert_eq!(
-        config.native_imports(),
-        &[(
-            "vendor.numeric.Vector".into(),
-            "vendor.numeric.Vector".into()
-        )]
-    );
+        .unwrap_err();
+        assert_eq!(
+            error,
+            format!(
+                "native/unsupported-flavor: :{flavor} (host flavors are only available on JVM/.NET runtimes)"
+            )
+        );
+    }
 }
 
 #[test]

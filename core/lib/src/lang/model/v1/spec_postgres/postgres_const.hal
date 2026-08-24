@@ -424,5 +424,3 @@
       ""
       (block-output sql track grammar context))))
 
-
-

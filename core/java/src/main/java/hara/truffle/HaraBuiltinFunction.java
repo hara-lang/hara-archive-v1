@@ -11,6 +11,12 @@ import hara.lang.protocol.IFn;
 public interface HaraBuiltinFunction {
   Object apply(Object[] arguments);
 
+  /** Returns the qualified symbol that owns this builtin implementation. */
+  String origin();
+
+  /** Assigns the owning symbol when the builtin enters a namespace. */
+  void setOrigin(String origin);
+
   default boolean recordsExceptionCreation() {
     return false;
   }

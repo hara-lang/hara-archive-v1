@@ -102,7 +102,6 @@ final class HaraBuiltinCatalog {
           "defmethod",
           "def",
           "var",
-          "deref",
           "set!",
           "defstruct",
           "defmutable",
@@ -186,7 +185,8 @@ final class HaraBuiltinCatalog {
           Map.entry(
               "Runtime",
               java.util.List.of(
-                  "load-string", "macroexpand-1", "gensym", "var-sym", "current", "snapshot",
+                  "load-string", "macroexpand-1", "gensym", "ns-publics", "the-ns", "ns-name",
+                  "var-sym", "current", "snapshot",
                   "vars", "namespaces", "namespace", "module", "resolve", "alias-state",
                   "intern-var", "eval-in", "eval")),
           Map.entry("Printer", java.util.List.of("p", "println", "capture")),
@@ -223,7 +223,8 @@ final class HaraBuiltinCatalog {
                   "reduced?", "nil?", "boolean?", "string?", "char?", "number?",
                   "long?", "double?", "keyword?", "symbol?", "pointer?",
                   "atom?", "function?", "bytes?", "array?", "object?", "list?", "cons?", "vector?",
-                  "tuple?", "map?", "set?", "sequential?", "coll?", "satisfies?", "type", "instance?")),
+                  "tuple?", "map?", "set?", "sequential?", "coll?", "satisfies?", "special-symbol?",
+                  "type", "instance?")),
           Map.entry(
               "Algo",
               java.util.List.of(

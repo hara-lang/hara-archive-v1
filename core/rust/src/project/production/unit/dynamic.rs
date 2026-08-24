@@ -122,7 +122,7 @@ fn scan_lexical_form(
     analysis: &mut UnitAnalysis,
 ) -> bool {
     match operation {
-        "fn" | "fn*" => {
+        "fn" => {
             scan_function(runtime, module, &values[1..], plan, bound, analysis, true);
             true
         }

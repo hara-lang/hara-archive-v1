@@ -571,14 +571,14 @@ impl ProtocolRegistry {
         );
         registry.register("std.protocol.iobjtype.IObjType", "meta", protocol_meta);
         registry.register(
-            "std.protocol.iobjtype.IObjType",
-            "with-meta",
-            protocol_with_meta,
-        );
-        registry.register(
             "std.protocol.imetadata.IMetadata",
             "metatype",
             protocol_metatype,
+        );
+        registry.register(
+            "std.protocol.iobjtype.IObjType",
+            "with-meta",
+            protocol_with_meta,
         );
         registry.register(
             "std.protocol.icoll.IColl",
@@ -1177,6 +1177,20 @@ pub(crate) fn namespace_registry() -> Result<NamespaceRegistry<Value>, String> {
     ACTIVE_NAMESPACES
         .with(|active| active.borrow().clone())
         .ok_or_else(|| "namespace runtime is unavailable".into())
+}
+
+/// Returns a fresh evaluator environment for the registry's current
+/// namespace, including its qualified and aliased bindings.
+pub(crate) fn current_namespace_environment() -> Result<HashMap<String, Value>, String> {
+    let registry = namespace_registry()?;
+    let mut environment = registry
+        .current()
+        .mappings()
+        .into_iter()
+        .map(|(name, var)| (name.as_str().to_owned(), Value::Var(var)))
+        .collect();
+    refresh_namespace_environment(&registry, &mut environment);
+    Ok(environment)
 }
 
 /// Saves all unqualified evaluator bindings into the registry current namespace.

@@ -1,6 +1,7 @@
 package hara.kernel.base;
 
 import hara.kernel.flavor.NativeFlavorProvider;
+import hara.kernel.flavor.NativeFlavorImportSpecs;
 import hara.kernel.protocol.IEnv;
 import hara.kernel.protocol.IRuntime;
 import hara.lang.base.Eq;
@@ -187,42 +188,37 @@ public interface Macro {
       if ("wasm".equals(flavor.getName())) {
         throw new Ex.Runtime(":wasm is not a host flavor; use :import for Wasm modules");
       }
-      rt._nativeFlavors.require(flavor.getName());
-      rt.getCurrentNs().nativeFlavor = flavor.getName();
-      NativeFlavorProvider provider = rt.nativeProvider();
+      NativeFlavorProvider provider = rt._nativeFlavors.require(flavor.getName());
+      java.util.ArrayList<Object> specifications = new java.util.ArrayList<>();
       for (int i = 2; i < l.count(); i++) {
-        processHostImport(rt, provider, l.nth(i));
+        specifications.add(l.nth(i));
       }
+      java.util.List<NativeFlavorImportSpecs.Spec> imports;
+      try {
+        imports = NativeFlavorImportSpecs.parse(specifications);
+      } catch (IllegalArgumentException error) {
+        throw new Ex.Runtime(error.getMessage());
+      }
+      java.util.LinkedHashMap<Symbol, Class> resolved = new java.util.LinkedHashMap<>();
+      for (NativeFlavorImportSpecs.Spec specification : imports) {
+        Object value = provider.resolveType(specification.typeName(), rt.nativeAccess());
+        if (!(value instanceof Class<?> type)) {
+          throw new Ex.Runtime(
+              "JVM native import did not resolve to a class: " + specification.typeName());
+        }
+        Symbol local = Symbol.create(specification.localName());
+        Class previous = resolved.putIfAbsent(local, type);
+        if (previous != null && previous != type) {
+          throw new Ex.Runtime("Native import already exists: " + specification.localName());
+        }
+      }
+      rt.getCurrentNs().nativeFlavor = flavor.getName();
+      rt.getCurrentNs().imports.clear();
+      rt.getCurrentNs().imports.putAll(resolved);
     }
 
     public static void processImport(RT.Instance rt, List l) {
       throw new Ex.Runtime(":import is reserved for Wasm modules");
-    }
-
-    private static void processHostImport(RT.Instance rt, NativeFlavorProvider provider, Object spec) {
-      if (spec instanceof Symbol) {
-          // Single class import: java.util.Date
-          Symbol sym = (Symbol) spec;
-          Class cls = (Class) provider.resolveType(sym.getName(), rt.nativeAccess());
-          rt.getCurrentNs().imports.put(Symbol.create(cls.getSimpleName()), cls);
-      } else if (spec instanceof Iterable) {
-          // Package import: [java.util Date List]
-          Iterator specIt = Iter.iter(spec);
-          if (!specIt.hasNext()) return;
-          Object pkgObj = specIt.next();
-          String pkg = pkgObj instanceof Symbol ? ((Symbol) pkgObj).display() : pkgObj.toString();
-          while (specIt.hasNext()) {
-            Object clsObj = specIt.next();
-            String clsName =
-                pkg
-                    + "."
-                    + (clsObj instanceof Symbol ? ((Symbol) clsObj).display() : clsObj.toString());
-            Class cls = (Class) provider.resolveType(clsName, rt.nativeAccess());
-            rt.getCurrentNs().imports.put(Symbol.create(cls.getSimpleName()), cls);
-          }
-      } else {
-        throw new Ex.Runtime(":flavor expects host import symbols or package vectors");
-      }
     }
 
     public static void processRequire(RT.Instance rt, List l) {

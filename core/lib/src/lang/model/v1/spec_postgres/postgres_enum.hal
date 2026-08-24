@@ -89,5 +89,3 @@
            "    NULL;\n"
            "END;\n"
            "$$ LANGUAGE plpgsql;"))))
-
-

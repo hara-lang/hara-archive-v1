@@ -506,8 +506,8 @@ fn eval_namespace_form(fs: &[Form], env: &mut HashMap<String, Value>) -> Result<
     // Namespace configuration is normally consumed by the generated-runtime
     // orchestration layer. The raw HTA evaluator executes forms directly in
     // an EvalFiber, so the core special form must still honor namespace
-    // construction settings, including global aliases and imports. Native
-    // runtime intrinsics remain distinct from Foundation library `:rename`.
+    // construction settings, including global aliases and imports. Foundation
+    // child-library aliases remain distinct from native runtime symbols.
     let config = crate::kernel::GeneratedNamespaceConfig::configure_with(clauses, |_| true)?;
     if let Some(alias) = config.global_alias() {
         registry.register_global_alias(alias, &name)?;
@@ -577,7 +577,7 @@ fn eval_namespace_form(fs: &[Form], env: &mut HashMap<String, Value>) -> Result<
     }
     for (alias, target) in destination.aliases() {
         let excluded = config
-            .excluded_intrinsics()
+            .excluded_foundation_libraries()
             .iter()
             .any(|library| target.name().as_str() == format!("std.foundation.{library}"));
         if excluded {
@@ -586,15 +586,15 @@ fn eval_namespace_form(fs: &[Form], env: &mut HashMap<String, Value>) -> Result<
     }
     for (alias, target) in destination.lazy_aliases() {
         let excluded = config
-            .excluded_intrinsics()
+            .excluded_foundation_libraries()
             .iter()
             .any(|library| target.as_str() == format!("std.foundation.{library}"));
         if excluded {
             destination.unalias(alias.as_str());
         }
     }
-    for library in config.excluded_intrinsics() {
-        if let Some(alias) = crate::kernel::generated::intrinsic_alias(library) {
+    for library in config.excluded_foundation_libraries() {
+        if let Some(alias) = crate::kernel::generated::foundation_library_alias(library) {
             destination.unalias(alias);
         }
     }
@@ -754,66 +754,6 @@ fn eval_basic_object_form(
             }
             Ok(Value::Number(eval(&forms[1], env)?.stable_hash() as i64))
         }
-        "meta" => {
-            if forms.len() != 2 {
-                return Err("meta expects one value".into());
-            }
-            protocol_meta(&[eval(&forms[1], env)?])
-        }
-        "with-meta" => {
-            if forms.len() != 3 {
-                return Err("with-meta expects a value and metadata map".into());
-            }
-            let value = eval(&forms[1], env)?;
-            let metadata = eval(&forms[2], env)?;
-            protocol_with_meta(&[value, metadata])
-        }
-        "macroexpand-1" => {
-            if forms.len() != 2 {
-                return Err("macroexpand-1 expects one form".into());
-            }
-            let value = eval(&forms[1], env)?;
-            let form = value_to_form(&value)?;
-            let expanded = macroexpand_once(&form, env)?;
-            form_to_value(&expanded)
-        }
-        "gensym" => {
-            let prefix = if forms.len() == 1 {
-                "G__".into()
-            } else if forms.len() == 2 {
-                match eval(&forms[1], env)? {
-                    Value::String(prefix) => prefix,
-                    value => {
-                        return Err(format!(
-                            "gensym expects a string prefix, got {}",
-                            portable_type_name(&value)
-                        ))
-                    }
-                }
-            } else {
-                return Err("gensym expects zero or one arguments".into());
-            };
-            Ok(Value::Symbol(Symbol::from(gensym(&prefix))))
-        }
         _ => unreachable!("eval_basic_object_form called for an unknown operation"),
-    }
-}
-
-fn eval_atom_form(
-    operation: &str,
-    forms: &[Form],
-    env: &mut HashMap<String, Value>,
-) -> Result<Value, String> {
-    match operation {
-        "atom" | "atom:basic" => {
-            if forms.len() != 2 {
-                return Err(format!("{operation} expects one value"));
-            }
-            Ok(Value::Atom(Box::new(RuntimeAtom::new(
-                eval(&forms[1], env)?,
-                operation == "atom",
-            ))))
-        }
-        _ => unreachable!("eval_atom_form called for an unknown operation"),
     }
 }

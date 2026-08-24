@@ -2,12 +2,29 @@ package hara.truffle;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
 
 import hara.lang.data.Symbol;
 import org.graalvm.polyglot.Context;
 import org.junit.Test;
 
 public class FoundationNativeOriginTest {
+  @Test
+  public void callableSymbolsRetainTheirDefiningNamespace() {
+    try (Context context = Context.newBuilder(HaraLanguage.ID).build()) {
+      context.eval(HaraLanguage.ID, "nil");
+      context.enter();
+      try {
+        HaraContext hara = HaraLanguage.currentContext();
+        assertBuiltinOrigin(hara, "std.native.Base", "apply");
+        assertBuiltinOrigin(hara, "std.native.Runtime", "gensym");
+        assertBuiltinOrigin(hara, "std.foundation", "+");
+      } finally {
+        context.leave();
+      }
+    }
+  }
+
   @Test
   public void freshContextsKeepStringOwnershipAndOriginsSeparate() {
     assertOrigins("std.foundation.string", "length", "std.native.String", "length");
@@ -48,5 +65,15 @@ public class FoundationNativeOriginTest {
         context.leave();
       }
     }
+  }
+
+  private static void assertBuiltinOrigin(
+      HaraContext context, String namespace, String symbol) {
+    HaraVar variable = context.resolve(Symbol.create(namespace, symbol));
+    assertNotNull(variable);
+    assertTrue(variable.deref() instanceof HaraBuiltinFunction);
+    assertEquals(
+        namespace + "/" + symbol,
+        ((HaraBuiltinFunction) variable.deref()).origin());
   }
 }

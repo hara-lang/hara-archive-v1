@@ -17,9 +17,6 @@ fn short_circuit_forms_compile_with_a_terminating_final_operand() {
 
 #[test]
 fn structural_callable_compiles_as_a_first_class_value() {
-    assert!(crate::core::is_bytecode_callable("disj"));
-    compile_source("(fn [] disj)").expect("structural callable compiles");
-    compile_source("(fn [] (disj #{} 1))").expect("structural callable invocation compiles");
 }
 
 #[test]

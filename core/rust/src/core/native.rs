@@ -1600,6 +1600,42 @@ fn native_runtime_values(
         .unwrap_or(operation);
     let registry = namespace_registry()?;
     match method {
+        "ns-publics" => {
+            let namespace = match values.as_slice() {
+                [Value::Symbol(name)] if name.get_namespace().is_none() => name.as_str().to_owned(),
+                [Value::String(name)] => name.clone(),
+                [Value::Namespace(namespace)] => namespace.name().as_str().to_owned(),
+                _ => return Err("std.native.Runtime/ns-publics expects a namespace symbol or string".into()),
+            };
+            let target = registry
+                .find(&namespace)
+                .ok_or_else(|| format!("No such namespace: {namespace}"))?;
+            let mut mappings = target.mappings();
+            mappings.retain(|(_, var)| var.symbol().get_namespace() == Some(namespace.as_str()));
+            mappings.sort_by(|(left, _), (right, _)| left.as_str().cmp(right.as_str()));
+            Ok(Value::OrderedMap(Box::new(POrderedMap::from_iter(
+                mappings.into_iter().map(|(name, var)| {
+                    (Value::Symbol(Symbol::create(None, name.as_str())), Value::Var(var))
+                }),
+            ))))
+        }
+        "the-ns" => match values.as_slice() {
+            [Value::Symbol(name)] if name.get_namespace().is_none() => Ok(namespace_registry()?
+                .find(name.as_str())
+                .map(|namespace| Value::Namespace(Rc::new(namespace)))
+                .unwrap_or(Value::Nil)),
+            _ => Err("std.native.Runtime/the-ns expects an unqualified symbol".into()),
+        },
+        "ns-name" => match values.as_slice() {
+            [Value::Namespace(namespace)] => Ok(Value::Symbol(namespace.name().clone())),
+            [Value::Symbol(name)]
+                if name.get_namespace().is_none()
+                    && namespace_registry()?.find(name.as_str()).is_some() =>
+            {
+                Ok(Value::Symbol(name.clone()))
+            }
+            _ => Err("std.native.Runtime/ns-name expects a namespace".into()),
+        },
         "current" => {
             if !values.is_empty() {
                 return Err("std.native.Runtime/current expects no arguments".into());
@@ -1762,15 +1798,22 @@ fn native_runtime_values(
             };
             Ok(Value::Symbol(var.symbol().clone()))
         }
-        "macroexpand-1" | "gensym" => {
-            let mut call = vec![Form::Symbol(method.to_owned())];
-            call.extend(
-                values
-                    .iter()
-                    .map(value_to_form)
-                    .collect::<Result<Vec<_>, _>>()?,
-            );
-            eval(&Form::List(call), env)
+        "macroexpand-1" => {
+            if values.len() != 1 {
+                return Err("std.native.Runtime/macroexpand-1 expects one form".into());
+            }
+            let form = value_to_form(&values[0])?;
+            let mut environment = current_namespace_environment()?;
+            form_to_value(&macroexpand_once(&form, &mut environment)?)
+        }
+        "gensym" => {
+            let prefix = match values.as_slice() {
+                [] => "G__".to_owned(),
+                [Value::String(prefix)] => prefix.clone(),
+                [value] => return Err(format!("gensym expects a string prefix, got {}", portable_type_name(value))),
+                _ => return Err("gensym expects zero or one arguments".into()),
+            };
+            Ok(Value::Symbol(Symbol::from(gensym(&prefix))))
         }
         "eval-in" => {
             if values.len() != 2 {

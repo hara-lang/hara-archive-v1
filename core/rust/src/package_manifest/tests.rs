@@ -62,6 +62,10 @@ fn package_manifest() -> String {
 #[test]
 fn selects_host_flavor_and_shared_wasm_import_independently() {
     let manifest = PackageManifest::parse(&package_manifest()).unwrap();
+    assert!(manifest
+        .unsupported_host_flavors_warning()
+        .unwrap()
+        .contains("package/host-flavors-ignored"));
     let jvm_selection = manifest
         .select_flavor(
             "jvm",

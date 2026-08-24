@@ -36,6 +36,7 @@ final class HaraProject {
   private final java.util.List<JvmDependency> jvmDependencies;
   private final java.util.List<Path> jvmSourcePaths;
   private final Path jvmTargetPath;
+  private final String jvmEntryPoint;
   private final Set<String> capabilities;
 
   record JvmDependency(String id, String version) {
@@ -57,6 +58,7 @@ final class HaraProject {
       java.util.List<JvmDependency> jvmDependencies,
       java.util.List<Path> jvmSourcePaths,
       Path jvmTargetPath,
+      String jvmEntryPoint,
       Set<String> capabilities) {
     this.root = root;
     this.descriptor = descriptor;
@@ -70,6 +72,7 @@ final class HaraProject {
     this.jvmDependencies = java.util.List.copyOf(jvmDependencies);
     this.jvmSourcePaths = java.util.List.copyOf(jvmSourcePaths);
     this.jvmTargetPath = jvmTargetPath;
+    this.jvmEntryPoint = jvmEntryPoint;
     this.capabilities = Set.copyOf(capabilities);
   }
 
@@ -128,6 +131,7 @@ final class HaraProject {
             haraDependencies(lookup(options, "project/dependencies"), PROJECT_FILE);
         Map<String, String> effectiveHara =
             mergeHaraDependencies(sharedHara, runtime.haraDependencies(), "jvm");
+        String jvmEntryPoint = jvmEntryPoint(options, PROJECT_FILE);
         return new HaraProject(
             root,
             descriptor,
@@ -143,6 +147,7 @@ final class HaraProject {
             runtime.targetPath() == null
                 ? root.resolve("target/jvm/classes")
                 : runtime.targetPath(),
+            jvmEntryPoint,
             capabilities(lookup(options, "project/capabilities"), PROJECT_FILE));
       }
       if (!(form instanceof List<?> list)
@@ -178,6 +183,7 @@ final class HaraProject {
           java.util.List.of(),
           java.util.List.of(),
           root.resolve("target/classes"),
+          null,
           Set.of());
     } catch (IOException error) {
       throw new HaraException(
@@ -355,6 +361,10 @@ final class HaraProject {
     return jvmTargetPath;
   }
 
+  String jvmEntryPoint() {
+    return jvmEntryPoint;
+  }
+
   boolean hasCapability(String capability) {
     return capabilities.contains(capability);
   }
@@ -451,6 +461,35 @@ final class HaraProject {
             dependencyGroups == null ? null : lookup(dependencyGroups, "hara"), descriptor),
         mavenDependencies(
             dependencyGroups == null ? null : lookup(dependencyGroups, "maven"), descriptor));
+  }
+
+  private static String jvmEntryPoint(IMapType<?, ?> project, String descriptor) {
+    Object packageValue = lookup(project, "project/package");
+    if (packageValue == null) return null;
+    if (!(packageValue instanceof IMapType<?, ?> packageOptions)) {
+      throw new HaraException(descriptor + " :project/package must be a map");
+    }
+    Object entries = lookup(packageOptions, "entry-points");
+    if (entries == null) return null;
+    if (!(entries instanceof ILinearType<?> values)) {
+      throw new HaraException(descriptor + " :project/package :entry-points must be a vector");
+    }
+    if (values.count() != 1) {
+      throw new HaraException(
+          descriptor + " :project/package :entry-points must contain exactly one JVM entry point");
+    }
+    Object entry = values.nth(0);
+    String className =
+        entry instanceof Symbol symbol && symbol.getNamespace() == null
+            ? symbol.display()
+            : entry instanceof String string ? string : null;
+    if (className != null
+        && className.matches("[A-Za-z_$][A-Za-z0-9_$]*(\\.[A-Za-z_$][A-Za-z0-9_$]*)+")) {
+      return className;
+    }
+    throw new HaraException(
+        descriptor
+            + " :project/package :entry-points must contain one fully-qualified JVM class name");
   }
 
   private static java.util.List<Path> mergePaths(

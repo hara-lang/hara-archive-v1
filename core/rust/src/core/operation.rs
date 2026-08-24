@@ -1058,9 +1058,6 @@ fn iterator_take_while(function: Value, value: Value) -> Result<Value, String> {
 fn iterator_map(function: Value, value: Value) -> Result<Value, String> {
     iterator_map_with(function, value, false)
 }
-fn iterator_map_spread(function: Value, value: Value) -> Result<Value, String> {
-    iterator_map_with(function, value, true)
-}
 fn iterator_map_with(function: Value, value: Value, spread: bool) -> Result<Value, String> {
     let source = match value {
         Value::Iterator(iterator) => Value::Iterator(iterator),
@@ -1230,88 +1227,6 @@ fn iterator_close(value: &Value) -> Result<Value, String> {
     }
 }
 
-fn collection_keys(value: &Value) -> Result<Value, String> {
-    match value {
-        value @ (Value::Map(_)
-        | Value::OrderedMap(_)
-        | Value::SortedMap(_)
-        | Value::Trie(_)
-        | Value::PriorityMap(_)) => Ok(Value::Vector(
-            map_entries(value)
-                .unwrap()
-                .into_iter()
-                .map(|(key, _)| key)
-                .collect(),
-        )),
-        Value::Object(values) => Ok(Value::Vector(
-            values
-                .borrow()
-                .iter()
-                .map(|(key, _)| Value::String(key.clone()))
-                .collect(),
-        )),
-        Value::Struct(value) => Ok(Value::Vector(
-            value
-                .ty
-                .fields
-                .iter()
-                .map(|field| named_field_key(field))
-                .collect(),
-        )),
-        Value::Mutable(value) => Ok(Value::Vector(
-            value
-                .ty
-                .fields
-                .iter()
-                .map(|field| named_field_key(field))
-                .collect(),
-        )),
-        Value::Pointer(pointer) => Ok(Value::Vector(
-            pointer
-                .fields()
-                .iter()
-                .map(|(key, _)| key.clone())
-                .collect(),
-        )),
-        _ => Err("keys expects a map, object, struct, or mutable value".into()),
-    }
-}
-
-fn collection_vals(value: &Value) -> Result<Value, String> {
-    match value {
-        value @ (Value::Map(_)
-        | Value::OrderedMap(_)
-        | Value::SortedMap(_)
-        | Value::Trie(_)
-        | Value::PriorityMap(_)) => Ok(Value::Vector(
-            map_entries(value)
-                .unwrap()
-                .into_iter()
-                .map(|(_, value)| value)
-                .collect(),
-        )),
-        Value::Object(values) => Ok(Value::Vector(
-            values
-                .borrow()
-                .iter()
-                .map(|(_, value)| value.clone())
-                .collect(),
-        )),
-        Value::Struct(value) => Ok(Value::Vector(
-            value.ordered_values().into_iter().cloned().collect(),
-        )),
-        Value::Mutable(value) => Ok(Value::Vector(value.ordered_values().into_iter().collect())),
-        Value::Pointer(pointer) => Ok(Value::Vector(
-            pointer
-                .fields()
-                .iter()
-                .map(|(_, value)| value.clone())
-                .collect(),
-        )),
-        _ => Err("vals expects a map, object, struct, or mutable value".into()),
-    }
-}
-
 fn collection_first(value: Value) -> Result<Value, String> {
     match value {
         Value::Seq(sequence) => sequence
@@ -1369,18 +1284,6 @@ fn collection_second(value: Value) -> Result<Value, String> {
             values.next();
             return Ok(values.next().unwrap_or(Value::Nil));
         }
-    }
-}
-
-fn collection_empty(value: Value) -> Result<Value, String> {
-    match value {
-        Value::Seq(sequence) => match sequence.peek_first() {
-            None => Ok(Value::Bool(true)),
-            Some(Ok(_)) => Ok(Value::Bool(false)),
-            Some(Err(error)) => Err(error),
-        },
-        Value::Iterator(iterator) => Ok(Value::Bool(!iterator.borrow_mut().has_next()?)),
-        value => Ok(Value::Bool(iterator_values(value)?.is_empty())),
     }
 }
 
@@ -1862,32 +1765,6 @@ fn collection_dissoc(value: &Value, keys: &[Value]) -> Result<Value, String> {
         Value::Nil => Ok(Value::Map(PMap::new())),
         _ => Err("dissoc expects a map".into()),
     }
-}
-
-fn collection_get_in(value: Value, keys: &[Value]) -> Result<Value, String> {
-    if keys.is_empty() {
-        return Ok(value);
-    }
-    let next = collection_get(&value, &keys[0], Value::Nil)?;
-    if matches!(next, Value::Nil) {
-        Ok(Value::Nil)
-    } else {
-        collection_get_in(next, &keys[1..])
-    }
-}
-
-fn collection_assoc_in(value: Value, keys: &[Value], replacement: Value) -> Result<Value, String> {
-    if keys.is_empty() {
-        return Ok(replacement);
-    }
-    let current = if matches!(value, Value::Nil) {
-        Value::Map(PMap::new())
-    } else {
-        value
-    };
-    let child = collection_get(&current, &keys[0], Value::Nil)?;
-    let updated = collection_assoc_in(child, &keys[1..], replacement)?;
-    collection_assoc(&current, &keys[0], updated)
 }
 
 fn unique_values(values: Vec<Value>) -> Vec<Value> {

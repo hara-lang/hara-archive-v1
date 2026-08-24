@@ -76,14 +76,9 @@ impl Primitive {
             "<=" => Primitive::LessOrEqual,
             ">" => Primitive::Greater,
             ">=" => Primitive::GreaterOrEqual,
-            // Evaluator builtin collection/metadata operators (the
-            // structural arms in `eval`, not vars); the VM reaches them
-            // through the same value-level functions.
-            "count" => Primitive::Count,
-            "get" => Primitive::Get,
-            "meta" => Primitive::Meta,
+            // Collection and metadata names are Foundation wrappers over
+            // protocol dispatch, not public primitive symbols.
             "nth" => Primitive::Nth,
-            "assoc" => Primitive::Assoc,
             "first" => Primitive::First,
             "rest" => Primitive::Rest,
             "second" => Primitive::Second,
@@ -216,23 +211,18 @@ pub(crate) fn apply_primitive(primitive: Primitive, arguments: &[Value]) -> Resu
             if arguments.len() != 1 {
                 return Err("count expects one argument".into());
             }
-            collection_count(&arguments[0])
+            protocol_call("std.protocol.icount.ICount", "count", arguments)
         }
-        Primitive::Get => {
-            if arguments.len() != 2 && arguments.len() != 3 {
-                return Err("get expects 2 or 3 arguments".into());
-            }
-            if matches!(arguments[0], Value::Bytes(_) | Value::ByteBuffer(_)) {
-                return byte_get(&arguments[0], &arguments[1], arguments.get(2).cloned());
-            }
-            let default = arguments.get(2).cloned().unwrap_or(Value::Nil);
-            collection_get(&arguments[0], &arguments[1], default)
-        }
+        Primitive::Get => protocol_call(
+            "std.protocol.ilookup.ILookup",
+            "lookup",
+            arguments,
+        ),
         Primitive::Meta => {
             if arguments.len() != 1 {
                 return Err("meta expects one value".into());
             }
-            protocol_meta(arguments)
+            protocol_call("std.protocol.iobjtype.IObjType", "meta", arguments)
         }
         Primitive::Nth => {
             if arguments.len() != 2 {
@@ -425,10 +415,11 @@ pub(crate) fn apply_binary_primitive(
         _ => {}
     }
     match primitive {
-        Primitive::Get if matches!(left, Value::Bytes(_) | Value::ByteBuffer(_)) => {
-            byte_get(left, right, None)
-        }
-        Primitive::Get => collection_get(left, right, Value::Nil),
+        Primitive::Get => protocol_call(
+            "std.protocol.ilookup.ILookup",
+            "lookup",
+            &[left.clone(), right.clone()],
+        ),
         Primitive::Count => Err("count expects one argument".into()),
         Primitive::Meta => Err("meta expects one value".into()),
         Primitive::Nth => collection_nth(left, right),
@@ -577,19 +568,6 @@ fn apply_binary_numbers_promoting(
         }
     };
     Ok(result)
-}
-
-fn arithmetic(op: &str, args: &[Form], env: &mut HashMap<String, Value>) -> Result<Value, String> {
-    let primitive = Primitive::from_symbol(op).expect("arithmetic operator");
-    let mut values = Vec::with_capacity(args.len());
-    for form in args {
-        let value = eval(form, env)?;
-        if !numeric::is_numeric_value(&value) {
-            return Err(format!("{} expects numbers", primitive.operator()));
-        }
-        values.push(value);
-    }
-    apply_primitive(primitive, &values)
 }
 
 fn bit_operation(
@@ -1296,17 +1274,6 @@ fn native_error_values(operation: &str, values: Vec<Value>) -> Result<Value, Str
         }
         _ => Err(format!("unknown native error operation: {operation}")),
     }
-}
-
-fn comparison(op: &str, args: &[Form], env: &mut HashMap<String, Value>) -> Result<Value, String> {
-    let values = args
-        .iter()
-        .map(|form| eval(form, env))
-        .collect::<Result<Vec<_>, _>>()?;
-    apply_primitive(
-        Primitive::from_symbol(op).expect("comparison operator"),
-        &values,
-    )
 }
 
 fn value_index(value: &Value) -> Result<usize, String> {

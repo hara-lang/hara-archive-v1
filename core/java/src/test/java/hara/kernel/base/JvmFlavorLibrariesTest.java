@@ -11,6 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.EnumSet;
+import java.lang.reflect.InvocationTargetException;
 import org.junit.Test;
 
 public class JvmFlavorLibrariesTest {
@@ -105,6 +106,28 @@ public class JvmFlavorLibrariesTest {
         System.setProperty(NativeMode.PROPERTY, previous);
       }
     }
+  }
+
+  @Test
+  public void flavorImportsReplaceAndRollbackAtomically() {
+    RT.Instance<Object> runtime = runtime(EnumSet.of(NativeCapability.REFLECTION));
+    assertTrue(runtime.getCurrentNs().imports.containsKey(hara.lang.data.Symbol.create("String")));
+
+    runtime.eval(
+        runtime.readString(
+            "(ns jvm-libraries-test (:flavor :jvm [java.awt Point]))"));
+    assertTrue(runtime.getCurrentNs().imports.containsKey(hara.lang.data.Symbol.create("Point")));
+    assertTrue(!runtime.getCurrentNs().imports.containsKey(hara.lang.data.Symbol.create("String")));
+
+    InvocationTargetException error =
+        assertThrows(
+            InvocationTargetException.class,
+            () ->
+                runtime.eval(
+                    runtime.readString(
+                        "(ns jvm-libraries-test (:flavor :jvm [java.util Date] [java.sql Date]))")));
+    assertTrue(error.getCause().getMessage().contains("Native import already exists: Date"));
+    assertTrue(runtime.getCurrentNs().imports.containsKey(hara.lang.data.Symbol.create("Point")));
   }
 
   private static RT.Instance<Object> runtime(EnumSet<NativeCapability> capabilities) {

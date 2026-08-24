@@ -40,6 +40,22 @@
 ;; ============================================================================
 (ns std.foundation)
 
+;; Associative access is a protocol operation.  The Foundation name is the
+;; portable convenience surface; receiver behavior belongs to ILookup.
+(defn ^{:public true
+        :schema [:function [:fn [:any :any] :any]
+                           [:fn [:any :any :any] :any]]}
+  get
+  "Returns the value associated with key, or the supplied default."
+  ([value key] (ILookup/lookup value key))
+  ([value key not-found] (ILookup/lookup value key not-found)))
+
+(defn ^{:public true :schema [:fn [:any] :int]}
+  count
+  "Returns the number of values through ICount."
+  [value]
+  (ICount/count value))
+
 ;; Base-backed bootstrap shims remain ordinary functions for interpretation and
 ;; first-class use. The compiler validates `:inline true` against their
 ;; transparent forwarding form and lowers direct calls to the Base operation.
@@ -120,10 +136,10 @@
 (defn ^{:inline true :schema [:fn [:any] :any]}
   reduced "Wraps value as an early reduction result." [value] (std.native.Base/reduced value))
 
-(defn ^{:schema [:fn [:fn & :any] :any]}
+(defn ^{:public true :schema [:fn [:fn & :any] :any]}
   apply "Applies function to leading arguments and a final sequential value."
   [function & arguments]
-  (std.native.Base/apply std.native.Base/apply (std.protocol.icons.ICons/cons arguments function)))
+  (Base/apply Base/apply (ICons/cons arguments function)))
 
 (defn ^{:inline true :schema [:fn [:any] :bool]}
   not "Returns true when value is false or nil." [value] (std.native.Base/not value))
@@ -225,6 +241,12 @@
 (defn ^{:inline true :schema [:fn [:any :any] :bool]}
   satisfies? "Returns true when value satisfies protocol." [protocol value] (std.native.Base/satisfies? protocol value))
 
+(defn ^{:public true :inline true :schema [:fn [:any] :bool]}
+  special-symbol?
+  "Returns true when value names a language special form."
+  [value]
+  (Base/special-symbol? value))
+
 (defn ^{:inline true :schema [:fn [:any] :keyword]}
   type "Returns value's portable runtime type keyword." [value] (std.native.Base/type value))
 
@@ -267,6 +289,38 @@
 
 (defn ^{:inline true :schema [:fn [:symbol] :any]}
   env-resolve "Resolves symbol without triggering namespace or package loading." [symbol] (std.native.Runtime/resolve symbol))
+
+(defn ^{:public true :inline true :schema [:fn [:any] :any]}
+  the-ns
+  "Returns the namespace identified by value, or nil when it is not loaded."
+  [value]
+  (Runtime/the-ns value))
+
+(defn ^{:public true :inline true :schema [:fn [:any] :symbol]}
+  ns-name
+  "Returns the symbol naming a loaded namespace."
+  [value]
+  (Runtime/ns-name value))
+
+(defn ^{:public true :inline true :schema [:fn [:any] :map]}
+  ns-publics
+  "Returns the public Vars owned by a loaded namespace."
+  [value]
+  (Runtime/ns-publics value))
+
+(defn ^{:public true :inline true
+        :schema [:function [:fn [] :symbol]
+                           [:fn [:str] :symbol]]}
+  gensym
+  "Returns a fresh symbol, optionally using a string prefix."
+  ([] (Runtime/gensym))
+  ([prefix] (Runtime/gensym prefix)))
+
+(defn ^{:public true :inline true :schema [:fn [:any] :any]}
+  macroexpand-1
+  "Expands one macro layer of form."
+  [form]
+  (Runtime/macroexpand-1 form))
 
 (defn ^{:inline true
         :schema [:function [:fn [:symbol] :any]
@@ -331,19 +385,19 @@
 ;; Metadata
 ;; ---------------------------------------------------------------------------
 
-(defn ^{:schema [:fn [:any] :map]}
+(defn ^{:public true :schema [:fn [:any] :map]}
   meta
-  "Returns value metadata through std.protocol.iobjtype.IObjType, or nil when none is present."
+  "Returns value metadata through IObjType, or nil when none is present."
   [value]
-  (if (satisfies? std.protocol.iobjtype.IObjType value)
-    (std.protocol.iobjtype.IObjType/meta value)
+  (if (satisfies? IObjType value)
+    (IObjType/meta value)
     nil))
 
 (defn ^{:inline true :schema [:fn [:any :map] :any]}
   with-meta
-  "Returns value carrying metadata through std.protocol.iobjtype.IObjType."
+  "Returns value carrying metadata through IObjType."
   [value metadata]
-  (std.protocol.iobjtype.IObjType/with-meta value metadata))
+  (IObjType/with-meta value metadata))
 
 
 ;; ---------------------------------------------------------------------------
@@ -552,6 +606,12 @@
 ;; References
 ;; ---------------------------------------------------------------------------
 
+(defn ^{:inline true :schema [:fn [:any] :any]}
+  deref
+  "Returns a reference value through IDeref."
+  [reference]
+  (IDeref/deref reference))
+
 (defn ^{:inline true :schema [:fn [:any :any] :any]}
   reset!
   "Sets reference to value through IReset and returns value."
@@ -569,7 +629,7 @@
   "Atomically applies function to reference through an ICas retry loop."
   [reference function & arguments]
   (loop []
-    (let [old-value (std.protocol.ideref.IDeref/deref reference)
+    (let [old-value (IDeref/deref reference)
           new-value (apply function old-value arguments)]
       (if (std.protocol.icas.ICas/cas reference old-value new-value)
         new-value
@@ -586,7 +646,7 @@
    (swap-return! reference function false))
   ([reference function state?]
    (loop []
-     (let [old-value (std.protocol.ideref.IDeref/deref reference)
+     (let [old-value (IDeref/deref reference)
            result (function old-value)
            output (first result)
            new-value (second result)]
@@ -670,7 +730,7 @@
   "Returns true if value yields no items."
   [value]
   (if (satisfies? std.protocol.icount.ICount value)
-    (= 0 (std.protocol.icount.ICount/count value))
+    (= 0 (ICount/count value))
     (not (iter-next? (iter value)))))
 
 (defn ^{:schema [:fn [:any] :any]}
@@ -741,7 +801,19 @@
          (IAssoc/assoc output (first remaining) (second remaining))
          (rest (rest remaining)))))))
 
-(defn ^{:schema [:fn [:any [:vector :any]] :any]}
+(defn ^{:public true :schema [:fn [:any :any & :any] :any]}
+  dissoc
+  "Returns value with one or more keys removed through IDissoc."
+  [value key & more]
+  (loop [output (if (nil? value) nil (IDissoc/dissoc value key))
+         remaining more]
+    (if (empty? remaining)
+      output
+      (recur
+       (if (nil? output) nil (IDissoc/dissoc output (first remaining)))
+       (rest remaining)))))
+
+(defn ^{:public true :schema [:fn [:any [:vector :any]] :any]}
   get-in
   "Returns the value at the end of the key path keys, or nil if absent."
   [value keys]
@@ -1970,7 +2042,7 @@
   [form]
   (loop [current form
          expansions 0]
-    (let [expanded (macroexpand-1 current)]
+    (let [expanded (Runtime/macroexpand-1 current)]
       (if (= expanded current)
         current
         (if (>= expansions 1000)
@@ -2125,7 +2197,7 @@
     (let [condition (first clauses)
           step (second clauses)
           remaining (vec (drop 2 clauses))
-          result-symbol (gensym "result")
+          result-symbol (Runtime/gensym "result")
           threaded (if last?
                        (thread-last-form result-symbol step)
                      (thread-first-form result-symbol step))]
@@ -2154,7 +2226,7 @@
   [value forms last?]
   (if (= 0 (count forms))
     value
-    (let [result (gensym "some")
+    (let [result (Runtime/gensym "some")
           step (first forms)
           threaded (if last?
                      (thread-last-form result step)
@@ -2179,7 +2251,7 @@
         (let [binding (first bindings)
               expression (second bindings)
               remaining (vec (drop 2 bindings))
-              result (gensym "if-let")]
+              result (Runtime/gensym "if-let")]
           (list 'let [result expression]
                 (list 'if result
                       (list 'let [binding result]
@@ -2282,7 +2354,7 @@
   comprehension-let-form
   "Adds one single-evaluation :let transformation to a comprehension iterator."
   [pipeline slots bindings]
-  (let [state (gensym "state")]
+  (let [state (Runtime/gensym "state")]
     (loop [remaining bindings
            raw-values []
            next-slots slots
@@ -2297,7 +2369,7 @@
          next-slots]
         (let [binding (first remaining)
               expression (second remaining)
-              raw (gensym "let")]
+              raw (Runtime/gensym "let")]
           (recur (vec (drop 2 remaining))
                  (conj raw-values raw)
                  (conj next-slots binding)
@@ -2322,7 +2394,7 @@
             (recur (first result)
                    (second result)
                    (vec (rest remaining))))
-          (let [state (gensym "state")
+          (let [state (Runtime/gensym "state")
                 native-operation (if (= operation :when)
                                    'std.native.Iter/iter-filter
                                    'std.native.Iter/iter-take-while)]
@@ -2342,7 +2414,7 @@
   "Builds the lazy iterator pipeline for parsed comprehension groups."
   [groups body outer-state outer-slots]
   (let [group (first groups)
-        raw (gensym "item")
+        raw (Runtime/gensym "item")
         initial-state (if (nil? outer-state)
                         [raw]
                         (list 'conj outer-state raw))
@@ -2353,7 +2425,7 @@
         modified (comprehension-modifiers-form initial slots (:modifiers group))
         pipeline (first modified)
         active-slots (second modified)
-        state (gensym "state")
+        state (Runtime/gensym "state")
         callback-bindings (comprehension-state-bindings state active-slots)]
     (if (= 1 (count groups))
       (list 'std.native.Iter/iter-map
@@ -2398,7 +2470,7 @@
 (defmacro case
   "Selects the expression paired with the matching constant, or the optional default."
   [value & clauses]
-  (let [target (gensym "case")]
+  (let [target (Runtime/gensym "case")]
     (list 'let [target value] (case-form target clauses))))
 
 (defmacro some->
@@ -2450,7 +2522,7 @@
   "Evaluates value once, invokes each form with it inserted first, and returns
    the original value."
   [value & forms]
-  (let [target (gensym "target")
+  (let [target (Runtime/gensym "target")
         calls (doto-forms target forms)]
     (list 'let
           [target value]
@@ -2487,7 +2559,7 @@
   (let [parsed (parse-comprehension bindings true)
         iterator (comprehension-groups-form (:groups parsed) body nil [])]
     (if (:into? parsed)
-      (let [destination (gensym "destination")]
+      (let [destination (Runtime/gensym "destination")]
         (list 'let
               [destination (:destination parsed)]
               (list 'std.foundation/into
@@ -2504,8 +2576,8 @@
                                             (apply list (concat ['do] body [nil]))
                                             nil
                                             [])
-        it (gensym "iterator")
-        continue (gensym "continue")]
+        it (Runtime/gensym "iterator")
+        continue (Runtime/gensym "continue")]
     (list 'let
           [it iterator]
           (list 'loop
@@ -2526,7 +2598,7 @@
     (throw (ex :foundation/invalid-dotimes-binding {:binding binding} :ex/message "dotimes requires [index count]" :ex/class :ex.class/syntax))
     (let [index (first binding)
           amount (second binding)
-          limit (gensym "limit")]
+          limit (Runtime/gensym "limit")]
       (list 'let
             [limit amount]
             (list 'loop
@@ -2542,7 +2614,7 @@
 (defmacro while
   "Repeatedly executes body while test is truthy, then returns nil."
   [test & body]
-  (let [continue (gensym "continue")]
+      (let [continue (Runtime/gensym "continue")]
     (list 'loop
           [continue true]
           (list 'if
@@ -2625,7 +2697,7 @@
                (list 'current-namespace)
                (list 'quote entry)
                (list 'var (symbol (str source) (name entry)))))
-       (keys (ns-publics source))))
+       (keys (Runtime/ns-publics source))))
     namespaces)))
 
 ;; ---------------------------------------------------------------------------

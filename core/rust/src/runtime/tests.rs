@@ -3170,9 +3170,10 @@ mod tests {
     }
 
     #[test]
-    fn fn_star_and_eval_forms_execute_while_hash_dispatch_extensions_are_rejected() {
+    fn fn_forms_and_eval_forms_execute_while_hash_dispatch_extensions_are_rejected() {
         let mut runtime = Runtime::new();
-        assert_eq!(runtime.eval_text("((fn* [x] (+ x 1)) 4)").unwrap(), "5");
+        assert_eq!(runtime.eval_text("((fn [x] (+ x 1)) 4)").unwrap(), "5");
+        assert!(runtime.eval_text("((fn* [x] (+ x 1)) 4)").is_err());
         assert!(runtime
             .eval_text("#=(+ 2 3)")
             .unwrap_err()
@@ -4570,7 +4571,7 @@ mod tests {
             runtime
                 .eval_text("(ns wrong.runtime (:flavor :jvm) (:import java.lang.String))")
                 .unwrap_err(),
-            "native/import-missing: java.lang.String"
+            "native/unsupported-flavor: :jvm (host flavors are only available on JVM/.NET runtimes)"
         );
         assert_eq!(
             runtime

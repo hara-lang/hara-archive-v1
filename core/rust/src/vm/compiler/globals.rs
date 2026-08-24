@@ -23,13 +23,13 @@ use crate::vm::opcode::Instruction;
 use super::{Child, Compiler};
 
 impl Compiler {
-    pub(super) fn excluded_intrinsic_symbol(&self, name: &str) -> bool {
+    pub(super) fn excluded_foundation_symbol(&self, name: &str) -> bool {
         let Some((namespace, _)) = name.split_once('/') else {
             return false;
         };
-        self.excluded_intrinsics.iter().any(|library| {
+        self.excluded_foundation_libraries.iter().any(|library| {
             namespace == format!("std.foundation.{library}")
-                || crate::kernel::generated::intrinsic_alias(library)
+                || crate::kernel::generated::foundation_library_alias(library)
                     .is_some_and(|alias| alias == namespace)
         })
     }
@@ -230,7 +230,7 @@ impl Compiler {
     /// registry (the Runtime path; the free `compile_source` path has
     /// none and only sees program-declared names).
     pub(super) fn visible_global(&self, name: &str) -> bool {
-        if self.excluded_intrinsic_symbol(name) {
+        if self.excluded_foundation_symbol(name) {
             return false;
         }
         let declared = name
@@ -264,21 +264,15 @@ impl Compiler {
                 .unwrap_or(false)
     }
 
-    /// Bytecode-native callables still obey namespace referral and alias
-    /// configuration. Without an active registry (the closed-program helper)
-    /// the historical standalone behavior remains available.
+    /// Canonical native/protocol callables may be emitted before ordinary
+    /// Foundation Vars are available. Their values are still resolved from
+    /// the shared namespace registry at execution time.
     pub(super) fn visible_bytecode_callable(&self, name: &str) -> bool {
-        if self.excluded_intrinsic_symbol(name) || !crate::core::is_bytecode_callable(name) {
+        if self.excluded_foundation_symbol(name) {
             return false;
         }
-        let bootstrap_callable = |candidate: &str| {
-            crate::core::foundation_bootstrap_callable_names().any(|callable| callable == candidate)
-                || candidate
-                    .strip_prefix("std.foundation/")
-                    .is_some_and(|local| {
-                        crate::core::foundation_bootstrap_callable_names()
-                            .any(|callable| callable == local)
-                    })
+        let Some(canonical) = crate::core::canonical_intrinsic_callable_symbol(name) else {
+            return false;
         };
         crate::core::namespace_registry()
             .map(|registry| {
@@ -286,10 +280,9 @@ impl Compiler {
                     .find(&self.namespace)
                     .unwrap_or_else(|| registry.current());
                 registry
-                    .resolve(&crate::lang::data::Symbol::parse(name))
-                    .or_else(|| current.resolve(&crate::lang::data::Symbol::parse(name)))
+                    .resolve(&crate::lang::data::Symbol::parse(&canonical))
+                    .or_else(|| current.resolve(&crate::lang::data::Symbol::parse(&canonical)))
                     .is_some()
-                    || bootstrap_callable(name)
             })
             .unwrap_or(true)
     }
