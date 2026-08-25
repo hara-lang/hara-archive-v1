@@ -1,4 +1,5 @@
 (ns code.vm.halc-test
+  (:use code.test)
   (:require [code.vm :as vm]
             [code.vm.halc :as halc]))
 
@@ -90,6 +91,226 @@
      :event/evidence {:format/magic "NOPE"}
      :event/error "bad magic"}]
    :trace/error "bad magic"})
+
+(defn fails?
+  [f]
+  (try
+    (do (f) false)
+    (catch Throwable error
+      true)))
+
+(def +machine+
+  (halc/create +module-source+ +module-trace+))
+
+(def +event+
+  (first (:trace/events +module-trace+)))
+
+^{:refer code.vm.halc/+trace-schema+}
+(fact "declares the portable HALC trace schema"
+  halc/+trace-schema+
+  => "hal.halc-trace/0-alpha")
+
+^{:refer code.vm.halc/+trace-statuses+}
+(fact "declares accepted HALC trace statuses"
+  halc/+trace-statuses+
+  => #{:ok :error})
+
+^{:refer code.vm.halc/+event-statuses+}
+(fact "declares accepted HALC event statuses"
+  halc/+event-statuses+
+  => #{:ok :error})
+
+^{:refer code.vm.halc/+stages+}
+(fact "declares the ordered HALC stage vocabulary"
+  halc/+stages+
+  => #{:source/read :module/identity :forms/canonicalize :schema/index
+       :payload/encode :envelope/build :artifact/validate :artifact/decode
+       :handoff/bytecode})
+
+^{:refer code.vm.halc/invalid}
+(fact "raises a structured HALC argument error"
+  (fails? (fn [] (halc/invalid "bad trace" {:value nil})))
+  => true)
+
+^{:refer code.vm.halc/map-value}
+(fact "accepts maps and rejects non-maps"
+  [(halc/map-value "trace" {:id "trace"})
+   (fails? (fn [] (halc/map-value "trace" [])))]
+  => [{:id "trace"} true])
+
+^{:refer code.vm.halc/vector-value}
+(fact "accepts vectors and rejects non-vectors"
+  [(halc/vector-value "events" [1])
+   (fails? (fn [] (halc/vector-value "events" {})))]
+  => [[1] true])
+
+^{:refer code.vm.halc/non-empty-string}
+(fact "requires a non-empty trace identity"
+  [(halc/non-empty-string "id" "trace-1")
+   (fails? (fn [] (halc/non-empty-string "id" "")))]
+  => ["trace-1" true])
+
+^{:refer code.vm.halc/positive-integer}
+(fact "requires positive step limits"
+  [(halc/positive-integer "steps" 1)
+   (fails? (fn [] (halc/positive-integer "steps" 0)))]
+  => [1 true])
+
+^{:refer code.vm.halc/member}
+(fact "accepts supported trace statuses"
+  [(halc/member "status" halc/+trace-statuses+ :ok)
+   (fails? (fn [] (halc/member "status" halc/+trace-statuses+ :other)))]
+  => [:ok true])
+
+^{:refer code.vm.halc/event?}
+(fact "recognizes well-formed HALC stage events"
+  [(halc/event? +event+)
+   (halc/event? (assoc +event+ :event/stage :unknown))]
+  => [true false])
+
+^{:refer code.vm.halc/trace?}
+(fact "recognizes valid and failed HALC trace documents"
+  [(halc/trace? +module-trace+)
+   (halc/trace? +invalid-artifact-trace+)
+   (halc/trace? (assoc +module-trace+ :trace/schema "unknown"))]
+  => [true true false])
+
+^{:refer code.vm.halc/normalize-trace}
+(fact "validates a trace without changing its representation"
+  [(= +module-trace+ (halc/normalize-trace +module-trace+))
+   (fails? (fn []
+             (halc/normalize-trace
+              (assoc +module-trace+ :trace/schema "unknown"))))]
+  => [true true])
+
+^{:refer code.vm.halc/halc-machine?}
+(fact "recognizes machines carrying a HALC trace and source index"
+  [(halc/halc-machine? +machine+)
+   (halc/halc-machine? {})]
+  => [true false])
+
+^{:refer code.vm.halc/trace-document}
+(fact "returns the trace attached to a HALC machine"
+  (halc/trace-document +machine+)
+  => +module-trace+)
+
+^{:refer code.vm.halc/source-index}
+(fact "returns the source index attached to a HALC machine"
+  (vm/source? (halc/source-index +machine+))
+  => true)
+
+^{:refer code.vm.halc/validate-event-sources}
+(fact "validates stage source references"
+  [(= +module-trace+
+      (halc/validate-event-sources
+       (halc/source-index +machine+)
+       +module-trace+))
+   (fails? (fn []
+             (halc/validate-event-sources
+              (halc/source-index +machine+)
+              (assoc-in +module-trace+
+                        [:trace/events 0 :event/source]
+                        {:form/path [99]}))))]
+  => [true true])
+
+^{:refer code.vm.halc/initial-state}
+(fact "initializes stage replay state"
+  (select-keys
+   (halc/initial-state +module-trace+)
+   [:event/index :event/count :stage :diagnostics :result :error])
+  => {:event/index 0
+      :event/count 8
+      :stage nil
+      :diagnostics []
+      :result nil
+      :error nil})
+
+^{:refer code.vm.halc/create}
+(fact "creates a HALC machine with stable identity"
+  (select-keys +machine+ [:vm/id :vm/kind :vm/status])
+  => {:vm/id "vm/halc/halc-demo-1"
+      :vm/kind :halc
+      :vm/status :ready})
+
+^{:refer code.vm.halc/resolved-event-source}
+(fact "resolves explicit stage source references"
+  (:form/path (halc/resolved-event-source +machine+ +event+))
+  => [0])
+
+^{:refer code.vm.halc/transition-source}
+(fact "combines trace event identity with source form data"
+  (select-keys
+   (halc/transition-source +module-trace+ +event+ {:form/path [0]})
+   [:trace/id :event/id :event/sequence :form/path])
+  => {:trace/id "halc-demo-1"
+      :event/id 1
+      :event/sequence 1
+      :form/path [0]})
+
+^{:refer code.vm.halc/event-state}
+(fact "advances state and retains stage evidence"
+  (select-keys
+   (halc/event-state +machine+ +event+ {:form/path [0]})
+   [:event/index :event/current :stage :source/current :evidence/current
+    :diagnostics :error])
+  => {:event/index 1
+      :event/current +event+
+      :stage :source/read
+      :source/current {:form/path [0]}
+      :evidence/current {:form/count 3}
+      :diagnostics []
+      :error nil})
+
+^{:refer code.vm.halc/event-transition}
+(fact "turns a stage event into a running transition"
+  (select-keys
+   (halc/event-transition +machine+ +module-trace+ +event+)
+   [:step/stage :step/rule :step/status :step/events])
+  => {:step/stage :source/read
+      :step/rule :source/read
+      :step/status :running
+      :step/events [+event+]})
+
+^{:refer code.vm.halc/final-transition}
+(fact "creates a terminal artifact transition"
+  (select-keys
+   (halc/final-transition +machine+ +module-trace+)
+   [:step/rule :step/status :step/result :step/error])
+  => {:step/rule :halc/complete
+      :step/status :returned
+      :step/result +module-result+
+      :step/error nil})
+
+^{:refer code.vm.halc/step}
+(fact "consumes one HALC stage event per step"
+  (let [next (halc/step +machine+)]
+    [(:vm/status next)
+     (:vm/step next)
+     (get-in next [:vm/state :event/index])])
+  => [:running 1 1])
+
+^{:refer code.vm.halc/suspend-at-limit}
+(fact "adds a step-limit suspension transition"
+  (let [suspended (halc/suspend-at-limit +machine+)]
+    [(:vm/status suspended)
+     (:step/rule (last (vm/trace suspended)))])
+  => [:suspended :run/step-limit])
+
+^{:refer code.vm.halc/run}
+(fact "replays stages until a limit or terminal result"
+  (let [suspended (halc/run +machine+ {:steps 1})]
+    [(:vm/status suspended)
+     (:vm/step suspended)
+     (:step/rule (last (vm/trace suspended)))])
+  => [:suspended 2 :run/step-limit])
+
+^{:refer code.vm.halc/from-trace}
+(fact "constructs and fully replays a HALC trace"
+  (let [machine (halc/from-trace +module-source+ +module-trace+)]
+    [(:vm/status machine)
+     (:vm/step machine)
+     (get-in machine [:vm/result :decode/parity])])
+  => [:returned 9 true])
 
 (def results
   [(test-check

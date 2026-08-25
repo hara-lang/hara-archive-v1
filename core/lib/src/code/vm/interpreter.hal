@@ -3,8 +3,7 @@
   (:require [code.vm.model :as model]
             [code.vm.source :as source]))
 
-^{:public true}
-(def +journal-schema+
+(def ^{:public true} +journal-schema+
   "hal.evaluation-journal/0-alpha")
 
 (def +journal-statuses+
@@ -99,8 +98,7 @@
        (or (nil? (:event/source value))
            (map? (:event/source value)))))
 
-^{:public true}
-(defn journal?
+(defn ^{:public true} journal?
   [value]
   (and (map? value)
        (= +journal-schema+ (:journal/schema value))
@@ -153,8 +151,7 @@
       nil)
     journal))
 
-^{:public true}
-(defn interpreter-machine?
+(defn ^{:public true} interpreter-machine?
   [value]
   (and (model/machine? value)
        (= :interpreter (:vm/kind value))
@@ -169,8 +166,7 @@
      "code.vm.interpreter requires an interpreter machine"
      {:value machine})))
 
-^{:public true}
-(defn source-index
+(defn ^{:public true} source-index
   [machine]
   (if (interpreter-machine? machine)
     (get-in machine [:vm/options :source/index])
@@ -216,8 +212,7 @@
    :error nil
    :truncated (= :truncated (:journal/status journal))})
 
-^{:public true}
-(defn create
+(defn ^{:public true} create
   ([input journal]
    (create input journal {}))
   ([input journal options]
@@ -415,8 +410,7 @@
       :result (if failed nil result)
       :error (if failed error nil)})))
 
-^{:public true}
-(defn step
+(defn ^{:public true} step
   [machine]
   (if (model/terminal? machine)
     machine
@@ -446,8 +440,7 @@
              :suspension/reason :step-limit)
       {:status :suspended}))))
 
-^{:public true}
-(defn run
+(defn ^{:public true} run
   ([machine]
    (run machine {}))
   ([machine options]
@@ -465,8 +458,7 @@
            (recur (step current)
                   (dec remaining))))))))
 
-^{:public true}
-(defn from-journal
+(defn ^{:public true} from-journal
   ([input journal]
    (from-journal input journal {}))
   ([input journal options]

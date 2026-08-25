@@ -5,16 +5,13 @@
             [code.vm.halc :as halc]
             [code.vm.bytecode :as bytecode]))
 
-^{:public true}
-(def +report-schema+
+(def ^{:public true} +report-schema+
   "hal.code-vm-conformance/0-alpha")
 
-^{:public true}
-(def +report-statuses+
+(def ^{:public true} +report-statuses+
   #{:pass :fail})
 
-^{:public true}
-(def +stage-kinds+
+(def ^{:public true} +stage-kinds+
   [:interpreter :halc :bytecode])
 
 (def +runtime-kinds+
@@ -123,8 +120,7 @@
   (<= (count (model/trace machine))
       (get-in machine [:vm/limits :history])))
 
-^{:public true}
-(defn stage-summary
+(defn ^{:public true} stage-summary
   [kind machine]
   (if (nil? machine)
     {:stage/kind kind
@@ -363,8 +359,7 @@
     :step/rule (:step/rule transition)
     :step/events (:step/events transition)}})
 
-^{:public true}
-(defn teaching-annotations
+(defn ^{:public true} teaching-annotations
   [machines]
   (let [machines (map-value "machines" machines)]
     (reduce
@@ -381,8 +376,7 @@
      []
      +stage-kinds+)))
 
-^{:public true}
-(defn report?
+(defn ^{:public true} report?
   [value]
   (and (map? value)
        (= +report-schema+ (:conformance/schema value))
@@ -399,8 +393,7 @@
         (:conformance/checks value))
        (vector? (:conformance/teaching value))))
 
-^{:public true}
-(defn report
+(defn ^{:public true} report
   ([fixture-id machines]
    (report fixture-id machines {}))
   ([fixture-id machines options]
@@ -447,8 +440,7 @@
    :limits (:fixture/limits fixture)
    :run (or (:fixture/run fixture) {})})
 
-^{:public true}
-(defn run
+(defn ^{:public true} run
   [fixture]
   (let [fixture (map-value "fixture" fixture)
         fixture-id

@@ -3,13 +3,11 @@
   (:require [code.vm.model :as model]
             [code.vm.source :as source]))
 
-^{:public true}
-(def +trace-schema+ "hal.bytecode-trace/0-alpha")
+(def ^{:public true} +trace-schema+ "hal.bytecode-trace/0-alpha")
 
 (def +trace-statuses+ #{:ok :error :suspended})
 (def +event-statuses+ #{:ok :error :suspended})
-^{:public true}
-(def +event-kinds+
+(def ^{:public true} +event-kinds+
   #{:program/validated
     :instruction/execute
     :call/enter
@@ -71,8 +69,7 @@
        (or (nil? (:event/error value))
            (string? (:event/error value)))))
 
-^{:public true}
-(defn trace?
+(defn ^{:public true} trace?
   [value]
   (and (map? value)
        (= +trace-schema+ (:trace/schema value))
@@ -110,8 +107,7 @@
      events)
     trace))
 
-^{:public true}
-(defn bytecode-machine?
+(defn ^{:public true} bytecode-machine?
   [value]
   (and (model/machine? value)
        (= :bytecode (:vm/kind value))
@@ -124,8 +120,7 @@
     (get-in machine [:vm/options :trace])
     (invalid "code.vm.bytecode requires a bytecode machine" {:value machine})))
 
-^{:public true}
-(defn source-index
+(defn ^{:public true} source-index
   [machine]
   (if (bytecode-machine? machine)
     (get-in machine [:vm/options :source/index])
@@ -161,8 +156,7 @@
    :result nil
    :error nil})
 
-^{:public true}
-(defn create
+(defn ^{:public true} create
   ([input trace] (create input trace {}))
   ([input trace options]
    (let [options (map-value "options" (or options {}))
@@ -244,8 +238,7 @@
       :result (if (= status :returned) (:trace/result trace) nil)
       :error (if (= status :failed) (:trace/error trace) nil)})))
 
-^{:public true}
-(defn step
+(defn ^{:public true} step
   [machine]
   (if (model/terminal? machine)
     machine
@@ -256,8 +249,7 @@
         (model/advance machine (event-transition machine trace event))
         (model/advance machine (final-transition machine trace))))))
 
-^{:public true}
-(defn resume
+(defn ^{:public true} resume
   [machine]
   (if (= :suspended (:vm/status machine))
     (step machine)
@@ -276,8 +268,7 @@
       (assoc (:vm/state machine) :suspension/reason :step-limit)
       {:status :suspended}))))
 
-^{:public true}
-(defn run
+(defn ^{:public true} run
   ([machine] (run machine {}))
   ([machine options]
    (let [options (map-value "run options" (or options {}))
@@ -291,8 +282,7 @@
            (suspend-at-limit current)
            (recur (step current) (dec remaining))))))))
 
-^{:public true}
-(defn from-trace
+(defn ^{:public true} from-trace
   ([input trace] (from-trace input trace {}))
   ([input trace options]
    (let [options (map-value "options" (or options {}))]

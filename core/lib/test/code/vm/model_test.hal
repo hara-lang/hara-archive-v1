@@ -1,0 +1,204 @@
+(ns code.vm.model-test
+  (:use code.test)
+  (:require [code.vm.model :as model]))
+
+(defn fails?
+  [f]
+  (try
+    (do (f) false)
+    (catch Throwable error
+      true)))
+
+(def +machine+
+  (model/machine
+   :interpreter
+   '(+ 1 2)
+   {:id "model/example"
+    :limits {:history 2}}))
+
+^{:refer code.vm.model/+vm-kinds+}
+(fact "declares the supported VM kinds"
+  model/+vm-kinds+
+  => #{:interpreter :halc :bytecode})
+
+^{:refer code.vm.model/+vm-statuses+}
+(fact "declares all portable VM statuses"
+  model/+vm-statuses+
+  => #{:ready :running :suspended :returned :failed :cancelled})
+
+^{:refer code.vm.model/+terminal-statuses+}
+(fact "identifies terminal VM statuses"
+  model/+terminal-statuses+
+  => #{:returned :failed :cancelled})
+
+^{:refer code.vm.model/+limit-keys+}
+(fact "orders the supported machine limit fields"
+  model/+limit-keys+
+  => [:source-bytes :steps :depth :values :history])
+
+^{:refer code.vm.model/+default-limits+}
+(fact "provides bounded defaults for every machine limit"
+  model/+default-limits+
+  => {:source-bytes 1048576
+      :steps 1000
+      :depth 64
+      :values 256
+      :history 256})
+
+^{:refer code.vm.model/invalid}
+(fact "raises a structured argument error"
+  (fails? (fn [] (model/invalid "bad value" {:field :value})))
+  => true)
+
+^{:refer code.vm.model/map-value}
+(fact "accepts maps and rejects other values"
+  [(model/map-value "options" {:x 1})
+   (fails? (fn [] (model/map-value "options" [])))]
+  => [{:x 1} true])
+
+^{:refer code.vm.model/vector-value}
+(fact "accepts vectors and rejects other values"
+  [(model/vector-value "trace" [1 2])
+   (fails? (fn [] (model/vector-value "trace" {})))]
+  => [[1 2] true])
+
+^{:refer code.vm.model/member}
+(fact "returns allowed members and rejects unsupported members"
+  [(model/member "kind" model/+vm-kinds+ :halc)
+   (fails? (fn [] (model/member "kind" model/+vm-kinds+ :scheme)))]
+  => [:halc true])
+
+^{:refer code.vm.model/keyword-value}
+(fact "accepts keyword stages and rejects non-keywords"
+  [(model/keyword-value "stage" :evaluate)
+   (fails? (fn [] (model/keyword-value "stage" "evaluate")))]
+  => [:evaluate true])
+
+^{:refer code.vm.model/non-empty-string}
+(fact "requires a non-empty string"
+  [(model/non-empty-string "id" "vm/1")
+   (fails? (fn [] (model/non-empty-string "id" "")))
+   (fails? (fn [] (model/non-empty-string "id" nil)))]
+  => ["vm/1" true true])
+
+^{:refer code.vm.model/non-negative-integer}
+(fact "accepts zero and positive integers only"
+  [(model/non-negative-integer "step" 0)
+   (model/non-negative-integer "step" 2)
+   (fails? (fn [] (model/non-negative-integer "step" -1)))]
+  => [0 2 true])
+
+^{:refer code.vm.model/positive-integer}
+(fact "rejects zero and negative limits"
+  [(model/positive-integer "steps" 1)
+   (fails? (fn [] (model/positive-integer "steps" 0)))
+   (fails? (fn [] (model/positive-integer "steps" -1)))]
+  => [1 true true])
+
+^{:refer code.vm.model/normalize-limits}
+(fact "merges defaults and validates configured limits"
+  [(model/normalize-limits nil)
+   (model/normalize-limits {:steps 4 :history 3})
+   (fails? (fn [] (model/normalize-limits {:steps 0})))]
+  => [{:source-bytes 1048576 :steps 1000 :depth 64 :values 256 :history 256}
+      {:source-bytes 1048576 :steps 4 :depth 64 :values 256 :history 3}
+      true])
+
+^{:refer code.vm.model/default-id}
+(fact "assigns stable ids to each VM kind"
+  [(model/default-id :interpreter)
+   (model/default-id :halc)
+   (model/default-id :bytecode)
+   (model/default-id :unknown)]
+  => ["vm/interpreter" "vm/halc" "vm/bytecode" nil])
+
+^{:refer code.vm.model/machine?}
+(fact "recognizes complete portable machine values"
+  [(model/machine? +machine+)
+   (model/machine? {})]
+  => [true false])
+
+^{:refer code.vm.model/machine}
+(fact "constructs a ready machine with bounded state"
+  (select-keys +machine+
+               [:vm/id :vm/kind :vm/status :vm/step :vm/trace :vm/limits])
+  => {:vm/id "model/example"
+      :vm/kind :interpreter
+      :vm/status :ready
+      :vm/step 0
+      :vm/trace []
+      :vm/limits {:source-bytes 1048576 :steps 1000 :depth 64
+                  :values 256 :history 2}})
+
+^{:refer code.vm.model/transition?}
+(fact "recognizes transitions with valid status and event vectors"
+  [(model/transition?
+    (model/transition +machine+ :evaluate :start {:value 1}))
+   (model/transition? {})]
+  => [true false])
+
+^{:refer code.vm.model/transition}
+(fact "builds a transition at the next machine index"
+  (select-keys
+   (model/transition +machine+ :evaluate :start {:value 1})
+   [:step/index :step/stage :step/rule :step/status :step/after])
+  => {:step/index 1
+      :step/stage :evaluate
+      :step/rule :start
+      :step/status :running
+      :step/after {:value 1}})
+
+^{:refer code.vm.model/bounded-trace}
+(fact "retains only the configured suffix"
+  [(model/bounded-trace [1 2 3] 2)
+   (model/bounded-trace [1 2 3] 5)]
+  => [[2 3] [1 2 3]])
+
+^{:refer code.vm.model/advance}
+(fact "applies a valid transition and retains bounded history"
+  (let [next
+        (model/advance
+         +machine+
+         (model/transition
+          +machine+
+          :evaluate
+          :return
+          {:value 3}
+          {:status :returned
+           :result 3}))]
+    (select-keys next [:vm/status :vm/step :vm/state :vm/result :vm/trace]))
+  => {:vm/status :returned
+      :vm/step 1
+      :vm/state {:value 3}
+      :vm/result 3
+      :vm/trace [{:step/id "model/example/step/1"
+                  :step/index 1
+                  :step/stage :evaluate
+                  :step/rule :return
+                  :step/before {}
+                  :step/after {:value 3}
+                  :step/source nil
+                  :step/events []
+                  :step/status :returned
+                  :step/result 3
+                  :step/error nil}]})
+
+^{:refer code.vm.model/snapshot}
+(fact "returns valid machines and rejects invalid snapshots"
+  [(= +machine+ (model/snapshot +machine+))
+   (fails? (fn [] (model/snapshot {})))]
+  => [true true])
+
+^{:refer code.vm.model/trace}
+(fact "returns the machine trace as a vector"
+  (model/trace +machine+)
+  => [])
+
+^{:refer code.vm.model/terminal?}
+(fact "recognizes terminal status without treating ready as terminal"
+  [(model/terminal? +machine+)
+   (model/terminal?
+    (assoc +machine+ :vm/status :returned))]
+  => [false true])
+
+(pr-str (run {:namespace "code.vm.model-test"}))

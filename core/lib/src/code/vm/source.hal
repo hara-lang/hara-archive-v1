@@ -40,6 +40,33 @@
     (let [form (block/block input)]
       (block/root [form] (block/string form)))))
 
+(defn source-string
+  [value]
+  (if (block/void? value)
+    (let [raw (block/string value)]
+      (cond
+        (= raw "\\space") " "
+        (= raw "\\newline") "\n"
+        (= raw "\\return") "\r"
+        (= raw "\\formfeed") "\f"
+        (= raw "\\tab") "\t"
+        :else raw))
+    (if (block/container? value)
+      (let [raw (block/string value)
+            prefix (block/prefixed value)
+            suffix (block/suffixed value)
+            start (str/slice raw 0 prefix)
+            end (if (= suffix 0)
+                  ""
+                  (str/slice raw (- (count raw) suffix)))
+            body (reduce
+                  (fn [output child]
+                    (str output (source-string child)))
+                  ""
+                  (block/children value))]
+        (str start body end))
+      (block/string value))))
+
 (defn form-entry
   [source-id version form path parent offset]
   {:source/id source-id
@@ -48,11 +75,11 @@
    :form/parent parent
    :form/type (block/type form)
    :form/tag (block/tag form)
-   :form/source (block/string form)
+   :form/source (source-string form)
    :form/value (block/value form)
    :form/span
    {:start offset
-    :end (+ offset (block/length form))}})
+    :end (+ offset (count (source-string form)))}})
 
 (defn walk-container
   [source-id version container parent-path start-offset]
@@ -64,7 +91,7 @@
       (if (= physical-index (count children))
         output
         (let [child (nth children physical-index)
-              length (block/length child)]
+              length (count (source-string child))]
           (if (block/code? child)
             (let [path (conj parent-path expression-index)
                   entry (form-entry
@@ -89,8 +116,7 @@
              (+ offset length)
              output)))))))
 
-^{:public true}
-(defn form?
+(defn ^{:public true} form?
   [value]
   (and (map? value)
        (string? (:source/id value))
@@ -101,8 +127,7 @@
        (long? (get-in value [:form/span :start]))
        (long? (get-in value [:form/span :end]))))
 
-^{:public true}
-(defn source?
+(defn ^{:public true} source?
   [value]
   (and (map? value)
        (string? (:source/id value))
@@ -112,8 +137,7 @@
        (every? form? (:source/forms value))
        (map? (:source/by-path value))))
 
-^{:public true}
-(defn index
+(defn ^{:public true} index
   ([input]
    (index input {}))
   ([input options]
@@ -137,15 +161,14 @@
      (if (and (string? id) (> (count id) 0))
        {:source/id id
         :source/version version
-        :source/text (block/string root)
+        :source/text (source-string root)
         :source/forms forms
         :source/by-path by-path}
        (invalid
         "code.vm.source id must be a non-empty string"
         {:value id})))))
 
-^{:public true}
-(defn forms
+(defn ^{:public true} forms
   [source-index]
   (if (source? source-index)
     (:source/forms source-index)
@@ -153,8 +176,7 @@
      "code.vm.source requires a source index"
      {:value source-index})))
 
-^{:public true}
-(defn form-at
+(defn ^{:public true} form-at
   [source-index path]
   (if (vector? path)
     (get (:source/by-path
@@ -168,8 +190,7 @@
      "code.vm.source form path must be a vector"
      {:value path})))
 
-^{:public true}
-(defn form-by-span
+(defn ^{:public true} form-by-span
   [source-index span]
   (let [span (map-value "form span" span)
         start (:start span)
@@ -181,8 +202,7 @@
              (= end (get-in form [:form/span :end]))))
       (forms source-index)))))
 
-^{:public true}
-(defn entry-form
+(defn ^{:public true} entry-form
   [source-index]
   (let [top-level
         (filter
@@ -193,8 +213,7 @@
       (first top-level)
       nil)))
 
-^{:public true}
-(defn resolve
+(defn ^{:public true} resolve
   [source-index reference]
   (cond
     (nil? reference)

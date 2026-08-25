@@ -4,6 +4,14 @@
 
 (def results
   [(test-check
+    "kernel is a publication-only facade over its internal owner"
+    [(get (Runtime/namespace 'code.vm.kernel) :namespace/role)
+     (get (Runtime/namespace 'code.vm.kernel.impl) :namespace/role)
+     (fn? kernel/session-create)
+     (fn? kernel/instrument-event)]
+    [:facade :internal true true])
+
+   (test-check
     "kernel instrumentation composes the existing registration and event model"
     (let [registration
           (kernel/instrument-registration

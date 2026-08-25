@@ -1,23 +1,19 @@
 (ns code.vm.model
   (:config {:role :internal}))
 
-^{:public true}
-(def +vm-kinds+
+(def ^{:public true} +vm-kinds+
   #{:interpreter :halc :bytecode})
 
-^{:public true}
-(def +vm-statuses+
+(def ^{:public true} +vm-statuses+
   #{:ready :running :suspended :returned :failed :cancelled})
 
-^{:public true}
-(def +terminal-statuses+
+(def ^{:public true} +terminal-statuses+
   #{:returned :failed :cancelled})
 
 (def +limit-keys+
   [:source-bytes :steps :depth :values :history])
 
-^{:public true}
-(def +default-limits+
+(def ^{:public true} +default-limits+
   {:source-bytes 1048576
    :steps 1000
    :depth 64
@@ -95,8 +91,7 @@
      {:field label
       :value value})))
 
-^{:public true}
-(defn normalize-limits
+(defn ^{:public true} normalize-limits
   [value]
   (let [limits (merge +default-limits+
                       (map-value "limits" (or value {})))]
@@ -115,8 +110,7 @@
     (= kind :bytecode) "vm/bytecode"
     :else nil))
 
-^{:public true}
-(defn machine?
+(defn ^{:public true} machine?
   [value]
   (and (map? value)
        (has? value :vm/id)
@@ -126,8 +120,7 @@
        (map? (:vm/limits value))
        (vector? (:vm/trace value))))
 
-^{:public true}
-(defn machine
+(defn ^{:public true} machine
   ([kind input]
    (machine kind input {}))
   ([kind input options]
@@ -160,8 +153,7 @@
       :vm/result (:result options)
       :vm/error (:error options)})))
 
-^{:public true}
-(defn transition?
+(defn ^{:public true} transition?
   [value]
   (and (map? value)
        (has? value :step/id)
@@ -171,8 +163,7 @@
        (has? +vm-statuses+ (:step/status value))
        (vector? (:step/events value))))
 
-^{:public true}
-(defn transition
+(defn ^{:public true} transition
   ([machine stage rule after]
    (transition machine stage rule after {}))
   ([machine stage rule after options]
@@ -215,8 +206,7 @@
       (vec (drop overflow trace))
       trace)))
 
-^{:public true}
-(defn advance
+(defn ^{:public true} advance
   [machine transition]
   (if (not (machine? machine))
     (invalid "code.vm advance requires a machine"
@@ -244,21 +234,18 @@
                    :vm/result (:step/result transition)
                    :vm/error (:step/error transition))))))))
 
-^{:public true}
-(defn snapshot
+(defn ^{:public true} snapshot
   [machine]
   (if (machine? machine)
     machine
     (invalid "code.vm snapshot requires a machine"
              {:value machine})))
 
-^{:public true}
-(defn trace
+(defn ^{:public true} trace
   [machine]
   (vec (:vm/trace (snapshot machine))))
 
-^{:public true}
-(defn terminal?
+(defn ^{:public true} terminal?
   [machine]
   (has? +terminal-statuses+
         (:vm/status (snapshot machine))))

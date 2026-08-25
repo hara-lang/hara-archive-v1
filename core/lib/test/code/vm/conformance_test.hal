@@ -1,4 +1,5 @@
 (ns code.vm.conformance-test
+  (:use code.test)
   (:require [code.vm :as vm]
             [code.vm.conformance :as conformance]
             [code.vm.interpreter :as interpreter]
@@ -189,6 +190,295 @@
     (fn [check]
       (= id (:check/id check)))
     (:conformance/checks report))))
+
+(defn fails?
+  [f]
+  (try
+    (do (f) false)
+    (catch Throwable error
+      true)))
+
+(def +report+
+  (conformance/run +fixture+))
+
+^{:refer code.vm.conformance/+report-schema+}
+(fact "declares the conformance report schema"
+  conformance/+report-schema+
+  => "hal.code-vm-conformance/0-alpha")
+
+^{:refer code.vm.conformance/+report-statuses+}
+(fact "declares pass and fail report statuses"
+  conformance/+report-statuses+
+  => #{:pass :fail})
+
+^{:refer code.vm.conformance/+stage-kinds+}
+(fact "orders all conformance stages"
+  conformance/+stage-kinds+
+  => [:interpreter :halc :bytecode])
+
+^{:refer code.vm.conformance/+runtime-kinds+}
+(fact "identifies runtime stages"
+  conformance/+runtime-kinds+
+  => [:interpreter :bytecode])
+
+^{:refer code.vm.conformance/invalid}
+(fact "raises a structured conformance argument error"
+  (fails? (fn [] (conformance/invalid "bad fixture" {:value nil})))
+  => true)
+
+^{:refer code.vm.conformance/map-value}
+(fact "accepts maps and rejects non-maps"
+  [(conformance/map-value "fixture" {:id "fixture"})
+   (fails? (fn [] (conformance/map-value "fixture" [])))]
+  => [{:id "fixture"} true])
+
+^{:refer code.vm.conformance/vector-value}
+(fact "accepts vectors and rejects non-vectors"
+  [(conformance/vector-value "required" [:interpreter])
+   (fails? (fn [] (conformance/vector-value "required" {})))]
+  => [[:interpreter] true])
+
+^{:refer code.vm.conformance/non-empty-string}
+(fact "requires a non-empty fixture id"
+  [(conformance/non-empty-string "id" "fixture")
+   (fails? (fn [] (conformance/non-empty-string "id" "")))]
+  => ["fixture" true])
+
+^{:refer code.vm.conformance/supported-stage?}
+(fact "checks the supported stage vocabulary"
+  [(conformance/supported-stage? :interpreter)
+   (conformance/supported-stage? :halc)
+   (conformance/supported-stage? :bytecode)
+   (conformance/supported-stage? :unknown)]
+  => [true true true false])
+
+^{:refer code.vm.conformance/normalize-required}
+(fact "normalizes required stages and rejects unknown stages"
+  [(conformance/normalize-required nil)
+   (conformance/normalize-required [:bytecode :interpreter])
+   (fails? (fn [] (conformance/normalize-required [:unknown])))]
+  => [[:interpreter :halc :bytecode]
+      [:bytecode :interpreter]
+      true])
+
+^{:refer code.vm.conformance/machine-source-id}
+(fact "extracts the source identity from a machine"
+  (conformance/machine-source-id
+   (interpreter/from-journal
+    +source+
+    +interpreter-journal+
+    {:source {:id "lesson/interpreter"}}))
+  => "lesson/interpreter")
+
+^{:refer code.vm.conformance/result-display}
+(fact "extracts display text from value previews"
+  [(conformance/result-display (value-preview "integer" "7"))
+   (conformance/result-display 7)]
+  => ["7" 7])
+
+^{:refer code.vm.conformance/result-type}
+(fact "extracts preview types and leaves scalars untyped"
+  [(conformance/result-type (value-preview "integer" "7"))
+   (conformance/result-type 7)]
+  => ["integer" nil])
+
+^{:refer code.vm.conformance/terminal-event}
+(fact "returns the event on the most recent transition"
+  (let [machine (interpreter/step
+                 (interpreter/create +source+ +interpreter-journal+))]
+    (:event/kind (conformance/terminal-event machine)))
+  => :evaluation/start)
+
+^{:refer code.vm.conformance/machine-error-category}
+(fact "falls back to a stable runtime error category"
+  (conformance/machine-error-category
+   (interpreter/from-journal +source+ +interpreter-error+))
+  => :arithmetic/division-by-zero)
+
+^{:refer code.vm.conformance/contiguous-indices?}
+(fact "checks transition index continuity"
+  [(conformance/contiguous-indices?
+    [{:step/index 1} {:step/index 2} {:step/index 3}])
+   (conformance/contiguous-indices?
+    [{:step/index 1} {:step/index 3}])]
+  => [true false])
+
+^{:refer code.vm.conformance/trace-bounded?}
+(fact "checks the configured trace history bound"
+  [(conformance/trace-bounded?
+    (interpreter/from-journal +source+ +interpreter-journal+))
+   (conformance/trace-bounded?
+    (assoc (interpreter/from-journal +source+ +interpreter-journal+)
+           :vm/limits {:history 0}))]
+  => [true false])
+
+^{:refer code.vm.conformance/stage-summary}
+(fact "summarizes unsupported and supported stages"
+  [(select-keys (conformance/stage-summary :halc nil)
+                [:stage/kind :stage/supported :stage/status :stage/steps])
+   (select-keys
+    (conformance/stage-summary
+     :interpreter
+     (interpreter/from-journal +source+ +interpreter-journal+))
+    [:stage/kind :stage/supported :stage/status :stage/terminal])]
+  => [{:stage/kind :halc
+       :stage/supported false
+       :stage/status :unsupported
+       :stage/steps 0}
+      {:stage/kind :interpreter
+       :stage/supported true
+       :stage/status :returned
+       :stage/terminal true}])
+
+^{:refer code.vm.conformance/summaries}
+(fact "creates summaries for every configured stage"
+  (set (keys (conformance/summaries {:interpreter nil})))
+  => #{:interpreter :halc :bytecode})
+
+^{:refer code.vm.conformance/supported-summaries}
+(fact "filters summaries to supported stages"
+  (count
+   (conformance/supported-summaries
+    (conformance/summaries {:interpreter nil})))
+  => 0)
+
+^{:refer code.vm.conformance/all-equal?}
+(fact "checks equality across zero, one, and many values"
+  [(conformance/all-equal? [])
+   (conformance/all-equal? [1])
+   (conformance/all-equal? [1 1 1])
+   (conformance/all-equal? [1 2])]
+  => [true true true false])
+
+^{:refer code.vm.conformance/check}
+(fact "builds a normalized conformance check record"
+  (conformance/check :runtime/parity true :expected :actual)
+  => {:check/id :runtime/parity
+      :check/pass true
+      :check/expected :expected
+      :check/actual :actual})
+
+^{:refer code.vm.conformance/missing-required}
+(fact "lists required stages that are unsupported"
+  (conformance/missing-required
+   {:interpreter {:stage/supported true}
+    :bytecode {:stage/supported false}}
+   [:interpreter :bytecode])
+  => [:bytecode])
+
+^{:refer code.vm.conformance/non-terminal-required}
+(fact "lists supported stages that have not reached terminal state"
+  (conformance/non-terminal-required
+   {:interpreter {:stage/supported true :stage/terminal false}
+    :bytecode {:stage/supported true :stage/terminal true}}
+   [:interpreter :bytecode])
+  => [:interpreter])
+
+^{:refer code.vm.conformance/runtime-check}
+(fact "compares interpreter and bytecode result parity"
+  (:check/pass
+   (conformance/runtime-check
+    (:conformance/stages +report+)))
+  => true)
+
+^{:refer code.vm.conformance/halc-check}
+(fact "accepts HALC decode parity and unsupported HALC stages"
+  [(:check/pass
+    (conformance/halc-check (:conformance/stages +report+)))
+   (:check/actual
+    (conformance/halc-check
+     {:halc {:stage/supported false}}))]
+  => [true :unsupported])
+
+^{:refer code.vm.conformance/source-check}
+(fact "checks shared source identity across supported stages"
+  (select-keys
+   (conformance/source-check
+    (:conformance/stages +report+)
+    "lesson/main")
+   [:check/id :check/pass :check/expected])
+  => {:check/id :source/identity
+      :check/pass true
+      :check/expected "lesson/main"})
+
+^{:refer code.vm.conformance/trace-check}
+(fact "checks deterministic bounded traces"
+  (:check/pass
+   (conformance/trace-check (:conformance/stages +report+)))
+  => true)
+
+^{:refer code.vm.conformance/transition-concept}
+(fact "maps transitions to teaching concepts"
+  [(conformance/transition-concept
+    :interpreter
+    {:step/rule :anything})
+   (conformance/transition-concept
+    :bytecode
+    {:step/rule :instruction/execute})
+   (conformance/transition-concept
+    :bytecode
+    {:step/rule :control})]
+  => [:evaluation/order :execution/instruction :execution/control])
+
+^{:refer code.vm.conformance/teaching-annotation}
+(fact "turns a transition into a stable teaching annotation"
+  (select-keys
+   (conformance/teaching-annotation
+    :interpreter
+    {:step/source {:form/path [0]}
+     :step/index 1
+     :step/stage :evaluate
+     :step/rule :evaluation/start
+     :step/events []})
+   [:teaching/concept :teaching/focus :teaching/evidence])
+  => {:teaching/concept :evaluation/order
+      :teaching/focus {:form/path [0]}
+      :teaching/evidence {:stage/kind :interpreter
+                          :step/index 1
+                          :step/stage :evaluate
+                          :step/rule :evaluation/start
+                          :step/events []}})
+
+^{:refer code.vm.conformance/teaching-annotations}
+(fact "collects annotations from supplied machine traces"
+  (count
+   (conformance/teaching-annotations
+    {:interpreter
+     (interpreter/from-journal +source+ +interpreter-journal+)}))
+  => 6)
+
+^{:refer code.vm.conformance/report?}
+(fact "recognizes conformance reports"
+  [(conformance/report? +report+)
+   (conformance/report? {})]
+  => [true false])
+
+^{:refer code.vm.conformance/report}
+(fact "builds a report with required stage checks"
+  (select-keys
+   (conformance/report "empty" {} {:required [:interpreter]})
+   [:conformance/schema :fixture/id :conformance/status])
+  => {:conformance/schema "hal.code-vm-conformance/0-alpha"
+      :fixture/id "empty"
+      :conformance/status :fail})
+
+^{:refer code.vm.conformance/source-options}
+(fact "derives source and run options from a fixture"
+  (conformance/source-options
+   {:fixture/id "fixture"
+    :fixture/source-id "lesson/main"
+    :fixture/source-version 4
+    :fixture/limits {:history 2}
+    :fixture/run {:steps 3}})
+  => {:source {:id "lesson/main" :version 4}
+      :limits {:history 2}
+      :run {:steps 3}})
+
+^{:refer code.vm.conformance/run}
+(fact "runs all supplied fixture stages and returns a passing report"
+  [(:conformance/status +report+)
+   (:check/pass (check-by-id +report+ :runtime/parity))]
+  => [:pass true])
 
 (def results
   [(test-check

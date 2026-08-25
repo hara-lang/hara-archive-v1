@@ -1,12 +1,10 @@
 (ns code.vm.instrument
   (:config {:role :internal}))
 
-^{:public true}
-(def +protocol+
+(def ^{:public true} +protocol+
   "hara.instrumentation/0-alpha")
 
-^{:public true}
-(def +event-schema+
+(def ^{:public true} +event-schema+
   "hara.instrumentation.event/0-alpha")
 
 (def +instrument-modes+
@@ -294,8 +292,7 @@
                 +runtimes+
                 (:runtimes value))}))
 
-^{:public true}
-(defn registration
+(defn ^{:public true} registration
   [options]
   (let [options (map-value "registration" options)
         mode (member
@@ -369,8 +366,7 @@
         (or (:instrument/queue-capacity options) 256))
        nil)}))
 
-^{:public true}
-(defn registration?
+(defn ^{:public true} registration?
   [value]
   (and (map? value)
        (= (:protocol value) +protocol+)
@@ -389,8 +385,7 @@
            (and (long? (:instrument/queue-capacity value))
                 (> (:instrument/queue-capacity value) 0)))))
 
-^{:public true}
-(defn target
+(defn ^{:public true} target
   [options]
   (let [options (map-value "target" options)]
     {:protocol +protocol+
@@ -411,8 +406,7 @@
                     +capabilities+
                     (:capabilities options))}))
 
-^{:public true}
-(defn target?
+(defn ^{:public true} target?
   [value]
   (and (map? value)
        (= (:protocol value) +protocol+)
@@ -468,8 +462,7 @@
        :function (:function value)
        :ip ip})))
 
-^{:public true}
-(defn event
+(defn ^{:public true} event
   [registration target sequence event options]
   (if (not (registration? registration))
     (invalid
@@ -539,8 +532,7 @@
                 (:location options))
      :data data}))
 
-^{:public true}
-(defn event?
+(defn ^{:public true} event?
   [value]
   (and (map? value)
        (= (:schema value) +event-schema+)
@@ -570,8 +562,7 @@
                  (or (not (nil? (get-in value [:location :form/path])))
                      (has? (:data value) :semantic/form))))))
 
-^{:public true}
-(defn trace-provenance
+(defn ^{:public true} trace-provenance
   [mode options]
   (let [mode (member "trace mode" #{:live :replay} mode)
         options (map-value "trace provenance" (or options {}))]

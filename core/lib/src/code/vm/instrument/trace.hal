@@ -37,8 +37,7 @@
        {:target target
         :target-kind kind}))))
 
-^{:public true}
-(defn live-machine?
+(defn ^{:public true} live-machine?
   [value]
   (and (model/machine? value)
        (instrument/target?
@@ -49,8 +48,7 @@
                    :instrument/provenance
                    :vm/mode]))))
 
-^{:public true}
-(defn target
+(defn ^{:public true} target
   [machine]
   (if (live-machine? machine)
     (get-in machine [:vm/options :instrument/target])
@@ -58,8 +56,7 @@
      "code.vm.instrument.trace requires a live trace machine"
      {:value machine})))
 
-^{:public true}
-(defn provenance
+(defn ^{:public true} provenance
   [machine]
   (if (live-machine? machine)
     (get-in machine [:vm/options :instrument/provenance])
@@ -67,8 +64,7 @@
      "code.vm.instrument.trace requires a live trace machine"
      {:value machine})))
 
-^{:public true}
-(defn create
+(defn ^{:public true} create
   ([target]
    (create target {}))
   ([target options]
@@ -358,23 +354,20 @@
                (data-value event :error "error")
                nil)})))
 
-^{:public true}
-(defn consume
+(defn ^{:public true} consume
   [machine event]
   (let [event (validate-event machine event)]
     (model/advance
      machine
      (event-transition machine event))))
 
-^{:public true}
-(defn consume-all
+(defn ^{:public true} consume-all
   [machine events]
   (reduce consume
           machine
           (vector-value "events" events)))
 
-^{:public true}
-(defn from-events
+(defn ^{:public true} from-events
   ([target events]
    (from-events target events {}))
   ([target events options]
