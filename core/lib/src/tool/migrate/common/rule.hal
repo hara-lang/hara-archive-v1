@@ -1,6 +1,6 @@
 (ns tool.migrate.common.rule
   (:require [std.block :as block]
-            [code.framework.navigation :as nav]
+            [tool.migrate.common.block :as nav]
             [tool.migrate.common.rules :as declarations]))
 
 (def +safety-rank+

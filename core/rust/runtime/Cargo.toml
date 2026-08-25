@@ -39,7 +39,6 @@ whole-wasm = ["bytecode-vm"]
 hara-protocol-macros = { path = "../protocol-macros" }
 inventory = "0.3"
 md5 = "0.8"
-uuid = { version = "1.24", features = ["v4"] }
 wasm-bindgen = "0.2"
 sha2 = "0.10"
 hmac = "0.12"
@@ -58,9 +57,11 @@ wasm-encoder = "0.41.2"
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 console_error_panic_hook = "0.1"
 js-sys = "0.3"
+uuid = { version = "1.24", features = ["v4", "js"] }
 getrandom = { version = "0.2", default-features = false, features = ["custom"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+uuid = { version = "1.24", features = ["v4"] }
 getrandom = "0.2"
 hara-db-postgres = { version = "0.1.0", git = "https://github.com/hara-lang/hara-extensions.git", rev = "0432324505d721711d1de5aaeae66ee305730456", package = "hara-db-postgres" }
 russh = "0.62.7"

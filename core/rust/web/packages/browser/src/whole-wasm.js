@@ -6,6 +6,7 @@ const ERRORS = new Map([
 ]);
 const HNW0_OPERATION_REGISTRY_DIGEST =
   "d8b2cd6097d17600d5a534186d27ea2744f4c8057b779b2c6d0b7f9727623e2a";
+const HNW0_ABI_VERSION = 0;
 
 function readU32(bytes, offset) {
   return new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
@@ -31,7 +32,9 @@ export function decodeHnw0(input) {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const abiVersion = view.getUint16(offset, false);
   offset += 2;
-  if (abiVersion !== 5) throw new Error(`unsupported HNW ABI version ${abiVersion}`);
+  if (abiVersion !== HNW0_ABI_VERSION) {
+    throw new Error(`unsupported HNW ABI version ${abiVersion}`);
+  }
   const functionCount = readU16(view, offset);
   offset += 2;
   const functions = [];

@@ -1,7 +1,7 @@
 (ns tool.migrate.policy.foundation.resolver-test
   (:use code.test)
   (:require [tool.migrate.policy.foundation.resolver :as resolver]
-            [code.framework.navigation :as nav]))
+            [tool.migrate.common.block :as nav]))
 
 ^{:refer tool.migrate.policy.foundation.resolver/host-symbol?}
 (fact "host symbol classification is conservative"

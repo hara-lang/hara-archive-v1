@@ -23,7 +23,7 @@ impl CompileTarget {
     pub const fn product_identity(self) -> (CompiledProductKind, &'static str) {
         match self {
             Self::HbcModule => (CompiledProductKind::HbcModule, "hbc0"),
-            Self::WholeWasm => (CompiledProductKind::WholeWasm, "hnw0/4"),
+            Self::WholeWasm => (CompiledProductKind::WholeWasm, "hnw0/0"),
         }
     }
 }
@@ -149,7 +149,7 @@ mod tests {
         );
         assert_eq!(
             CompileTarget::WholeWasm.product_identity(),
-            (CompiledProductKind::WholeWasm, "hnw0/4")
+            (CompiledProductKind::WholeWasm, "hnw0/0")
         );
     }
 

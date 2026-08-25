@@ -8,7 +8,7 @@ use super::codegen::compile_program;
 use super::ir::lower_function;
 
 const MAGIC: &[u8; 4] = b"HNW0";
-pub const HNW_ABI_VERSION: u16 = 5;
+pub const HNW_ABI_VERSION: u16 = 0;
 
 #[derive(Debug, Clone)]
 pub struct NativeArtifact {

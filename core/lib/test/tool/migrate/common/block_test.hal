@@ -1,0 +1,252 @@
+(ns tool.migrate.common.block-test
+  (:use code.test)
+  (:require [std.block :as block]
+            [tool.migrate.common.block :as nav]))
+
+(def source
+  "(ns demo.core\n  (:config {:override [value]})\n  (:require [std.block :as block]))\n\n(def ^{:schema :int} answer 42)\n(defn run [value] value)\n")
+
+^{:refer tool.migrate.common.block/location?}
+(fact "locations are recognized without changing the underlying zipper"
+  (let [location (nav/location source)]
+    [(nav/location? location)
+     (nav/render location)
+     (block/tag (nav/root-block location))])
+  => [true source :root])
+
+^{:refer tool.migrate.common.block/block-input}
+(fact "source, blocks, values, and locations normalize to blocks"
+  (let [root (nav/block-input source)
+        value (block/parse-first "42")
+        location (nav/location root)]
+    [(block/tag root)
+     (block/string (nav/block-input value))
+     (block/string (nav/block-input location))])
+  => [:root "42" source])
+
+^{:refer tool.migrate.common.block/location}
+(fact "location normalizes a source to a std.block navigator"
+  (nav/location? (nav/location source))
+  => true)
+
+^{:refer tool.migrate.common.block/current}
+(fact "current returns the block at a location"
+  (block/string (nav/current (nav/location-at "(alpha [1 2])" [0 2 2])))
+  => "2")
+
+^{:refer tool.migrate.common.block/root-block}
+(fact "root-block returns the original parsed root"
+  (block/tag (nav/root-block (nav/location-at "(alpha [1 2])" [0 2 2])))
+  => :root)
+
+^{:refer tool.migrate.common.block/render}
+(fact "render uses the navigator root without changing source text"
+  (nav/render (nav/location source))
+  => source)
+
+^{:refer tool.migrate.common.block/path}
+(fact "paths include whitespace and comment positions"
+  [(nav/path (nav/location-at "(alpha [1 2])" [0 2 2]))
+   (nav/path (nav/namespace-clause-location source ":require"))]
+  => [[0 2 2] [0 10]])
+
+^{:refer tool.migrate.common.block/step-right-n}
+(fact "step-right-n moves through void blocks as well as code"
+  (block/string
+   (nav/current
+    (nav/step-right-n
+     (nav/location-at "(a b c)" [0 0])
+     2)))
+  => "b")
+
+^{:refer tool.migrate.common.block/location-at}
+(fact "location-at resolves nested child-index paths"
+  [(nav/path (nav/location-at "(alpha [1 2])" [0 2 2]))
+   (block/string (nav/current (nav/location-at "(alpha [1 2])" [0 2 2])))]
+  => [[0 2 2] "2"])
+
+^{:refer tool.migrate.common.block/evidence}
+(fact "evidence carries stable paths and parser ranges"
+  (select-keys
+   (nav/evidence
+    (nav/location-at
+     (block/parse-source "(a b)" {:file "demo.clj"})
+     [0 2]))
+   [:path :tag :source :file :start-offset :end-offset])
+  => {:path [0 2]
+      :tag :token
+      :source "b"
+      :file "demo.clj"
+      :start-offset 3
+      :end-offset 4})
+
+^{:refer tool.migrate.common.block/location-range}
+(fact "location-range exposes parser position metadata"
+  (select-keys
+   (nav/location-range
+    (nav/location-at
+     (block/parse-source "(a b)" {:file "demo.clj"})
+     [0 2]))
+   [:file :start-offset :end-offset])
+  => {:file "demo.clj" :start-offset 3 :end-offset 4})
+
+^{:refer tool.migrate.common.block/code-children}
+(fact "code children exclude whitespace and comments"
+  [(count (nav/code-children source))
+   (nav/form-head source)
+   (nav/form-second source)]
+  => [3 "ns" "demo.core"])
+
+^{:refer tool.migrate.common.block/anchor-children}
+(fact "anchor-children aliases the migration code-child view"
+  (count (nav/anchor-children source))
+  => 3)
+
+^{:refer tool.migrate.common.block/form-head-block}
+(fact "form-head-block returns the first code block"
+  (block/string (nav/form-head-block source))
+  => "ns")
+
+^{:refer tool.migrate.common.block/form-nth-block}
+(fact "form-nth-block returns a code block by filtered index"
+  (block/string (nav/form-nth-block source 1))
+  => "demo.core")
+
+^{:refer tool.migrate.common.block/form-nth}
+(fact "form-nth renders a filtered form child"
+  (nav/form-nth source 1)
+  => "demo.core")
+
+^{:refer tool.migrate.common.block/form-second}
+(fact "form-second returns the namespace name child"
+  (nav/form-second source)
+  => "demo.core")
+
+^{:refer tool.migrate.common.block/form?}
+(fact "form recognition distinguishes list containers from tokens"
+  [(nav/form? (nav/location-at "(a b)" [0]))
+   (nav/form? (nav/location-at "(a b)" [0 0]))]
+  => [true false])
+
+^{:refer tool.migrate.common.block/metadata-block?}
+(fact "metadata-block? recognizes metadata containers"
+  [(nav/metadata-block? (nav/location-at "^{:schema :int} answer" [0]))
+   (nav/metadata-block? (nav/location-at "^{:schema :int} answer" [2]))]
+  => [true false])
+
+^{:refer tool.migrate.common.block/top-level-locations}
+(fact "top-level-locations excludes root whitespace and comments"
+  (vec (map nav/path (nav/top-level-locations source)))
+  => [[0] [3] [5]])
+
+^{:refer tool.migrate.common.block/namespace-form?}
+(fact "namespace-form? recognizes ns forms only"
+  [(nav/namespace-form? source)
+   (nav/namespace-form? (nav/location-at "(def value 1)" [0]))]
+  => [true false])
+
+^{:refer tool.migrate.common.block/namespace-location}
+(fact "namespace-location selects the top-level namespace form"
+  (nav/path (nav/namespace-location source))
+  => [0])
+
+^{:refer tool.migrate.common.block/namespace-form}
+(fact "namespace-form returns the namespace block"
+  (str/starts-with? (block/string (nav/namespace-form source)) "(ns demo.core")
+  => true)
+
+^{:refer tool.migrate.common.block/namespace-name}
+(fact "namespace helpers identify the namespace and its clauses"
+  [(nav/namespace-name source)
+   (vec (map nav/form-head (nav/namespace-clauses source)))
+   (nav/form-head (nav/namespace-clause-location source ":require"))]
+  => ["demo.core" [":config" ":require"] ":require"])
+
+^{:refer tool.migrate.common.block/code-child-locations}
+(fact "code-child-locations retains location identity for code children"
+  [(count (nav/code-child-locations (nav/namespace-location source)))
+   (nav/form-head (first (nav/code-child-locations (nav/namespace-location source))))]
+  => [3 ":config"])
+
+^{:refer tool.migrate.common.block/namespace-clause-locations}
+(fact "namespace-clause-locations selects keyword clauses"
+  (count (nav/namespace-clause-locations source))
+  => 2)
+
+^{:refer tool.migrate.common.block/namespace-clauses}
+(fact "namespace-clauses returns the clause blocks"
+  (vec (map nav/form-head (nav/namespace-clauses source)))
+  => [":config" ":require"])
+
+^{:refer tool.migrate.common.block/namespace-clause-location}
+(fact "namespace-clause-location selects a clause by head"
+  (nav/form-head (nav/namespace-clause-location source ":require"))
+  => ":require")
+
+^{:refer tool.migrate.common.block/definition-location?}
+(fact "definition-location? recognizes def-prefixed forms"
+  [(nav/definition-location? (first (nav/definition-locations source)))
+   (nav/definition-location? (nav/namespace-location source))]
+  => [true false])
+
+^{:refer tool.migrate.common.block/definition-locations}
+(fact "definition-locations selects top-level definitions"
+  (vec (map nav/path (nav/definition-locations source)))
+  => [[3] [5]])
+
+^{:refer tool.migrate.common.block/definition-name}
+(fact "definition helpers retain metadata-aware names"
+  [(vec (map nav/form-head (nav/definition-locations source)))
+   (vec (map nav/definition-name (nav/definition-locations source)))]
+  => [["def" "defn"] ["answer" "run"]])
+
+^{:refer tool.migrate.common.block/direct-child-locations}
+(fact "direct-child-locations includes every immediate child"
+  (vec (map nav/path (nav/direct-child-locations "(alpha [1 2])")))
+  => [[0]])
+
+^{:refer tool.migrate.common.block/walk-location}
+(fact "walk-location traverses an existing location"
+  (count (nav/walk-location (nav/location "(alpha [1 2])")))
+  => 8)
+
+^{:refer tool.migrate.common.block/walk-locations}
+(fact "walk-locations returns deterministic pre-order locations"
+  (vec
+   (map
+    nav/path
+    (nav/walk-locations "(alpha [1 2])")))
+  => [[] [0] [0 0] [0 1] [0 2] [0 2 0] [0 2 1] [0 2 2]])
+
+^{:refer tool.migrate.common.block/coerce-block}
+(fact "coerce-block accepts a single structural source form"
+  (block/string (nav/coerce-block "42"))
+  => "42")
+
+^{:refer tool.migrate.common.block/replace-current}
+(fact "replace-current edits the selected location"
+  (nav/render
+   (nav/replace-current
+    (nav/location-at "(a b)" [0 2])
+    "c"))
+  => "(a c)")
+
+^{:refer tool.migrate.common.block/delete-current}
+(fact "delete-current removes the selected location"
+  (nav/render
+   (nav/delete-current
+    (nav/location-at "(a b)" [0 2])))
+  => "(a )")
+
+^{:refer tool.migrate.common.block/replace-at}
+(fact "replacement preserves unrelated comments and whitespace"
+  [(nav/render (nav/replace-at "(alpha  ; keep\n [1 2])" [0 6 2] "3"))
+   (nav/path (nav/replace-at "(alpha  ; keep\n [1 2])" [0 6 2] "3"))]
+  => ["(alpha  ; keep\n [1 3])" [0 6 2]])
+
+^{:refer tool.migrate.common.block/delete-at}
+(fact "deletion removes only the selected block"
+  (nav/render (nav/delete-at "(a b)" [0 2]))
+  => "(a )")
+
+(pr-str (run {:namespace "tool.migrate.common.block-test"}))

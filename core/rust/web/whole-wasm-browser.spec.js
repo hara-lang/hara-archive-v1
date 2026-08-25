@@ -19,23 +19,58 @@ test("Chromium executes the exact HNW0 artifact already run by Wasmtime", async 
   await page.goto("/rust/web/index.html");
   const observed = await page.evaluate(async () => {
     const { start } = await import("/rust/web/packages/browser/dist/hara-wasm-full/hara.mjs");
+    const { decodeHnw0 } = await import("/rust/web/packages/browser/src/whole-wasm.js");
     const response = await fetch("/target/whole-wasm-native-browser-parity.hnw");
     if (!response.ok) {
       throw new Error(`unable to fetch parity artifact: ${response.status}`);
     }
     const artifact = new Uint8Array(await response.arrayBuffer());
+    const decoded = decodeHnw0(artifact);
+    const imports = [...WebAssembly.Module.imports(new WebAssembly.Module(decoded.wasm))]
+      .map(({ module, name }) => `${module}::${name}`);
+    const unsupported = artifact.slice();
+    unsupported[8] = 0;
+    unsupported[9] = 1;
+    let rejection;
+    try {
+      decodeHnw0(unsupported);
+    } catch (error) {
+      rejection = error.message;
+    }
     const hara = await start();
     const compiled = await hara.loadWholeWasm(artifact);
     return {
       magic: String.fromCharCode(...artifact.subarray(0, 4)),
       byteLength: artifact.byteLength,
-      result: String(compiled.call())
+      abiVersion: decoded.abiVersion,
+      targets: decoded.targets.map(({ symbol, arity }) => ({ symbol, arity })),
+      imports,
+      rejection,
+      results: Array.from({ length: 8 }, () => String(compiled.call()))
     };
   });
 
   expect(observed.magic).toBe("HNW0");
   expect(observed.byteLength).toBeGreaterThan(40);
-  expect(observed.result).toBe("12497500");
+  expect(observed.abiVersion).toBe(0);
+  expect(observed.targets).toEqual([
+    { symbol: "hara.whole-wasm/map", arity: null },
+    { symbol: "hara.whole-wasm/vector", arity: null },
+    { symbol: "std.native.Base/number?", arity: 1 },
+    { symbol: "std.protocol.iassoc.IAssoc/assoc", arity: 3 },
+    { symbol: "std.protocol.icount.ICount/count", arity: 1 },
+    { symbol: "std.protocol.ilookup.ILookup/lookup", arity: 2 },
+    { symbol: "std.protocol.inth.INth/nth", arity: 2 }
+  ]);
+  expect(observed.imports).toEqual([
+    "hara::constant_handle",
+    "hara::box_i64",
+    "hara::unbox_i64",
+    "hara::value_construct",
+    "hara::target_call"
+  ]);
+  expect(observed.rejection).toMatch(/unsupported HNW ABI version 1/);
+  expect(observed.results).toEqual(Array(8).fill("12497500"));
 });
 
 test("Chromium records five-workload whole-Wasm parity and timing evidence", async ({ page }) => {
