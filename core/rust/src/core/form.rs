@@ -263,6 +263,8 @@ fn attach_optional_metadata(value: Value, metadata: Option<Rc<Metadata>>) -> Res
         Value::NativeType(value) => Value::NativeType(Rc::new(NativeType {
             name: value.name.clone(),
             methods: value.methods.clone(),
+            availability: value.availability,
+            capability: value.capability.clone(),
             metadata,
         })),
         Value::Keyword(value) => Value::Keyword(value),

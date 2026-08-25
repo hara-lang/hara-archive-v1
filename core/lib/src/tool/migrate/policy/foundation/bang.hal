@@ -17,8 +17,8 @@
   [{:source/path "lib/src/code/framework/source.hal"
     :target/path "rust/hal-src/code/framework/source.hal"
     :migration/action :regenerate :migration/owner :tool.migrate}
-   {:source/path "lib/src/code/framework/navigation.hal"
-    :target/path "rust/hal-src/code/framework/navigation.hal"
+   {:source/path "lib/src/tool/migrate/common/block.hal"
+    :target/path "rust/hal-src/tool/migrate/common/block.hal"
     :migration/action :regenerate :migration/owner :tool.migrate}
    {:source/path "lib/src/tool/migrate/project.hal"
     :target/path "rust/hal-src/tool/migrate/project.hal"

@@ -1,17 +1,22 @@
-(ns code.vm.model)
+(ns code.vm.model
+  (:config {:role :internal}))
 
+^{:public true}
 (def +vm-kinds+
   #{:interpreter :halc :bytecode})
 
+^{:public true}
 (def +vm-statuses+
   #{:ready :running :suspended :returned :failed :cancelled})
 
+^{:public true}
 (def +terminal-statuses+
   #{:returned :failed :cancelled})
 
 (def +limit-keys+
   [:source-bytes :steps :depth :values :history])
 
+^{:public true}
 (def +default-limits+
   {:source-bytes 1048576
    :steps 1000
@@ -19,11 +24,11 @@
    :values 256
    :history 256})
 
-(defn- invalid
+(defn invalid
   [message data]
   (throw (ex :argument data :ex/message message)))
 
-(defn- map-value
+(defn map-value
   [label value]
   (if (map? value)
     value
@@ -32,7 +37,7 @@
      {:field label
       :value value})))
 
-(defn- vector-value
+(defn vector-value
   [label value]
   (if (vector? value)
     value
@@ -41,7 +46,7 @@
      {:field label
       :value value})))
 
-(defn- member
+(defn member
   [label allowed value]
   (if (has? allowed value)
     value
@@ -51,7 +56,7 @@
       :value value
       :allowed allowed})))
 
-(defn- keyword-value
+(defn keyword-value
   [label value]
   (if (keyword? value)
     value
@@ -60,7 +65,7 @@
      {:field label
       :value value})))
 
-(defn- non-empty-string
+(defn non-empty-string
   [label value]
   (if (and (string? value)
            (> (count value) 0))
@@ -70,7 +75,7 @@
      {:field label
       :value value})))
 
-(defn- non-negative-integer
+(defn non-negative-integer
   [label value]
   (if (and (long? value)
            (>= value 0))
@@ -80,7 +85,7 @@
      {:field label
       :value value})))
 
-(defn- positive-integer
+(defn positive-integer
   [label value]
   (if (and (long? value)
            (> value 0))
@@ -90,6 +95,7 @@
      {:field label
       :value value})))
 
+^{:public true}
 (defn normalize-limits
   [value]
   (let [limits (merge +default-limits+
@@ -109,6 +115,7 @@
     (= kind :bytecode) "vm/bytecode"
     :else nil))
 
+^{:public true}
 (defn machine?
   [value]
   (and (map? value)
@@ -119,6 +126,7 @@
        (map? (:vm/limits value))
        (vector? (:vm/trace value))))
 
+^{:public true}
 (defn machine
   ([kind input]
    (machine kind input {}))
@@ -152,6 +160,7 @@
       :vm/result (:result options)
       :vm/error (:error options)})))
 
+^{:public true}
 (defn transition?
   [value]
   (and (map? value)
@@ -162,6 +171,7 @@
        (has? +vm-statuses+ (:step/status value))
        (vector? (:step/events value))))
 
+^{:public true}
 (defn transition
   ([machine stage rule after]
    (transition machine stage rule after {}))
@@ -197,7 +207,7 @@
         :step/result (:result options)
         :step/error (:error options)}))))
 
-(defn- bounded-trace
+(defn bounded-trace
   [trace limit]
   (let [trace (vec trace)
         overflow (- (count trace) limit)]
@@ -205,6 +215,7 @@
       (vec (drop overflow trace))
       trace)))
 
+^{:public true}
 (defn advance
   [machine transition]
   (if (not (machine? machine))
@@ -233,6 +244,7 @@
                    :vm/result (:step/result transition)
                    :vm/error (:step/error transition))))))))
 
+^{:public true}
 (defn snapshot
   [machine]
   (if (machine? machine)
@@ -240,10 +252,12 @@
     (invalid "code.vm snapshot requires a machine"
              {:value machine})))
 
+^{:public true}
 (defn trace
   [machine]
   (vec (:vm/trace (snapshot machine))))
 
+^{:public true}
 (defn terminal?
   [machine]
   (has? +terminal-statuses+

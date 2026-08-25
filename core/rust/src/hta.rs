@@ -745,7 +745,7 @@ impl Reader<'_> {
                 }
                 Ok(Value::Struct(std::rc::Rc::new(
                     crate::core::StructValue::from_values(
-                        std::rc::Rc::new(crate::core::StructType { name, fields }),
+                        std::rc::Rc::new(crate::core::StructType::detached(name, fields)),
                         values,
                         None,
                     )?,
@@ -1033,10 +1033,10 @@ mod tests {
 
     #[test]
     fn structs_preserve_wire_shape_and_mutables_are_rejected() {
-        let ty = std::rc::Rc::new(crate::core::StructType {
-            name: "demo/Point".into(),
-            fields: vec!["x".into(), "y".into()],
-        });
+        let ty = std::rc::Rc::new(crate::core::StructType::detached(
+            "demo/Point".into(),
+            vec!["x".into(), "y".into()],
+        ));
         let value = Value::Struct(std::rc::Rc::new(
             crate::core::StructValue::from_values(
                 ty,
@@ -1074,10 +1074,10 @@ mod tests {
 
         let mutable = Value::Mutable(std::rc::Rc::new(
             crate::core::MutableValue::from_values(
-                std::rc::Rc::new(crate::core::MutableType {
-                    name: "demo/Cursor".into(),
-                    fields: vec!["x".into()],
-                }),
+                std::rc::Rc::new(crate::core::MutableType::detached(
+                    "demo/Cursor".into(),
+                    vec!["x".into()],
+                )),
                 vec![Value::Number(1)],
                 None,
             )

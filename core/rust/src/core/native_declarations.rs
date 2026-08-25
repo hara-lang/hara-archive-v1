@@ -23,7 +23,7 @@ pub(crate) mod declarations {
         namespace = "std.native",
         name = "Kernel",
         availability = "capability-gated",
-        capability = "native-runtime",
+        capability = "kernel",
         methods = [
             "session-create", "session-close", "session-list", "session-info", "session-eval",
             "session-namespace", "session-complete", "resource-register", "resource-remove",
@@ -41,7 +41,7 @@ pub(crate) mod declarations {
         namespace = "std.native",
         name = "Sandbox",
         availability = "capability-gated",
-        capability = "native-runtime",
+        capability = "sandbox",
         methods = ["open", "eval", "call", "cancel", "status", "close"],
         provider = native_sandbox_provider
     )]
@@ -51,7 +51,7 @@ pub(crate) mod declarations {
         namespace = "std.native",
         name = "Package",
         availability = "capability-gated",
-        capability = "native-runtime",
+        capability = "kernel",
         methods = ["catalog", "find", "ensure", "load", "unload", "state"],
         provider = native_package_provider
     )]
@@ -103,7 +103,7 @@ pub(crate) mod declarations {
         namespace = "std.native",
         name = "File",
         availability = "capability-gated",
-        capability = "native-runtime",
+        capability = "file",
         methods = ["parent", "join", "resolve", "read", "write", "exists?", "stat", "entries", "list", "walk", "mkdir", "delete", "copy", "move", "temp-file", "temp-directory"],
         provider = native_file_provider
     )]
@@ -113,7 +113,7 @@ pub(crate) mod declarations {
         namespace = "std.native",
         name = "Socket",
         availability = "capability-gated",
-        capability = "native-runtime",
+        capability = "network",
         methods = ["connect", "listen", "endpoint", "events", "next", "send", "close", "receive-stream"],
         provider = native_socket_provider
     )]
@@ -162,7 +162,7 @@ pub(crate) mod declarations {
         namespace = "std.native",
         name = "Host",
         availability = "capability-gated",
-        capability = "native-runtime",
+        capability = "host-call",
         methods = ["call", "describe", "capabilities", "capability?"],
         provider = native_host_provider
     )]

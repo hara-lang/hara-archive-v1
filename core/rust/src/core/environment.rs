@@ -1166,11 +1166,18 @@ pub(crate) fn publish_named_value(
         let namespace = registry.current();
         let namespace_name = namespace.name().as_str().to_owned();
         let type_name = format!("{}/{}", namespace_name, name);
+        let declaration = Rc::new(NamedDeclaration::new(
+            type_name.clone(),
+            mutable,
+            fields.clone(),
+            schema_form.clone(),
+        ));
 
         let (type_value, map_constructor) = if mutable {
             let ty = Rc::new(MutableType {
                 name: type_name.clone(),
                 fields: field_names.clone(),
+                declaration: Some(declaration.clone()),
             });
             let map_type = ty.clone();
             let constructor = native_function(&format!("map->{}", name), 1, move |values| {
@@ -1193,8 +1200,9 @@ pub(crate) fn publish_named_value(
             (Value::MutableType(ty), constructor)
         } else {
             let ty = Rc::new(StructType {
-                name: type_name,
+                name: type_name.clone(),
                 fields: field_names,
+                declaration: Some(declaration),
             });
             let map_type = ty.clone();
             let constructor = native_function(&format!("map->{}", name), 1, move |values| {
@@ -1640,11 +1648,95 @@ fn socket_provider(operation: &str) -> Result<Rc<dyn SocketProvider>, String> {
     })
 }
 
+pub(crate) fn native_capability_granted(capability: &str) -> bool {
+    match capability {
+        "kernel" | "sandbox" => ACTIVE_KERNEL_PROVIDER.with(|active| active.borrow().is_some()),
+        "file" => ACTIVE_FILE_PROVIDER.with(|active| active.borrow().is_some()),
+        "network" => ACTIVE_SOCKET_PROVIDER.with(|active| active.borrow().is_some()),
+        "native-runtime" => ACTIVE_PROCESS_ALLOWED.get(),
+        "host-call" => HOST_CALL_HANDLER.with(|active| active.borrow().is_some()),
+        _ => false,
+    }
+}
+
+pub(crate) fn native_capability_error_value(
+    native_type: &str,
+    method: &str,
+    capability: &str,
+) -> Value {
+    Value::ExceptionInfo(Rc::new(ExceptionInfo {
+        message: format!(
+            "std.native.{native_type}/{method} requires capability :{capability}"
+        ),
+        data: Box::new(Value::Map(
+            [
+                (
+                    Value::Keyword("ex/code".into()),
+                    Value::Keyword("native/capability-denied".into()),
+                ),
+                (
+                    Value::Keyword("ex/class".into()),
+                    Value::Keyword("ex.class/host".into()),
+                ),
+                (
+                    Value::Keyword("native/type".into()),
+                    Value::String(format!("std.native.{native_type}")),
+                ),
+                (
+                    Value::Keyword("native/method".into()),
+                    Value::String(method.into()),
+                ),
+                (
+                    Value::Keyword("native/capability".into()),
+                    Value::Keyword(capability.into()),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        )),
+        cause: None,
+        provenance: Rc::new(RefCell::new(Default::default())),
+    }))
+}
+
+pub(crate) fn native_capability_denied(
+    native_type: &str,
+    method: &str,
+    capability: &str,
+) -> String {
+    thrown_error(native_capability_error_value(native_type, method, capability))
+}
+
+pub(crate) fn native_capability_denied_promise(
+    native_type: &str,
+    method: &str,
+    capability: &str,
+) -> Value {
+    let promise = Promise::new();
+    promise.reject_value(native_capability_error_value(native_type, method, capability));
+    Value::Promise(promise)
+}
+
+pub(crate) fn require_native_capability(
+    native_type: &str,
+    method: &str,
+    capability: &str,
+) -> Result<(), String> {
+    native_capability_granted(capability)
+        .then_some(())
+        .ok_or_else(|| native_capability_denied(native_type, method, capability))
+}
+
 fn require_process_access(operation: &str) -> Result<(), String> {
     ACTIVE_PROCESS_ALLOWED.with(|allowed| {
         allowed
             .get()
             .then_some(())
-            .ok_or_else(|| format!("{operation} is unsupported or process access is denied"))
+            .ok_or_else(|| {
+                let method = operation
+                    .strip_prefix("std.native.Process/")
+                    .unwrap_or(operation);
+                native_capability_denied("Process", method, "native-runtime")
+            })
     })
 }

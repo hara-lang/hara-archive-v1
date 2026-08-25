@@ -1,7 +1,9 @@
 (ns code.vm.interpreter
+  (:config {:role :internal})
   (:require [code.vm.model :as model]
             [code.vm.source :as source]))
 
+^{:public true}
 (def +journal-schema+
   "hal.evaluation-journal/0-alpha")
 
@@ -16,11 +18,11 @@
     :evaluation/error
     :journal/truncated})
 
-(defn- invalid
+(defn invalid
   [message data]
   (throw (ex :argument data :ex/message message)))
 
-(defn- map-value
+(defn map-value
   [label value]
   (if (map? value)
     value
@@ -29,7 +31,7 @@
      {:field label
       :value value})))
 
-(defn- vector-value
+(defn vector-value
   [label value]
   (if (vector? value)
     value
@@ -38,7 +40,7 @@
      {:field label
       :value value})))
 
-(defn- non-empty-string
+(defn non-empty-string
   [label value]
   (if (and (string? value)
            (> (count value) 0))
@@ -48,7 +50,7 @@
      {:field label
       :value value})))
 
-(defn- non-negative-integer
+(defn non-negative-integer
   [label value]
   (if (and (long? value)
            (>= value 0))
@@ -58,7 +60,7 @@
      {:field label
       :value value})))
 
-(defn- positive-integer
+(defn positive-integer
   [label value]
   (if (and (long? value)
            (> value 0))
@@ -68,7 +70,7 @@
      {:field label
       :value value})))
 
-(defn- member
+(defn member
   [label allowed value]
   (if (has? allowed value)
     value
@@ -97,6 +99,7 @@
        (or (nil? (:event/source value))
            (map? (:event/source value)))))
 
+^{:public true}
 (defn journal?
   [value]
   (and (map? value)
@@ -150,6 +153,7 @@
       nil)
     journal))
 
+^{:public true}
 (defn interpreter-machine?
   [value]
   (and (model/machine? value)
@@ -165,6 +169,7 @@
      "code.vm.interpreter requires an interpreter machine"
      {:value machine})))
 
+^{:public true}
 (defn source-index
   [machine]
   (if (interpreter-machine? machine)
@@ -173,7 +178,7 @@
      "code.vm.interpreter requires an interpreter machine"
      {:value machine})))
 
-(defn- validate-event-sources
+(defn validate-event-sources
   [source-index journal]
   (reduce
    (fn [_ event]
@@ -190,7 +195,7 @@
    (:journal/events journal))
   journal)
 
-(defn- initial-state
+(defn initial-state
   [journal options]
   {:journal/schema (:journal/schema journal)
    :journal/id (:journal/id journal)
@@ -211,6 +216,7 @@
    :error nil
    :truncated (= :truncated (:journal/status journal))})
 
+^{:public true}
 (defn create
   ([input journal]
    (create input journal {}))
@@ -239,20 +245,20 @@
        :options adapter-options
        :limits (:limits options)}))))
 
-(defn- explicit-event-source
+(defn explicit-event-source
   [machine event]
   (source/resolve
    (source-index machine)
    (:event/source event)))
 
-(defn- retained-operation-source
+(defn retained-operation-source
   [machine event]
   (let [operation-id (:operation/id event)]
     (if operation-id
       (get-in machine [:vm/state :operation/sources operation-id])
       nil)))
 
-(defn- current-operation-source
+(defn current-operation-source
   [machine]
   (let [stack (get-in machine [:vm/state :operation/stack])
         operation-id
@@ -263,7 +269,7 @@
       (get-in machine [:vm/state :operation/sources operation-id])
       nil)))
 
-(defn- resolved-event-source
+(defn resolved-event-source
   [machine event]
   (or
    (explicit-event-source machine event)
@@ -275,7 +281,7 @@
      (source/entry-form (source-index machine))
      nil)))
 
-(defn- event-source
+(defn event-source
   [journal event form]
   (merge
    {:journal/id (:journal/id journal)
@@ -284,7 +290,7 @@
     :event/source (:event/source event)}
    (or form {})))
 
-(defn- event-stage-rule
+(defn event-stage-rule
   [event]
   (let [kind (:event/kind event)]
     (cond
@@ -299,14 +305,14 @@
        "Unsupported code.vm.interpreter event kind"
        {:event event}))))
 
-(defn- retain-operation-source
+(defn retain-operation-source
   [state event form]
   (let [operation-id (:operation/id event)]
     (if (and operation-id form)
       (assoc (:operation/sources state) operation-id form)
       (:operation/sources state))))
 
-(defn- without-operation
+(defn without-operation
   [stack operation-id]
   (loop [index 0
          output []]
@@ -319,7 +325,7 @@
            output
            (conj output candidate)))))))
 
-(defn- event-state
+(defn event-state
   [machine event form]
   (let [state (:vm/state machine)
         kind (:event/kind event)
@@ -371,7 +377,7 @@
        "Unsupported code.vm.interpreter event kind"
        {:event event}))))
 
-(defn- event-transition
+(defn event-transition
   [machine journal event]
   (let [[stage rule] (event-stage-rule event)
         failed (= :evaluation/error (:event/kind event))
@@ -386,7 +392,7 @@
       :status (if failed :failed :running)
       :error (if failed (:error/message event) nil)})))
 
-(defn- final-transition
+(defn final-transition
   [machine journal]
   (let [failed (= :error (:journal/status journal))
         result (:journal/result journal)
@@ -409,6 +415,7 @@
       :result (if failed nil result)
       :error (if failed error nil)})))
 
+^{:public true}
 (defn step
   [machine]
   (if (model/terminal? machine)
@@ -424,7 +431,7 @@
          machine
          (final-transition machine journal))))))
 
-(defn- suspend-at-limit
+(defn suspend-at-limit
   [machine]
   (if (or (model/terminal? machine)
           (= :suspended (:vm/status machine)))
@@ -439,6 +446,7 @@
              :suspension/reason :step-limit)
       {:status :suspended}))))
 
+^{:public true}
 (defn run
   ([machine]
    (run machine {}))
@@ -457,6 +465,7 @@
            (recur (step current)
                   (dec remaining))))))))
 
+^{:public true}
 (defn from-journal
   ([input journal]
    (from-journal input journal {}))

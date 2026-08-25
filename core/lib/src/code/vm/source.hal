@@ -1,12 +1,13 @@
 (ns code.vm.source
-  (:config {:override [resolve form?]})
+  (:config {:role :internal
+            :override [resolve form?]})
   (:require [std.block :as block]))
 
-(defn- invalid
+(defn invalid
   [message data]
   (throw (ex :argument data :ex/message message)))
 
-(defn- map-value
+(defn map-value
   [label value]
   (if (map? value)
     value
@@ -15,7 +16,7 @@
      {:field label
       :value value})))
 
-(defn- source-version
+(defn source-version
   [value]
   (if (and (long? value)
            (>= value 0))
@@ -24,7 +25,7 @@
      "code.vm.source version must be a non-negative integer"
      {:value value})))
 
-(defn- source-root
+(defn source-root
   [input]
   (cond
     (string? input)
@@ -39,7 +40,7 @@
     (let [form (block/block input)]
       (block/root [form] (block/string form)))))
 
-(defn- form-entry
+(defn form-entry
   [source-id version form path parent offset]
   {:source/id source-id
    :source/version version
@@ -53,7 +54,7 @@
    {:start offset
     :end (+ offset (block/length form))}})
 
-(defn- walk-container
+(defn walk-container
   [source-id version container parent-path start-offset]
   (let [children (block/children container)]
     (loop [physical-index 0
@@ -88,6 +89,7 @@
              (+ offset length)
              output)))))))
 
+^{:public true}
 (defn form?
   [value]
   (and (map? value)
@@ -99,6 +101,7 @@
        (long? (get-in value [:form/span :start]))
        (long? (get-in value [:form/span :end]))))
 
+^{:public true}
 (defn source?
   [value]
   (and (map? value)
@@ -109,6 +112,7 @@
        (every? form? (:source/forms value))
        (map? (:source/by-path value))))
 
+^{:public true}
 (defn index
   ([input]
    (index input {}))
@@ -140,6 +144,7 @@
         "code.vm.source id must be a non-empty string"
         {:value id})))))
 
+^{:public true}
 (defn forms
   [source-index]
   (if (source? source-index)
@@ -148,6 +153,7 @@
      "code.vm.source requires a source index"
      {:value source-index})))
 
+^{:public true}
 (defn form-at
   [source-index path]
   (if (vector? path)
@@ -162,6 +168,7 @@
      "code.vm.source form path must be a vector"
      {:value path})))
 
+^{:public true}
 (defn form-by-span
   [source-index span]
   (let [span (map-value "form span" span)
@@ -174,6 +181,7 @@
              (= end (get-in form [:form/span :end]))))
       (forms source-index)))))
 
+^{:public true}
 (defn entry-form
   [source-index]
   (let [top-level
@@ -185,6 +193,7 @@
       (first top-level)
       nil)))
 
+^{:public true}
 (defn resolve
   [source-index reference]
   (cond
