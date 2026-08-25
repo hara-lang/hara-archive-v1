@@ -7,6 +7,11 @@ use wasm_encoder::{
 
 use crate::core::IntrinsicOp;
 
+use super::bridge::{
+    HEAP_BASE, MAX_SLOTS, RESULT_BOOL, RESULT_HANDLE, RESULT_I64, SLOT_BOOL, SLOT_BYTES,
+    SLOT_CONSTANT, SLOT_HANDLE, SLOT_I64, SLOT_NIL, TARGET_ASSOC, TARGET_COUNT, TARGET_LOOKUP,
+    TARGET_MAP_CONSTRUCT, TARGET_NTH, TARGET_NUMBER_P, TARGET_VECTOR_CONSTRUCT,
+};
 use super::ssa::{
     lower_program, operands, result as operation_result, verify, SsaEdge, SsaFunction,
     SsaOp as MirOp, SsaProgram, SsaTerminator, ValueId,
@@ -19,22 +24,12 @@ pub const ERROR_DIVISION_BY_ZERO: i32 = 2;
 pub const ERROR_ARRAY_BOUNDS: i32 = 3;
 pub const ERROR_OBJECT_KEY: i32 = 4;
 const HOST_TYPE_COUNT: u32 = 5;
-const HOST_FUNCTION_COUNT: u32 = 15;
+const HOST_FUNCTION_COUNT: u32 = 5;
 const HOST_CONSTANT: u32 = 0;
 const HOST_BOX_I64: u32 = 1;
 const HOST_UNBOX_I64: u32 = 2;
-const HOST_VECTOR_EMPTY: u32 = 3;
-const HOST_VECTOR_PUSH: u32 = 4;
-const HOST_MAP_EMPTY: u32 = 5;
-const HOST_MAP_ASSOC: u32 = 6;
-const HOST_GET: u32 = 7;
-const HOST_IS_NUMBER: u32 = 8;
-const HOST_COUNT: u32 = 9;
-const HOST_NTH: u32 = 10;
-const HOST_MAP_I64_PAIR: u32 = 11;
-const HOST_GET_I64: u32 = 12;
-const HOST_GET_PATH_I64_CONSTANTS: u32 = 13;
-const HOST_ASSOC_MAP_I64_PAIR: u32 = 14;
+const HOST_VALUE_CONSTRUCT: u32 = 3;
+const HOST_TARGET_CALL: u32 = 4;
 const ARRAY_MEMORY: u32 = 0;
 const ARRAY_HEAP_GLOBAL: u32 = 1;
 const I64_MEMORY: MemArg = MemArg {
@@ -74,18 +69,8 @@ pub(crate) fn emit_program(program: &SsaProgram) -> Result<Vec<u8>, String> {
         ("constant_handle", 0),
         ("box_i64", 0),
         ("unbox_i64", 0),
-        ("vector_empty", 1),
-        ("vector_push", 2),
-        ("map_empty", 1),
-        ("map_assoc", 3),
-        ("get", 2),
-        ("is_number", 0),
-        ("count", 0),
-        ("nth", 2),
-        ("map_i64_pair", 2),
-        ("get_i64", 2),
-        ("get_path_i64_constants", 3),
-        ("assoc_map_i64_pair", 4),
+        ("value_construct", 3),
+        ("target_call", 4),
     ] {
         imports.import("hara", name, EntityType::Function(ty));
     }
@@ -98,7 +83,7 @@ pub(crate) fn emit_program(program: &SsaProgram) -> Result<Vec<u8>, String> {
             val_type: ValType::I32,
             mutable: true,
         },
-        &ConstExpr::i32_const(0),
+        &ConstExpr::i32_const(HEAP_BASE as i32),
     );
     globals.global(
         GlobalType {
@@ -266,7 +251,15 @@ fn emit_function(mir: &SsaFunction) -> Result<Function, String> {
         out.instruction(&Instruction::I32Eq);
         out.instruction(&Instruction::If(BlockType::Empty));
         for operation in &block.operations {
-            emit_operation(&mut out, operation, &locals, temp_a, temp_b, result)?;
+            emit_operation(
+                &mut out,
+                operation,
+                &locals,
+                &mir.representations,
+                temp_a,
+                temp_b,
+                result,
+            )?;
         }
         emit_terminator(&mut out, &block.terminator, &mir.blocks, &locals, pc);
         out.instruction(&Instruction::End);
@@ -402,7 +395,15 @@ fn emit_natural_loop(
 ) -> Result<(), String> {
     let entry = &function.blocks[0];
     for operation in &entry.operations {
-        emit_operation(out, operation, locals, temp_a, temp_b, result)?;
+        emit_operation(
+            out,
+            operation,
+            locals,
+            &function.representations,
+            temp_a,
+            temp_b,
+            result,
+        )?;
     }
     let SsaTerminator::Goto(entry_edge) = &entry.terminator else {
         unreachable!("natural loop entry verified")
@@ -413,7 +414,15 @@ fn emit_natural_loop(
     out.instruction(&Instruction::Loop(BlockType::Empty));
     let header = &function.blocks[usize::from(shape.header)];
     for operation in &header.operations {
-        emit_operation(out, operation, locals, temp_a, temp_b, result)?;
+        emit_operation(
+            out,
+            operation,
+            locals,
+            &function.representations,
+            temp_a,
+            temp_b,
+            result,
+        )?;
     }
     let SsaTerminator::BranchZero {
         condition,
@@ -456,7 +465,15 @@ fn emit_natural_loop(
 
     let exit = &function.blocks[usize::from(shape.exit)];
     for operation in &exit.operations {
-        emit_operation(out, operation, locals, temp_a, temp_b, result)?;
+        emit_operation(
+            out,
+            operation,
+            locals,
+            &function.representations,
+            temp_a,
+            temp_b,
+            result,
+        )?;
     }
     let SsaTerminator::Return(value) = exit.terminator else {
         unreachable!("natural loop exit verified")
@@ -480,7 +497,15 @@ fn emit_loop_body(
 ) -> Result<(), String> {
     let block = &function.blocks[usize::from(block_id)];
     for operation in &block.operations {
-        emit_operation(out, operation, locals, temp_a, temp_b, result)?;
+        emit_operation(
+            out,
+            operation,
+            locals,
+            &function.representations,
+            temp_a,
+            temp_b,
+            result,
+        )?;
     }
     let emit_successor = |out: &mut Function, edge: &SsaEdge, depth: u32| {
         emit_edge_values(out, edge, &function.blocks, locals);
@@ -545,7 +570,15 @@ fn emit_structured_block(
 ) -> Result<(), String> {
     let block = &function.blocks[usize::from(block_id)];
     for operation in &block.operations {
-        emit_operation(out, operation, locals, temp_a, temp_b, result)?;
+        emit_operation(
+            out,
+            operation,
+            locals,
+            &function.representations,
+            temp_a,
+            temp_b,
+            result,
+        )?;
     }
     match &block.terminator {
         SsaTerminator::Goto(edge) => {
@@ -583,10 +616,103 @@ fn emit_structured_block(
     Ok(())
 }
 
+#[derive(Debug, Clone, Copy)]
+enum BridgeArg {
+    Local(u32, super::ir::Rep),
+    Constant(u32),
+}
+
+fn emit_target_call(
+    out: &mut Function,
+    target: i64,
+    arguments: &[BridgeArg],
+    result_mode: i64,
+    destination: u32,
+) -> Result<(), String> {
+    emit_bridge_slots(out, arguments)?;
+    out.instruction(&Instruction::I64Const(target));
+    out.instruction(&Instruction::I64Const(0));
+    out.instruction(&Instruction::I64Const(i64::try_from(arguments.len()).unwrap()));
+    out.instruction(&Instruction::I64Const(result_mode));
+    out.instruction(&Instruction::Call(HOST_TARGET_CALL));
+    out.instruction(&Instruction::LocalSet(destination));
+    Ok(())
+}
+
+fn emit_value_construct(
+    out: &mut Function,
+    target: i64,
+    arguments: &[BridgeArg],
+    destination: u32,
+) -> Result<(), String> {
+    emit_bridge_slots(out, arguments)?;
+    out.instruction(&Instruction::I64Const(target));
+    out.instruction(&Instruction::I64Const(0));
+    out.instruction(&Instruction::I64Const(i64::try_from(arguments.len()).unwrap()));
+    out.instruction(&Instruction::Call(HOST_VALUE_CONSTRUCT));
+    out.instruction(&Instruction::LocalSet(destination));
+    Ok(())
+}
+
+fn emit_bridge_slots(out: &mut Function, arguments: &[BridgeArg]) -> Result<(), String> {
+    if arguments.len() > usize::try_from(MAX_SLOTS).expect("constant fits usize") {
+        return Err("whole-Wasm bridge call has too many arguments".into());
+    }
+    for (index, argument) in arguments.iter().enumerate() {
+        let offset = u32::try_from(index)
+            .ok()
+            .and_then(|index| index.checked_mul(SLOT_BYTES))
+            .ok_or("whole-Wasm bridge argument offset overflow")?;
+        let kind = match argument {
+            BridgeArg::Constant(_) => SLOT_CONSTANT,
+            BridgeArg::Local(_, super::ir::Rep::I64) => SLOT_I64,
+            BridgeArg::Local(_, super::ir::Rep::Bool) => SLOT_BOOL,
+            BridgeArg::Local(_, super::ir::Rep::Nil) => SLOT_NIL,
+            BridgeArg::Local(_, super::ir::Rep::KeyRef) => SLOT_CONSTANT,
+            BridgeArg::Local(_, _) => SLOT_HANDLE,
+        };
+        out.instruction(&Instruction::I32Const(0));
+        out.instruction(&Instruction::I32Const(kind as i32));
+        out.instruction(&Instruction::I32Store(MemArg {
+            offset: u64::from(offset),
+            align: 2,
+            memory_index: ARRAY_MEMORY,
+        }));
+        out.instruction(&Instruction::I32Const(0));
+        out.instruction(&Instruction::I32Const(0));
+        out.instruction(&Instruction::I32Store(MemArg {
+            offset: u64::from(offset + 4),
+            align: 2,
+            memory_index: ARRAY_MEMORY,
+        }));
+        out.instruction(&Instruction::I32Const(0));
+        match argument {
+            BridgeArg::Constant(value) => {
+                out.instruction(&Instruction::I64Const(i64::from(*value)));
+            }
+            BridgeArg::Local(local, super::ir::Rep::KeyRef) => {
+                out.instruction(&Instruction::LocalGet(*local));
+                out.instruction(&Instruction::I64Const(1));
+                out.instruction(&Instruction::I64Sub);
+            }
+            BridgeArg::Local(local, _) => {
+                out.instruction(&Instruction::LocalGet(*local));
+            }
+        }
+        out.instruction(&Instruction::I64Store(MemArg {
+            offset: u64::from(offset + 8),
+            align: 3,
+            memory_index: ARRAY_MEMORY,
+        }));
+    }
+    Ok(())
+}
+
 fn emit_operation(
     out: &mut Function,
     operation: &MirOp,
     locals: &LocalAllocation,
+    representations: &[super::ir::Rep],
     temp_a: u32,
     temp_b: u32,
     result: u32,
@@ -794,16 +920,18 @@ fn emit_operation(
             destination,
             values,
         } => {
-            out.instruction(&Instruction::Call(HOST_VECTOR_EMPTY));
-            out.instruction(&Instruction::LocalSet(result));
-            for value in values {
-                out.instruction(&Instruction::LocalGet(result));
-                out.instruction(&Instruction::LocalGet(locals.get(*value)));
-                out.instruction(&Instruction::Call(HOST_VECTOR_PUSH));
-                out.instruction(&Instruction::LocalSet(result));
-            }
-            out.instruction(&Instruction::LocalGet(result));
-            out.instruction(&Instruction::LocalSet(locals.get(*destination)));
+            let arguments = values
+                .iter()
+                .map(|value| {
+                    BridgeArg::Local(locals.get(*value), representations[value.0 as usize])
+                })
+                .collect::<Vec<_>>();
+            emit_value_construct(
+                out,
+                TARGET_VECTOR_CONSTRUCT,
+                &arguments,
+                locals.get(*destination),
+            )?;
         }
         MirOp::NativeVector {
             destination,
@@ -888,27 +1016,36 @@ fn emit_operation(
             destination,
             entries,
         } => {
-            out.instruction(&Instruction::Call(HOST_MAP_EMPTY));
-            out.instruction(&Instruction::LocalSet(result));
-            for (key, value) in entries {
-                out.instruction(&Instruction::LocalGet(result));
-                out.instruction(&Instruction::LocalGet(locals.get(*key)));
-                out.instruction(&Instruction::LocalGet(locals.get(*value)));
-                out.instruction(&Instruction::Call(HOST_MAP_ASSOC));
-                out.instruction(&Instruction::LocalSet(result));
-            }
-            out.instruction(&Instruction::LocalGet(result));
-            out.instruction(&Instruction::LocalSet(locals.get(*destination)));
+            let arguments = entries
+                .iter()
+                .flat_map(|(key, value)| {
+                    [
+                        BridgeArg::Local(locals.get(*key), representations[key.0 as usize]),
+                        BridgeArg::Local(locals.get(*value), representations[value.0 as usize]),
+                    ]
+                })
+                .collect::<Vec<_>>();
+            emit_value_construct(
+                out,
+                TARGET_MAP_CONSTRUCT,
+                &arguments,
+                locals.get(*destination),
+            )?;
         }
         MirOp::BuildMapI64Pair {
             destination,
             key,
             value,
         } => {
-            out.instruction(&Instruction::LocalGet(locals.get(*key)));
-            out.instruction(&Instruction::LocalGet(locals.get(*value)));
-            out.instruction(&Instruction::Call(HOST_MAP_I64_PAIR));
-            out.instruction(&Instruction::LocalSet(locals.get(*destination)));
+            emit_value_construct(
+                out,
+                TARGET_MAP_CONSTRUCT,
+                &[
+                    BridgeArg::Local(locals.get(*key), representations[key.0 as usize]),
+                    BridgeArg::Local(locals.get(*value), representations[value.0 as usize]),
+                ],
+                locals.get(*destination),
+            )?;
         }
         MirOp::Assoc {
             destination,
@@ -916,11 +1053,20 @@ fn emit_operation(
             key,
             value,
         } => {
-            out.instruction(&Instruction::LocalGet(locals.get(*collection)));
-            out.instruction(&Instruction::LocalGet(locals.get(*key)));
-            out.instruction(&Instruction::LocalGet(locals.get(*value)));
-            out.instruction(&Instruction::Call(HOST_MAP_ASSOC));
-            out.instruction(&Instruction::LocalSet(locals.get(*destination)));
+            emit_target_call(
+                out,
+                TARGET_ASSOC,
+                &[
+                    BridgeArg::Local(
+                        locals.get(*collection),
+                        representations[collection.0 as usize],
+                    ),
+                    BridgeArg::Local(locals.get(*key), representations[key.0 as usize]),
+                    BridgeArg::Local(locals.get(*value), representations[value.0 as usize]),
+                ],
+                RESULT_HANDLE,
+                locals.get(*destination),
+            )?;
         }
         MirOp::AssocMapI64Pair {
             destination,
@@ -929,32 +1075,67 @@ fn emit_operation(
             inner_key,
             value,
         } => {
-            out.instruction(&Instruction::LocalGet(locals.get(*collection)));
-            out.instruction(&Instruction::LocalGet(locals.get(*outer_key)));
-            out.instruction(&Instruction::LocalGet(locals.get(*inner_key)));
-            out.instruction(&Instruction::LocalGet(locals.get(*value)));
-            out.instruction(&Instruction::Call(HOST_ASSOC_MAP_I64_PAIR));
-            out.instruction(&Instruction::LocalSet(locals.get(*destination)));
+            emit_value_construct(
+                out,
+                TARGET_MAP_CONSTRUCT,
+                &[
+                    BridgeArg::Local(locals.get(*inner_key), representations[inner_key.0 as usize]),
+                    BridgeArg::Local(locals.get(*value), representations[value.0 as usize]),
+                ],
+                temp_a,
+            )?;
+            emit_target_call(
+                out,
+                TARGET_ASSOC,
+                &[
+                    BridgeArg::Local(
+                        locals.get(*collection),
+                        representations[collection.0 as usize],
+                    ),
+                    BridgeArg::Local(locals.get(*outer_key), representations[outer_key.0 as usize]),
+                    BridgeArg::Local(temp_a, super::ir::Rep::TruthyHandle),
+                ],
+                RESULT_HANDLE,
+                locals.get(*destination),
+            )?;
         }
         MirOp::Get {
             destination,
             collection,
             key,
         } => {
-            out.instruction(&Instruction::LocalGet(locals.get(*collection)));
-            out.instruction(&Instruction::LocalGet(locals.get(*key)));
-            out.instruction(&Instruction::Call(HOST_GET));
-            out.instruction(&Instruction::LocalSet(locals.get(*destination)));
+            emit_target_call(
+                out,
+                TARGET_LOOKUP,
+                &[
+                    BridgeArg::Local(
+                        locals.get(*collection),
+                        representations[collection.0 as usize],
+                    ),
+                    BridgeArg::Local(locals.get(*key), representations[key.0 as usize]),
+                ],
+                RESULT_HANDLE,
+                locals.get(*destination),
+            )?;
         }
         MirOp::GetI64 {
             destination,
             collection,
             key,
         } => {
-            out.instruction(&Instruction::LocalGet(locals.get(*collection)));
-            out.instruction(&Instruction::LocalGet(locals.get(*key)));
-            out.instruction(&Instruction::Call(HOST_GET_I64));
-            out.instruction(&Instruction::LocalSet(locals.get(*destination)));
+            emit_target_call(
+                out,
+                TARGET_LOOKUP,
+                &[
+                    BridgeArg::Local(
+                        locals.get(*collection),
+                        representations[collection.0 as usize],
+                    ),
+                    BridgeArg::Local(locals.get(*key), representations[key.0 as usize]),
+                ],
+                RESULT_I64,
+                locals.get(*destination),
+            )?;
         }
         MirOp::GetPathI64Constants {
             destination,
@@ -962,16 +1143,38 @@ fn emit_operation(
             first_key,
             second_key,
         } => {
-            out.instruction(&Instruction::LocalGet(locals.get(*collection)));
-            out.instruction(&Instruction::I64Const(i64::from(*first_key)));
-            out.instruction(&Instruction::I64Const(i64::from(*second_key)));
-            out.instruction(&Instruction::Call(HOST_GET_PATH_I64_CONSTANTS));
-            out.instruction(&Instruction::LocalSet(locals.get(*destination)));
+            emit_target_call(
+                out,
+                TARGET_LOOKUP,
+                &[
+                    BridgeArg::Local(
+                        locals.get(*collection),
+                        representations[collection.0 as usize],
+                    ),
+                    BridgeArg::Constant(*first_key),
+                ],
+                RESULT_HANDLE,
+                temp_a,
+            )?;
+            emit_target_call(
+                out,
+                TARGET_LOOKUP,
+                &[BridgeArg::Local(temp_a, super::ir::Rep::TruthyHandle), BridgeArg::Constant(*second_key)],
+                RESULT_I64,
+                locals.get(*destination),
+            )?;
         }
         MirOp::IsNumber { destination, value } => {
-            out.instruction(&Instruction::LocalGet(locals.get(*value)));
-            out.instruction(&Instruction::Call(HOST_IS_NUMBER));
-            out.instruction(&Instruction::LocalSet(locals.get(*destination)));
+            emit_target_call(
+                out,
+                TARGET_NUMBER_P,
+                &[BridgeArg::Local(
+                    locals.get(*value),
+                    representations[value.0 as usize],
+                )],
+                RESULT_BOOL,
+                locals.get(*destination),
+            )?;
         }
         MirOp::TaggedIsNumber { destination, value } => {
             out.instruction(&Instruction::LocalGet(locals.get(*value)));
@@ -985,9 +1188,16 @@ fn emit_operation(
             destination,
             collection,
         } => {
-            out.instruction(&Instruction::LocalGet(locals.get(*collection)));
-            out.instruction(&Instruction::Call(HOST_COUNT));
-            out.instruction(&Instruction::LocalSet(locals.get(*destination)));
+            emit_target_call(
+                out,
+                TARGET_COUNT,
+                &[BridgeArg::Local(
+                    locals.get(*collection),
+                    representations[collection.0 as usize],
+                )],
+                RESULT_I64,
+                locals.get(*destination),
+            )?;
         }
         MirOp::TaggedCount {
             destination,
@@ -1008,10 +1218,19 @@ fn emit_operation(
             collection,
             index,
         } => {
-            out.instruction(&Instruction::LocalGet(locals.get(*collection)));
-            out.instruction(&Instruction::LocalGet(locals.get(*index)));
-            out.instruction(&Instruction::Call(HOST_NTH));
-            out.instruction(&Instruction::LocalSet(locals.get(*destination)));
+            emit_target_call(
+                out,
+                TARGET_NTH,
+                &[
+                    BridgeArg::Local(
+                        locals.get(*collection),
+                        representations[collection.0 as usize],
+                    ),
+                    BridgeArg::Local(locals.get(*index), representations[index.0 as usize]),
+                ],
+                RESULT_HANDLE,
+                locals.get(*destination),
+            )?;
         }
         MirOp::TaggedNth {
             destination,
@@ -1321,6 +1540,9 @@ fn emit_false_condition(
         super::ir::Rep::Bool => {
             out.instruction(&Instruction::LocalGet(locals.get(condition)));
             out.instruction(&Instruction::I64Eqz);
+        }
+        super::ir::Rep::Nil => {
+            out.instruction(&Instruction::I32Const(1));
         }
         super::ir::Rep::I64
         | super::ir::Rep::ArrayRef

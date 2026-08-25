@@ -12,7 +12,7 @@
   [results]
   (reduce
    (fn [counts result]
-     (if (not (= (type result) :std.native.Result))
+     (if (not (result? result))
        (throw
         (ex :state {}
             :ex/message "native test result is not a Result"))

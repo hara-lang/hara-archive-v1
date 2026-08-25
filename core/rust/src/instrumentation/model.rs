@@ -14,6 +14,7 @@ pub enum InstrumentMode {
 pub enum TargetKind {
     Interpreter,
     Hbc,
+    WholeWasm,
 }
 
 impl TargetKind {
@@ -21,6 +22,7 @@ impl TargetKind {
         match self {
             Self::Interpreter => "interpreter",
             Self::Hbc => "hbc",
+            Self::WholeWasm => "whole-wasm",
         }
     }
 }
@@ -105,6 +107,7 @@ pub enum EventKind {
     MachineSuspend = 10,
     MachineResume = 11,
     ExecutionTerminal = 12,
+    ProtocolCall = 13,
 }
 
 impl EventKind {
@@ -120,6 +123,7 @@ impl EventKind {
             | Self::MachineSuspend
             | Self::MachineResume => Capability::EventSuspension,
             Self::ExecutionTerminal => Capability::EventLifecycle,
+            Self::ProtocolCall => Capability::EventSemanticBoundary,
         }
     }
 
@@ -147,6 +151,7 @@ impl EventKind {
                     | Self::MachineResume
                     | Self::ExecutionTerminal
             ),
+            TargetKind::WholeWasm => matches!(self, Self::ProtocolCall | Self::ExecutionTerminal),
         }
     }
 

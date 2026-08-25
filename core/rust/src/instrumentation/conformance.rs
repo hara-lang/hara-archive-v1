@@ -252,6 +252,7 @@ fn parse_target_kind(value: &str) -> Result<TargetKind, String> {
     match value {
         "interpreter" => Ok(TargetKind::Interpreter),
         "hbc" => Ok(TargetKind::Hbc),
+        "whole-wasm" => Ok(TargetKind::WholeWasm),
         _ => Err(format!("unsupported target kind {value}")),
     }
 }
@@ -270,6 +271,7 @@ fn parse_event(value: &str) -> Result<EventKind, String> {
         "promise-resume" => Ok(EventKind::PromiseResume),
         "machine-suspend" => Ok(EventKind::MachineSuspend),
         "machine-resume" => Ok(EventKind::MachineResume),
+        "protocol-call" => Ok(EventKind::ProtocolCall),
         "execution-terminal" => Ok(EventKind::ExecutionTerminal),
         _ => Err(format!("unsupported event {value}")),
     }
@@ -304,6 +306,7 @@ fn event_name(event: EventKind) -> &'static str {
         EventKind::PromiseResume => "promise-resume",
         EventKind::MachineSuspend => "machine-suspend",
         EventKind::MachineResume => "machine-resume",
+        EventKind::ProtocolCall => "protocol-call",
         EventKind::ExecutionTerminal => "execution-terminal",
     }
 }

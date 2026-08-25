@@ -29,7 +29,8 @@ final class InstrumentationModel {
 
   enum TargetKind {
     INTERPRETER("interpreter"),
-    HBC("hbc");
+    HBC("hbc"),
+    WHOLE_WASM("whole-wasm");
 
     private final String display;
 
@@ -116,6 +117,7 @@ final class InstrumentationModel {
     PROMISE_RESUME(Capability.EVENT_SUSPENSION),
     MACHINE_SUSPEND(Capability.EVENT_SUSPENSION),
     MACHINE_RESUME(Capability.EVENT_SUSPENSION),
+    PROTOCOL_CALL(Capability.EVENT_SEMANTIC_BOUNDARY),
     EXECUTION_TERMINAL(Capability.EVENT_LIFECYCLE);
 
     private final Capability requiredCapability;
@@ -154,6 +156,7 @@ final class InstrumentationModel {
                   EXECUTION_TERMINAL -> true;
               default -> false;
             };
+        case WHOLE_WASM -> this == PROTOCOL_CALL || this == EXECUTION_TERMINAL;
       };
     }
   }

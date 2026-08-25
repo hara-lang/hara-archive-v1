@@ -77,6 +77,22 @@ public class HaraGeneratedLibrariesTest {
   }
 
   @Test
+  public void uuidIsExposedThroughBaseWithPortableTypeIdentity() {
+    try (Context context = context()) {
+      assertEquals(
+          "[true :std.native.UUID \"00000000-0000-0000-0000-000000000000\" \"00000000-0000-0000-0000-000000000001\"]",
+          context
+              .eval(
+                  HaraLanguage.ID,
+                  "(let [random (Base/uuid) "
+                      + "fixed (Base/uuid \"00000000-0000-0000-0000-000000000000\") "
+                      + "bits (Base/uuid 0 1)] "
+                      + "[(uuid? random) (type random) (str fixed) (str bits)])")
+              .toString());
+    }
+  }
+
+  @Test
   public void foundationMembershipAndNumericPredicatesStayCanonical() {
     try (Context context = context()) {
       assertTrue(context.eval(HaraLanguage.ID, "(nil? (resolve 'contains?))").asBoolean());
@@ -180,7 +196,7 @@ public class HaraGeneratedLibrariesTest {
   public void typedSchemaValuesSeparateDataOriginsAndVarContracts() {
     try (Context context = context()) {
       assertEquals(
-          "[:std.native.SchemaType true true :primitive true true true true true true true true true]",
+          "[true true true :primitive true true true true true true true true true]",
           context
               .eval(
                   HaraLanguage.ID,
@@ -192,8 +208,8 @@ public class HaraGeneratedLibrariesTest {
                       + "(def snapshot-description [:string]) "
                       + "(let [from-var (schema #'description) from-value (schema description) "
                       + "direct (schema [:int])] "
-                      + "[(type direct) (= from-var from-value direct) "
-                      + "(= (type direct) :std.native.SchemaType) (Schema/kind direct) "
+                      + "[(schema? direct) (= from-var from-value direct) "
+                      + "(schema? direct) (Schema/kind direct) "
                       + "(= #'description (Schema/origin from-var)) "
                       + "(= from-var (schema-of #'customer-name)) "
                       + "(= direct (schema-of #'snapshot-name)) "
@@ -204,7 +220,7 @@ public class HaraGeneratedLibrariesTest {
               .toString());
       assertErrorContains(context, "(schema #'customer-name)", "schema expects schema data");
       assertErrorContains(context, "(schema customer-name)", "schema expects schema data");
-      assertErrorContains(context, "(schema-of customer-name)", "schema-of expects a Var");
+      assertErrorContains(context, "(schema-of customer-name)", "Schema/of expects a Var");
     }
   }
 

@@ -7,6 +7,8 @@
 
 #[path = "whole_wasm/artifact.rs"]
 mod artifact;
+#[path = "whole_wasm/bridge.rs"]
+mod bridge;
 #[cfg(target_arch = "wasm32")]
 #[path = "whole_wasm/browser.rs"]
 mod browser;

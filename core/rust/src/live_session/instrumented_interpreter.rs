@@ -640,6 +640,7 @@ fn event_name(event: EventKind) -> &'static str {
         EventKind::PromiseResume => "promise/resume",
         EventKind::MachineSuspend => "machine/suspend",
         EventKind::MachineResume => "machine/resume",
+        EventKind::ProtocolCall => "semantic/protocol-call",
         EventKind::ExecutionTerminal => "execution/terminal",
     }
 }

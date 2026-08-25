@@ -90,6 +90,29 @@ final class HaraInstrumentationRuntime implements AutoCloseable {
         .publish(target, event, EventPhase.LIVE, location, data, access);
   }
 
+  void publishWholeWasmProtocolCall(
+      String targetName,
+      int arity,
+      HaraTargetRuntime.ResultMode resultMode,
+      String status) {
+    if (!ready || sessionKernel == null) return;
+    TargetHandle target = target(InstrumentationModel.TargetKind.WHOLE_WASM);
+    EventKind event = EventKind.PROTOCOL_CALL;
+    if (target == null || !sessionKernel.instrumentationHub().hasSubscribers(target, event)) return;
+    sessionKernel
+        .instrumentationHub()
+        .publish(
+            target,
+            event,
+            EventPhase.LIVE,
+            null,
+            Map.of(
+                "target", targetName,
+                "arity", Integer.toString(arity),
+                "result-mode", resultMode.name().toLowerCase(java.util.Locale.ROOT),
+                "status", status));
+  }
+
   private static InstrumentationModel.SourceSpan sourceSpan(HbcProgram.Position position) {
     int offset = boundedOffset(position.offset());
     return new InstrumentationModel.SourceSpan(offset, offset);

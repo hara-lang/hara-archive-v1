@@ -294,6 +294,17 @@ final class SessionKernel implements AutoCloseable {
                 Capability.CONTROL_RESUME,
                 Capability.CONTROL_SETTLE,
                 Capability.CONTROL_TERMINATE)));
+    RuntimeBackend wholeWasmBackend = new RuntimeBackend("java-whole-wasm");
+    registerInstrumentationTarget(
+        new TargetDescriptor(
+            instrumentationTargetId(sessionId, TargetKind.WHOLE_WASM),
+            sessionId,
+            TargetKind.WHOLE_WASM,
+            wholeWasmBackend,
+            java.util.Set.of(
+                Capability.EVENT_SEMANTIC_BOUNDARY,
+                Capability.EVENT_LIFECYCLE,
+                Capability.INSPECT_SOURCE_LOCATION)));
   }
 
   private void registerInstrumentationTarget(TargetDescriptor descriptor) {

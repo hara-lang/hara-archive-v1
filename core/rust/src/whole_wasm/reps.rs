@@ -125,7 +125,8 @@ pub(super) fn declared_result_rep(program: &Program, function_id: FunctionId) ->
 fn schema_rep(schema: &SchemaType) -> Rep {
     match schema {
         SchemaType::Primitive(name) if name == "int" => Rep::I64,
-        SchemaType::Primitive(name) if name == "bool" || name == "nil" => Rep::Bool,
+        SchemaType::Primitive(name) if name == "bool" => Rep::Bool,
+        SchemaType::Primitive(name) if name == "nil" => Rep::Nil,
         _ => Rep::TruthyHandle,
     }
 }
@@ -203,7 +204,7 @@ fn transfer(
                 .get(*index as usize)
                 .ok_or_else(|| format!("whole-Wasm representation constant {index} is missing"))?,
         )),
-        Instruction::Nil => state.stack.push(Rep::Unknown),
+        Instruction::Nil => state.stack.push(Rep::Nil),
         Instruction::True | Instruction::False => state.stack.push(Rep::Bool),
         Instruction::LoadLocal(local) => state.stack.push(state.locals[usize::from(*local)]),
         Instruction::StoreLocal(local) => state.locals[usize::from(*local)] = pop(state)?,
@@ -313,7 +314,7 @@ fn constant_rep(value: &Value) -> Rep {
     match value {
         Value::Number(_) => Rep::I64,
         Value::Bool(_) => Rep::Bool,
-        Value::Nil => Rep::Bool,
+        Value::Nil => Rep::Nil,
         Value::String(_) => Rep::KeyRef,
         _ => Rep::TruthyHandle,
     }

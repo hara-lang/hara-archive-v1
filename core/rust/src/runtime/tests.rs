@@ -4083,18 +4083,42 @@ mod tests {
         assert_eq!(
             runtime
                 .eval_text(
+                    "[(map? {:a 1})\
+                     (map? (std.native.Algo/ordered-map :a 1))\
+                     (map? [1])\
+                     (set? #{1})\
+                     (set? (std.native.Algo/ordered-set 1))\
+                     (set? [1])\
+                     (sequential? '(1 2))\
+                     (sequential? [1 2])\
+                     (sequential? (tuple 1 2))\
+                     (sequential? (std.native.Algo/queue 1 2))\
+                     (sequential? (std.native.Algo/deque 1 2))\
+                     (sequential? (cons 1 [2]))\
+                     (sequential? (seq [1 2]))\
+                     (sequential? (std.native.Algo/ordered-set 1))\
+                     (coll? (seq [1 2]))\
+                     (coll? (iter [1 2]))\
+                     (seq? (seq [1 2]))\
+                     (seq? [1 2])\
+                     (iter? (iter [1 2]))\
+                     (iter? [1 2])]"
+                )
+                .unwrap(),
+            "[true true false true true false true true true true true false false false true false true false true false true true]"
+        );
+        assert_eq!(
+            runtime
+                .eval_text(
                     "[(satisfies? IMapType {:a 1})\
                      (satisfies? IMapType [1])\
                      (satisfies? ISetType #{1})\
                      (satisfies? ISetType [1])\
                      (satisfies? ILinearType [1])\
-                     (satisfies? ILinearType #{1})\
-                     (map? {:a 1}) (map? [1])\
-                     (set? #{1}) (set? [1])\
-                     (sequential? [1]) (sequential? #{1})]"
+                     (satisfies? ILinearType #{1})]"
                 )
                 .unwrap(),
-            "[true false true false true false true false true false true false]"
+            "[true false true false true false]"
         );
         assert_eq!(runtime.eval_text("(not false)").unwrap(), "true");
         assert_eq!(runtime.eval_text("(< 1 2 3)").unwrap(), "true");
@@ -6398,8 +6422,8 @@ mod tests {
                      (let [from-var (std.native.Schema/compile #'description) \
                            from-value (std.native.Schema/compile description) \
                            direct (std.native.Schema/compile [:int])] \
-                       [(type direct) (= from-var from-value direct) \
-                        (= (type direct) :std.native.SchemaType) (std.native.Schema/kind direct) \
+                     [(schema? direct) (= from-var from-value direct) \
+                        (schema? direct) (std.native.Schema/kind direct) \
                         (= #'description (std.native.Schema/origin from-var)) \
                         (= from-var (std.native.Schema/of #'customer-name)) \
                         (= direct (std.native.Schema/of #'snapshot-name)) \
@@ -6411,7 +6435,7 @@ mod tests {
                         (nil? (std.native.Schema/of #'description))])",
                 )
                 .unwrap(),
-            "[:std.native.SchemaType true true :primitive true true true true true true true true true]"
+            "[true true true :primitive true true true true true true true true true]"
         );
         assert!(runtime
             .eval_text("(std.native.Schema/compile #'customer-name)")

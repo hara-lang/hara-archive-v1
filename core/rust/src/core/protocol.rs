@@ -1378,7 +1378,8 @@ impl Value {
                 | Self::Pointer(_)
                 | Self::StructType(_)
                 | Self::MutableType(_)
-        )
+        ) || mutable_map_satisfies(value)
+            || mutable_set_satisfies(value)
     }
 }
 
@@ -1762,7 +1763,10 @@ fn extension_has_category(receiver: &ExtensionValue, category: &str) -> bool {
     })
 }
 
-fn mutable_linear_satisfies(value: &Value, list_or_queue: bool, vector: bool) -> bool {
+fn mutable_collection_satisfies(
+    value: &Value,
+    predicate: impl FnOnce(&MutableCollection) -> bool,
+) -> bool {
     let Value::MutableCollection(collection) = value else {
         return false;
     };
@@ -1770,14 +1774,60 @@ fn mutable_linear_satisfies(value: &Value, list_or_queue: bool, vector: bool) ->
     let Some(collection) = borrowed.as_ref() else {
         return false;
     };
-    matches!(
-        collection,
-        MutableCollection::List(_) | MutableCollection::Queue(_)
-    ) && list_or_queue
-        || matches!(collection, MutableCollection::Vector(_)) && vector
+    predicate(collection)
+}
+
+fn mutable_linear_satisfies(value: &Value, list_or_queue: bool, vector: bool) -> bool {
+    mutable_collection_satisfies(value, |collection| {
+        (matches!(
+            collection,
+            MutableCollection::List(_) | MutableCollection::Queue(_)
+        ) && list_or_queue)
+            || (matches!(collection, MutableCollection::Vector(_)) && vector)
+    })
+}
+
+fn mutable_map_satisfies(value: &Value) -> bool {
+    mutable_collection_satisfies(value, |collection| {
+        matches!(
+            collection,
+            MutableCollection::Map(_)
+                | MutableCollection::OrderedMap(_)
+                | MutableCollection::SortedMap(_)
+        )
+    })
+}
+
+fn mutable_set_satisfies(value: &Value) -> bool {
+    mutable_collection_satisfies(value, |collection| {
+        matches!(
+            collection,
+            MutableCollection::Set(_)
+                | MutableCollection::OrderedSet(_)
+                | MutableCollection::SortedSet(_)
+        )
+    })
 }
 
 impl Value {
+    fn supports_native_imaptype(value: &Self) -> bool {
+        matches!(
+            value,
+            Self::Map(_) | Self::OrderedMap(_) | Self::SortedMap(_) | Self::PriorityMap(_)
+        ) || mutable_map_satisfies(value)
+    }
+    fn supports_native_ilineartype(value: &Self) -> bool {
+        matches!(
+            value,
+            Self::List(_) | Self::Queue(_) | Self::Deque(_) | Self::Tuple(_) | Self::Vector(_)
+        ) || mutable_linear_satisfies(value, true, true)
+    }
+    fn supports_native_isettype(value: &Self) -> bool {
+        matches!(
+            value,
+            Self::Set(_) | Self::OrderedSet(_) | Self::SortedSet(_)
+        ) || mutable_set_satisfies(value)
+    }
     fn supports_native_icoll(value: &Self) -> bool {
         matches!(
             value,
@@ -1796,6 +1846,7 @@ impl Value {
                 | Self::Tuple(_)
                 | Self::Vector(_)
                 | Self::Seq(_)
+                | Self::MutableCollection(_)
         )
     }
     fn supports_native_iconj(value: &Self) -> bool {
@@ -1815,7 +1866,7 @@ impl Value {
                 | Self::Deque(_)
                 | Self::Nil
                 | Self::Seq(_)
-        )
+        ) || mutable_linear_satisfies(value, true, true)
     }
     fn supports_native_iempty(value: &Self) -> bool {
         Self::supports_native_icoll(value)
@@ -1919,7 +1970,7 @@ impl Value {
                 | Self::Bytes(_)
                 | Self::ByteBuffer(_)
                 | Self::Array(_)
-        )
+        ) || mutable_linear_satisfies(value, true, true)
     }
     fn supports_native_map(value: &Self) -> bool {
         matches!(
@@ -1969,6 +2020,7 @@ impl Value {
         matches!(value, Self::Nil)
             || Self::supports_native_map(value)
             || matches!(value, Self::Vector(_) | Self::Tuple(_) | Self::Pointer(_))
+            || mutable_map_satisfies(value)
     }
     fn supports_native_ideref(value: &Self) -> bool {
         matches!(
@@ -2070,7 +2122,8 @@ impl Value {
         matches!(value, Self::Mutable(_) | Self::MutableCollection(_))
     }
     fn supports_native_ipersistent(value: &Self) -> bool {
-        Self::supports_native_icoll(value) || matches!(value, Self::Struct(_))
+        (Self::supports_native_icoll(value) && !matches!(value, Self::MutableCollection(_)))
+            || matches!(value, Self::Struct(_))
     }
     fn supports_native_iequality(value: &Self) -> bool {
         !matches!(value, Self::Protocol(_))
@@ -2115,6 +2168,9 @@ fn native_protocol_supports(protocol: &str, value: &Value) -> bool {
         .unwrap_or(protocol);
     match name {
         "IColl" => Value::supports_native_icoll(value),
+        "IMapType" => Value::supports_native_imaptype(value),
+        "ILinearType" => Value::supports_native_ilineartype(value),
+        "ISetType" => Value::supports_native_isettype(value),
         "IMetadata" => Value::supports_native_iobjtype(value),
         "IConj" => Value::supports_native_iconj(value),
         "ICons" => Value::supports_native_icons(value),

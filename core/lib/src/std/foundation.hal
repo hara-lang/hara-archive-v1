@@ -106,6 +106,17 @@
 (defn ^{:inline true :schema [:fn [:any] :set]}
   set "Converts value to a persistent set." [value] (Base/set value))
 
+(defn ^{:inline true
+        :schema [:function [:fn [] :any]
+                           [:fn [:any] :any]
+                           [:fn [:long :long] :any]]}
+  uuid
+  "Creates a random UUID or constructs one from a value or two bit halves."
+  ([] (Base/uuid))
+  ([value] (Base/uuid value))
+  ([most-significant-bits least-significant-bits]
+   (Base/uuid most-significant-bits least-significant-bits)))
+
 (defn ^{:schema [:fn [:any :any & :any] :any]}
   conj
   "Adds one or more values through IConj."
@@ -393,6 +404,10 @@
 
 (defn ^{:inline true :schema [:fn [:any] :any]}
   schema "Compiles schema data into a SchemaType." [value] (Schema/compile value))
+
+(defn ^{:inline true :schema [:fn [:any] :bool]}
+  schema? "Returns true when value is a native SchemaType." [value]
+  (= (type value) :std.native.SchemaType))
 
 (defn ^{:inline true :schema [:fn [:any] :any]}
   schema-of "Returns the compiled schema contract of variable." [variable] (Schema/of variable))

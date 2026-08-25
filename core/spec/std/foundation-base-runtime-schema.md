@@ -172,8 +172,8 @@ compiled or reloaded. Later mutation of `description` does not silently change
 the already compiled contract.
 
 `Schema/kind`, `Schema/form`, `Schema/ast`, and `Schema/origin` inspect schema
-values. `(type (schema value))` is `:std.native.SchemaType`, which is the
-portable schema identity check. Printing is round-trippable as
+values. `(schema? (schema value))` is the portable schema identity check.
+Printing is round-trippable as
 `(schema <canonical-short-form>)`. `Schema/ast` returns the portable
 normalized map rather than a host compiler-node shape. For every valid
 surface schema, portable normalization, native AST inspection, and

@@ -54,6 +54,29 @@ fn canonical_hbc_artifact_is_the_hnw0_compiler_input() {
 }
 
 #[test]
+fn whole_wasm_uses_only_the_generic_target_bridge_imports() {
+    let program = compile_source("(+ 19 23)").expect("source must compile to HBC0");
+    let artifact = compile_artifact(&program).expect("source must compile to HNW0");
+    let decoded = decode_artifact(&artifact).expect("HNW0 must decode");
+    let engine = wasmtime::Engine::default();
+    let module = wasmtime::Module::new(&engine, &decoded.wasm).expect("Wasm must validate");
+    let imports = module
+        .imports()
+        .map(|import| format!("{}::{}", import.module(), import.name()))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        imports,
+        vec![
+            "hara::constant_handle",
+            "hara::box_i64",
+            "hara::unbox_i64",
+            "hara::value_construct",
+            "hara::target_call",
+        ]
+    );
+}
+
+#[test]
 fn whole_wasm_prepared_calls_are_repeatable_after_call_reset() {
     let source = "(let [a (std.native.Arr/new 1 2 3)]
                     (std.native.Arr/set a 1 40)
@@ -100,7 +123,7 @@ fn runtime_whole_wasm_product_has_stable_alpha_metadata() {
     assert_eq!(manifest["schema"], "hara.compiled-product.manifest/0-alpha");
     assert_eq!(manifest["product"], "whole-wasm");
     assert_eq!(manifest["format"], "HNW0");
-    assert_eq!(manifest["abi-version"], "hnw0/2");
+    assert_eq!(manifest["abi-version"], "hnw0/3");
     assert_eq!(manifest["artifact-bytes"], first.len());
     assert_eq!(manifest["entrypoint"], "hara_entry");
     assert_eq!(manifest["error-global"], "hara_error");

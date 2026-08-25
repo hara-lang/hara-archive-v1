@@ -3,6 +3,7 @@ use wasm_bindgen::prelude::*;
 use crate::core::{self, Value};
 
 use super::artifact::decode_artifact;
+use super::bridge::{self, Slot, RESULT_BOOL, RESULT_HANDLE, RESULT_I64};
 use super::handles::{Handle, HandleScope};
 
 /// Browser-side owner for the dynamic Hara values referenced by a generated
@@ -46,6 +47,60 @@ impl WholeWasmHost {
     #[wasm_bindgen(js_name = entryFunction)]
     pub fn entry_function(&self) -> i64 {
         i64::from(self.entry_function)
+    }
+
+    /// Dispatches one bounded synchronous target call. JavaScript decodes the
+    /// Wasm memory bytes into `[kind, payload]` pairs before entering this
+    /// wasm-bindgen method; the logical ABI is identical to the Wasmtime host.
+    #[wasm_bindgen(js_name = targetCall)]
+    pub fn target_call(
+        &mut self,
+        target: i64,
+        arguments: JsValue,
+        result_mode: i64,
+    ) -> Result<i64, JsValue> {
+        let slots = parse_slots(arguments)?;
+        let values = slots
+            .iter()
+            .map(|slot| self.resolve_slot(*slot))
+            .collect::<Result<Vec<_>, _>>()?;
+        if let Some(name) = bridge::target_name(target) {
+            let value = if name.starts_with("std.protocol.") {
+                core::protocol_intrinsic_call(name, &values)
+            } else {
+                core::apply_intrinsic_name(name, &values)
+            }
+            .map_err(js_error)?;
+            return self.encode_result(value, result_mode);
+        }
+        Err(js_error(format!("unknown whole-Wasm target {target}")))
+    }
+
+    #[wasm_bindgen(js_name = valueConstruct)]
+    pub fn value_construct(
+        &mut self,
+        target: i64,
+        arguments: JsValue,
+    ) -> Result<i64, JsValue> {
+        let values = parse_slots(arguments)?
+            .iter()
+            .map(|slot| self.resolve_slot(*slot))
+            .collect::<Result<Vec<_>, _>>()?;
+        let value = match target {
+            bridge::TARGET_VECTOR_CONSTRUCT => {
+                Value::Vector(crate::lang::data::Vector::from_iter(values))
+            }
+            bridge::TARGET_MAP_CONSTRUCT => {
+                if values.len() % 2 != 0 {
+                    return Err(js_error(
+                        "whole-Wasm map construction needs key/value pairs".into(),
+                    ));
+                }
+                core::vm_build_map(values).map_err(js_error)?
+            }
+            _ => return Err(js_error(format!("unknown structural target {target}"))),
+        };
+        self.insert(value)
     }
 
     #[wasm_bindgen(js_name = constantHandle)]
@@ -101,148 +156,6 @@ impl WholeWasmHost {
         }
     }
 
-    #[wasm_bindgen(js_name = vectorEmpty)]
-    pub fn vector_empty(&mut self) -> Result<i64, JsValue> {
-        self.insert(Value::Vector(crate::lang::data::Vector::new()))
-    }
-
-    #[wasm_bindgen(js_name = vectorPush)]
-    pub fn vector_push(&mut self, vector: i64, item: i64) -> Result<i64, JsValue> {
-        let Value::Vector(values) = self.get(vector)? else {
-            return Err(js_error("whole-Wasm vector handle expected".into()));
-        };
-        let item = self.get(item)?;
-        self.insert(Value::Vector(crate::lang::data::Vector::from_iter(
-            values.iter().cloned().chain(std::iter::once(item)),
-        )))
-    }
-
-    #[wasm_bindgen(js_name = mapEmpty)]
-    pub fn map_empty(&mut self) -> Result<i64, JsValue> {
-        self.insert(core::vm_build_map(Vec::new()).map_err(js_error)?)
-    }
-
-    #[wasm_bindgen(js_name = mapAssoc)]
-    pub fn map_assoc(&mut self, map: i64, key: i64, value: i64) -> Result<i64, JsValue> {
-        let result = core::protocol_intrinsic_call(
-            "std.protocol.iassoc.IAssoc/assoc",
-            &[self.get(map)?, self.get(key)?, self.get(value)?],
-        )
-        .map_err(js_error)?;
-        self.insert(result)
-    }
-
-    #[wasm_bindgen(js_name = getValue)]
-    pub fn get_value(&mut self, collection: i64, key: i64) -> Result<i64, JsValue> {
-        let result = core::protocol_intrinsic_call(
-            "std.protocol.ilookup.ILookup/lookup",
-            &[self.get(collection)?, self.get(key)?],
-        )
-                .map_err(js_error)?;
-        self.insert(result)
-    }
-
-    #[wasm_bindgen(js_name = isNumber)]
-    pub fn is_number(&self, value: i64) -> Result<i64, JsValue> {
-        Ok(i64::from(matches!(
-            self.get(value)?,
-            Value::Number(_) | Value::BigInteger(_)
-        )))
-    }
-
-    pub fn count(&self, collection: i64) -> Result<i64, JsValue> {
-        match core::protocol_intrinsic_call(
-            "std.protocol.icount.ICount/count",
-            &[self.get(collection)?],
-        )
-        .map_err(js_error)? {
-            Value::Number(value) => Ok(value),
-            _ => Err(js_error("count returned a non-integer".into())),
-        }
-    }
-
-    pub fn nth(&mut self, collection: i64, index: i64) -> Result<i64, JsValue> {
-        let result = core::protocol_intrinsic_call(
-            "std.protocol.inth.INth/nth",
-            &[self.get(collection)?, Value::Number(index)],
-        )
-        .map_err(js_error)?;
-        self.insert(result)
-    }
-
-    #[wasm_bindgen(js_name = mapI64Pair)]
-    pub fn map_i64_pair(&mut self, key: i64, value: i64) -> Result<i64, JsValue> {
-        let map =
-            core::vm_build_map(vec![self.get(key)?, Value::Number(value)]).map_err(js_error)?;
-        self.insert(map)
-    }
-
-    #[wasm_bindgen(js_name = getI64)]
-    pub fn get_i64(&self, collection: i64, key: i64) -> Result<i64, JsValue> {
-        match core::protocol_intrinsic_call(
-            "std.protocol.ilookup.ILookup/lookup",
-            &[self.get(collection)?, self.get(key)?],
-        )
-            .map_err(js_error)?
-        {
-            Value::Number(value) => Ok(value),
-            Value::BigInteger(_) => Err(js_error(
-                "whole-Wasm integer overflow: value is outside signed 64-bit range".into(),
-            )),
-            _ => Err(js_error("get returned a non-integer".into())),
-        }
-    }
-
-    #[wasm_bindgen(js_name = getPathI64Constants)]
-    pub fn get_path_i64_constants(
-        &self,
-        collection: i64,
-        first_key: i64,
-        second_key: i64,
-    ) -> Result<i64, JsValue> {
-        let constant = |index: i64| {
-            usize::try_from(index)
-                .ok()
-                .and_then(|index| self.constants.get(index))
-                .cloned()
-                .ok_or_else(|| js_error("whole-Wasm constant is missing".into()))
-        };
-        let first = core::protocol_intrinsic_call(
-            "std.protocol.ilookup.ILookup/lookup",
-            &[self.get(collection)?, constant(first_key)?],
-        )
-        .map_err(js_error)?;
-        match core::protocol_intrinsic_call(
-            "std.protocol.ilookup.ILookup/lookup",
-            &[first, constant(second_key)?],
-        )
-            .map_err(js_error)?
-        {
-            Value::Number(value) => Ok(value),
-            Value::BigInteger(_) => Err(js_error(
-                "whole-Wasm integer overflow: value is outside signed 64-bit range".into(),
-            )),
-            _ => Err(js_error("nested get returned a non-integer".into())),
-        }
-    }
-
-    #[wasm_bindgen(js_name = assocMapI64Pair)]
-    pub fn assoc_map_i64_pair(
-        &mut self,
-        collection: i64,
-        outer_key: i64,
-        inner_key: i64,
-        value: i64,
-    ) -> Result<i64, JsValue> {
-        let nested = core::vm_build_map(vec![self.get(inner_key)?, Value::Number(value)])
-            .map_err(js_error)?;
-        let result = core::protocol_intrinsic_call(
-            "std.protocol.iassoc.IAssoc/assoc",
-            &[self.get(collection)?, self.get(outer_key)?, nested],
-        )
-        .map_err(js_error)?;
-        self.insert(result)
-    }
 }
 
 impl WholeWasmHost {
@@ -256,6 +169,76 @@ impl WholeWasmHost {
     fn get(&self, handle: i64) -> Result<Value, JsValue> {
         self.handles.get(Handle::from_abi(handle)).map_err(js_error)
     }
+
+    fn resolve_slot(&self, slot: Slot) -> Result<Value, JsValue> {
+        match slot.kind {
+            bridge::SLOT_HANDLE => self.get(slot.payload),
+            bridge::SLOT_I64 => Ok(Value::Number(slot.payload)),
+            bridge::SLOT_BOOL => Ok(Value::Bool(slot.payload != 0)),
+            bridge::SLOT_NIL => Ok(Value::Nil),
+            bridge::SLOT_CONSTANT => self
+                .constants
+                .get(
+                    usize::try_from(slot.payload)
+                        .map_err(|_| js_error("invalid constant".into()))?,
+                )
+                .cloned()
+                .ok_or_else(|| js_error("whole-Wasm constant index out of range".into())),
+            _ => Err(js_error("invalid whole-Wasm bridge slot".into())),
+        }
+    }
+
+    fn encode_result(&mut self, value: Value, mode: i64) -> Result<i64, JsValue> {
+        bridge::validate_result_mode(mode).map_err(js_error)?;
+        match mode {
+            RESULT_HANDLE => self.insert(value),
+            RESULT_I64 => crate::numeric::to_i64_exact(&value)
+                .map_err(|_| js_error("whole-Wasm integer overflow".into())),
+            RESULT_BOOL => match value {
+                Value::Bool(value) => Ok(i64::from(value)),
+                _ => Err(js_error("whole-Wasm target did not return a boolean".into())),
+            },
+            _ => unreachable!("result mode validated above"),
+        }
+    }
+}
+
+fn parse_slots(value: JsValue) -> Result<Vec<Slot>, JsValue> {
+    let slots = js_sys::Array::from(&value);
+    let mut result = Vec::with_capacity(slots.length() as usize);
+    for item in slots.iter() {
+        let pair = js_sys::Array::from(&item);
+        if pair.length() != 2 {
+            return Err(js_error("whole-Wasm bridge slot must have two fields".into()));
+        }
+        let kind = pair
+            .get(0)
+            .as_f64()
+            .and_then(|value| u32::try_from(value as i64).ok())
+            .ok_or_else(|| js_error("whole-Wasm bridge slot kind is invalid".into()))?;
+        let payload = js_i64(pair.get(1))?;
+        result.push(Slot { kind, payload });
+    }
+    bridge::validate_slots(&result).map_err(js_error)?;
+    Ok(result)
+}
+
+fn js_i64(value: JsValue) -> Result<i64, JsValue> {
+    if value.is_bigint() {
+        let value: js_sys::BigInt = value.unchecked_into();
+        let text = value
+            .to_string(10)
+            .map_err(|error| js_error(format!("invalid bridge integer: {error:?}")))?
+            .as_string()
+            .ok_or_else(|| js_error("invalid bridge integer".into()))?;
+        return text
+            .parse::<i64>()
+            .map_err(|_| js_error("bridge integer is outside signed 64-bit range".into()));
+    }
+    value
+        .as_f64()
+        .and_then(|value| i64::try_from(value as i128).ok())
+        .ok_or_else(|| js_error("whole-Wasm bridge integer is invalid".into()))
 }
 
 fn js_error(error: String) -> JsValue {

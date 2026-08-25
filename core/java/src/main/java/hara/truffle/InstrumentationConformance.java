@@ -294,6 +294,7 @@ public final class InstrumentationConformance {
     return switch (value) {
       case "interpreter" -> TargetKind.INTERPRETER;
       case "hbc" -> TargetKind.HBC;
+      case "whole-wasm" -> TargetKind.WHOLE_WASM;
       default -> throw new IllegalArgumentException("unsupported target kind " + value);
     };
   }
@@ -312,6 +313,7 @@ public final class InstrumentationConformance {
       case "promise-resume" -> EventKind.PROMISE_RESUME;
       case "machine-suspend" -> EventKind.MACHINE_SUSPEND;
       case "machine-resume" -> EventKind.MACHINE_RESUME;
+      case "protocol-call" -> EventKind.PROTOCOL_CALL;
       case "execution-terminal" -> EventKind.EXECUTION_TERMINAL;
       default -> throw new IllegalArgumentException("unsupported event " + value);
     };
@@ -331,6 +333,7 @@ public final class InstrumentationConformance {
       case PROMISE_RESUME -> "promise-resume";
       case MACHINE_SUSPEND -> "machine-suspend";
       case MACHINE_RESUME -> "machine-resume";
+      case PROTOCOL_CALL -> "protocol-call";
       case EXECUTION_TERMINAL -> "execution-terminal";
     };
   }

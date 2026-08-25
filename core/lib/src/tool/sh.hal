@@ -266,7 +266,7 @@
    Process failures retain their command, output, and exit data. Other errors
    are rethrown."
   [value]
-  (if (= (type value) :std.native.Result)
+  (if (result? value)
     (if (Result/success? value)
       (Result/data value)
       (let [error (Result/error-value value)
@@ -291,7 +291,7 @@
   ([value]
    (require-success "Command failed" value))
   ([message value]
-   (if (= (type value) :std.native.Result)
+   (if (result? value)
      (if (Result/success? value)
        (require-success message (Result/data value))
        (let [error (Result/error-value value)

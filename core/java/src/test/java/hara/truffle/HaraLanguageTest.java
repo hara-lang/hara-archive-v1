@@ -56,7 +56,7 @@ public class HaraLanguageTest {
   public void collectionCategoryPredicatesClassifyAllPortableFamilies() {
     try (Context context = context()) {
       assertEquals(
-          "[true true false true true false true true true true true false false false true false true false true false]",
+          "[true true false true true false true true true true true false false false true false true false true false true true]",
           context
               .eval(
                   HaraLanguage.ID,
@@ -79,7 +79,9 @@ public class HaraLanguageTest {
                       + " (seq? (seq [1 2])) "
                       + " (seq? [1 2]) "
                       + " (iter? (iter [1 2])) "
-                      + " (iter? [1 2])]")
+                      + " (iter? [1 2]) "
+                      + " (map? (IToMutable/to-mutable {:a 1})) "
+                      + " (set? (IToMutable/to-mutable #{1}))]")
               .toString());
     }
   }

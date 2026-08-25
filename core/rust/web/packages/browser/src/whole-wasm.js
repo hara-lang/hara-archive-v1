@@ -25,7 +25,7 @@ export function decodeHnw0(input) {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const abiVersion = view.getUint16(offset, false);
   offset += 2;
-  if (abiVersion !== 2) throw new Error(`unsupported HNW ABI version ${abiVersion}`);
+  if (abiVersion !== 3) throw new Error(`unsupported HNW ABI version ${abiVersion}`);
   const functionCount = view.getUint16(offset, false);
   offset += 2;
   const functions = [];
@@ -72,25 +72,35 @@ export function decodeHnw0(input) {
   return { abiVersion, functionCount, functions, capabilities, hbc, wasm };
 }
 
-function hostImports(host) {
+function hostImports(host, getMemory) {
+  const readSlots = (pointer, argc) => {
+    const memory = getMemory();
+    if (!memory) throw new Error("whole-Wasm bridge memory is unavailable");
+    const view = new DataView(memory.buffer);
+    const start = Number(pointer);
+    const count = Number(argc);
+    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(count) || count < 0 || count > 64 ||
+        start < 0 || start + count * 16 > view.byteLength) {
+      throw new Error("whole-Wasm bridge memory range is invalid");
+    }
+    const slots = [];
+    for (let index = 0; index < count; index += 1) {
+      const offset = start + index * 16;
+      slots.push([
+        view.getUint32(offset, true),
+        view.getBigInt64(offset + 8, true),
+      ]);
+    }
+    return slots;
+  };
   return {
     constant_handle: (index) => host.constantHandle(index),
     box_i64: (value) => host.boxI64(value),
     unbox_i64: (handle) => host.unboxI64(handle),
-    vector_empty: () => host.vectorEmpty(),
-    vector_push: (vector, item) => host.vectorPush(vector, item),
-    map_empty: () => host.mapEmpty(),
-    map_assoc: (map, key, value) => host.mapAssoc(map, key, value),
-    get: (collection, key) => host.getValue(collection, key),
-    is_number: (value) => host.isNumber(value),
-    count: (collection) => host.count(collection),
-    nth: (collection, index) => host.nth(collection, index),
-    map_i64_pair: (key, value) => host.mapI64Pair(key, value),
-    get_i64: (collection, key) => host.getI64(collection, key),
-    get_path_i64_constants: (collection, first, second) =>
-      host.getPathI64Constants(collection, first, second),
-    assoc_map_i64_pair: (collection, outerKey, innerKey, value) =>
-      host.assocMapI64Pair(collection, outerKey, innerKey, value)
+    value_construct: (target, pointer, argc) =>
+      host.valueConstruct(target, readSlots(pointer, argc)),
+    target_call: (target, pointer, argc, resultMode) =>
+      host.targetCall(target, readSlots(pointer, argc), resultMode)
   };
 }
 
@@ -106,9 +116,13 @@ export async function instantiateWholeWasm(product, Host, fallback) {
   const host = new Host(artifact);
   const { hbc, wasm, capabilities } = decoded;
   const names = manifestNames(manifest);
-  const { instance, module } = await WebAssembly.instantiate(wasm, {
-    [names.importModule]: hostImports(host)
+  let instance;
+  const instantiated = await WebAssembly.instantiate(wasm, {
+    [names.importModule]: hostImports(host, () => instance?.exports.hara_memory)
   });
+  instance = instantiated.instance;
+  const { module } = instantiated;
+  const heapBase = instance.exports[names.heapGlobal].value;
   if (typeof instance.exports[names.entrypoint] !== "function") {
     throw new Error(`whole-Wasm module has no ${names.entrypoint} function`);
   }
@@ -132,7 +146,7 @@ export async function instantiateWholeWasm(product, Host, fallback) {
         return fallback(hbc);
       }
       instance.exports[names.errorGlobal].value = 0;
-      instance.exports[names.heapGlobal].value = 0;
+      instance.exports[names.heapGlobal].value = heapBase;
       try {
         return instance.exports[names.entrypoint](...arguments_.map(BigInt));
       } catch (error) {

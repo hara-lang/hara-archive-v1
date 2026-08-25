@@ -128,6 +128,13 @@ public class InstrumentationModelTest {
                 Map.of()));
   }
 
+  @Test
+  public void wholeWasmSupportsOnlyProtocolBoundaryEvents() {
+    assertTrue(EventKind.PROTOCOL_CALL.supports(TargetKind.WHOLE_WASM));
+    assertTrue(EventKind.EXECUTION_TERMINAL.supports(TargetKind.WHOLE_WASM));
+    assertTrue(!EventKind.PROTOCOL_CALL.supports(TargetKind.HBC));
+  }
+
   private static InstrumentRegistration registration(
       InstrumentMode mode,
       Set<Capability> capabilities,

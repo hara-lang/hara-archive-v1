@@ -7,6 +7,7 @@ use crate::vm::{FunctionId, Instruction, Program};
 pub enum Rep {
     I64,
     Bool,
+    Nil,
     ArrayRef,
     ObjectRef,
     KeyRef,
@@ -286,7 +287,7 @@ pub(crate) fn lower_function(
                 Instruction::Constant(index) => {
                     let (value, rep) = match program.constants.get(*index as usize) {
                         Some(Value::String(_)) => (i64::from(*index) + 1, Rep::KeyRef),
-                        Some(Value::Nil) => (0, Rep::Bool),
+                        Some(Value::Nil) => (0, Rep::Nil),
                         Some(value) => {
                             if let Some(value) = scalar_constant(Some(value)) {
                                 value
@@ -319,7 +320,7 @@ pub(crate) fn lower_function(
                 Instruction::Nil => operations.push(MirOp::Constant {
                     destination: stack(height)?,
                     value: 0,
-                    rep: Rep::Bool,
+                    rep: Rep::Nil,
                 }),
                 Instruction::Closure {
                     prototype,

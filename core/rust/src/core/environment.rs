@@ -422,6 +422,15 @@ impl ProtocolRegistry {
         registry.register_marker_declared("IPersistent", |value| {
             native_protocol_supports("IPersistent", value)
         });
+        registry.register_marker_declared("IMapType", |value| {
+            native_protocol_supports("IMapType", value)
+        });
+        registry.register_marker_declared("ILinearType", |value| {
+            native_protocol_supports("ILinearType", value)
+        });
+        registry.register_marker_declared("ISetType", |value| {
+            native_protocol_supports("ISetType", value)
+        });
         registry.register_marker_declared("IOFn", |value| matches!(value, Value::Keyword(_)));
         registry.register("std.protocol.icount.ICount", "count", protocol_count);
         registry.register("std.protocol.inth.INth", "nth", protocol_nth);

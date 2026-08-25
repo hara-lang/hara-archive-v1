@@ -12,6 +12,21 @@
    :test (fn [] (std.foundation/vector 1 2 3))
    :expected [1 2 3]}])
 
+^{:refer std.foundation/uuid}
+(Test/run
+ [{:name "constructs UUID values with portable type identity"
+   :test (fn []
+           (let [random (std.foundation/uuid)
+                 fixed (std.foundation/uuid "00000000-0000-0000-0000-000000000000")
+                 bits (std.foundation/uuid 0 1)]
+             [(uuid? random)
+              (= (type random) :std.native.UUID)
+              (str fixed)
+              (str bits)]))
+   :expected [true true
+              "00000000-0000-0000-0000-000000000000"
+              "00000000-0000-0000-0000-000000000001"]}])
+
 ^{:refer std.foundation/apply}
 (Test/run
  [{:name "applies leading arguments and a final sequence"
@@ -105,6 +120,15 @@
               (:status synchronized)
               (:data synchronized)]))
    :expected [true false :success 42 nil {:source :test} :success 42]}])
+
+^{:refer std.foundation/schema?}
+(Test/run
+ [{:name "recognizes native SchemaType values"
+   :test (fn []
+           (let [compiled (std.foundation/schema :int)]
+             [(std.foundation/schema? compiled)
+              (std.foundation/schema? nil)]))
+   :expected [true false]}])
 
 ^{:refer std.foundation/env-current}
 (Test/run

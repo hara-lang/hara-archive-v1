@@ -13,6 +13,15 @@ public final class HbcPrimitiveRuntime {
     return HbcMachine.invokePrimitive(context, primitive.id(), arguments);
   }
 
+  /** Executes a canonical protocol/native target through the shared Java bridge dispatcher. */
+  public static Object invokeTarget(
+      HaraContext context,
+      String target,
+      Object[] arguments,
+      HaraTargetRuntime.ResultMode resultMode) {
+    return HaraTargetRuntime.invoke(context, target, arguments, resultMode);
+  }
+
   public static Object concatList(HaraContext context, Object[] values) {
     ArrayList<Object> concatenated = new ArrayList<>();
     for (Object value : values) {

@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 use std::rc::Rc;
 
 use wasmtime::{Engine, FuncType, Instance, Linker, Module, Store, Val, ValType};
@@ -7,6 +6,10 @@ use crate::core::Value;
 use crate::vm::{FunctionId, Machine, VmOutcome};
 
 use super::artifact::{decode_artifact, NativeArtifact};
+use super::bridge::{
+    self, Slot, RESULT_BOOL, RESULT_HANDLE, RESULT_I64, SLOT_BOOL, SLOT_CONSTANT, SLOT_HANDLE,
+    SLOT_I64, SLOT_NIL,
+};
 use super::codegen::{
     ERROR_ARRAY_BOUNDS, ERROR_DIVISION_BY_ZERO, ERROR_INTEGER_OVERFLOW, ERROR_OBJECT_KEY,
 };
@@ -26,6 +29,7 @@ pub struct NativeModule {
     artifact: NativeArtifact,
     store: Store<HostState>,
     instance: Instance,
+    heap_base: i32,
 }
 
 impl NativeModule {
@@ -42,15 +46,19 @@ impl NativeModule {
             },
         );
         let mut linker = Linker::new(&engine);
-        define_array_imports(&mut linker)?;
         define_persistent_imports(&mut linker)?;
         let instance = linker
             .instantiate(&mut store, &module)
             .map_err(|error| error.to_string())?;
+        let heap_base = instance
+            .get_global(&mut store, "hara_heap")
+            .and_then(|global| global.get(&mut store).i32())
+            .ok_or("whole-Wasm module has no valid hara_heap global")?;
         Ok(Self {
             artifact,
             store,
             instance,
+            heap_base,
         })
     }
 
@@ -156,7 +164,7 @@ impl NativeModule {
         self.instance
             .get_global(&mut self.store, "hara_heap")
             .ok_or("whole-Wasm module has no hara_heap global")?
-            .set(&mut self.store, Val::I32(0))
+            .set(&mut self.store, Val::I32(self.heap_base))
             .map_err(|error| error.to_string())?;
         let callable = self
             .instance
@@ -218,97 +226,182 @@ fn should_fallback_to_bytecode(error: &str) -> bool {
     error == "integer overflow" || error.contains("whole-Wasm value is not an integer")
 }
 
-fn define_array_imports(linker: &mut Linker<HostState>) -> Result<(), String> {
+fn define_target_import(linker: &mut Linker<HostState>) -> Result<(), String> {
     linker
         .func_new(
             "hara",
-            "array_empty",
-            FuncType::new([], [ValType::I64]),
-            |mut caller, _, outputs| {
-                let value = Value::Array(Rc::new(RefCell::new(Vec::new())));
+            "target_call",
+            FuncType::new(
+                [ValType::I64, ValType::I64, ValType::I64, ValType::I64],
+                [ValType::I64],
+            ),
+            |mut caller, inputs, outputs| {
+                let target = inputs[0].i64().unwrap();
+                let pointer = inputs[1].i64().unwrap();
+                let argc = inputs[2].i64().unwrap();
+                let result_mode = inputs[3].i64().unwrap();
+                let slots = read_bridge_slots(&mut caller, pointer, argc).map_err(host_error)?;
+                let arguments = slots
+                    .iter()
+                    .map(|slot| resolve_bridge_slot(&caller, *slot))
+                    .collect::<Result<Vec<_>, _>>()?;
+                let name = bridge::target_name(target)
+                    .ok_or_else(|| host_error(format!("unknown whole-Wasm target {target}")))?;
+                let value = if name.starts_with("std.protocol.") {
+                    crate::core::protocol_intrinsic_call(name, &arguments).map_err(host_error)?
+                } else {
+                    crate::core::apply_intrinsic_name(name, &arguments).map_err(host_error)?
+                };
+                outputs[0] = Val::I64(encode_bridge_result(
+                    &mut caller,
+                    value,
+                    result_mode,
+                )?);
+                Ok(())
+            },
+        )
+        .map_err(|error| error.to_string())
+        .map(|_| ())
+}
+
+fn define_value_construct_import(linker: &mut Linker<HostState>) -> Result<(), String> {
+    linker
+        .func_new(
+            "hara",
+            "value_construct",
+            FuncType::new([ValType::I64, ValType::I64, ValType::I64], [ValType::I64]),
+            |mut caller, inputs, outputs| {
+                let target = inputs[0].i64().unwrap();
+                let pointer = inputs[1].i64().unwrap();
+                let argc = inputs[2].i64().unwrap();
+                let slots = read_bridge_slots(&mut caller, pointer, argc).map_err(host_error)?;
+                let values = slots
+                    .iter()
+                    .map(|slot| resolve_bridge_slot(&caller, *slot))
+                    .collect::<Result<Vec<_>, _>>()?;
+                let value = match target {
+                    bridge::TARGET_VECTOR_CONSTRUCT => {
+                        Value::Vector(crate::lang::data::Vector::from_iter(values))
+                    }
+                    bridge::TARGET_MAP_CONSTRUCT => {
+                        if values.len() % 2 != 0 {
+                            return Err(host_error(
+                                "whole-Wasm map construction needs key/value pairs".into(),
+                            ));
+                        }
+                        crate::core::vm_build_map(
+                            values.into_iter().collect::<Vec<_>>(),
+                        )
+                        .map_err(host_error)?
+                    }
+                    _ => {
+                        return Err(host_error(format!(
+                            "unknown whole-Wasm structural target {target}"
+                        )))
+                    }
+                };
                 outputs[0] = Val::I64(
                     caller
                         .data_mut()
                         .handles
                         .insert(value)
-                        .map_err(host_error)?
-                        .to_abi(),
+                        .map(Handle::to_abi)
+                        .map_err(host_error)?,
                 );
                 Ok(())
             },
         )
-        .map_err(|error| error.to_string())?;
-    linker
-        .func_new(
-            "hara",
-            "array_push_i64",
-            FuncType::new([ValType::I64, ValType::I64], [ValType::I64]),
-            |caller, inputs, outputs| {
-                let handle = Handle::from_abi(inputs[0].i64().unwrap());
-                let value = inputs[1].i64().unwrap();
-                match caller.data().handles.get(handle).map_err(host_error)? {
-                    Value::Array(values) => values.borrow_mut().push(Value::Number(value)),
-                    _ => return Err(host_error("whole-Wasm array handle expected".into())),
-                }
-                outputs[0] = Val::I64(handle.to_abi());
-                Ok(())
-            },
-        )
-        .map_err(|error| error.to_string())?;
-    linker
-        .func_new(
-            "hara",
-            "array_get_i64",
-            FuncType::new([ValType::I64, ValType::I64], [ValType::I64]),
-            |caller, inputs, outputs| {
-                let handle = Handle::from_abi(inputs[0].i64().unwrap());
-                let index = array_index(inputs[1].i64().unwrap())?;
-                let result = match caller.data().handles.get(handle).map_err(host_error)? {
-                    Value::Array(values) => values
-                        .borrow()
-                        .get(index)
-                        .cloned()
-                        .ok_or_else(|| host_error("array/get index out of bounds".into()))?,
-                    _ => return Err(host_error("whole-Wasm array handle expected".into())),
-                };
-                let Value::Number(result) = result else {
-                    return Err(host_error(
-                        "whole-Wasm array element is not an integer".into(),
-                    ));
-                };
-                outputs[0] = Val::I64(result);
-                Ok(())
-            },
-        )
-        .map_err(|error| error.to_string())?;
-    linker
-        .func_new(
-            "hara",
-            "array_set_i64",
-            FuncType::new([ValType::I64, ValType::I64, ValType::I64], [ValType::I64]),
-            |caller, inputs, outputs| {
-                let handle = Handle::from_abi(inputs[0].i64().unwrap());
-                let index = array_index(inputs[1].i64().unwrap())?;
-                let value = inputs[2].i64().unwrap();
-                match caller.data().handles.get(handle).map_err(host_error)? {
-                    Value::Array(values) => {
-                        let mut values = values.borrow_mut();
-                        let slot = values
-                            .get_mut(index)
-                            .ok_or_else(|| host_error("array/set index out of bounds".into()))?;
-                        *slot = Value::Number(value);
-                    }
-                    _ => return Err(host_error("whole-Wasm array handle expected".into())),
-                }
-                outputs[0] = Val::I64(handle.to_abi());
-                Ok(())
-            },
-        )
-        .map_err(|error| error.to_string())?;
-    Ok(())
+        .map_err(|error| error.to_string())
+        .map(|_| ())
+}
+
+fn read_bridge_slots(
+    caller: &mut wasmtime::Caller<'_, HostState>,
+    pointer: i64,
+    argc: i64,
+) -> Result<Vec<Slot>, String> {
+    let pointer = usize::try_from(pointer).map_err(|_| "whole-Wasm bridge pointer is invalid")?;
+    let argc = usize::try_from(argc).map_err(|_| "whole-Wasm bridge arity is invalid")?;
+    if argc > usize::try_from(bridge::MAX_SLOTS).expect("constant fits usize") {
+        return Err("whole-Wasm bridge arity exceeds its bound".into());
+    }
+    let bytes = argc
+        .checked_mul(usize::try_from(bridge::SLOT_BYTES).expect("constant fits usize"))
+        .and_then(|size| pointer.checked_add(size))
+        .ok_or("whole-Wasm bridge memory range overflow")?;
+    let memory = caller
+        .get_export("hara_memory")
+        .and_then(|export| export.into_memory())
+        .ok_or("whole-Wasm module has no hara_memory export")?;
+    let data = memory.data(caller);
+    if bytes > data.len() {
+        return Err("whole-Wasm bridge memory range is out of bounds".into());
+    }
+    let mut slots = Vec::with_capacity(argc);
+    for index in 0..argc {
+        let offset = pointer + index * usize::try_from(bridge::SLOT_BYTES).unwrap();
+        let kind = u32::from_le_bytes(data[offset..offset + 4].try_into().unwrap());
+        let payload = i64::from_le_bytes(data[offset + 8..offset + 16].try_into().unwrap());
+        slots.push(Slot { kind, payload });
+    }
+    bridge::validate_slots(&slots)?;
+    Ok(slots)
+}
+
+fn resolve_bridge_slot(
+    caller: &wasmtime::Caller<'_, HostState>,
+    slot: Slot,
+) -> Result<Value, wasmtime::Error> {
+    match slot.kind {
+        SLOT_HANDLE => caller
+            .data()
+            .handles
+            .get(Handle::from_abi(slot.payload))
+            .map_err(host_error),
+        SLOT_I64 => Ok(Value::Number(slot.payload)),
+        SLOT_BOOL => Ok(Value::Bool(slot.payload != 0)),
+        SLOT_NIL => Ok(Value::Nil),
+        SLOT_CONSTANT => caller
+            .data()
+            .constants
+            .get(usize::try_from(slot.payload).map_err(|_| host_error("invalid constant".into()))?)
+            .cloned()
+            .ok_or_else(|| host_error("whole-Wasm constant index out of range".into())),
+        _ => Err(host_error("invalid whole-Wasm bridge slot".into())),
+    }
+}
+
+fn encode_bridge_result(
+    caller: &mut wasmtime::Caller<'_, HostState>,
+    value: Value,
+    mode: i64,
+) -> Result<i64, wasmtime::Error> {
+    bridge::validate_result_mode(mode).map_err(host_error)?;
+    match mode {
+        RESULT_HANDLE => caller
+            .data_mut()
+            .handles
+            .insert(value)
+            .map(Handle::to_abi)
+            .map_err(host_error),
+        RESULT_I64 => match value {
+            Value::Number(value) => Ok(value),
+            value => crate::numeric::to_i64_exact(&value).map_err(|_| {
+                caller.data_mut().error_code = ERROR_INTEGER_OVERFLOW;
+                host_error("integer overflow".into())
+            }),
+        },
+        RESULT_BOOL => match value {
+            Value::Bool(value) => Ok(i64::from(value)),
+            _ => Err(host_error("whole-Wasm target did not return a boolean".into())),
+        },
+        _ => unreachable!("result mode validated above"),
+    }
 }
 
 fn define_persistent_imports(linker: &mut Linker<HostState>) -> Result<(), String> {
+    define_target_import(linker)?;
+    define_value_construct_import(linker)?;
     linker
         .func_wrap(
             "hara",
@@ -370,309 +463,7 @@ fn define_persistent_imports(linker: &mut Linker<HostState>) -> Result<(), Strin
             },
         )
         .map_err(|error| error.to_string())?;
-    linker
-        .func_wrap(
-            "hara",
-            "vector_empty",
-            |mut caller: wasmtime::Caller<'_, HostState>| {
-                let value = Value::Vector(crate::lang::data::Vector::new());
-                caller
-                    .data_mut()
-                    .handles
-                    .insert(value)
-                    .map(Handle::to_abi)
-                    .map_err(host_error)
-            },
-        )
-        .map_err(|error| error.to_string())?;
-    linker
-        .func_wrap(
-            "hara",
-            "vector_push",
-            |mut caller: wasmtime::Caller<'_, HostState>, vector: i64, item: i64| {
-                let vector = caller
-                    .data()
-                    .handles
-                    .get(Handle::from_abi(vector))
-                    .map_err(host_error)?;
-                let item = caller
-                    .data()
-                    .handles
-                    .get(Handle::from_abi(item))
-                    .map_err(host_error)?;
-                let Value::Vector(values) = vector else {
-                    return Err(host_error("whole-Wasm vector handle expected".into()));
-                };
-                let value = Value::Vector(crate::lang::data::Vector::from_iter(
-                    values.iter().cloned().chain(std::iter::once(item)),
-                ));
-                caller
-                    .data_mut()
-                    .handles
-                    .insert(value)
-                    .map(Handle::to_abi)
-                    .map_err(host_error)
-            },
-        )
-        .map_err(|error| error.to_string())?;
-    linker
-        .func_wrap(
-            "hara",
-            "map_empty",
-            |mut caller: wasmtime::Caller<'_, HostState>| {
-                let value = crate::core::vm_build_map(Vec::new()).map_err(host_error)?;
-                caller
-                    .data_mut()
-                    .handles
-                    .insert(value)
-                    .map(Handle::to_abi)
-                    .map_err(host_error)
-            },
-        )
-        .map_err(|error| error.to_string())?;
-    linker
-        .func_wrap(
-            "hara",
-            "map_assoc",
-            |mut caller: wasmtime::Caller<'_, HostState>, map: i64, key: i64, value: i64| {
-                let arguments = [map, key, value]
-                    .into_iter()
-                    .map(|handle| {
-                        caller
-                            .data()
-                            .handles
-                            .get(Handle::from_abi(handle))
-                            .map_err(host_error)
-                    })
-                    .collect::<Result<Vec<_>, _>>()?;
-                let value = crate::core::protocol_intrinsic_call(
-                    "std.protocol.iassoc.IAssoc/assoc",
-                    &arguments,
-                )
-                    .map_err(host_error)?;
-                caller
-                    .data_mut()
-                    .handles
-                    .insert(value)
-                    .map(Handle::to_abi)
-                    .map_err(host_error)
-            },
-        )
-        .map_err(|error| error.to_string())?;
-    linker
-        .func_wrap(
-            "hara",
-            "get",
-            |mut caller: wasmtime::Caller<'_, HostState>, collection: i64, key: i64| {
-                let arguments = [collection, key]
-                    .into_iter()
-                    .map(|handle| {
-                        caller
-                            .data()
-                            .handles
-                            .get(Handle::from_abi(handle))
-                            .map_err(host_error)
-                    })
-                    .collect::<Result<Vec<_>, _>>()?;
-                let value = crate::core::protocol_intrinsic_call(
-                    "std.protocol.ilookup.ILookup/lookup",
-                    &arguments,
-                )
-                    .map_err(host_error)?;
-                caller
-                    .data_mut()
-                    .handles
-                    .insert(value)
-                    .map(Handle::to_abi)
-                    .map_err(host_error)
-            },
-        )
-        .map_err(|error| error.to_string())?;
-    linker
-        .func_wrap(
-            "hara",
-            "is_number",
-            |caller: wasmtime::Caller<'_, HostState>, value: i64| {
-                let value = caller
-                    .data()
-                    .handles
-                    .get(Handle::from_abi(value))
-                    .map_err(host_error)?;
-                Ok::<i64, wasmtime::Error>(i64::from(matches!(value, Value::Number(_))))
-            },
-        )
-        .map_err(|error| error.to_string())?;
-    linker
-        .func_wrap(
-            "hara",
-            "count",
-            |caller: wasmtime::Caller<'_, HostState>, collection: i64| {
-                let collection = caller
-                    .data()
-                    .handles
-                    .get(Handle::from_abi(collection))
-                    .map_err(host_error)?;
-                match crate::core::protocol_intrinsic_call(
-                    "std.protocol.icount.ICount/count",
-                    &[collection],
-                )
-                    .map_err(host_error)?
-                {
-                    Value::Number(value) => Ok(value),
-                    _ => Err(host_error("count returned a non-integer".into())),
-                }
-            },
-        )
-        .map_err(|error| error.to_string())?;
-    linker
-        .func_wrap(
-            "hara",
-            "nth",
-            |mut caller: wasmtime::Caller<'_, HostState>, collection: i64, index: i64| {
-                let collection = caller
-                    .data()
-                    .handles
-                    .get(Handle::from_abi(collection))
-                    .map_err(host_error)?;
-                let value = crate::core::protocol_intrinsic_call(
-                    "std.protocol.inth.INth/nth",
-                    &[collection, Value::Number(index)],
-                )
-                .map_err(host_error)?;
-                caller
-                    .data_mut()
-                    .handles
-                    .insert(value)
-                    .map(Handle::to_abi)
-                    .map_err(host_error)
-            },
-        )
-        .map_err(|error| error.to_string())?;
-    linker
-        .func_wrap(
-            "hara",
-            "map_i64_pair",
-            |mut caller: wasmtime::Caller<'_, HostState>, key: i64, value: i64| {
-                let key = caller
-                    .data()
-                    .handles
-                    .get(Handle::from_abi(key))
-                    .map_err(host_error)?;
-                let map = crate::core::vm_build_map(vec![key, Value::Number(value)])
-                    .map_err(host_error)?;
-                caller
-                    .data_mut()
-                    .handles
-                    .insert(map)
-                    .map(Handle::to_abi)
-                    .map_err(host_error)
-            },
-        )
-        .map_err(|error| error.to_string())?;
-    linker
-        .func_wrap(
-            "hara",
-            "get_i64",
-            |caller: wasmtime::Caller<'_, HostState>, collection: i64, key: i64| {
-                let collection = caller
-                    .data()
-                    .handles
-                    .get(Handle::from_abi(collection))
-                    .map_err(host_error)?;
-                let key = caller
-                    .data()
-                    .handles
-                    .get(Handle::from_abi(key))
-                    .map_err(host_error)?;
-                match crate::core::protocol_intrinsic_call(
-                    "std.protocol.ilookup.ILookup/lookup",
-                    &[collection, key],
-                )
-                    .map_err(host_error)?
-                {
-                    Value::Number(value) => Ok(value),
-                    _ => Err(host_error("get returned a non-integer".into())),
-                }
-            },
-        )
-        .map_err(|error| error.to_string())?;
-    linker
-        .func_wrap(
-            "hara",
-            "get_path_i64_constants",
-            |caller: wasmtime::Caller<'_, HostState>,
-             collection: i64,
-             first_key: i64,
-             second_key: i64| {
-                let collection = caller
-                    .data()
-                    .handles
-                    .get(Handle::from_abi(collection))
-                    .map_err(host_error)?;
-                let constant = |index: i64| {
-                    usize::try_from(index)
-                        .ok()
-                        .and_then(|index| caller.data().constants.get(index))
-                        .cloned()
-                        .ok_or_else(|| host_error("whole-Wasm constant is missing".into()))
-                };
-                let first = crate::core::protocol_intrinsic_call(
-                    "std.protocol.ilookup.ILookup/lookup",
-                    &[collection, constant(first_key)?],
-                )
-                .map_err(host_error)?;
-                match crate::core::protocol_intrinsic_call(
-                    "std.protocol.ilookup.ILookup/lookup",
-                    &[first, constant(second_key)?],
-                )
-                .map_err(host_error)?
-                {
-                    Value::Number(value) => Ok(value),
-                    _ => Err(host_error("nested get returned a non-integer".into())),
-                }
-            },
-        )
-        .map_err(|error| error.to_string())?;
-    linker
-        .func_wrap(
-            "hara",
-            "assoc_map_i64_pair",
-            |mut caller: wasmtime::Caller<'_, HostState>,
-             collection: i64,
-             outer_key: i64,
-             inner_key: i64,
-             value: i64| {
-                let resolve = |handle| {
-                    caller
-                        .data()
-                        .handles
-                        .get(Handle::from_abi(handle))
-                        .map_err(host_error)
-                };
-                let collection = resolve(collection)?;
-                let outer_key = resolve(outer_key)?;
-                let inner_key = resolve(inner_key)?;
-                let nested = crate::core::vm_build_map(vec![inner_key, Value::Number(value)])
-                    .map_err(host_error)?;
-                let result = crate::core::protocol_intrinsic_call(
-                    "std.protocol.iassoc.IAssoc/assoc",
-                    &[collection, outer_key, nested],
-                )
-                .map_err(host_error)?;
-                caller
-                    .data_mut()
-                    .handles
-                    .insert(result)
-                    .map(Handle::to_abi)
-                    .map_err(host_error)
-            },
-        )
-        .map_err(|error| error.to_string())?;
     Ok(())
-}
-
-fn array_index(value: i64) -> Result<usize, wasmtime::Error> {
-    usize::try_from(value).map_err(|_| host_error("array index must be non-negative".into()))
 }
 
 fn host_error(message: String) -> wasmtime::Error {

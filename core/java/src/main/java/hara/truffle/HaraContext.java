@@ -3207,6 +3207,7 @@ public final class HaraContext {
     target.define(
         "uuid?",
         new UnaryBuiltin("uuid?", value -> HaraBox.unwrap(value) instanceof java.util.UUID));
+    target.define("uuid", new VariadicBuiltin("Base/uuid", this::uuidValue));
     target.define(
         "regexp?",
         new UnaryBuiltin(
@@ -3290,6 +3291,7 @@ public final class HaraContext {
     else if (raw instanceof Byte || raw instanceof Short || raw instanceof Integer || raw instanceof Long) type = "Integer";
     else if (raw instanceof Float || raw instanceof Double) type = "Float";
     else if (raw instanceof Character) type = "Character";
+    else if (raw instanceof java.util.UUID) type = "UUID";
     else if (raw instanceof java.util.regex.Pattern) type = "RegExp";
     else if (raw instanceof hara.lang.data.TaggedLiteral)
       type = Reduced.isReduced(raw) ? "Reduced" : "TaggedLiteral";
@@ -3342,6 +3344,30 @@ public final class HaraContext {
         || raw instanceof IFn) type = "Function";
     else type = "Object";
     return Keyword.create("std.native." + type);
+  }
+
+  private Object uuidValue(Object[] values) {
+    try {
+      return switch (values.length) {
+        case 0 -> java.util.UUID.randomUUID();
+        case 1 -> {
+          Object input = HaraBox.unwrap(values[0]);
+          if (input instanceof String string) yield java.util.UUID.fromString(string);
+          if (input instanceof byte[] bytes) yield java.util.UUID.nameUUIDFromBytes(bytes);
+          if (input instanceof Keyword keyword) {
+            yield new java.util.UUID(keyword.hashCode(), keyword.getName().hashCode());
+          }
+          throw new HaraException("uuid expects a string, bytes, or keyword");
+        }
+        case 2 ->
+            new java.util.UUID(
+                HaraNumericConversions.toLong(values[0], "uuid"),
+                HaraNumericConversions.toLong(values[1], "uuid"));
+        default -> throw new HaraException("uuid expects zero, one, or two arguments");
+      };
+    } catch (IllegalArgumentException error) {
+      throw new HaraException("uuid expects a valid UUID string");
+    }
   }
 
   private Keyword namedTypeKeyword(String qualifiedName) {
@@ -6493,6 +6519,14 @@ public final class HaraContext {
 
   public Object invokeProtocol(String protocolName, String methodName, Object... values) {
     return protocolCall(protocolName, methodName, values);
+  }
+
+  void publishWholeWasmProtocolCall(
+      String target,
+      int arity,
+      HaraTargetRuntime.ResultMode resultMode,
+      String status) {
+    instrumentationRuntime.publishWholeWasmProtocolCall(target, arity, resultMode, status);
   }
 
   /**
