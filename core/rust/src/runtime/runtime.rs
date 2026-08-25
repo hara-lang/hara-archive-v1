@@ -42,6 +42,12 @@ impl Runtime {
 
     fn empty() -> Runtime {
         let namespace_registry = core::minimal_namespace_registry();
+        // Keep the runtime substrate available to every evaluator entry point,
+        // including `Runtime::core()` and bytecode-only sessions.  The
+        // language-level Foundation modules are still loaded separately, but
+        // their canonical native/protocol aliases must not depend on which
+        // bootstrap constructor happened to be used.
+        core::install_foundation_intrinsics(&namespace_registry);
         let vm_provider = namespace_registry.find_or_create("tool.vm.provider");
         for (name, value) in core::vm_tool_provider_values() {
             vm_provider.intern_with_origin(name, value, kernel::VarOrigin::RuntimePrimitive);
@@ -145,7 +151,6 @@ impl Runtime {
     }
 
     fn bootstrap_foundation(&mut self) -> Result<(), String> {
-        core::install_foundation_intrinsics(&self.namespace_registry);
         for &(name, _, source) in EMBEDDED_HAL_RESOURCES {
             self.register_resource(name, source);
         }

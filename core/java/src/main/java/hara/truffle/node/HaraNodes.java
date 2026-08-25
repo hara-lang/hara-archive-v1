@@ -1394,6 +1394,37 @@ public final class HaraNodes {
     }
   }
 
+  public static final class DefineNamedType extends HaraExpressionNode {
+    private final Symbol symbol;
+    private final String[] fields;
+    private final boolean mutable;
+    @Children private final HaraExpressionNode[] extensions;
+
+    public DefineNamedType(
+        Symbol symbol,
+        String[] fields,
+        boolean mutable,
+        HaraExpressionNode[] extensions) {
+      this.symbol = symbol;
+      this.fields = fields.clone();
+      this.mutable = mutable;
+      this.extensions = extensions;
+    }
+
+    @Override
+    public Object execute(VirtualFrame frame) {
+      HaraContext context = HaraLanguage.currentContext(this);
+      return context.withDeclarationTransaction(
+          () -> {
+            Object result = context.defineNamedType(symbol, fields, mutable);
+            for (HaraExpressionNode extension : extensions) {
+              result = extension.execute(frame);
+            }
+            return result;
+          });
+    }
+  }
+
   public static final class MacroExpand extends HaraExpressionNode {
     @Child private HaraExpressionNode form;
     private final boolean recursive;

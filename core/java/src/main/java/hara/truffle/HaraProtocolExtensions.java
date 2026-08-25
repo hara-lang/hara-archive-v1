@@ -58,6 +58,12 @@ final class HaraProtocolExtensions {
   }
 
   @HaraProtocolExtension(
+      protocol = IDisplay.class, method = "display", target = HaraProtocolTarget.STRING)
+  static Object displayString(Object receiver, Object[] arguments) {
+    return hara.lang.base.G.display((String) receiver);
+  }
+
+  @HaraProtocolExtension(
       protocol = IStringLike.class, method = "from-string", receiver = String.class)
   static Object stringFromString(Object receiver, Object[] arguments) {
     return String.valueOf(arguments[0]);

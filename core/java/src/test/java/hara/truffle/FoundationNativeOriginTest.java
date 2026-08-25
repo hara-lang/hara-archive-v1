@@ -2,6 +2,7 @@ package hara.truffle;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
 import hara.lang.data.Symbol;
@@ -43,6 +44,25 @@ public class FoundationNativeOriginTest {
   @Test
   public void freshContextsKeepCoroutineOwnershipAndOriginsSeparate() {
     assertOrigins("std.foundation.coroutine", "create", "std.native.Coroutine", "create");
+  }
+
+  @Test
+  public void canonicalNativeAndProtocolAliasesShareTheirDeclarationVars() {
+    try (Context context = Context.newBuilder(HaraLanguage.ID).build()) {
+      context.eval(HaraLanguage.ID, "nil");
+      context.enter();
+      try {
+        HaraContext hara = HaraLanguage.currentContext();
+        assertSame(
+            hara.resolve(Symbol.create("std.native.Base")),
+            hara.resolve(Symbol.create("std.foundation", "Base")));
+        assertSame(
+            hara.resolve(Symbol.create("std.protocol.icount.ICount")),
+            hara.resolve(Symbol.create("std.foundation", "ICount")));
+      } finally {
+        context.leave();
+      }
+    }
   }
 
   private static void assertOrigins(

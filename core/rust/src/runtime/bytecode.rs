@@ -234,12 +234,17 @@ impl Runtime {
         &mut self,
         program: std::rc::Rc<vm::Program>,
     ) -> Result<core::Value, String> {
+        let mut declaration_environment = HashMap::new();
         let namespace_source = self.namespace_source();
         core::with_macros(self.macros.clone(), || {
             core::with_namespace_source(namespace_source, || {
                 core::with_protocols(&self.protocols, || {
-                    vm::execute_program_with_globals(program, &self.namespace_registry)
-                        .map_err(|error| error.to_string())
+                    core::with_namespace_registry(&self.namespace_registry, || {
+                        core::with_declaration_transaction(&mut declaration_environment, |_| {
+                            vm::execute_program_with_globals(program, &self.namespace_registry)
+                                .map_err(|error| error.to_string())
+                        })
+                    })
                 })
             })
         })
@@ -296,13 +301,18 @@ impl Runtime {
         let schema_types = program.schema_types.clone();
         let function_types = program.function_types.clone();
         let inferred_function_types = program.inferred_function_types.clone();
+        let mut declaration_environment = HashMap::new();
         let namespace_source = self.namespace_source();
         let result = core::with_macros(self.macros.clone(), || {
             core::with_namespace_source(namespace_source, || {
                 core::with_protocols(&self.protocols, || {
-                    vm::execute_program_with_globals(program, &self.namespace_registry)
-                        .map(|value| value.display())
-                        .map_err(|error| error.to_string())
+                    core::with_namespace_registry(&self.namespace_registry, || {
+                        core::with_declaration_transaction(&mut declaration_environment, |_| {
+                            vm::execute_program_with_globals(program, &self.namespace_registry)
+                                .map(|value| value.display())
+                                .map_err(|error| error.to_string())
+                        })
+                    })
                 })
             })
         });

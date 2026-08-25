@@ -284,22 +284,23 @@ pub fn native_declarations() -> &'static [NativeDeclaration] {
     NATIVE_DECLARATIONS
 }
 
+pub(crate) fn native_descriptor_value(declaration: NativeDeclaration) -> Value {
+    Value::NativeType(Rc::new(NativeType {
+        name: declaration.qualified_name(),
+        methods: declaration
+            .methods
+            .iter()
+            .map(|method| (*method).to_owned())
+            .collect(),
+        metadata: None,
+    }))
+}
+
 pub fn native_type_values() -> Vec<(String, Value)> {
     NATIVE_DECLARATIONS
         .iter()
         .map(|declaration| {
-            (
-                declaration.name.to_owned(),
-                Value::NativeType(Rc::new(NativeType {
-                    name: declaration.qualified_name(),
-                    methods: declaration
-                        .methods
-                        .iter()
-                        .map(|method| (*method).to_owned())
-                        .collect(),
-                    metadata: None,
-                })),
-            )
+            (declaration.name.to_owned(), native_descriptor_value(*declaration))
         })
         .collect()
 }

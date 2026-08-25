@@ -1084,88 +1084,286 @@ fn validate_named_definition(kind: &str, name: &str, fields: &[String]) -> Resul
     Ok(())
 }
 
+/// Runs a source declaration as one registry operation.
+///
+/// Declarations touch the namespace registry, the active protocol dispatch
+/// registry, and the flat evaluator environment. Restore all three views when
+/// validation or a later inline extension fails.
+pub(crate) fn with_declaration_transaction<R>(
+    environment: &mut HashMap<String, Value>,
+    operation: impl FnOnce(&mut HashMap<String, Value>) -> Result<R, String>,
+) -> Result<R, String> {
+    let registry = namespace_registry()?;
+    let registry_snapshot = registry.snapshot();
+    let environment_snapshot = environment.clone();
+    let protocol_snapshot = ACTIVE_PROTOCOLS.with(|active| {
+        active
+            .borrow()
+            .as_ref()
+            .map(ProtocolRegistry::snapshot)
+    });
+    let multimethod_snapshot = snapshot_multimethods();
+
+    let result = operation(environment);
+    if result.is_err() {
+        registry.restore(registry_snapshot);
+        *environment = environment_snapshot;
+        if let Some(snapshot) = protocol_snapshot {
+            ACTIVE_PROTOCOLS.with(|active| {
+                if let Some(registry) = active.borrow().as_ref() {
+                    registry.restore(snapshot);
+                }
+            });
+        }
+        restore_multimethods(multimethod_snapshot);
+    }
+    result
+}
+
+fn prepare_named_binding(namespace: &crate::kernel::Namespace<Value>, name: &str) {
+    let symbol = Symbol::parse(name);
+    if let Some(existing) = namespace.resolve(&symbol) {
+        if existing.symbol().get_namespace() != Some(namespace.name().as_str()) {
+            namespace.unmap(&symbol);
+        }
+    }
+}
+
+/// Publishes the type Var and its positional and map constructors for a
+/// defstruct or defmutable declaration. The evaluator and bytecode VM both
+/// use this path.
+pub(crate) fn publish_named_value(
+    kind: &str,
+    name: &str,
+    fields: Vec<String>,
+    environment: &mut HashMap<String, Value>,
+) -> Result<Value, String> {
+    validate_named_definition(kind, name, &fields)?;
+    with_declaration_transaction(environment, |environment| {
+        let registry = namespace_registry()?;
+        let namespace = registry.current();
+        let namespace_name = namespace.name().as_str().to_owned();
+        let type_name = format!("{}/{}", namespace_name, name);
+        let mutable = kind == "defmutable";
+
+        let (type_value, map_constructor) = if mutable {
+            let ty = Rc::new(MutableType {
+                name: type_name.clone(),
+                fields,
+            });
+            let map_type = ty.clone();
+            let constructor = native_function(&format!("map->{}", name), 1, move |values| {
+                let source = values.first().expect("native arity is checked");
+                let values = map_type
+                    .fields
+                    .iter()
+                    .map(|field| {
+                        map_value(source, &named_field_key(field))
+                            .cloned()
+                            .unwrap_or(Value::Nil)
+                    })
+                    .collect();
+                Ok(Value::Mutable(Rc::new(MutableValue::from_values(
+                    map_type.clone(),
+                    values,
+                    None,
+                )?)))
+            });
+            (Value::MutableType(ty), constructor)
+        } else {
+            let ty = Rc::new(StructType {
+                name: type_name,
+                fields,
+            });
+            let map_type = ty.clone();
+            let constructor = native_function(&format!("map->{}", name), 1, move |values| {
+                let source = values.first().expect("native arity is checked");
+                let values = map_type
+                    .fields
+                    .iter()
+                    .map(|field| {
+                        map_value(source, &named_field_key(field))
+                            .cloned()
+                            .unwrap_or(Value::Nil)
+                    })
+                    .collect();
+                Ok(Value::Struct(Rc::new(StructValue::from_values(
+                    map_type.clone(),
+                    values,
+                    None,
+                )?)))
+            });
+            (Value::StructType(ty), constructor)
+        };
+
+        let bindings = [
+            (name.to_owned(), type_value.clone()),
+            (format!("->{}", name), type_value),
+            (format!("map->{}", name), map_constructor),
+        ];
+        for (binding, value) in bindings {
+            prepare_named_binding(&namespace, &binding);
+            let var = namespace.intern(&binding, value);
+            var.set_origin(definition_origin());
+            environment.insert(binding.clone(), Value::Var(var.clone()));
+            environment.insert(
+                format!("{}/{}", namespace_name, binding),
+                Value::Var(var),
+            );
+        }
+        Ok(Value::Nil)
+    })
+}
+
+/// Publishes a guest protocol and all of its method Vars through one
+/// namespace/dispatch transaction.
+pub(crate) fn publish_guest_protocol(
+    name: &str,
+    methods: HashMap<String, usize>,
+    parents: Vec<String>,
+    environment: &mut HashMap<String, Value>,
+) -> Result<Value, String> {
+    if name.contains('/') || name.is_empty() {
+        return Err("defprotocol name must be an unqualified symbol".into());
+    }
+    if methods.keys().any(|method| method.contains('/')) {
+        return Err("protocol method names must be unqualified symbols".into());
+    }
+    if methods
+        .iter()
+        .any(|(method, arity)| method.is_empty() || *arity == 0)
+    {
+        return Err("protocol methods must have a receiver and a non-empty name".into());
+    }
+    if parents.iter().any(|parent| parent.is_empty()) {
+        return Err("protocol parent names must not be empty".into());
+    }
+    with_declaration_transaction(environment, |environment| {
+        let registry = namespace_registry()?;
+        let namespace = registry.current();
+        let namespace_name = namespace.name().as_str().to_owned();
+        let protocol_name = format!("{}/{}", namespace_name, name);
+        let previous_protocol = namespace
+            .resolve(&Symbol::parse(name))
+            .filter(|var| var.symbol().get_namespace() == Some(namespace_name.as_str()))
+            .and_then(|var| match var.deref_value() {
+                Value::Protocol(protocol) if protocol.name == protocol_name => Some(protocol),
+                _ => None,
+            });
+
+        for method in methods.keys() {
+            for (local, var) in namespace.mappings() {
+                if local.as_str() == name
+                    || var.symbol().get_namespace() != Some(namespace_name.as_str())
+                {
+                    continue;
+                }
+                if let Value::Protocol(other) = var.deref_value() {
+                    if other.methods.contains_key(method) {
+                        return Err(format!(
+                            "Protocol method Var already belongs to {}: {}/{}",
+                            local.as_str(),
+                            namespace_name,
+                            method
+                        ));
+                    }
+                }
+            }
+            let existing = namespace.resolve(&Symbol::parse(method));
+            let same_protocol_reload = previous_protocol
+                .as_ref()
+                .is_some_and(|previous| previous.methods.contains_key(method));
+            if existing
+                .as_ref()
+                .is_some_and(|var| var.symbol().get_namespace() == Some(namespace_name.as_str()))
+                && !same_protocol_reload
+            {
+                return Err(format!(
+                    "Protocol method Var already exists: {}/{}",
+                    namespace_name,
+                    method
+                ));
+            }
+        }
+
+        if let Some(previous) = &previous_protocol {
+            for old_method in previous.methods.keys() {
+                if !methods.contains_key(old_method) {
+                    let old = Symbol::parse(old_method);
+                    if namespace.resolve(&old).is_some_and(|var| {
+                        var.symbol().get_namespace() == Some(namespace_name.as_str())
+                    }) {
+                        namespace.unmap(&old);
+                    }
+                    environment.remove(old_method);
+                    environment.remove(&format!("{}/{}", namespace_name, old_method));
+                }
+            }
+        }
+
+        for method in methods.keys() {
+            prepare_named_binding(&namespace, method);
+        }
+        prepare_named_binding(&namespace, name);
+
+        let protocol = Rc::new(GuestProtocol {
+            name: protocol_name.clone(),
+            methods,
+            parents,
+        });
+        let protocol_value = Value::Protocol(protocol.clone());
+        ACTIVE_PROTOCOLS.with(|active| -> Result<(), String> {
+            let registry = active.borrow();
+            let registry = registry
+                .as_ref()
+                .ok_or_else(|| "protocol registry is unavailable".to_string())?;
+            registry.replace_guest_protocol(protocol_name.clone());
+            for method in protocol.methods.keys() {
+                registry.declare_guest(protocol_name.clone(), method.clone());
+            }
+            Ok(())
+        })?;
+
+        let protocol_var = namespace.intern(name, protocol_value.clone());
+        protocol_var.set_origin(definition_origin());
+        environment.insert(name.to_owned(), Value::Var(protocol_var.clone()));
+        environment.insert(
+            format!("{}/{}", namespace_name, name),
+            Value::Var(protocol_var),
+        );
+        for method in protocol.methods.keys() {
+            let protocol_name = protocol_name.clone();
+            let method_name = method.clone();
+            let display_name = format!("{}/{}", namespace_name, method);
+            let method_value = native_variadic_function(&display_name, move |arguments| {
+                protocol_call(&protocol_name, &method_name, &arguments)
+            });
+            let method_var = namespace.intern(method, method_value);
+            method_var.set_origin(definition_origin());
+            environment.insert(method.clone(), Value::Var(method_var.clone()));
+            environment.insert(
+                format!("{}/{}", namespace_name, method),
+                Value::Var(method_var),
+            );
+        }
+        Ok(protocol_value)
+    })
+}
+
 /// `defstruct` against the registry directly, mirroring the evaluator's
 /// declaration arm minus inline protocol clauses. Interns `Name`, `->Name`,
 /// and `map->Name` into the current namespace and returns nil.
 pub(crate) fn vm_defstruct(name: &str, fields: Vec<String>) -> Result<Value, String> {
-    validate_named_definition("defstruct", name, &fields)?;
-    let registry = namespace_registry()?;
-    let namespace = registry.current().name().as_str().to_owned();
-    let ty = Rc::new(StructType {
-        name: format!("{namespace}/{name}"),
-        fields,
-    });
-    let map_type = ty.clone();
-    let map_constructor = native_function(&format!("map->{name}"), 1, move |values| {
-        let source = values.first().expect("native arity is checked");
-        let values = map_type
-            .fields
-            .iter()
-            .map(|field| {
-                map_value(source, &named_field_key(field))
-                    .cloned()
-                    .unwrap_or(Value::Nil)
-            })
-            .collect();
-        Ok(Value::Struct(Rc::new(StructValue::from_values(
-            map_type.clone(),
-            values,
-            None,
-        )?)))
-    });
-    let current = registry.current();
-    for (binding, value) in [
-        (name.to_owned(), Value::StructType(ty.clone())),
-        (format!("->{name}"), Value::StructType(ty.clone())),
-        (format!("map->{name}"), map_constructor),
-    ] {
-        let var = KernelVar::new(format!("{namespace}/{binding}"), value);
-        var.set_origin(definition_origin());
-        current.map_var(Symbol::create(None, &binding), var);
-    }
-    Ok(Value::Nil)
+    let mut environment = HashMap::new();
+    publish_named_value("defstruct", name, fields, &mut environment)
 }
 
 /// `defmutable` against the registry directly. Mutable values use a distinct
 /// type descriptor and fixed-field storage while retaining the constructor
 /// naming conventions of `defstruct`.
 pub(crate) fn vm_defmutable(name: &str, fields: Vec<String>) -> Result<Value, String> {
-    validate_named_definition("defmutable", name, &fields)?;
-    let registry = namespace_registry()?;
-    let namespace = registry.current().name().as_str().to_owned();
-    let ty = Rc::new(MutableType {
-        name: format!("{namespace}/{name}"),
-        fields,
-    });
-    let map_type = ty.clone();
-    let map_constructor = native_function(&format!("map->{name}"), 1, move |values| {
-        let source = values.first().expect("native arity is checked");
-        let values = map_type
-            .fields
-            .iter()
-            .map(|field| {
-                map_value(source, &named_field_key(field))
-                    .cloned()
-                    .unwrap_or(Value::Nil)
-            })
-            .collect();
-        Ok(Value::Mutable(Rc::new(MutableValue::from_values(
-            map_type.clone(),
-            values,
-            None,
-        )?)))
-    });
-    let current = registry.current();
-    for (binding, value) in [
-        (name.to_owned(), Value::MutableType(ty.clone())),
-        (format!("->{name}"), Value::MutableType(ty.clone())),
-        (format!("map->{name}"), map_constructor),
-    ] {
-        let var = KernelVar::new(format!("{namespace}/{binding}"), value);
-        var.set_origin(definition_origin());
-        current.map_var(Symbol::create(None, &binding), var);
-    }
-    Ok(Value::Nil)
+    let mut environment = HashMap::new();
+    publish_named_value("defmutable", name, fields, &mut environment)
 }
 
 /// Direct field access is reserved for mutable named values. Immutable

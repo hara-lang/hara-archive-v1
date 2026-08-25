@@ -563,93 +563,37 @@ pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, Stri
                             .collect::<Result<Vec<_>, String>>()?,
                         _ => return Err(format!("{n} expects a field vector")),
                     };
-                    validate_named_definition(n, &name, &fields)?;
-                    let namespace = namespace_registry()?.current().name().as_str().to_owned();
-                    let (type_value, map_constructor) = if n == "defstruct" {
-                        let ty = Rc::new(StructType {
-                            name: format!("{namespace}/{name}"),
-                            fields,
-                        });
-                        let map_type = ty.clone();
-                        let constructor =
-                            native_function(&format!("map->{name}"), 1, move |values| {
-                                let source = values.first().expect("native arity is checked");
-                                let values = map_type
-                                    .fields
-                                    .iter()
-                                    .map(|field| {
-                                        map_value(source, &named_field_key(field))
-                                            .cloned()
-                                            .unwrap_or(Value::Nil)
-                                    })
-                                    .collect();
-                                Ok(Value::Struct(Rc::new(StructValue::from_values(
-                                    map_type.clone(),
-                                    values,
-                                    None,
-                                )?)))
-                            });
-                        (Value::StructType(ty), constructor)
-                    } else {
-                        let ty = Rc::new(MutableType {
-                            name: format!("{namespace}/{name}"),
-                            fields,
-                        });
-                        let map_type = ty.clone();
-                        let constructor =
-                            native_function(&format!("map->{name}"), 1, move |values| {
-                                let source = values.first().expect("native arity is checked");
-                                let values = map_type
-                                    .fields
-                                    .iter()
-                                    .map(|field| {
-                                        map_value(source, &named_field_key(field))
-                                            .cloned()
-                                            .unwrap_or(Value::Nil)
-                                    })
-                                    .collect();
-                                Ok(Value::Mutable(Rc::new(MutableValue::from_values(
-                                    map_type.clone(),
-                                    values,
-                                    None,
-                                )?)))
-                            });
-                        (Value::MutableType(ty), constructor)
-                    };
-                    for (binding, value) in [
-                        (name.clone(), type_value.clone()),
-                        (format!("->{name}"), type_value),
-                        (format!("map->{name}"), map_constructor),
-                    ] {
-                        let var = KernelVar::new(format!("{namespace}/{binding}"), value);
-                        var.set_origin(definition_origin());
-                        env.insert(binding, Value::Var(var));
-                    }
-                    let mut index = 3;
-                    while index < fs.len() {
-                        let Form::Symbol(protocol) = &fs[index] else {
-                            return Err(format!("{n} protocol clause expects a protocol symbol"));
-                        };
-                        index += 1;
-                        let start = index;
-                        while index < fs.len() && matches!(&fs[index], Form::List(_)) {
+                    let kind = n.clone();
+                    with_declaration_transaction(env, |env| {
+                        publish_named_value(&kind, &name, fields, env)?;
+                        let mut index = 3;
+                        while index < fs.len() {
+                            let Form::Symbol(protocol) = &fs[index] else {
+                                return Err(format!(
+                                    "{kind} protocol clause expects a protocol symbol"
+                                ));
+                            };
                             index += 1;
+                            let start = index;
+                            while index < fs.len() && matches!(&fs[index], Form::List(_)) {
+                                index += 1;
+                            }
+                            if start == index {
+                                return Err(format!(
+                                    "{kind} protocol clause requires method implementations"
+                                ));
+                            }
+                            let extension = Form::List(
+                                std::iter::once(Form::Symbol("extend-type".into()))
+                                    .chain(std::iter::once(Form::Symbol(name.clone())))
+                                    .chain(std::iter::once(Form::Symbol(protocol.clone())))
+                                    .chain(fs[start..index].iter().cloned())
+                                    .collect(),
+                            );
+                            eval(&extension, env)?;
                         }
-                        if start == index {
-                            return Err(format!(
-                                "{n} protocol clause requires method implementations"
-                            ));
-                        }
-                        let extension = Form::List(
-                            std::iter::once(Form::Symbol("extend-type".into()))
-                                .chain(std::iter::once(Form::Symbol(name.clone())))
-                                .chain(std::iter::once(Form::Symbol(protocol.clone())))
-                                .chain(fs[start..index].iter().cloned())
-                                .collect(),
-                        );
-                        eval(&extension, env)?;
-                    }
-                    Ok(Value::Nil)
+                        Ok(Value::Nil)
+                    })
                 }
                 Form::Symbol(n) if n == "field" => {
                     if fs.len() != 3 {
@@ -700,100 +644,7 @@ pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, Stri
                             );
                         }
                     }
-                    let namespace = namespace_registry()?.current().name().as_str().to_owned();
-                    let protocol = Value::Protocol(Rc::new(GuestProtocol {
-                        name: format!("{namespace}/{name}"),
-                        methods,
-                        parents: Vec::new(),
-                    }));
-                    if let Value::Protocol(protocol_value) = &protocol {
-                        let current = namespace_registry()?.current();
-                        let previous_protocol = env
-                            .get(&name)
-                            .cloned()
-                            .map(deref_value)
-                            .and_then(|value| match value {
-                                Value::Protocol(previous)
-                                    if previous.name == protocol_value.name =>
-                                {
-                                    Some(previous)
-                                }
-                                _ => None,
-                            })
-                            .or_else(|| {
-                                current
-                                    .resolve(&crate::lang::data::Symbol::parse(&name))
-                                    .filter(|var| var.get_namespace() == Some(namespace.as_str()))
-                                    .and_then(|var| match var.deref_value() {
-                                        Value::Protocol(previous) => Some(previous),
-                                        _ => None,
-                                    })
-                            });
-                        for method in protocol_value.methods.keys() {
-                            for (local, var) in current.mappings() {
-                                if local.as_str() == name
-                                    || var.get_namespace() != Some(namespace.as_str())
-                                {
-                                    continue;
-                                }
-                                if let Value::Protocol(other) = var.deref_value() {
-                                    if other.methods.contains_key(method) {
-                                        return Err(format!(
-                                        "Protocol method Var already belongs to {}: {namespace}/{method}",
-                                        local.as_str()
-                                    ));
-                                    }
-                                }
-                            }
-                            let existing_namespace_var = current
-                                .resolve(&crate::lang::data::Symbol::parse(method))
-                                .filter(|var| var.get_namespace() == Some(namespace.as_str()));
-                            let existing_environment_var =
-                                matches!(env.get(method), Some(Value::Var(_)));
-                            let same_protocol_reload = (existing_namespace_var.is_some()
-                                || existing_environment_var)
-                                && previous_protocol
-                                    .as_ref()
-                                    .is_some_and(|previous| previous.methods.contains_key(method));
-                            if (existing_namespace_var.is_some() || existing_environment_var)
-                                && !same_protocol_reload
-                            {
-                                return Err(format!(
-                                    "Protocol method Var already exists: {namespace}/{method}"
-                                ));
-                            }
-                        }
-                        ACTIVE_PROTOCOLS.with(|active| -> Result<(), String> {
-                            let registry = active.borrow();
-                            let registry = registry
-                                .as_ref()
-                                .ok_or_else(|| "protocol registry is unavailable".to_string())?;
-                            registry.replace_guest_protocol(protocol_value.name.clone());
-                            for method in protocol_value.methods.keys() {
-                                registry.declare_guest(protocol_value.name.clone(), method.clone());
-                            }
-                            Ok(())
-                        })?;
-                        for method in protocol_value.methods.keys() {
-                            let local_name = method.clone();
-                            let qualified_name = format!("{namespace}/{method}");
-                            let protocol_name = protocol_value.name.clone();
-                            let method_name = method.clone();
-                            let function_name = qualified_name.clone();
-                            let method_value =
-                                native_variadic_function(&function_name, move |arguments| {
-                                    protocol_call(&protocol_name, &method_name, &arguments)
-                                });
-                            let method_var = current.intern(&local_name, method_value);
-                            method_var.set_origin(definition_origin());
-                            env.insert(local_name, Value::Var(method_var.clone()));
-                            env.insert(qualified_name, Value::Var(method_var));
-                        }
-                    }
-                    let var = KernelVar::new(format!("{namespace}/{name}"), protocol.clone());
-                    var.set_origin(definition_origin());
-                    env.insert(name, Value::Var(var));
-                    Ok(protocol)
+                    publish_guest_protocol(&name, methods, Vec::new(), env)
                 }
                 Form::Symbol(n) if n == "extend-type" => {
                     if fs.len() < 4 {

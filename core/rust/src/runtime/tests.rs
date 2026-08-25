@@ -2338,17 +2338,17 @@ mod tests {
                 .methods
                 .keys()
                 .all(|method| !method.ends_with('!')));
-            assert!(
-                foundation
-                    .resolve(&lang::data::Symbol::parse(name))
-                    .is_some(),
-                "std.foundation/{name} must expose the annotated protocol"
-            );
+            let canonical_protocol = namespace
+                .resolve(&lang::data::Symbol::parse(name))
+                .expect("canonical protocol Var");
+            let foundation_protocol = foundation
+                .resolve(&lang::data::Symbol::parse(name))
+                .unwrap_or_else(|| panic!("std.foundation/{name} must expose the annotated protocol"));
+            assert!(canonical_protocol.same_identity(&foundation_protocol));
             for method in declaration.methods {
-                let canonical_method = namespace
+                let canonical_method_var = namespace
                     .resolve(&lang::data::Symbol::parse(method.name))
-                    .unwrap_or_else(|| panic!("missing {namespace_name}/{}", method.name))
-                    .deref_value();
+                    .unwrap_or_else(|| panic!("missing {namespace_name}/{}", method.name));
                 assert_eq!(
                     runtime
                         .namespace_registry
@@ -2357,8 +2357,8 @@ mod tests {
                             method.name
                         )))
                         .unwrap_or_else(|| panic!("missing {namespace_name}/{}", method.name))
-                        .deref_value(),
-                    canonical_method
+                        .same_identity(&canonical_method_var),
+                    true
                 );
                 assert!(
                     foundation
@@ -2465,6 +2465,69 @@ mod tests {
                 .unwrap(),
             "#protocol[user/PredicateProtocol]"
         );
+    }
+
+    #[test]
+    fn core_runtime_publishes_foundation_protocol_aliases() {
+        let runtime = Runtime::core();
+        let foundation = runtime
+            .namespace_registry
+            .find("std.foundation")
+            .expect("core runtime Foundation namespace");
+
+        for name in ["IAssoc", "IColl", "IEncodeVisitor", "IMetadata"] {
+            let canonical = runtime
+                .namespace_registry
+                .find(&format!("std.protocol.{0}.{1}", name.to_ascii_lowercase(), name))
+                .and_then(|namespace| namespace.resolve(&lang::data::Symbol::parse(name)))
+                .unwrap_or_else(|| panic!("missing canonical protocol {name}"));
+            let alias = foundation
+                .resolve(&lang::data::Symbol::parse(name))
+                .unwrap_or_else(|| panic!("missing std.foundation/{name}"));
+            assert!(canonical.same_identity(&alias));
+        }
+    }
+
+    #[test]
+    fn named_declaration_registration_rolls_back_type_and_protocol_state() {
+        let mut runtime = Runtime::new();
+        let error = runtime
+            .eval_text(
+                "(defstruct Atomic [value] ICount (count [self extra] (:value self)))",
+            )
+            .unwrap_err();
+        assert!(error.contains("invalid protocol method implementation"), "{error}");
+        for name in ["Atomic", "->Atomic", "map->Atomic"] {
+            assert!(
+                runtime.eval_text(name).is_err(),
+                "failed declaration must not publish {name}"
+            );
+        }
+        assert!(runtime.eval_text("ICount/count (Atomic 1)").is_err());
+    }
+
+    #[test]
+    fn bytecode_named_declaration_registration_rolls_back_type_and_protocol_state() {
+        let mut runtime = Runtime::new();
+        let program = runtime
+            .compile_bytecode(
+                "(defstruct Atomic [value]) \
+                 (extend-type Atomic ICount (count [self extra] (:value self)))",
+            )
+            .expect("bytecode declaration must compile before registration");
+        let error = runtime
+            .execute_compiled_bytecode_value(program)
+            .unwrap_err();
+        assert!(error.contains("invalid protocol method implementation"), "{error}");
+        for name in ["Atomic", "->Atomic", "map->Atomic"] {
+            assert!(
+                runtime
+                    .namespace_registry
+                    .resolve(&lang::data::Symbol::parse(name))
+                    .is_none(),
+                "failed bytecode declaration must not publish {name}"
+            );
+        }
     }
 
     #[test]

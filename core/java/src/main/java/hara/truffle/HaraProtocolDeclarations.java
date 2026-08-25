@@ -14,6 +14,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
@@ -29,6 +30,10 @@ final class HaraProtocolDeclarations {
   private HaraProtocolDeclarations() {}
 
   static Registry install(HaraContext context) {
+    return context.withDeclarationTransaction(() -> installDeclarations(context));
+  }
+
+  private static Registry installDeclarations(HaraContext context) {
     Map<String, Class<?>> declarations = discover();
     Map<String, HaraProtocol> installed = new LinkedHashMap<>();
     for (String name : new TreeSet<>(declarations.keySet())) {
@@ -90,6 +95,17 @@ final class HaraProtocolDeclarations {
     Class<?> type = declarations.get(name);
     if (type == null) throw new HaraException("Missing annotated protocol parent: " + name);
     HaraProtocolBinding binding = type.getAnnotation(HaraProtocolBinding.class);
+    String expectedNamespace =
+        "std.protocol." + name.toLowerCase(Locale.ROOT);
+    if (!expectedNamespace.equals(binding.namespace())) {
+      throw new HaraException(
+          "Protocol declaration namespace differs from its canonical name: "
+              + name
+              + " expected "
+              + expectedNamespace
+              + " but found "
+              + binding.namespace());
+    }
     List<HaraProtocol> parents = new ArrayList<>();
     for (String parent : binding.parents()) {
       parents.add(install(context, declarations, installed, parent, visiting));

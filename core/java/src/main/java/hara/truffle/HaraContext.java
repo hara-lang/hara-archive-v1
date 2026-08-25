@@ -466,20 +466,30 @@ public final class HaraContext {
   }
 
   private void installNativeTypeDescriptors() {
-    namespace("std.native");
+    withDeclarationTransaction(
+        () -> {
+          namespace("std.native");
+          for (hara.lang.declaration.HaraNativeBinding binding : HaraNativeDeclarations.bindings()) {
+            publishNativeDescriptor(binding);
+          }
+          return null;
+        });
+  }
+
+  /** Publishes one annotated native descriptor and all spec-defined aliases. */
+  private void publishNativeDescriptor(hara.lang.declaration.HaraNativeBinding binding) {
+    String name = binding.name();
+    String canonicalName = HaraNativeDeclarations.namespace(name);
+    if (sandboxRestricted && sandboxForbiddenNamespace(canonicalName)) return;
     HaraNamespace intrinsic = namespace(INTRINSIC_NAMESPACE);
-    HaraNamespace foundation = namespace(FOUNDATION_NAMESPACE);
-    for (hara.lang.declaration.HaraNativeBinding binding : HaraNativeDeclarations.bindings()) {
-      String name = binding.name();
-      if (sandboxRestricted && sandboxForbiddenNamespace(HaraNativeDeclarations.namespace(name))) {
-        continue;
-      }
-      String canonicalName = HaraNativeDeclarations.namespace(name);
-      HaraVar descriptor =
-          intrinsic.define(canonicalName, new HaraNativeType(name, HaraNativeDeclarations.methods(name)));
-      intrinsic.refer(name, descriptor);
-      foundation.refer(name, descriptor);
-    }
+    HaraVar descriptor =
+        intrinsic.define(
+            canonicalName,
+            new HaraNativeType(name, HaraNativeDeclarations.methods(name)),
+            null,
+            HaraVar.Origin.RUNTIME_PRIMITIVE);
+    intrinsic.refer(name, descriptor);
+    namespace(FOUNDATION_NAMESPACE).refer(name, descriptor);
   }
 
   private void installNativeExports(String sourceNamespace) {
@@ -1026,13 +1036,9 @@ public final class HaraContext {
   private void configureProtocolAliases(HaraNamespace target) {
     Map<String, String> namespaceAliases =
         aliases.computeIfAbsent(target.name(), ignored -> new ConcurrentHashMap<>());
-    HaraNamespace foundation = namespace(FOUNDATION_NAMESPACE);
-    foundation.vars.forEach(
-        (name, variable) -> {
-          if (name.startsWith("I") && variable.get() instanceof HaraProtocol) {
-            putAlias(namespaceAliases, name, builtinProtocolNamespace(name));
-          }
-        });
+    for (String name : protocolDeclarations.keySet()) {
+      putAlias(namespaceAliases, name, builtinProtocolNamespace(name));
+    }
   }
 
   private void configureNativeAliases(HaraNamespace target) {
@@ -2004,21 +2010,74 @@ public final class HaraContext {
     return currentNamespace.define(symbol.getName(), value, symbol.meta(), definitionOrigin);
   }
 
+  @TruffleBoundary
+  public <T> T withDeclarationTransaction(Supplier<T> operation) {
+    ContextSnapshot snapshot = snapshot();
+    try {
+      return operation.get();
+    } catch (RuntimeException error) {
+      restore(snapshot);
+      throw error;
+    }
+  }
+
+  @TruffleBoundary
+  public HaraType defineNamedType(Symbol symbol, String[] fields, boolean mutable) {
+    if (symbol.getNamespace() != null) {
+      throw new HaraException("named type must be defined in the current namespace");
+    }
+    String[] declaredFields = fields.clone();
+    HaraType type =
+        mutable
+            ? new HaraMutableType(currentNamespace.name() + "/" + symbol.getName(), declaredFields)
+            : new HaraType(currentNamespace.name() + "/" + symbol.getName(), declaredFields);
+    define(symbol, type);
+    define(Symbol.create("->" + symbol.getName()), type);
+    define(
+        Symbol.create("map->" + symbol.getName()),
+        new VariadicBuiltin(
+            currentNamespace.name() + "/map->" + symbol.getName(),
+            values -> {
+              if (values.length != 1) {
+                throw new HaraException("map constructor expects one associative value");
+              }
+              Object source = HaraBox.unwrap(values[0]);
+              if (!(source instanceof ILookup<?, ?> lookup)) {
+                throw new HaraException("map constructor expects one associative value");
+              }
+              Object[] members = new Object[declaredFields.length];
+              for (int index = 0; index < declaredFields.length; index++) {
+                members[index] =
+                    ((ILookup<Object, Object>) lookup).lookup(Keyword.create(declaredFields[index]));
+              }
+              try {
+                return type.construct(members);
+              } catch (com.oracle.truffle.api.interop.ArityException impossible) {
+                throw new IllegalStateException("named type arity was checked", impossible);
+              }
+            }));
+    return type;
+  }
+
   public HaraProtocol ifnProtocol() {
     return ifnProtocol;
   }
 
   HaraProtocol defineInjectedProtocol(
       String name, Map<String, Integer> methodArities, java.util.List<HaraProtocol> parents) {
-    HaraProtocol existing = protocol(name);
-    if (existing != null) return existing;
-    String canonicalNamespace = builtinProtocolNamespace(name);
-    HaraProtocol protocol =
-        new HaraProtocol(canonicalNamespace, methodArities, parents);
-    namespace(canonicalNamespace).define(name, protocol, null, definitionOrigin);
-    namespace(FOUNDATION_NAMESPACE).define(name, protocol, null, definitionOrigin);
-    defineBuiltinProtocolMethods(canonicalNamespace, protocol, definitionOrigin);
-    return protocol;
+    return withDeclarationTransaction(
+        () -> {
+          HaraProtocol existing = protocol(name);
+          if (existing != null) return existing;
+          String canonicalNamespace = builtinProtocolNamespace(name);
+          HaraProtocol protocol =
+              new HaraProtocol(canonicalNamespace, methodArities, parents);
+          HaraVar descriptor =
+              namespace(canonicalNamespace).define(name, protocol, null, definitionOrigin);
+          namespace(FOUNDATION_NAMESPACE).refer(name, descriptor);
+          defineBuiltinProtocolMethods(canonicalNamespace, protocol, definitionOrigin);
+          return protocol;
+        });
   }
 
   HaraProtocol protocol(String name) {
@@ -2029,10 +2088,13 @@ public final class HaraContext {
 
   @TruffleBoundary
   public HaraVar defineLanguageProtocol(Symbol symbol, HaraProtocol protocol) {
-    validateLanguageProtocolMethods(currentNamespace, symbol.getName(), protocol);
-    HaraVar variable = define(symbol, protocol);
-    defineLanguageProtocolMethods(currentNamespace.name(), protocol);
-    return variable;
+    return withDeclarationTransaction(
+        () -> {
+          validateLanguageProtocolMethods(currentNamespace, symbol.getName(), protocol);
+          HaraVar variable = define(symbol, protocol);
+          defineLanguageProtocolMethods(currentNamespace.name(), protocol);
+          return variable;
+        });
   }
 
   private void validateLanguageProtocolMethods(

@@ -50,21 +50,19 @@ pub fn install_foundation_intrinsics(namespaces: &NamespaceRegistry<Value>) {
 pub fn minimal_namespace_registry() -> NamespaceRegistry<Value> {
     let namespaces = NamespaceRegistry::new("user");
 
-    for (name, descriptor) in native_type_values() {
-        let path = format!("std.native.{name}");
+    for declaration in NATIVE_DECLARATIONS {
+        let name = declaration.name;
+        let path = declaration.qualified_name();
         let namespace = namespaces.find_or_create(&path);
         let var = crate::kernel::Var::with_metadata(
             &path,
-            descriptor,
+            native_descriptor_value(*declaration),
             crate::kernel::VarMetadata {
                 origin: VarOrigin::RuntimePrimitive,
                 ..crate::kernel::VarMetadata::default()
             },
         );
         namespace.map_var(Symbol::parse(&name), var);
-    }
-    for declaration in NATIVE_DECLARATIONS {
-        let namespace = namespaces.find_or_create(declaration.qualified_name());
         namespaces
             .register_global_alias(declaration.name, declaration.qualified_name())
             .unwrap_or_else(|error| panic!("{error}"));

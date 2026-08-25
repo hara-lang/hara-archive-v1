@@ -211,7 +211,7 @@ mod tests {
     fn recursive_tree_calls_compile_as_direct_wasm_calls() {
         let source = "(do
           (defn bench-tree-walk [node]
-            (if (number? node)
+            (if (std.native.Base/number? node)
               node
               (loop [i 0 acc 0]
                 (if (< i (count node))

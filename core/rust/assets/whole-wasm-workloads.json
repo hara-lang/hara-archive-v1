@@ -4,25 +4,25 @@
     {
       "id": "arithmetic-branch-mix",
       "operations": 20000,
-      "hara_source": "(loop [i 0 acc 0] (if (< i 20000) (recur (+ i 1) (if (= (% i 3) 0) (+ acc (* i 3)) (- acc (% i 11)))) acc))",
+      "hara_source": "(loop [i 0 acc 0] (if (< i 20000) (recur (+ i 1) (if (= (mod i 3) 0) (+ acc (* i 3)) (- acc (mod i 11)))) acc))",
       "expected": "199923338"
     },
     {
       "id": "mutable-array-update",
       "operations": 4000,
-      "hara_source": "(let [a (std.native.Arr/new 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16)] (loop [i 0 acc 0] (if (< i 4000) (let [idx (% i 16) value (+ (std.native.Arr/get a idx) (% i 7))] (std.native.Arr/set a idx value) (recur (+ i 1) (+ acc value))) acc)))",
+      "hara_source": "(let [a (std.native.Arr/new 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16)] (loop [i 0 acc 0] (if (< i 4000) (let [idx (mod i 16) value (+ (std.native.Arr/get a idx) (mod i 7))] (std.native.Arr/set a idx value) (recur (+ i 1) (+ acc value))) acc)))",
       "expected": "1538997"
     },
     {
       "id": "mutable-object-counters",
       "operations": 2000,
-      "hara_source": "(let [o (std.native.Obj/new \"a\" 0 \"b\" 0 \"c\" 0 \"d\" 0)] (loop [i 0] (if (< i 2000) (let [key (cond (= (% i 4) 0) \"a\" (= (% i 4) 1) \"b\" (= (% i 4) 2) \"c\" :else \"d\")] (std.native.Obj/set o key (+ 1 (std.native.Obj/get o key))) (recur (+ i 1))) (+ (std.native.Obj/get o \"a\") (* 3 (std.native.Obj/get o \"b\")) (* 5 (std.native.Obj/get o \"c\")) (* 7 (std.native.Obj/get o \"d\"))))))",
+      "hara_source": "(let [o (std.native.Obj/new \"a\" 0 \"b\" 0 \"c\" 0 \"d\" 0)] (loop [i 0] (if (< i 2000) (let [key (cond (= (mod i 4) 0) \"a\" (= (mod i 4) 1) \"b\" (= (mod i 4) 2) \"c\" :else \"d\")] (std.native.Obj/set o key (+ 1 (std.native.Obj/get o key))) (recur (+ i 1))) (+ (std.native.Obj/get o \"a\") (* 3 (std.native.Obj/get o \"b\")) (* 5 (std.native.Obj/get o \"c\")) (* 7 (std.native.Obj/get o \"d\"))))))",
       "expected": "8000"
     },
     {
       "id": "recursive-tree-eval",
       "operations": 400,
-      "hara_source": "(do (defn bench-tree-walk [node] (if (number? node) node (loop [i 0 acc 0] (if (< i (count node)) (recur (+ i 1) (+ acc (bench-tree-walk (nth node i)))) acc)))) (let [tree [1 [2 3 4] [5 [6 7] 8]]] (loop [i 0 acc 0] (if (< i 400) (recur (+ i 1) (+ acc (bench-tree-walk tree))) acc))))",
+      "hara_source": "(do (defn bench-tree-walk [node] (if (std.native.Base/number? node) node (loop [i 0 acc 0] (if (< i (count node)) (recur (+ i 1) (+ acc (bench-tree-walk (nth node i)))) acc)))) (let [tree [1 [2 3 4] [5 [6 7] 8]]] (loop [i 0 acc 0] (if (< i 400) (recur (+ i 1) (+ acc (bench-tree-walk tree))) acc))))",
       "expected": "14400"
     },
     {

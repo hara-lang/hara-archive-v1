@@ -146,6 +146,33 @@
     (throw
      (ex :serialization {:entry field} :ex/message "map schema entries must be [key schema] or [key properties schema]"))))
 
+(defn normalize-struct-name
+  "Normalizes a named struct reference to its qualified symbol."
+  [value]
+  (cond
+    (and (list? value)
+         (= 2 (count value))
+         (= 'var (first value))
+         (symbol? (second value)))
+    (let [target (second value)]
+      (if (namespace target)
+        target
+        (throw
+         (ex :serialization {:name target}
+             :ex/message "struct schema name must be qualified"))))
+
+    (and (symbol? value) (namespace value)) value
+
+    :else
+    (throw
+     (ex :serialization {:name value}
+         :ex/message "struct schema name must be a qualified symbol or (var ...) reference"))))
+
+(defn normalize-struct-fields
+  "Normalizes struct fields using the map-field grammar."
+  [fields]
+  (vec (map normalize-field fields)))
+
 (defn- properties-normal?
   [schema]
   (or (not (has? schema :properties))
@@ -185,6 +212,20 @@
        (= kind :map)
        (and
         (properties-normal? schema)
+        (vector? (:fields schema))
+        (every?
+         (fn [field]
+           (and (map? field)
+                (has? field :name)
+                (properties-normal? field)
+                (canonical-normal? (:type field))))
+         (:fields schema)))
+
+       (= kind :struct)
+       (and
+        (symbol? (:name schema))
+        (namespace (:name schema))
+        (boolean? (:mutable? schema))
         (vector? (:fields schema))
         (every?
          (fn [field]
@@ -291,6 +332,19 @@
                   (:fields schema)
                   children)))}
          (or (:properties schema) {}))
+
+        (= kind :struct)
+        {:kind :struct
+         :name (normalize-struct-name
+                (if (has? schema :name)
+                  (:name schema)
+                  (first children)))
+         :mutable? (= true (:mutable? schema))
+         :fields
+         (normalize-struct-fields
+          (if (has? schema :fields)
+            (:fields schema)
+            (rest children)))}
 
         (= kind :fn)
         (normalize-fn-map schema)
@@ -455,6 +509,25 @@
       :fields (vec (map normalize-field fields))}
      properties)))
 
+(defmethod normalize :struct [schema]
+  (let [arguments (vec (rest schema))
+        properties (if (and (not (empty? arguments))
+                            (map? (first arguments)))
+                     (first arguments)
+                     {})
+        arguments (if (empty? properties)
+                    arguments
+                    (vec (rest arguments)))
+        name (if (empty? arguments) nil (first arguments))]
+    (if (nil? name)
+      (throw
+       (ex :serialization {:schema schema}
+           :ex/message ":struct schema requires a qualified name"))
+      {:kind :struct
+       :name (normalize-struct-name name)
+       :mutable? (= true (:mutable? properties))
+       :fields (normalize-struct-fields (rest arguments))})))
+
 (defmethod normalize :fn [schema]
   (normalize-fn-map
    {:inputs (second schema)
@@ -559,6 +632,10 @@
       (collect-reference-names
        (map (fn [field] (:type field)) (:fields schema)))
 
+      (= kind :struct)
+      (collect-reference-names
+       (map (fn [field] (:type field)) (:fields schema)))
+
       (= kind :fn)
       (let [inputs (:inputs schema)
             rest-schema (:rest inputs)
@@ -640,6 +717,16 @@
              (resolve-many (:items schema) registry-value visited))
 
       (= kind :map)
+      (assoc schema :fields
+             (vec
+              (map (fn [field]
+                     (assoc field :type
+                            (resolve-normal (:type field)
+                                            registry-value
+                                            visited)))
+                   (:fields schema))))
+
+      (= kind :struct)
       (assoc schema :fields
              (vec
               (map (fn [field]
@@ -946,6 +1033,15 @@
         (closed-map-findings schema value path))))
     [(finding path schema value)]))
 
+(defmethod validate-normal :struct [schema value path]
+  ;; Struct values expose the same associative field surface as maps. Runtime
+  ;; identity is checked by the declaration registry; portable validation
+  ;; validates the declared field contract without evaluating the type Var.
+  (validate-normal
+   (assoc schema :kind :map)
+   value
+   path))
+
 (defn- reference-finding
   [finding-type path schema value]
   {:finding/type finding-type
@@ -1105,6 +1201,13 @@
       (= kind :map)
       (validate-map-with schema value path registry-value trail)
 
+      (= kind :struct)
+      (validate-map-with (assoc schema :kind :map)
+                         value
+                         path
+                         registry-value
+                         trail)
+
       (= kind :result)
       (if (not (result? value))
         [(finding path schema value)]
@@ -1170,6 +1273,17 @@
     (and (= :set (:kind expected))
          (= :set (:kind actual)))
     (compatible-normal? (:item expected) (:item actual))
+    (and (= :struct (:kind expected))
+         (= :struct (:kind actual))
+         (= (:name expected) (:name actual))
+         (= (:mutable? expected) (:mutable? actual))
+         (= (count (:fields expected)) (count (:fields actual)))
+         (every?
+          (fn [[expected-field actual-field]]
+            (and (= (:name expected-field) (:name actual-field))
+                 (compatible-normal? (:type expected-field)
+                                     (:type actual-field))))
+          (map vector (:fields expected) (:fields actual))))
     (= :unknown (:kind expected)) true
     (= :unknown (:kind actual)) true
     (= :union (:kind expected))

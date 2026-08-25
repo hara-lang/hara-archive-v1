@@ -1385,7 +1385,7 @@ where
             out.instruction(&Instruction::LocalGet(b));
             out.instruction(&Instruction::I64Const(0));
             out.instruction(&Instruction::I64LtS);
-            out.instruction(&Instruction::I64Xor);
+            out.instruction(&Instruction::I32Xor);
             out.instruction(&Instruction::If(BlockType::Empty));
             out.instruction(&Instruction::LocalGet(result));
             out.instruction(&Instruction::LocalGet(b));

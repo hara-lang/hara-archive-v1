@@ -11,7 +11,6 @@ import hara.lang.data.Keyword;
 import hara.lang.data.TaggedLiteral;
 import hara.kernel.builtin.BuiltinStruct;
 import hara.lang.protocol.IMetadata;
-import hara.lang.protocol.ILookup;
 import hara.lang.protocol.IExInfo;
 import hara.lang.protocol.ILinearType;
 import hara.lang.protocol.IMapType;
@@ -32,6 +31,10 @@ public final class HbcMachine {
   private HbcMachine() {}
 
   public static Object execute(HbcProgram program, HaraContext context) {
+    return context.withDeclarationTransaction(() -> executeTransactional(program, context));
+  }
+
+  private static Object executeTransactional(HbcProgram program, HaraContext context) {
     HbcContinuation continuation = context.hbcContinuation(program);
     if (continuation != null
         && continuation.pendingAwait == null
@@ -497,9 +500,8 @@ public final class HbcMachine {
             names[i] = field instanceof Symbol symbol ? symbol.getName() : String.valueOf(field);
           }
           stack.add(
-              defineNamedType(
-                  context,
-                  name,
+              context.defineNamedType(
+                  Symbol.create(name),
                   names,
                   instruction.opcode() == HbcProgram.Opcode.DEF_MUTABLE));
         }
@@ -1038,49 +1040,6 @@ public final class HbcMachine {
       return type != null && (type.equals(className) || type.endsWith("/" + className));
     }
     return false;
-  }
-
-  private static HaraType defineNamedType(
-      HaraContext context, String name, String[] fields, boolean mutable) {
-    String qualifiedName =
-        name.indexOf('/') >= 0 ? name : context.currentNamespaceName() + "/" + name;
-    HaraType type =
-        mutable
-            ? new HaraMutableType(qualifiedName, fields)
-            : new HaraType(qualifiedName, fields);
-    context.define(Symbol.create(name), type);
-    context.define(
-        Symbol.create("->" + name),
-        new HbcNativeCallable(
-            values -> {
-              if (values.length != fields.length) {
-                throw new HaraException("constructor has no matching arity: " + values.length);
-              }
-              return constructNamedValue(type, values);
-            }));
-    context.define(
-        Symbol.create("map->" + name),
-        new HbcNativeCallable(
-            values -> {
-              if (values.length != 1 || !(values[0] instanceof ILookup<?, ?> lookup)) {
-                throw new HaraException("map constructor expects one associative value");
-              }
-              Object[] members = new Object[fields.length];
-              for (int index = 0; index < fields.length; index++) {
-                members[index] =
-                    ((ILookup<Object, Object>) lookup).lookup(Keyword.create(fields[index]));
-              }
-              return constructNamedValue(type, members);
-            }));
-    return type;
-  }
-
-  private static Object constructNamedValue(HaraType type, Object[] values) {
-    try {
-      return type.construct(values);
-    } catch (com.oracle.truffle.api.interop.ArityException impossible) {
-      throw new IllegalStateException("constructor arity was checked", impossible);
-    }
   }
 
   private static Object caughtValue(RuntimeException failure) {

@@ -98,6 +98,28 @@ public class HaraMigrationPrimitivesTest {
   }
 
   @Test
+  public void namedDeclarationRollsBackWhenAnInlineProtocolClauseIsInvalid() {
+    try (Context context = Context.newBuilder(HaraLanguage.ID).build()) {
+      PolyglotException error =
+          assertThrows(
+              PolyglotException.class,
+              () ->
+                  context.eval(
+                      HaraLanguage.ID,
+                      "(defstruct Atomic [value] "
+                          + "ICount (count [self extra] (:value self)))"));
+      assertFalse(error.getMessage().isEmpty());
+      assertEquals(
+          "[nil nil nil]",
+          context
+              .eval(
+                  HaraLanguage.ID,
+                  "[(resolve 'Atomic) (resolve '->Atomic) (resolve 'map->Atomic)]")
+              .toString());
+    }
+  }
+
+  @Test
   public void namespaceIntrospectionIsNarrowAndDeterministic() {
     try (Context context = Context.newBuilder(HaraLanguage.ID).build()) {
       Value result =

@@ -100,8 +100,7 @@ final class HaraAnalyzer {
   }
 
   private void predeclareTopLevel(Object[] forms, int start, int end) {
-    Set<String> definitionForms =
-        Set.of("def", "defn", "defn-", "defmacro", "defstruct", "defmutable");
+    Set<String> definitionForms = Set.of("def", "defn", "defn-", "defmacro");
     for (int index = start; index < end; index++) {
       if (!(forms[index] instanceof List<?> list)
           || list.count() < 2
@@ -1478,7 +1477,6 @@ final class HaraAnalyzer {
 
     ILinearType<?> fields = (ILinearType<?>) form.nth(2);
     String[] fieldNames = new String[(int) fields.count()];
-    Symbol[] fieldSymbols = new Symbol[fieldNames.length];
     Set<String> seen = new HashSet<>();
     for (int i = 0; i < fieldNames.length; i++) {
       Object field = fields.nth(i);
@@ -1487,53 +1485,12 @@ final class HaraAnalyzer {
       }
       Symbol fieldSymbol = (Symbol) field;
       fieldNames[i] = fieldSymbol.getName();
-      fieldSymbols[i] = fieldSymbol;
       if (!seen.add(fieldNames[i])) {
         throw error("Duplicate " + kind + " field: " + fieldNames[i]);
       }
     }
 
-    HaraType type =
-        mutable
-            ? new HaraMutableType(
-                context.currentNamespaceName() + "/" + symbol.getName(), fieldNames)
-            : new HaraType(
-                context.currentNamespaceName() + "/" + symbol.getName(), fieldNames);
-    HaraExpressionNode typeDefinition =
-        new HaraNodes.DefineGlobal(symbol, new HaraNodes.Literal(type));
-
-    Object[] positionalArgs = new Object[fieldSymbols.length + 1];
-    positionalArgs[0] = Symbol.create(symbol.getName());
-    System.arraycopy(fieldSymbols, 0, positionalArgs, 1, fieldSymbols.length);
-    HaraExpressionNode arrowConstructor =
-        new HaraNodes.DefineGlobal(
-            Symbol.create("->" + symbol.getName()),
-            analyzeFunction(
-                hara.lang.data.Vector.Standard.from(null, (Object[]) fieldSymbols),
-                new Object[] {List.Standard.from(null, positionalArgs)}));
-
-    Symbol recordMap = Symbol.create("record-map");
-    Object[] mapArgs = new Object[fieldNames.length + 1];
-    mapArgs[0] = Symbol.create(symbol.getName());
-    for (int i = 0; i < fieldNames.length; i++) {
-      mapArgs[i + 1] =
-          List.Standard.from(
-              null,
-              Symbol.create("std.foundation", "get"),
-              recordMap,
-              Keyword.create(fieldNames[i]));
-    }
-    HaraExpressionNode mapConstructor =
-        new HaraNodes.DefineGlobal(
-            Symbol.create("map->" + symbol.getName()),
-            analyzeFunction(
-                hara.lang.data.Vector.Standard.from(null, recordMap),
-                new Object[] {List.Standard.from(null, mapArgs)}));
-
-    java.util.ArrayList<HaraExpressionNode> definitions = new java.util.ArrayList<>();
-    definitions.add(typeDefinition);
-    definitions.add(arrowConstructor);
-    definitions.add(mapConstructor);
+    java.util.ArrayList<HaraExpressionNode> extensions = new java.util.ArrayList<>();
     int index = 3;
     while (index < form.count()) {
       Object protocol = form.nth(index++);
@@ -1550,9 +1507,10 @@ final class HaraAnalyzer {
       extension[1] = Symbol.create(symbol.getName());
       extension[2] = protocol;
       for (int i = start; i < index; i++) extension[i - start + 3] = form.nth(i);
-      definitions.add(analyzeExtendType(List.Standard.from(null, extension)));
+      extensions.add(analyzeExtendType(List.Standard.from(null, extension)));
     }
-    return new HaraNodes.Do(definitions.toArray(new HaraExpressionNode[0]));
+    return new HaraNodes.DefineNamedType(
+        symbol, fieldNames, mutable, extensions.toArray(new HaraExpressionNode[0]));
   }
 
   private HaraExpressionNode analyzeField(List<?> form) {
