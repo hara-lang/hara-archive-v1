@@ -1293,7 +1293,7 @@ pub(crate) fn publish_guest_protocol(
         let registry = namespace_registry()?;
         let namespace = registry.current();
         let namespace_name = namespace.name().as_str().to_owned();
-        let protocol_name = format!("{}/{}", namespace_name, name);
+        let protocol_name = format!("{}.{}", namespace_name, name);
         let previous_protocol = namespace
             .resolve(&Symbol::parse(name))
             .filter(|var| var.symbol().get_namespace() == Some(namespace_name.as_str()))

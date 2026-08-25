@@ -1,115 +1,93 @@
 ;; Kernel-native wrappers. This namespace owns the public standard-library
 ;; boundary directly and does not introduce a dependency on application
 ;; namespaces.
-(ns std.lib.kernel
-  (:config {:role :internal}))
+(ns std.lib.kernel)
 
-^{:public true}
 (defn sandbox-open
   [spec]
   (Sandbox/open spec))
 
-^{:public true}
 (defn sandbox-eval
   [id source]
   (Sandbox/eval id source))
 
-^{:public true}
 (defn sandbox-call
   [id callable arguments]
   (Sandbox/call id callable arguments))
 
-^{:public true}
 (defn sandbox-cancel
   [id]
   (Sandbox/cancel id))
 
-^{:public true}
 (defn sandbox-status
   [id]
   (Sandbox/status id))
 
-^{:public true}
 (defn sandbox-close
   [id]
   (Sandbox/close id))
 
-^{:public true}
 (defn session-create
   [name]
   (Kernel/session-create name))
 
-^{:public true}
 (defn session-close
   [name]
   (Kernel/session-close name))
 
-^{:public true}
 (defn session-list
   []
   (Kernel/session-list))
 
-^{:public true}
 (defn session-info
   [name]
   (Kernel/session-info name))
 
-^{:public true}
 (defn session-eval
   [name source]
   (Kernel/session-eval name source))
 
-^{:public true}
+
 (defn session-namespace
   [name]
   (Kernel/session-namespace name))
 
-^{:public true}
 (defn session-complete
   [name prefix]
   (Kernel/session-complete name prefix))
 
-^{:public true}
 (defn resource-register
   [name source]
   (Kernel/resource-register name source))
 
-^{:public true}
 (defn resource-remove
   [name]
   (Kernel/resource-remove name))
 
-^{:public true}
 (defn resource-list
   []
   (Kernel/resource-list))
 
-^{:public true}
 (defn filesystem-create
   [& arguments]
   (apply Kernel/filesystem-create arguments))
 
-^{:public true}
 (defn filesystem-attach
   [& arguments]
   (apply Kernel/filesystem-attach arguments))
 
-^{:public true}
 (defn filesystem-detach
   [& arguments]
   (apply Kernel/filesystem-detach arguments))
 
-^{:public true}
 (defn filesystem-info
   [& arguments]
   (apply Kernel/filesystem-info arguments))
 
-^{:public true}
 (defn filesystem-close
   [& arguments]
   (apply Kernel/filesystem-close arguments))
 
-^{:public true}
 (defn capabilities
   []
   (Kernel/capabilities))

@@ -2124,7 +2124,7 @@ mod tests {
                      (get (Missing)))",
             )
             .unwrap_err()
-            .contains("missing protocol implementation: protocol-probe/Needed/get"));
+            .contains("missing protocol implementation: protocol-probe.Needed/get"));
     }
 
     #[test]
