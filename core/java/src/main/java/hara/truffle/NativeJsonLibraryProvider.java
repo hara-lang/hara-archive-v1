@@ -9,6 +9,6 @@ public final class NativeJsonLibraryProvider implements HaraLibraryProvider {
   @Override public boolean eager() { return true; }
 
   @Override public void install(HaraContext context) {
-    context.installJsonLibrary();
+    context.installNativeLibrary(namespace());
   }
 }

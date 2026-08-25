@@ -2,6 +2,7 @@ package hara.truffle;
 
 import hara.lang.declaration.HaraAvailability;
 import hara.lang.declaration.HaraNativeBinding;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
@@ -127,28 +128,17 @@ final class HaraBuiltinCatalog {
           Map.entry("bytes", "bytes"),
           Map.entry("pretty", "pretty"));
 
-  static final Set<String> MARKER_METHOD_NAMES =
-      Set.of(
-          "get",
-          "set",
-          "push-first",
-          "push-last",
-          "pop-first",
-          "pop-last",
-          "insert",
-          "remove",
-          "clone",
-          "slice",
-          "map",
-          "filter",
-          "fold-left",
-          "fold-right",
-          "has?",
-          "delete",
-          "assign",
-          "keys",
-          "vals",
-          "pairs");
+  static final Set<String> MARKER_METHOD_NAMES = markerMethodNames();
+
+  private static Set<String> markerMethodNames() {
+    Set<String> methods = new HashSet<>();
+    for (String type : Set.of("Arr", "Obj")) {
+      HaraNativeDeclarations.methods(type).stream()
+          .filter(method -> !"new".equals(method))
+          .forEach(methods::add);
+    }
+    return Set.copyOf(methods);
+  }
 
   private HaraBuiltinCatalog() {}
 }

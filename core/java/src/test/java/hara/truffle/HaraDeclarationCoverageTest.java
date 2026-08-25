@@ -168,6 +168,70 @@ public class HaraDeclarationCoverageTest {
     assertEquals(expected.keySet(), HaraNativeDeclarations.METHODS.keySet());
   }
 
+  @Test
+  public void deterministicDeclarationManifestsMatchTheSpecsRegistry() throws Exception {
+    Map<String, NativeSpec> nativeTypes =
+        nativeSpecs(readMap(specsRegistry().resolve(NATIVE_SPEC)));
+    List<String> expectedNative =
+        nativeTypes.values().stream()
+            .map(
+                spec ->
+                    String.join(
+                        "|",
+                        "native",
+                        "std.native." + spec.name,
+                        availability(spec.availability),
+                        spec.capability,
+                        "annotation",
+                        spec.methods.stream()
+                            .map(method -> "std.native." + spec.name + "/" + method)
+                            .sorted()
+                            .reduce((left, right) -> left + "," + right)
+                            .orElse("")))
+            .sorted()
+            .toList();
+    assertEquals(expectedNative, HaraDeclarationManifest.nativeManifest());
+
+    Map<String, ProtocolSpec> protocols =
+        protocolSpecs(readMap(specsRegistry().resolve(PROTOCOLS_SPEC)));
+    List<String> expectedProtocols =
+        protocols.values().stream()
+            .map(
+                spec ->
+                    String.join(
+                        "|",
+                        "protocol",
+                        "std.protocol." + spec.name.toLowerCase() + "." + spec.name,
+                        spec.name,
+                        availability(spec.availability),
+                        spec.capability,
+                        "annotation",
+                        spec.parents.stream().sorted().reduce((left, right) -> left + "," + right).orElse(""),
+                        spec.methods.entrySet().stream()
+                            .map(
+                                method ->
+                                    "std.protocol."
+                                        + spec.name.toLowerCase()
+                                        + "."
+                                        + spec.name
+                                        + "/"
+                                        + method.getKey()
+                                        + ":"
+                                        + method.getValue())
+                            .sorted()
+                            .reduce((left, right) -> left + "," + right)
+                            .orElse("")))
+            .sorted()
+            .toList();
+    assertEquals(expectedProtocols, HaraDeclarationManifest.protocolManifest());
+    assertTrue(
+        expectedProtocols.stream()
+            .anyMatch(line -> line.startsWith("protocol|std.protocol.icoll.IColl|")));
+    assertTrue(
+        expectedProtocols.stream()
+            .anyMatch(line -> line.startsWith("protocol|std.protocol.imetadata.IMetadata|")));
+  }
+
   private static Map<String, ProtocolSpec> protocolSpecs(IMapType contract) {
     Map<String, ProtocolSpec> result = new LinkedHashMap<>();
     readProtocolSection(contract, "protocols", HaraAvailability.PORTABLE, "", result);
@@ -243,6 +307,14 @@ public class HaraDeclarationCoverageTest {
   private static String symbol(Object value) {
     assertTrue("Expected symbol, got " + value, value instanceof Symbol);
     return ((Symbol) value).getName();
+  }
+
+  private static String availability(HaraAvailability availability) {
+    return switch (availability) {
+      case PORTABLE -> "portable";
+      case CAPABILITY_GATED -> "capability-gated";
+      case INVENTORY_ONLY -> "inventory-only";
+    };
   }
 
   private static List<String> symbols(Object value, String label) {

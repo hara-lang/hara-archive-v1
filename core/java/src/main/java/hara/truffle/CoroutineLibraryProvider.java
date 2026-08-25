@@ -14,6 +14,6 @@ public final class CoroutineLibraryProvider implements HaraLibraryProvider {
 
   @Override
   public void install(HaraContext context) {
-    context.installCoroutineLibrary();
+    context.installNativeLibrary(namespace());
   }
 }

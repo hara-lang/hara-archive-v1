@@ -24,7 +24,7 @@
     "Maths", "Num", "Bits", "Kernel", "Sandbox", "Package", "String", "Bytes", "Crypto",
     "OS", "Process", "File", "Socket", "Promise", "Coroutine", "Stream", "Arr", "Obj",
     "Runtime", "Printer", "Document", "Edn", "Json", "Host", "Test", "RegExp",
-    "Result", "Schema", "Error", "Base", "Algo", "Iter", "Work"
+    "Result", "Schema", "Exception", "Base", "Algo", "Iter", "Work"
   ],
   "authority": {
     "protocols": "01-lang/001-language/draft/conformance/protocols.edn",

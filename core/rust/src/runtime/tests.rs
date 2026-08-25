@@ -2341,8 +2341,8 @@ mod tests {
             assert!(
                 foundation
                     .resolve(&lang::data::Symbol::parse(name))
-                    .is_none(),
-                "std.foundation/{name} must not be a protocol alias"
+                    .is_some(),
+                "std.foundation/{name} must expose the annotated protocol"
             );
             for method in declaration.methods {
                 let canonical_method = namespace
@@ -2405,15 +2405,16 @@ mod tests {
             "IComponentQuery",
             "IComponentTrack",
         ] {
-            let namespace = crate::lang::protocol::find_protocol(protocol)
-                .expect("protocol declaration")
-                .runtime_name();
+            assert!(
+                crate::lang::protocol::find_protocol(protocol).is_none(),
+                "retired protocol {protocol} must not remain in the annotation registry"
+            );
             assert!(
                 runtime
-                    .eval_text(&format!("{namespace}/{protocol}"))
+                    .eval_text(&format!("std.protocol.{}.{}/{}", protocol.to_ascii_lowercase(), protocol, protocol))
                     .unwrap_err()
                     .contains("unbound symbol"),
-                "{namespace}/{protocol} must not be guest-visible"
+                "retired protocol {protocol} must not be guest-visible"
             );
             assert!(
                 runtime
@@ -2463,6 +2464,97 @@ mod tests {
                 .eval_text("(defprotocol PredicateProtocol (ready? [self]))")
                 .unwrap(),
             "#protocol[user/PredicateProtocol]"
+        );
+    }
+
+    #[test]
+    fn annotated_protocol_manifest_matches_the_specs_registry() {
+        let Some(source) = repo_text("01-lang/001-language/draft/conformance/protocols.edn")
+        else {
+            return;
+        };
+        let Form::Map(root) = kernel::parse_forms(&source).unwrap().remove(0) else {
+            panic!("protocol contract must be a map")
+        };
+        let mut expected = Vec::new();
+        for (section, availability, capability) in [
+            ("protocols", "portable", ""),
+            (
+                "capability-protocols",
+                "capability-gated",
+                "native-runtime-protocols",
+            ),
+        ] {
+            let Form::Vector(protocols) = conformance_entry(&root, section) else {
+                panic!(":{section} must be a vector")
+            };
+            for protocol in protocols {
+                let Form::Map(protocol) = protocol else {
+                    panic!("protocol entries must be maps")
+                };
+                let Form::Symbol(name) = conformance_entry(protocol, "name") else {
+                    panic!("protocol :name must be a symbol")
+                };
+                let parents = protocol
+                    .iter()
+                    .find_map(|(key, value)| {
+                        matches!(key, Form::Keyword(key) if key == "extends").then_some(value)
+                    })
+                    .map(|value| match value {
+                        Form::Vector(parents) => parents
+                            .iter()
+                            .map(|parent| match parent {
+                                Form::Symbol(parent) => parent.clone(),
+                                _ => panic!("protocol parents must be symbols"),
+                            })
+                            .collect::<Vec<_>>(),
+                        _ => panic!("protocol :extends must be a vector"),
+                    })
+                    .unwrap_or_default();
+                let Form::Map(methods) = conformance_entry(protocol, "methods") else {
+                    panic!("protocol :methods must be a map")
+                };
+                let namespace = format!(
+                    "std.protocol.{}.{}",
+                    name.to_ascii_lowercase(),
+                    name
+                );
+                let mut parents = parents;
+                parents.sort();
+                let mut methods = methods
+                    .iter()
+                    .map(|(method, arity)| {
+                        let Form::Symbol(method) = method else {
+                            panic!("protocol method names must be symbols")
+                        };
+                        let Form::Number(arity) = arity else {
+                            panic!("protocol method arities must be numbers")
+                        };
+                        format!("{namespace}/{method}:{arity}")
+                    })
+                    .collect::<Vec<_>>();
+                methods.sort();
+                expected.push(format!(
+                    "protocol|{namespace}|{name}|{availability}|{capability}|annotation|{}|{}",
+                    parents.join(","),
+                    methods.join(",")
+                ));
+            }
+        }
+        expected.sort();
+        let actual = core::protocol_manifest();
+        assert_eq!(expected, actual);
+        assert!(
+            actual
+                .iter()
+                .any(|line| line.starts_with("protocol|std.protocol.icoll.IColl|")),
+            "IColl must be present in the annotated protocol manifest"
+        );
+        assert!(
+            actual
+                .iter()
+                .any(|line| line.starts_with("protocol|std.protocol.imetadata.IMetadata|")),
+            "IMetadata must be present in the annotated protocol manifest"
         );
     }
 
@@ -3529,12 +3621,16 @@ mod tests {
             ));
         }
 
-        let runtime_inventory = core::NATIVE_TYPES
+        let runtime_inventory = core::native_declarations()
             .iter()
-            .map(|(name, methods)| {
+            .map(|declaration| {
                 (
-                    (*name).to_owned(),
-                    methods.iter().map(|method| (*method).to_owned()).collect(),
+                    declaration.name.to_owned(),
+                    declaration
+                        .methods
+                        .iter()
+                        .map(|method| (*method).to_owned())
+                        .collect(),
                 )
             })
             .collect::<Vec<(String, Vec<String>)>>();
@@ -8279,7 +8375,7 @@ mod tests {
 
     #[test]
     fn rust_native_work_handles_are_available_to_guest_hara() {
-        let mut runtime = Runtime::core();
+        let mut runtime = Runtime::new();
         assert_eq!(
             runtime
                 .eval_text(
@@ -8304,7 +8400,7 @@ mod tests {
 
     #[test]
     fn rust_native_scope_helpers_are_ordinary_work_native_functions() {
-        let mut runtime = Runtime::core();
+        let mut runtime = Runtime::new();
         assert_eq!(
             runtime
                 .eval_text(
@@ -8449,7 +8545,8 @@ mod tests {
                 .unwrap(),
             "117"
         );
-        for (native_type, _) in core::NATIVE_TYPES {
+        for declaration in core::native_declarations() {
+            let native_type = declaration.name;
             let expression = format!(
                 r#"(let [output
                          (get

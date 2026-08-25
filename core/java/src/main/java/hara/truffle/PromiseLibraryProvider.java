@@ -10,6 +10,6 @@ public final class PromiseLibraryProvider implements HaraLibraryProvider {
 
   @Override
   public void install(HaraContext context) {
-    context.installPromiseLibrary();
+    context.installNativeLibrary(namespace());
   }
 }

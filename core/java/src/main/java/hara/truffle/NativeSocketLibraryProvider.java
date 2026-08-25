@@ -10,6 +10,6 @@ public final class NativeSocketLibraryProvider implements HaraLibraryProvider {
 
   @Override
   public void install(HaraContext context) {
-    context.installSocketLibrary();
+    context.installNativeLibrary(namespace());
   }
 }

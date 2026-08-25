@@ -1781,15 +1781,6 @@ fn extension_protocol_call(
     })
 }
 
-fn extension_has_category(receiver: &ExtensionValue, category: &str) -> bool {
-    ACTIVE_PROTOCOLS.with(|active| {
-        active
-            .borrow()
-            .as_ref()
-            .is_some_and(|registry| registry.extension_has_category(receiver, category))
-    })
-}
-
 fn mutable_collection_satisfies(
     value: &Value,
     predicate: impl FnOnce(&MutableCollection) -> bool,

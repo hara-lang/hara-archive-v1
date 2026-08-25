@@ -243,10 +243,20 @@ pub enum NativeAvailability {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NativeOperationDeclaration {
+    pub name: &'static str,
+    pub arity: u16,
+}
+
+pub type NativeProvider = fn(&str, &str) -> Result<Value, String>;
+
+#[derive(Debug, Clone, Copy)]
 pub struct NativeDeclaration {
     pub namespace: &'static str,
     pub name: &'static str,
     pub methods: &'static [&'static str],
+    pub whole_wasm_methods: &'static [NativeOperationDeclaration],
+    pub provider: NativeProvider,
     pub availability: NativeAvailability,
     pub capability: Option<&'static str>,
 }
@@ -259,10 +269,16 @@ impl NativeDeclaration {
     pub fn method(self, name: &str) -> bool {
         self.methods.iter().any(|method| *method == name)
     }
+
+    pub fn whole_wasm_method(self, name: &str) -> Option<NativeOperationDeclaration> {
+        self.whole_wasm_methods
+            .iter()
+            .copied()
+            .find(|method| method.name == name)
+    }
 }
 
 pub const NATIVE_DECLARATIONS: &[NativeDeclaration] = DECLARATIONS_DECLARATIONS;
-pub const NATIVE_TYPES: &[(&str, &[&str])] = DECLARATIONS_TYPES;
 
 pub fn native_declarations() -> &'static [NativeDeclaration] {
     NATIVE_DECLARATIONS
@@ -286,6 +302,102 @@ pub fn native_type_values() -> Vec<(String, Value)> {
             )
         })
         .collect()
+}
+
+/// Returns the closed native declaration surface in a stable, comparison-friendly form.
+///
+/// This is intentionally a derived inspection view. The annotations remain the source of
+/// truth; the manifest only makes the Rust and Java declaration surfaces comparable in tests
+/// and diagnostics.
+pub fn native_manifest() -> Vec<String> {
+    let mut manifest = NATIVE_DECLARATIONS
+        .iter()
+        .map(|declaration| {
+            let mut methods = declaration
+                .methods
+                .iter()
+                .map(|method| format!("std.native.{}/{}", declaration.name, method))
+                .collect::<Vec<_>>();
+            methods.sort();
+            format!(
+                "native|std.native.{}|{}|{}|annotation|{}",
+                declaration.name,
+                native_availability_name(declaration.availability),
+                declaration.capability.unwrap_or_default(),
+                methods.join(",")
+            )
+        })
+        .collect::<Vec<_>>();
+    manifest.sort();
+    manifest
+}
+
+/// Returns the closed annotated protocol surface in a stable, comparison-friendly form.
+///
+/// Protocol method arities use the declaration arity (`-1` for variadic methods), and method
+/// entries carry their canonical runtime origin. Inherited methods are not copied into a child;
+/// the parent list is part of the manifest instead.
+pub fn protocol_manifest() -> Vec<String> {
+    let mut manifest = protocol_declarations()
+        .iter()
+        .map(|declaration| {
+            let mut parents = declaration
+                .parents
+                .iter()
+                .map(|parent| (*parent).to_owned())
+                .collect::<Vec<_>>();
+            parents.sort();
+            let mut methods = declaration
+                .methods
+                .iter()
+                .map(|method| {
+                    format!(
+                        "{}/{}:{}",
+                        declaration.runtime_name(),
+                        method.name,
+                        protocol_arity_name(method.arity)
+                    )
+                })
+                .collect::<Vec<_>>();
+            methods.sort();
+            format!(
+                "protocol|{}|{}|{}|{}|annotation|{}|{}",
+                declaration.runtime_name(),
+                declaration.name,
+                protocol_availability_name(declaration.availability),
+                declaration.capability.unwrap_or_default(),
+                parents.join(","),
+                methods.join(",")
+            )
+        })
+        .collect::<Vec<_>>();
+    manifest.sort();
+    manifest
+}
+
+fn native_availability_name(availability: NativeAvailability) -> &'static str {
+    match availability {
+        NativeAvailability::Portable => "portable",
+        NativeAvailability::CapabilityGated => "capability-gated",
+        NativeAvailability::InventoryOnly => "inventory-only",
+    }
+}
+
+fn protocol_availability_name(
+    availability: crate::lang::protocol::ProtocolAvailability,
+) -> &'static str {
+    match availability {
+        crate::lang::protocol::ProtocolAvailability::Portable => "portable",
+        crate::lang::protocol::ProtocolAvailability::CapabilityGated => "capability-gated",
+        crate::lang::protocol::ProtocolAvailability::InventoryOnly => "inventory-only",
+    }
+}
+
+fn protocol_arity_name(arity: crate::lang::protocol::ProtocolArity) -> String {
+    match arity {
+        crate::lang::protocol::ProtocolArity::Fixed(value) => value.to_string(),
+        crate::lang::protocol::ProtocolArity::Variadic { .. } => "-1".into(),
+    }
 }
 
 pub(crate) fn protocol_declarations() -> &'static [crate::lang::protocol::ProtocolDeclaration] {
@@ -519,6 +631,15 @@ mod native_work_protocol_tests {
         assert_eq!(
             canonical_native_symbol("Coroutine"),
             Some("std.native.Coroutine".into())
+        );
+    }
+
+    #[test]
+    fn native_registry_rejects_unknown_annotated_methods() {
+        let error = crate::core::native_type_function_value("String", "missing").unwrap_err();
+        assert_eq!(
+            error,
+            "unknown annotated native method: std.native.String/missing"
         );
     }
 

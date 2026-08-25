@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { decodeHta, encodeHta, HtaKeyword } from "./index.js";
+import { HTA_PROVIDER_EVENT, HTA_PROVIDER_EVENT_SCHEMA } from "./provider-common.mjs";
 import { createBrowserProvider } from "./provider-browser.mjs";
 
 class FakeWorkerScope {
@@ -111,4 +112,39 @@ test("provider cleanup failures are reported to the owning worker", async () => 
   assert.equal(scope.closed, false);
   assert.equal(scope.messages.at(-1).type, "fatal");
   assert.match(scope.messages.at(-1).error.message, /cleanup failed/);
+});
+
+test("browser providers expose the same lifecycle contract as Node", async () => {
+  const scope = new FakeWorkerScope();
+  const events = [];
+  const provider = createBrowserProvider(
+    async (operation, args) => `${operation}:${args[0]}`,
+    {
+      scope,
+      onEvent: event => events.push(event),
+      release: async () => {}
+    }
+  );
+
+  await provider.handle({ type: "call", id: 7, frame: encodeHta(["echo", [41]]) });
+  await provider.handle({ type: "release", frame: encodeHta(null) });
+  await provider.handle({ type: "close" });
+
+  assert.equal(decodeHta(scope.messages[0].frame), "echo:41");
+  assert.deepEqual(events.map(event => event.event), [
+    HTA_PROVIDER_EVENT.START,
+    HTA_PROVIDER_EVENT.CALL_ENTER,
+    HTA_PROVIDER_EVENT.CALL_RETURN,
+    HTA_PROVIDER_EVENT.RELEASE,
+    HTA_PROVIDER_EVENT.SHUTDOWN
+  ]);
+  assert.ok(events.every(event => event.schema === HTA_PROVIDER_EVENT_SCHEMA));
+  assert.deepEqual(events[1], {
+    schema: HTA_PROVIDER_EVENT_SCHEMA,
+    sequence: 2,
+    origin: "browser",
+    event: HTA_PROVIDER_EVENT.CALL_ENTER,
+    request: 7,
+    operation: "echo"
+  });
 });

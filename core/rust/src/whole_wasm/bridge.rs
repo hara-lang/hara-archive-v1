@@ -54,53 +54,61 @@ impl TargetKind {
 /// remain authoritative for operation identity and declaration validity. It
 /// is deliberately data-shaped: compiler code asks for an operation by its
 /// canonical key and the artifact carries the resulting local id.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OperationDeclaration {
-    pub key: &'static str,
+    pub key: String,
     pub kind: TargetKind,
     pub arity: Option<u16>,
 }
 
-const OPERATIONS: &[OperationDeclaration] = &[
-    OperationDeclaration {
-        key: MAP_CONSTRUCT,
-        kind: TargetKind::MapConstruct,
-        arity: None,
-    },
-    OperationDeclaration {
-        key: VECTOR_CONSTRUCT,
-        kind: TargetKind::VectorConstruct,
-        arity: None,
-    },
-    OperationDeclaration {
-        key: "std.native.Base/number?",
-        kind: TargetKind::Native,
-        arity: Some(1),
-    },
-    OperationDeclaration {
-        key: "std.protocol.iassoc.IAssoc/assoc",
-        kind: TargetKind::Protocol,
-        arity: Some(3),
-    },
-    OperationDeclaration {
-        key: "std.protocol.icount.ICount/count",
-        kind: TargetKind::Protocol,
-        arity: Some(1),
-    },
-    OperationDeclaration {
-        key: "std.protocol.ilookup.ILookup/lookup",
-        kind: TargetKind::Protocol,
-        arity: Some(2),
-    },
-    OperationDeclaration {
-        key: "std.protocol.inth.INth/nth",
-        kind: TargetKind::Protocol,
-        arity: Some(2),
-    },
-];
+static OPERATIONS: std::sync::OnceLock<Vec<OperationDeclaration>> = std::sync::OnceLock::new();
 
 pub fn operation_declarations() -> &'static [OperationDeclaration] {
     OPERATIONS
+        .get_or_init(|| {
+            let mut operations = vec![
+                OperationDeclaration {
+                    key: MAP_CONSTRUCT.to_owned(),
+                    kind: TargetKind::MapConstruct,
+                    arity: None,
+                },
+                OperationDeclaration {
+                    key: VECTOR_CONSTRUCT.to_owned(),
+                    kind: TargetKind::VectorConstruct,
+                    arity: None,
+                },
+            ];
+
+            for declaration in crate::core::native_declarations() {
+                for method in declaration.whole_wasm_methods {
+                    operations.push(OperationDeclaration {
+                        key: format!(
+                            "{}.{}/{}",
+                            declaration.namespace, declaration.name, method.name
+                        ),
+                        kind: TargetKind::Native,
+                        arity: Some(method.arity),
+                    });
+                }
+            }
+
+            for declaration in crate::lang::protocol::protocol_declarations() {
+                for method in declaration.methods.iter().filter(|method| method.whole_wasm) {
+                    let (minimum, _) = method.arity.range();
+                    operations.push(OperationDeclaration {
+                        key: format!("{}/{}", declaration.runtime_name(), method.name),
+                        kind: TargetKind::Protocol,
+                        arity: Some(
+                            u16::try_from(minimum)
+                                .expect("whole-Wasm protocol arity fits u16"),
+                        ),
+                    });
+                }
+            }
+
+            operations
+        })
+        .as_slice()
 }
 
 pub fn operation_id(key: &str) -> Result<i64, String> {
@@ -162,6 +170,15 @@ fn validate_native_operation(operation: &OperationDeclaration) -> Result<(), Str
     if !declared.method(method) {
         return Err(format!("native method is not declared: {}", operation.key));
     }
+    let declared_operation = declared
+        .whole_wasm_method(method)
+        .ok_or_else(|| format!("native method is not in the HNW0 registry: {}", operation.key))?;
+    if operation.arity != Some(declared_operation.arity) {
+        return Err(format!(
+            "HNW0 native operation arity does not match declaration: {}",
+            operation.key
+        ));
+    }
     Ok(())
 }
 
@@ -177,6 +194,12 @@ fn validate_protocol_operation(operation: &OperationDeclaration) -> Result<(), S
     let method_declaration = protocol
         .method(method)
         .ok_or_else(|| format!("protocol method is not declared: {}", operation.key))?;
+    if !method_declaration.whole_wasm {
+        return Err(format!(
+            "protocol method is not in the HNW0 registry: {}",
+            operation.key
+        ));
+    }
     let (minimum, _) = method_declaration.arity.range();
     if operation.arity != Some(u16::try_from(minimum).map_err(|_| {
         format!("protocol operation arity is too large: {}", operation.key)
@@ -221,7 +244,7 @@ pub fn validate_target_table(targets: &[TargetDescriptor]) -> Result<(), String>
         .enumerate()
     {
         if actual.id != u16::try_from(expected_id).expect("target inventory fits u16")
-            || actual.symbol != expected.key
+            || actual.symbol != expected.key.as_str()
             || actual.kind != expected.kind
             || actual.arity != expected.arity
         {

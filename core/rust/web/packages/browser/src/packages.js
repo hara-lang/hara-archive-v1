@@ -463,7 +463,11 @@ async function activateBrowserHtaExtensions(runtime, extensions, options = {}) {
         worker,
         providerUrl,
         descriptor: extension.descriptor,
-        hostCalls
+        hostCalls,
+        instrumentation: options.instrumentation === true || typeof options.onProviderEvent === "function",
+        onProviderEvent: typeof options.onProviderEvent === "function"
+          ? event => options.onProviderEvent(extension.namespace, event)
+          : undefined
       });
       record.context = context;
       const route = (operation, arguments_) => {

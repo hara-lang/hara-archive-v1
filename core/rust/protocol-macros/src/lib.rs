@@ -5,15 +5,33 @@ use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
 use syn::{
     parse_macro_input, Error, Ident, ItemMod, ItemTrait, LitBool, LitInt, LitStr, Result, Token,
-    TraitItem,
+    Path, TraitItem,
 };
 
 struct NativeArgs {
     namespace: Option<LitStr>,
     name: Option<LitStr>,
     methods: Vec<LitStr>,
+    whole_wasm_methods: Vec<NativeWholeWasmMethod>,
+    provider: Option<Path>,
     availability: LitStr,
     capability: Option<LitStr>,
+}
+
+struct NativeWholeWasmMethod {
+    name: LitStr,
+    arity: LitInt,
+}
+
+impl Parse for NativeWholeWasmMethod {
+    fn parse(input: ParseStream<'_>) -> Result<Self> {
+        let content;
+        syn::parenthesized!(content in input);
+        let name: LitStr = content.parse()?;
+        content.parse::<Token![,]>()?;
+        let arity: LitInt = content.parse()?;
+        Ok(Self { name, arity })
+    }
 }
 
 impl Default for NativeArgs {
@@ -22,6 +40,8 @@ impl Default for NativeArgs {
             namespace: None,
             name: None,
             methods: Vec::new(),
+            whole_wasm_methods: Vec::new(),
+            provider: None,
             availability: LitStr::new("portable", proc_macro2::Span::call_site()),
             capability: None,
         }
@@ -46,6 +66,15 @@ impl Parse for NativeArgs {
                         .into_iter()
                         .collect();
                 }
+                "whole_wasm_methods" => {
+                    let content;
+                    syn::bracketed!(content in input);
+                    args.whole_wasm_methods =
+                        Punctuated::<NativeWholeWasmMethod, Token![,]>::parse_terminated(&content)?
+                            .into_iter()
+                            .collect();
+                }
+                "provider" => args.provider = Some(input.parse()?),
                 _ => return Err(Error::new(key.span(), "unknown hara_native option")),
             }
             if input.peek(Token![,]) {
@@ -110,6 +139,12 @@ fn expand_native_registry(mut input: ItemMod) -> Result<proc_macro2::TokenStream
         let name = args
             .name
             .ok_or_else(|| Error::new_spanned(&native_type.ident, "hara_native requires name"))?;
+        let provider = args.provider.ok_or_else(|| {
+            Error::new_spanned(
+                &native_type.ident,
+                "hara_native requires a provider function",
+            )
+        })?;
         if namespace.value() != "std.native" {
             return Err(Error::new_spanned(
                 &namespace,
@@ -146,6 +181,20 @@ fn expand_native_registry(mut input: ItemMod) -> Result<proc_macro2::TokenStream
                 ));
             }
         }
+        for method in &args.whole_wasm_methods {
+            if !method_names.contains(&method.name.value()) {
+                return Err(Error::new_spanned(
+                    &method.name,
+                    "hara_native whole-Wasm methods must be listed in methods",
+                ));
+            }
+            if method.arity.base10_parse::<u16>().is_err() {
+                return Err(Error::new_spanned(
+                    &method.arity,
+                    "hara_native whole-Wasm method arity must fit u16",
+                ));
+            }
+        }
         match (args.availability.value().as_str(), args.capability.as_ref()) {
             ("capability-gated", None) => {
                 return Err(Error::new_spanned(
@@ -179,11 +228,27 @@ fn expand_native_registry(mut input: ItemMod) -> Result<proc_macro2::TokenStream
             None => quote!(None),
         };
         let methods = args.methods;
+        let whole_wasm_methods = args
+            .whole_wasm_methods
+            .into_iter()
+            .map(|method| {
+                let name = method.name;
+                let arity = method.arity.base10_parse::<u16>().expect("validated above");
+                quote! {
+                    crate::core::NativeOperationDeclaration {
+                        name: #name,
+                        arity: #arity,
+                    }
+                }
+            })
+            .collect::<Vec<_>>();
         declarations.push(quote! {
             crate::core::NativeDeclaration {
                 namespace: #namespace,
                 name: #name,
                 methods: &[#(#methods),*],
+                whole_wasm_methods: &[#(#whole_wasm_methods),*],
+                provider: #provider,
                 availability: #availability,
                 capability: #capability,
             }
@@ -200,10 +265,6 @@ fn expand_native_registry(mut input: ItemMod) -> Result<proc_macro2::TokenStream
 
     let declaration_table =
         format_ident!("{}_DECLARATIONS", input.ident.to_string().to_uppercase());
-    let type_table = format_ident!("{}_TYPES", input.ident.to_string().to_uppercase());
-    let declaration_methods = declarations
-        .iter()
-        .map(|declaration| quote!(((#declaration).name, (#declaration).methods)));
 
     Ok(quote! {
         #input
@@ -211,11 +272,6 @@ fn expand_native_registry(mut input: ItemMod) -> Result<proc_macro2::TokenStream
         #[doc(hidden)]
         pub(crate) const #declaration_table: &[crate::core::NativeDeclaration] = &[
             #(#declarations),*
-        ];
-
-        #[doc(hidden)]
-        pub(crate) const #type_table: &[(&str, &[&str])] = &[
-            #(#declaration_methods),*
         ];
     })
 }
@@ -305,6 +361,7 @@ struct MethodArgs {
     variadic: bool,
     min_arity: Option<usize>,
     max_arity: Option<usize>,
+    whole_wasm: bool,
 }
 
 impl Default for MethodArgs {
@@ -315,6 +372,7 @@ impl Default for MethodArgs {
             variadic: false,
             min_arity: None,
             max_arity: None,
+            whole_wasm: false,
         }
     }
 }
@@ -326,6 +384,7 @@ impl Parse for MethodArgs {
             let key: Ident = input.parse()?;
             match key.to_string().as_str() {
                 "variadic" if !input.peek(Token![=]) => args.variadic = true,
+                "whole_wasm" if !input.peek(Token![=]) => args.whole_wasm = true,
                 _ => {
                     input.parse::<Token![=]>()?;
                     match key.to_string().as_str() {
@@ -342,6 +401,7 @@ impl Parse for MethodArgs {
                             args.arity = Some(if negative { -value } else { value });
                         }
                         "variadic" => args.variadic = input.parse::<LitBool>()?.value,
+                        "whole_wasm" => args.whole_wasm = input.parse::<LitBool>()?.value,
                         "min_arity" => {
                             let value: LitInt = input.parse()?;
                             args.min_arity = Some(value.base10_parse()?);
@@ -436,6 +496,7 @@ fn method_declaration(
     };
 
     let method_name = value.value();
+    let whole_wasm = args.whole_wasm;
     Ok((
         method_name,
         quote! {
@@ -443,6 +504,7 @@ fn method_declaration(
                 name: #value,
                 rust_name: #rust_name,
                 arity: #arity_value,
+                whole_wasm: #whole_wasm,
             }
         },
     ))
@@ -513,6 +575,7 @@ fn expand_protocol(args: ProtocolArgs, input: &mut ItemTrait) -> Result<proc_mac
                 name: #name,
                 rust_name: #rust_name,
                 arity: crate::lang::protocol::ProtocolArity::Fixed(#arity),
+                whole_wasm: false,
             }
         });
     }

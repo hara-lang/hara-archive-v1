@@ -1,9 +1,11 @@
 import { decodeHta, encodeHta, HTA_MAX_FRAME_BYTES } from "./index.js";
 import { createBrowserProvider } from "./provider-browser.mjs";
+import { createProviderLifecycle, HTA_PROVIDER_EVENT, providerErrorCode } from "./provider-common.mjs";
 
 let instance;
 let abiVersion;
 let backend;
+let lifecycle;
 const requests = new Map();
 const tasks = new Map();
 const hostTasks = new Map();
@@ -64,10 +66,15 @@ async function receive(message) {
     if (backend?.kind !== "wasm") throw new Error("hta/worker-not-initialized");
     if (message.type === "call") {
       const session = requestSession(message.frame);
+      const [operation] = decodeHta(message.frame);
       const task = Number(callFrame(instance.exports.hta_start, message.frame));
       if (task <= 0) throw new Error("hta/start-failed");
       requests.set(message.id, task);
-      tasks.set(task, { id: message.id, session });
+      tasks.set(task, { id: message.id, session, operation: String(operation) });
+      lifecycle?.emit(HTA_PROVIDER_EVENT.CALL_ENTER, {
+        request: Number(message.id),
+        operation: String(operation)
+      });
       pump();
     } else if (message.type === "delivery") {
       const task = hostTasks.get(message.call);
@@ -85,6 +92,7 @@ async function receive(message) {
     } else if (message.type === "cancel") {
       const task = requests.get(message.id);
       if (task !== undefined) {
+        const request = tasks.get(task);
         const cancelStatus = instance.exports.hta_cancel(BigInt(task));
         const dropStatus = instance.exports.hta_drop_task(BigInt(task));
         requests.delete(message.id);
@@ -92,16 +100,25 @@ async function receive(message) {
         removeHostTasks(task);
         if (cancelStatus !== 0) throw new Error(`hta/cancel-failed: ${cancelStatus}`);
         if (dropStatus !== 0) throw new Error(`hta/drop-task-failed: ${dropStatus}`);
+        lifecycle?.emit(HTA_PROVIDER_EVENT.CANCEL, {
+          request: Number(message.id),
+          operation: request?.operation
+        });
         pump();
       }
     } else if (message.type === "release") {
       const status = callFrame(instance.exports.hta_release, message.frame);
       if (Number(status) !== 0) throw new Error(`hta/handle-release-failed: ${status}`);
+      lifecycle?.emit(HTA_PROVIDER_EVENT.RELEASE, { status: "ok" });
       pump();
     } else if (message.type === "close") {
       closeWasm();
     }
   } catch (error) {
+    lifecycle?.emit(HTA_PROVIDER_EVENT.FAILURE, {
+      status: "error",
+      code: providerErrorCode(error)
+    });
     self.postMessage({ type: "fatal", error: { message: String(error?.message ?? error) } });
   }
 }
@@ -124,7 +141,10 @@ async function initialize(message) {
         scope: self,
         errorCode: message.errorCode,
         close: close === undefined ? undefined : () => close(),
-        release: providerModule.release
+        release: providerModule.release,
+        onEvent: message.instrumentation
+          ? event => self.postMessage({ type: "provider-event", event })
+          : undefined
       })
     };
     self.postMessage({ type: "ready" });
@@ -147,6 +167,13 @@ async function initialize(message) {
   }
   instance = (await WebAssembly.instantiate(bytes, imports)).instance;
   required();
+  lifecycle = createProviderLifecycle({
+    origin: "browser-wasm",
+    onEvent: message.instrumentation
+      ? event => self.postMessage({ type: "provider-event", event })
+      : undefined
+  });
+  lifecycle.emit(HTA_PROVIDER_EVENT.START);
   backend = { kind: "wasm" };
   self.postMessage({ type: "ready" });
 }
@@ -218,10 +245,24 @@ function pump() {
       removeHostTasks(task);
       instance.exports.hta_drop_task(BigInt(task));
       self.postMessage({ type: "result", id: request.id, ok: kind === 0, frame: encodeHta(event[2]) });
+      lifecycle?.emit(kind === 0 ? HTA_PROVIDER_EVENT.CALL_RETURN : HTA_PROVIDER_EVENT.CALL_ERROR, {
+        request: request.id,
+        operation: request.operation,
+        status: kind === 0 ? "ok" : "error"
+      });
     } else if (kind === 2) {
       const call = Number(event[1]);
       const task = Number(event[2]);
       hostTasks.set(call, task);
+      const request = tasks.get(task);
+      lifecycle?.emit(HTA_PROVIDER_EVENT.HOST_CALL, {
+        request: request?.id,
+        task,
+        call,
+        service: String(abiVersion >= 2 ? event[5] : event[3]),
+        method: String(abiVersion >= 2 ? event[6] : event[4]),
+        status: "enter"
+      });
       if (abiVersion >= 2) {
         self.postMessage({
           type: "host-call", call, task, session: event[3], mount: event[4] ?? null,
@@ -254,6 +295,8 @@ function closeWasm() {
   requests.clear();
   tasks.clear();
   hostTasks.clear();
+  lifecycle?.emit(HTA_PROVIDER_EVENT.TERMINAL, { status: "ok" });
+  lifecycle?.shutdown({ status: "ok" });
   self.postMessage({type:"closed"});
   self.close();
 }

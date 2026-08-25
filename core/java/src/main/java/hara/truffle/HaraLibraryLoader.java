@@ -19,7 +19,21 @@ final class HaraLibraryLoader {
     List<HaraLibraryProvider> providers = new ArrayList<>();
     discovered.forEach(providers::add);
     providers.sort(java.util.Comparator.comparingInt(HaraLibraryProvider::order));
-    for (HaraLibraryProvider provider : providers) this.providers.put(provider.namespace(), provider);
+    for (HaraLibraryProvider provider : providers) {
+      validateNativeProvider(provider);
+      if (this.providers.put(provider.namespace(), provider) != null) {
+        throw new HaraException("Duplicate library provider namespace: " + provider.namespace());
+      }
+    }
+  }
+
+  private static void validateNativeProvider(HaraLibraryProvider provider) {
+    String namespace = provider.namespace();
+    if (!namespace.startsWith("std.native.")) return;
+    String nativeType = namespace.substring("std.native.".length());
+    if (!HaraNativeDeclarations.namespace(nativeType).equals(namespace)) {
+      throw new HaraException("Native library provider is not annotated: " + namespace);
+    }
   }
 
   private static Iterable<HaraLibraryProvider> discover() {

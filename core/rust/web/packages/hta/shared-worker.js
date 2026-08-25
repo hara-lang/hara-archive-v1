@@ -1,4 +1,5 @@
 import { decodeHta, encodeHta, HTA_MAX_FRAME_BYTES } from "./index.js";
+import { createBrowserProvider } from "./provider-browser.mjs";
 
 // One raw HTA instance shared by every same-origin tab. Each MessagePort owns
 // its request IDs and host calls, while the task table associates kernel work
@@ -6,6 +7,7 @@ import { decodeHta, encodeHta, HTA_MAX_FRAME_BYTES } from "./index.js";
 let instance;
 let boot;
 const clients = new Map();
+const providers = new Map();
 const tasks = new Map();
 const hostCalls = new Map();
 
@@ -19,9 +21,22 @@ self.onconnect = (event) => {
 async function receive(port, message) {
   try {
     if (message.type === "init") {
+      if (message.backend === "provider") {
+        await initializeProvider(port, message);
+        port.postMessage({ type: "ready" });
+        return;
+      }
       boot ??= instantiate(message);
       await boot;
       port.postMessage({ type: "ready" });
+    } else if (providers.has(port)) {
+      const provider = providers.get(port);
+      await provider.handle(message);
+      if (message.type === "close") {
+        providers.delete(port);
+        clients.delete(port);
+        port.postMessage({ type: "closed" });
+      }
     } else if (message.type === "call") {
       await boot;
       const session = requestSession(message.frame);
@@ -60,6 +75,31 @@ async function receive(port, message) {
   } catch (error) {
     failPort(port, error);
   }
+}
+
+async function initializeProvider(port, message) {
+  if (providers.has(port)) throw new Error("hta/worker-already-initialized");
+  if (typeof message.providerUrl !== "string") throw new Error("hta/provider-missing");
+  const providerModule = await import(message.providerUrl);
+  const call = providerModule.default ?? providerModule.call ?? providerModule.provider;
+  if (typeof call !== "function") throw new Error("hta/provider-invalid");
+  const close = providerModule.close ?? providerModule.closeAll;
+  if (close !== undefined && typeof close !== "function") {
+    throw new Error("hta/provider-close-invalid");
+  }
+  if (providerModule.release !== undefined && typeof providerModule.release !== "function") {
+    throw new Error("hta/provider-release-invalid");
+  }
+  providers.set(port, createBrowserProvider(call, {
+    scope: { postMessage: value => port.postMessage(value) },
+    origin: "shared-worker",
+    errorCode: message.errorCode,
+    close: close === undefined ? undefined : () => close(),
+    release: providerModule.release,
+    onEvent: message.instrumentation
+      ? event => port.postMessage({ type: "provider-event", event })
+      : undefined
+  }));
 }
 
 async function instantiate(message) {

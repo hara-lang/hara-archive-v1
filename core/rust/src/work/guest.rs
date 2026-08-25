@@ -154,16 +154,28 @@ fn host(arguments: &[Value], arity: usize) -> Result<WorkHost, String> {
             "native WorkHost operation expects {arity} arguments"
         ));
     }
-    match arguments.first() {
-        Some(Value::Extension(value))
+    if arguments.first().is_some_and(is_work_host) {
+        Ok(process_work_host())
+    } else {
+        Err("native WorkHost operation requires a native work host".into())
+    }
+}
+
+fn is_work_host(value: &Value) -> bool {
+    matches!(
+        value,
+        Value::Extension(value)
             if value.provider == PROVIDER
                 && value.type_name == HOST_TYPE
-                && value.handle == HOST_HANDLE =>
-        {
-            Ok(process_work_host())
-        }
-        _ => Err("native WorkHost operation requires a native work host".into()),
-    }
+                && value.handle == HOST_HANDLE
+    )
+}
+
+fn is_work_run(value: &Value) -> bool {
+    matches!(
+        value,
+        Value::Extension(value) if value.provider == PROVIDER && value.type_name == RUN_TYPE
+    )
 }
 
 fn run(arguments: &[Value], arity: usize) -> Result<WorkRun, String> {
@@ -173,11 +185,7 @@ fn run(arguments: &[Value], arity: usize) -> Result<WorkRun, String> {
         ));
     }
     let handle = match arguments.first() {
-        Some(Value::Extension(value))
-            if value.provider == PROVIDER && value.type_name == RUN_TYPE =>
-        {
-            value.handle
-        }
+        Some(Value::Extension(value)) if is_work_run(&arguments[0]) => value.handle,
         _ => return Err("native WorkRun operation requires a native work run".into()),
     };
     HANDLES.with(|handles| {
@@ -348,22 +356,16 @@ fn closed(arguments: &[Value]) -> Result<Value, String> {
 }
 
 pub(crate) fn install(protocols: &mut ProtocolRegistry) {
-    protocols.register_extension(PROVIDER, HOST_TYPE, "IWorkHost", "work-submit", work_submit);
-    protocols.register_extension(
-        PROVIDER,
-        HOST_TYPE,
-        "IWorkHost",
-        "work-resolve",
-        work_resolve,
-    );
-    protocols.register_extension(PROVIDER, RUN_TYPE, "IWorkRef", "work-id", work_id);
-    protocols.register_extension(PROVIDER, RUN_TYPE, "IWorkRun", "work-status", work_status);
-    protocols.register_extension(PROVIDER, RUN_TYPE, "IWorkRun", "work-result", work_result);
-    protocols.register_extension(PROVIDER, RUN_TYPE, "IWorkRun", "work-events", work_events);
-    protocols.register_extension(PROVIDER, RUN_TYPE, "IWorkRun", "work-cancel", work_cancel);
-    protocols.register_extension(PROVIDER, RUN_TYPE, "IClosed", "closed?", closed);
+    protocols.register_when("IWorkHost", "work-submit", is_work_host, work_submit);
+    protocols.register_when("IWorkHost", "work-resolve", is_work_host, work_resolve);
+    protocols.register_when("IWorkRef", "work-id", is_work_run, work_id);
+    protocols.register_when("IWorkRun", "work-status", is_work_run, work_status);
+    protocols.register_when("IWorkRun", "work-result", is_work_run, work_result);
+    protocols.register_when("IWorkRun", "work-events", is_work_run, work_events);
+    protocols.register_when("IWorkRun", "work-cancel", is_work_run, work_cancel);
+    protocols.register_when("IClosed", "closed?", is_work_run, closed);
 
-    protocols.register_extension(PROVIDER, HOST_TYPE, "IComponent", "props", |_| {
+    protocols.register_when("IComponent", "props", is_work_host, |_| {
         Ok(Value::Map(
             [(
                 Value::Keyword("work/host".into()),
@@ -373,32 +375,32 @@ pub(crate) fn install(protocols: &mut ProtocolRegistry) {
             .collect(),
         ))
     });
-    protocols.register_extension(PROVIDER, HOST_TYPE, "IComponent", "status", |arguments| {
+    protocols.register_when("IComponent", "status", is_work_host, |arguments| {
         let status = host(arguments, 1)?.status();
         Ok(Value::Keyword(status.state.into()))
     });
-    protocols.register_extension(PROVIDER, HOST_TYPE, "IComponent", "started?", |arguments| {
+    protocols.register_when("IComponent", "started?", is_work_host, |arguments| {
         Ok(Value::Bool(host(arguments, 1)?.started()))
     });
-    protocols.register_extension(PROVIDER, HOST_TYPE, "IComponent", "stopped?", |arguments| {
+    protocols.register_when("IComponent", "stopped?", is_work_host, |arguments| {
         Ok(Value::Bool(!host(arguments, 1)?.started()))
     });
-    protocols.register_extension(PROVIDER, HOST_TYPE, "IComponent", "start", |arguments| {
+    protocols.register_when("IComponent", "start", is_work_host, |arguments| {
         let host = host(arguments, 1)?;
         host.start();
         Ok(default_host_value())
     });
-    protocols.register_extension(PROVIDER, HOST_TYPE, "IComponent", "stop", |arguments| {
+    protocols.register_when("IComponent", "stop", is_work_host, |arguments| {
         let host = host(arguments, 1)?;
         host.stop();
         Ok(default_host_value())
     });
-    protocols.register_extension(PROVIDER, HOST_TYPE, "IComponent", "kill", |arguments| {
+    protocols.register_when("IComponent", "kill", is_work_host, |arguments| {
         let host = host(arguments, 1)?;
         host.kill();
         Ok(default_host_value())
     });
-    protocols.register_extension(PROVIDER, HOST_TYPE, "IComponent", "remote?", |arguments| {
+    protocols.register_when("IComponent", "remote?", is_work_host, |arguments| {
         host(arguments, 1)?;
         Ok(Value::Bool(false))
     });

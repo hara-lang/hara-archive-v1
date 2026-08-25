@@ -1,5 +1,11 @@
 import { decodeHta, encodeHta, HtaKeyword } from "./index.js";
-import { providerError, toHta } from "./provider-common.mjs";
+import {
+  createProviderLifecycle,
+  HTA_PROVIDER_EVENT,
+  providerError,
+  providerErrorCode,
+  toHta
+} from "./provider-common.mjs";
 
 function errorFrom(value) {
   if (value instanceof Error) return value;
@@ -29,6 +35,10 @@ function errorFrom(value) {
  */
 export function createBrowserProvider(call, options = {}) {
   const scope = options.scope ?? self;
+  const lifecycle = createProviderLifecycle({
+    origin: options.origin ?? "browser",
+    onEvent: options.onEvent
+  });
   const cancelled = new Set();
   const calls = new Map();
   const hostCalls = new Map();
@@ -36,6 +46,8 @@ export function createBrowserProvider(call, options = {}) {
   let nextHostCall = 0;
   let closing = false;
   let closed = false;
+
+  lifecycle.emit(HTA_PROVIDER_EVENT.START);
 
   function rejectHostCalls(error) {
     for (const pending of hostCalls.values()) pending.reject(error);
@@ -45,6 +57,13 @@ export function createBrowserProvider(call, options = {}) {
   function hostCall(service, method, args = [], metadata = {}) {
     if (closed) return Promise.reject(new Error("hta/provider-closed"));
     const id = ++nextHostCall;
+    const eventFields = {
+      ...(metadata.request === undefined ? {} : { request: Number(metadata.request) }),
+      ...(metadata.task === undefined ? {} : { task: Number(metadata.task) }),
+      call: id,
+      service: String(service),
+      method: String(method)
+    };
     const signal = Object.hasOwn(metadata, "signal") ? metadata.signal : undefined;
     return new Promise((resolve, reject) => {
       let abort;
@@ -54,9 +73,15 @@ export function createBrowserProvider(call, options = {}) {
         cleanup();
         const error = new Error("hta/host-call-cancelled");
         error.code = "hta/host-call-cancelled";
+        lifecycle.emit(HTA_PROVIDER_EVENT.HOST_CALL, {
+          ...eventFields,
+          status: "error",
+          code: error.code
+        });
         reject(error);
       };
       hostCalls.set(id, {
+        eventFields,
         resolve(value) {
           cleanup();
           resolve(value);
@@ -81,6 +106,7 @@ export function createBrowserProvider(call, options = {}) {
         task: metadata.task,
         frame: encodeHta(toHta(args))
       });
+      lifecycle.emit(HTA_PROVIDER_EVENT.HOST_CALL, { ...eventFields, status: "enter" });
     });
   }
 
@@ -103,6 +129,18 @@ export function createBrowserProvider(call, options = {}) {
     } finally {
       rejectHostCalls(error);
       closed = true;
+      if (failure) {
+        lifecycle.emit(HTA_PROVIDER_EVENT.FAILURE, {
+          status: "error",
+          code: providerErrorCode(failure, options.errorCode)
+        });
+      }
+      lifecycle.shutdown({
+        status: failure === null ? "ok" : "error",
+        ...(failure === null
+          ? {}
+          : { code: providerErrorCode(failure, options.errorCode) })
+      });
     }
     if (failure) {
       scope.postMessage({
@@ -120,7 +158,13 @@ export function createBrowserProvider(call, options = {}) {
         hostCalls.delete(message.call);
         try {
           const value = decodeHta(message.frame);
-          message.ok ? pending.resolve(value) : pending.reject(errorFrom(value));
+          const error = message.ok ? null : errorFrom(value);
+          lifecycle.emit(HTA_PROVIDER_EVENT.HOST_CALL, {
+            ...pending.eventFields,
+            status: message.ok ? "ok" : "error",
+            ...(error ? { code: providerErrorCode(error, options.errorCode) } : {})
+          });
+          message.ok ? pending.resolve(value) : pending.reject(error);
         } catch (error) {
           pending.reject(error);
         }
@@ -132,6 +176,13 @@ export function createBrowserProvider(call, options = {}) {
         releases.add(release);
         try {
           await release;
+          lifecycle.emit(HTA_PROVIDER_EVENT.RELEASE, { status: "ok" });
+        } catch (error) {
+          lifecycle.emit(HTA_PROVIDER_EVENT.RELEASE, {
+            status: "error",
+            code: providerErrorCode(error, options.errorCode)
+          });
+          throw error;
         } finally {
           releases.delete(release);
         }
@@ -140,21 +191,27 @@ export function createBrowserProvider(call, options = {}) {
         if (controller) {
           cancelled.add(message.id);
           controller.abort(new Error("cancelled"));
+          lifecycle.emit(HTA_PROVIDER_EVENT.CANCEL, { request: Number(message.id) });
         }
       } else if (message.type === "close") {
         await closeProvider();
       } else if (message.type === "call") {
         if (closing) throw new Error("hta/provider-closed");
         const [operation, args] = decodeHta(message.frame);
+        lifecycle.emit(HTA_PROVIDER_EVENT.CALL_ENTER, {
+          request: Number(message.id),
+          operation: String(operation)
+        });
         const controller = new AbortController();
         calls.set(message.id, controller);
         const context = Object.freeze({
           signal: controller.signal,
           hostCall(service, method, values = [], metadata = {}) {
             return hostCall(service, method, values, {
-              ...metadata,
-              task: metadata.task ?? message.id,
-              signal: Object.hasOwn(metadata, "signal") ? metadata.signal : controller.signal
+            ...metadata,
+            task: metadata.task ?? message.id,
+            request: metadata.request ?? message.id,
+            signal: Object.hasOwn(metadata, "signal") ? metadata.signal : controller.signal
             });
           }
         });
@@ -167,6 +224,11 @@ export function createBrowserProvider(call, options = {}) {
               ok: true,
               frame: encodeHta(toHta(value))
             });
+            lifecycle.emit(HTA_PROVIDER_EVENT.CALL_RETURN, {
+              request: Number(message.id),
+              operation: String(operation),
+              status: "ok"
+            });
           }
         } catch (error) {
           if (!cancelled.has(message.id) && !closing) {
@@ -175,6 +237,12 @@ export function createBrowserProvider(call, options = {}) {
               id: message.id,
               ok: false,
               frame: encodeHta(providerError(error, "browser", options.errorCode))
+            });
+            lifecycle.emit(HTA_PROVIDER_EVENT.CALL_ERROR, {
+              request: Number(message.id),
+              operation: String(operation),
+              status: "error",
+              code: providerErrorCode(error, options.errorCode)
             });
           }
         } finally {

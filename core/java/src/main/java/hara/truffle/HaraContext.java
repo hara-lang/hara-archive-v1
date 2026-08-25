@@ -68,6 +68,7 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import java.util.function.DoubleUnaryOperator;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -76,6 +77,43 @@ public final class HaraContext {
   private static final String INTRINSIC_NAMESPACE = "hara.lang.intrinsic";
   private static final String FOUNDATION_NAMESPACE = "std.foundation";
   private static final String PROTOCOL_NAMESPACE_PREFIX = "std.protocol.";
+  private record NativeLibraryInstaller(HaraVar.Origin origin, Consumer<HaraContext> install) {}
+
+  private static final Map<String, NativeLibraryInstaller> NATIVE_LIBRARY_INSTALLERS =
+      Map.ofEntries(
+          Map.entry(
+              "std.native.String",
+              new NativeLibraryInstaller(
+                  HaraVar.Origin.RUNTIME_PRIMITIVE, HaraContext::defineStringLibrary)),
+          Map.entry(
+              "std.native.Bytes",
+              new NativeLibraryInstaller(
+                  HaraVar.Origin.RUNTIME_PRIMITIVE, HaraContext::defineBytesLibrary)),
+          Map.entry(
+              "std.native.Promise",
+              new NativeLibraryInstaller(
+                  HaraVar.Origin.RUNTIME_PRIMITIVE, HaraContext::definePromiseLibrary)),
+          Map.entry(
+              "std.native.Coroutine",
+              new NativeLibraryInstaller(
+                  HaraVar.Origin.RUNTIME_PRIMITIVE,
+                  context -> StdFoundationCoroutine.install(context, "std.native.Coroutine"))),
+          Map.entry(
+              "std.native.File",
+              new NativeLibraryInstaller(
+                  HaraVar.Origin.JAVA_LIBRARY, HaraContext::defineFileLibrary)),
+          Map.entry(
+              "std.native.Json",
+              new NativeLibraryInstaller(
+                  HaraVar.Origin.JAVA_LIBRARY, HaraContext::defineJsonLibrary)),
+          Map.entry(
+              "std.native.Socket",
+              new NativeLibraryInstaller(
+                  HaraVar.Origin.JAVA_LIBRARY, HaraContext::defineSocketLibrary)),
+          Map.entry(
+              "std.native.OS",
+              new NativeLibraryInstaller(
+                  HaraVar.Origin.JAVA_LIBRARY, HaraContext::defineOsLibrary)));
   private final TruffleLanguage.Env environment;
   private final ThreadLocal<Deque<OutputStream>> printerOutputs =
       ThreadLocal.withInitial(ArrayDeque::new);
@@ -3229,12 +3267,12 @@ public final class HaraContext {
     target.define("array", new VariadicBuiltin("array", HaraArray::new));
     target.define("object", new VariadicBuiltin("object", HaraObject::new));
     HaraNamespace arr = namespace("std.native.Arr");
-    for (String method : java.util.List.of("get", "set", "push-first", "push-last", "pop-first", "pop-last", "insert", "remove", "clone", "slice", "map", "filter", "fold-left", "fold-right")) {
+    for (String method : HaraNativeDeclarations.methods("Arr")) {
       arr.define(method, new VariadicBuiltin("std.native.Arr/" + method,
           values -> nativeMutableCall("Arr", method, values)));
     }
     HaraNamespace obj = namespace("std.native.Obj");
-    for (String method : java.util.List.of("get", "set", "has?", "delete", "clone", "assign", "keys", "vals", "pairs")) {
+    for (String method : HaraNativeDeclarations.methods("Obj")) {
       obj.define(method, new VariadicBuiltin("std.native.Obj/" + method,
           values -> nativeMutableCall("Obj", method, values)));
     }
@@ -4688,16 +4726,18 @@ public final class HaraContext {
 
   }
 
-  void installStringLibrary() {
-    withDefinitionOrigin(HaraVar.Origin.RUNTIME_PRIMITIVE, this::defineStringLibrary);
-  }
-
-  void installCoroutineLibrary() {
-    withDefinitionOrigin(
-        HaraVar.Origin.RUNTIME_PRIMITIVE,
-        () -> {
-          StdFoundationCoroutine.install(this, "std.native.Coroutine");
-        });
+  void installNativeLibrary(String namespace) {
+    NativeLibraryInstaller installer = NATIVE_LIBRARY_INSTALLERS.get(namespace);
+    if (installer == null) {
+      throw new HaraException("No registered native library installer: " + namespace);
+    }
+    String nativeType = namespace.startsWith("std.native.")
+        ? namespace.substring("std.native.".length())
+        : namespace;
+    if (!HaraNativeDeclarations.namespace(nativeType).equals(namespace)) {
+      throw new HaraException("Native library is not annotated: " + namespace);
+    }
+    withDefinitionOrigin(installer.origin(), () -> installer.install().accept(this));
   }
 
   private void defineStringLibrary() {
@@ -4794,10 +4834,6 @@ public final class HaraContext {
     string.define("to-fixed", new VariadicBuiltin("str/to-fixed", this::stringToFixed));
   }
 
-  void installBytesLibrary() {
-    withDefinitionOrigin(HaraVar.Origin.RUNTIME_PRIMITIVE, this::defineBytesLibrary);
-  }
-
   private void defineBytesLibrary() {
     HaraNamespace bytes = namespace("std.native.Bytes");
     bytes.define("new", new VariadicBuiltin("std.native.Bytes/new", this::createBytes));
@@ -4813,10 +4849,6 @@ public final class HaraContext {
         "u8", new UnaryBuiltin("bytes/u8", value -> (long) (byteNumber(value, "bytes/u8") & 0xff)));
     bytes.define(
         "s8", new UnaryBuiltin("bytes/s8", value -> (long) (byte) byteNumber(value, "bytes/s8")));
-  }
-
-  void installPromiseLibrary() {
-    withDefinitionOrigin(HaraVar.Origin.RUNTIME_PRIMITIVE, this::definePromiseLibrary);
   }
 
   private void definePromiseLibrary() {
@@ -4841,14 +4873,6 @@ public final class HaraContext {
         new UnaryBuiltin(
             "promise/cancel", value -> requirePromise(value, "promise/cancel").cancel()));
     promise.define("delay", new VariadicBuiltin("promise/delay", this::promiseDelay));
-  }
-
-  void installFileLibrary() {
-    withDefinitionOrigin(HaraVar.Origin.JAVA_LIBRARY, this::defineFileLibrary);
-  }
-
-  void installJsonLibrary() {
-    withDefinitionOrigin(HaraVar.Origin.JAVA_LIBRARY, this::defineJsonLibrary);
   }
 
   private void defineJsonLibrary() {
@@ -4915,14 +4939,6 @@ public final class HaraContext {
     file.define(
         "temp-directory",
         new VariadicBuiltin("std.native.File/temp-directory", this::fileTempDirectory));
-  }
-
-  void installSocketLibrary() {
-    withDefinitionOrigin(HaraVar.Origin.JAVA_LIBRARY, this::defineSocketLibrary);
-  }
-
-  void installOsLibrary() {
-    withDefinitionOrigin(HaraVar.Origin.JAVA_LIBRARY, this::defineOsLibrary);
   }
 
   private void defineOsLibrary() {
@@ -6156,6 +6172,11 @@ public final class HaraContext {
   }
 
   private Object nativeMutableCall(String type, String method, Object[] values) {
+    if ("new".equals(method)) {
+      Object[] unwrapped =
+          java.util.Arrays.stream(values).map(HaraBox::unwrap).toArray(Object[]::new);
+      return "Arr".equals(type) ? new HaraArray(unwrapped) : new HaraObject(unwrapped);
+    }
     if (values.length == 0) {
       throw new HaraException("std.native." + type + "/" + method + " expects a receiver");
     }
