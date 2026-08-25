@@ -18,6 +18,7 @@ test("opaque handles round trip canonically",()=>{const value=new HtaHandle("run
 test("canonical maps ignore insertion order",()=>{const a=new Map([[new HtaKeyword("b"),2],[new HtaKeyword("a"),1]]),b=new Map([[new HtaKeyword("a"),1],[new HtaKeyword("b"),2]]);assert.deepEqual(encodeHta(a),encodeHta(b));});
 test("HTA v3 preserves immutable Hara collection and tagged identities",()=>{const values=[new HtaQueue([1,2]),new HtaDeque([1,2]),new HtaSortedMap([["a",1],["b",2]]),new HtaPriorityMap([["b",1],["a",2]]),new HtaTagged(new HtaSymbol("demo/tag"),42)];for(const value of values){const decoded=decodeHta(encodeHta(value));assert.equal(decoded.constructor,value.constructor);assert.deepEqual(decoded,value);}});
 test("context applies registered public handle tags",async()=>{const worker=new FakeWorker();const context=new HtaContext({worker,moduleUrl:"runtime.wasm",handleTags:{tensor:"math"}});worker.emit({type:"ready"});const result=context.call("open",[]);await Promise.resolve();const call=worker.sent.find(message=>message.type==="call");worker.emit({type:"result",id:call.id,ok:true,frame:encodeHta(new HtaHandle("math.tensor","tensor",42n))});assert.equal(String(await result),"#math[:tensor 42]");context.close();});
+test("context forwards provider instrumentation without changing transport",async()=>{const worker=new FakeWorker(),events=[];const context=new HtaContext({worker,moduleUrl:"runtime.wasm",instrumentation:true,onProviderEvent:event=>events.push(event)});assert.equal(worker.sent[0].instrumentation,true);worker.emit({type:"provider-event",event:{schema:"hara.hta.provider.event/0-alpha",sequence:1,event:"start"}});assert.deepEqual(events,[{schema:"hara.hta.provider.event/0-alpha",sequence:1,event:"start"}]);context.close();});
 test("manifest parser validates compact public tags",()=>{const manifest=parseHtaManifest(tensorDescriptor);assert.equal(manifest.namespace,"math.tensor");assert.equal(manifest.module,"tensor.wasm");assert.deepEqual(manifest.handleTags,{tensor:"math"});assert.throws(()=>parseHtaManifest(tensorDescriptor.replace(":tag math",":tag Math")),/invalid handle tag/);});
 test("manifest parser preserves export and host-call policy",()=>{const manifest=parseHtaManifest(hostDescriptor);assert.deepEqual(manifest.exports,["open"]);assert.deepEqual(manifest.hostCalls,{store:["get"]});assert.throws(()=>parseHtaManifest(hostDescriptor.replace("[\"get\"]","[\"get/x\"]")),/invalid host-call/);});
 test("manifest parser enforces declared HTA targets and typed exports",()=>{
@@ -51,6 +52,22 @@ test("worker composes a generated HTA adapter with its wrapped library",async()=
     assert.equal(result.id,1);
     assert.equal(result.ok,true);
     assert.equal(decodeHta(result.frame),42);
+  }finally{
+    if(previousSelf===undefined)delete globalThis.self;else globalThis.self=previousSelf;
+  }
+});
+test("generic Wasm worker exposes the provider lifecycle vocabulary",async()=>{
+  const adapterBytes=new Uint8Array(await readFile(new URL("./test-fixtures/hta-adapter/adapter.wasm",import.meta.url)));
+  const libraryBytes=new Uint8Array(await readFile(new URL("./test-fixtures/hta-adapter/library.wasm",import.meta.url)));
+  const messages=[],listeners=new Map(),previousSelf=globalThis.self;
+  globalThis.self={addEventListener:(type,handler)=>listeners.set(type,handler),postMessage:message=>messages.push(message),close:()=>{}};
+  try{
+    await import(`./packages/hta/worker.mjs?hta-instrumentation=${Date.now()}`);
+    const message=listeners.get("message");
+    await message({data:{type:"init",moduleBytes:adapterBytes,libraryBytes,instrumentation:true}});
+    await message({data:{type:"call",id:3,frame:encodeHta(["sum",[19,23]])}});
+    await message({data:{type:"close"}});
+    assert.deepEqual(messages.filter(item=>item.type==="provider-event").map(item=>item.event.event),["start","call-enter","call-return","terminal","shutdown"]);
   }finally{
     if(previousSelf===undefined)delete globalThis.self;else globalThis.self=previousSelf;
   }

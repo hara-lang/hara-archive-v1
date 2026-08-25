@@ -243,10 +243,17 @@ pub enum NativeAvailability {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NativeOperationDeclaration {
+    pub name: &'static str,
+    pub arity: u16,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NativeDeclaration {
     pub namespace: &'static str,
     pub name: &'static str,
     pub methods: &'static [&'static str],
+    pub whole_wasm_methods: &'static [NativeOperationDeclaration],
     pub availability: NativeAvailability,
     pub capability: Option<&'static str>,
 }
@@ -258,6 +265,13 @@ impl NativeDeclaration {
 
     pub fn method(self, name: &str) -> bool {
         self.methods.iter().any(|method| *method == name)
+    }
+
+    pub fn whole_wasm_method(self, name: &str) -> Option<NativeOperationDeclaration> {
+        self.whole_wasm_methods
+            .iter()
+            .copied()
+            .find(|method| method.name == name)
     }
 }
 

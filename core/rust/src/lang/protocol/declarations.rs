@@ -41,6 +41,7 @@ pub struct ProtocolMethodDeclaration {
     pub name: &'static str,
     pub rust_name: &'static str,
     pub arity: ProtocolArity,
+    pub whole_wasm: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

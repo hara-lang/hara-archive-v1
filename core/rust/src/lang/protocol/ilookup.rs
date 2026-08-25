@@ -20,7 +20,8 @@ where
         arity = -1,
         variadic = true,
         min_arity = 2,
-        max_arity = 3
+        max_arity = 3,
+        whole_wasm
     )]
     fn lookup(&self, key: &K) -> Option<V> {
         self.find(key).map(|(_, value)| value)
