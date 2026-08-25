@@ -28,12 +28,6 @@ const wasmImports = {
   },
   "__wbindgen_placeholder__": {
     __wbindgen_describe() {},
-    __wbindgen_object_drop_ref() {},
-    __wbg_getRandomValues_eb590f34c5dc8fa0(pointer, length) {
-      const memory = instance?.exports.memory;
-      if (!memory) throw new Error("hta/memory-unavailable");
-      crypto.getRandomValues(new Uint8Array(memory.buffer, pointer, length));
-    },
     __wbg___wbindgen_throw_bb96b2010945f0bc(pointer, length) {
       const bytes = instance ? new Uint8Array(instance.exports.memory.buffer, pointer, length) : [];
       throw new Error(instance ? new TextDecoder().decode(bytes) : "wasm error");
