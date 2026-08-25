@@ -1,7 +1,8 @@
 use super::{compile_artifact, NativeModule};
-use crate::core::Value;
-use crate::kernel::{FunctionSchema, SchemaType};
+use crate::core::{StructType, StructValue, Value};
+use crate::kernel::{Form, FunctionSchema, SchemaField, SchemaType};
 use crate::vm::{compile_source, eval_source, FunctionId, Program};
+use std::rc::Rc;
 
 const TEST_NAMESPACE: &str = "hara.whole-wasm.value-test";
 
@@ -62,6 +63,67 @@ fn scalar_module(source: &str, name: &str) -> NativeModule {
     );
     let artifact = compile_artifact(&program).expect("program must lower to whole-Wasm");
     NativeModule::load(&artifact).expect("whole-Wasm module must load")
+}
+
+fn typed_module(schema_name: &str, schema: SchemaType) -> NativeModule {
+    let mut program = compile_source("(defn echo [value] value)\n0").expect("source must compile");
+    program.namespace = Some(TEST_NAMESPACE.into());
+    program.schema_types.insert(schema_name.into(), schema);
+    program.function_types.insert(
+        format!("{TEST_NAMESPACE}/echo"),
+        SchemaType::Function(vec![FunctionSchema {
+            fixed: vec![SchemaType::Reference(schema_name.into())],
+            rest: None,
+            output: Box::new(SchemaType::Reference(schema_name.into())),
+        }]),
+    );
+    let artifact = compile_artifact(&program).expect("typed program must lower to whole-Wasm");
+    NativeModule::load(&artifact).expect("typed whole-Wasm module must load")
+}
+
+fn struct_value(name: &str, fields: &[(&str, Value)]) -> Value {
+    let ty = Rc::new(StructType {
+        name: name.into(),
+        fields: fields.iter().map(|(field, _)| (*field).into()).collect(),
+    });
+    Value::Struct(Rc::new(
+        StructValue::from_values(
+            ty,
+            fields.iter().map(|(_, value)| value.clone()).collect(),
+            None,
+        )
+        .expect("struct fields must match the type"),
+    ))
+}
+
+fn host_schema() -> (String, SchemaType) {
+    let name = format!("{TEST_NAMESPACE}/Host");
+    (
+        name.clone(),
+        SchemaType::Struct {
+            name,
+            mutable: false,
+            fields: vec![
+                SchemaField {
+                    name: Form::Keyword("environment".into()),
+                    properties: None,
+                    value_type: SchemaType::Primitive("any".into()),
+                },
+                SchemaField {
+                    name: Form::Keyword("name".into()),
+                    properties: None,
+                    value_type: SchemaType::Primitive("str".into()),
+                },
+                SchemaField {
+                    name: Form::Keyword("tags".into()),
+                    properties: None,
+                    value_type: SchemaType::Vector(Box::new(SchemaType::Primitive(
+                        "keyword".into(),
+                    ))),
+                },
+            ],
+        },
+    )
 }
 
 #[test]
@@ -159,6 +221,112 @@ fn hta_boundary_does_not_replace_the_scalar_abi() {
         ))
     );
     assert_eq!(native.call_i64(function, &[41]), Ok(42));
+}
+
+#[test]
+fn typed_struct_schema_round_trips_through_the_hta_boundary() {
+    let (schema_name, schema) = host_schema();
+    let mut native = typed_module(&schema_name, schema);
+    let input = struct_value(
+        &schema_name,
+        &[
+            (
+                "environment",
+                eval_source("{:region :au}").expect("environment map"),
+            ),
+            ("name", Value::String("worker".into())),
+            (
+                "tags",
+                Value::Vector(vec![Value::Keyword("service".into())].into()),
+            ),
+        ],
+    );
+    let request = crate::hta::encode(&Value::Vector(vec![input].into())).expect("HTA request");
+    let function = function(&native, "echo");
+
+    let response = native
+        .call_hta(function, &request)
+        .expect("typed struct HTA call");
+    let Value::Struct(output) = crate::hta::decode(&response).expect("HTA response") else {
+        panic!("typed struct response")
+    };
+
+    assert_eq!(output.ty.name, schema_name);
+    assert_eq!(output.ty.fields, vec!["environment", "name", "tags"]);
+    assert_eq!(
+        output
+            .ordered_values()
+            .into_iter()
+            .cloned()
+            .collect::<Vec<_>>(),
+        vec![
+            eval_source("{:region :au}").expect("environment map"),
+            Value::String("worker".into()),
+            Value::Vector(vec![Value::Keyword("service".into())].into()),
+        ]
+    );
+}
+
+#[test]
+fn typed_struct_schema_rejects_wrong_nested_hta_values() {
+    let (schema_name, schema) = host_schema();
+    let mut native = typed_module(&schema_name, schema);
+    let input = struct_value(
+        &schema_name,
+        &[
+            ("environment", Value::Nil),
+            ("name", Value::String("worker".into())),
+            (
+                "tags",
+                Value::List(vec![Value::Keyword("service".into())].into()),
+            ),
+        ],
+    );
+    let request = crate::hta::encode(&Value::Vector(vec![input].into())).expect("HTA request");
+    let function = function(&native, "echo");
+
+    assert_eq!(
+        native.call_hta(function, &request),
+        Err("hta/invocation-schema: argument 0.tags expected a vector, got list".into())
+    );
+}
+
+#[test]
+fn mutable_struct_schema_is_explicitly_rejected_by_hta0() {
+    let schema_name = format!("{TEST_NAMESPACE}/Cursor");
+    let schema = SchemaType::Struct {
+        name: schema_name.clone(),
+        mutable: true,
+        fields: vec![
+            SchemaField {
+                name: Form::Keyword("position".into()),
+                properties: None,
+                value_type: SchemaType::Primitive("int".into()),
+            },
+            SchemaField {
+                name: Form::Keyword("limit".into()),
+                properties: Some(Form::Map(vec![(
+                    Form::Keyword("optional".into()),
+                    Form::Bool(true),
+                )])),
+                value_type: SchemaType::Primitive("int".into()),
+            },
+        ],
+    };
+    let mut native = typed_module(&schema_name, schema);
+    let input = struct_value(
+        &schema_name,
+        &[("position", Value::Number(2)), ("limit", Value::Nil)],
+    );
+    let request = crate::hta::encode(&Value::Vector(vec![input].into())).expect("HTA request");
+    let function = function(&native, "echo");
+
+    assert_eq!(
+        native.call_hta(function, &request),
+        Err(format!(
+            "hta/invocation-schema: argument 0 mutable struct {schema_name} is not transportable over HTA0"
+        ))
+    );
 }
 
 #[test]
