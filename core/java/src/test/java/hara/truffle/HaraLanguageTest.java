@@ -1,6 +1,7 @@
 package hara.truffle;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
@@ -56,7 +57,7 @@ public class HaraLanguageTest {
   public void collectionCategoryPredicatesClassifyAllPortableFamilies() {
     try (Context context = context()) {
       assertEquals(
-          "[true true false true true false true true true true true false false false true false true false true false true true]",
+          "[true true false true true false true true true true true false false false false false true false true false true true]",
           context
               .eval(
                   HaraLanguage.ID,
@@ -83,6 +84,16 @@ public class HaraLanguageTest {
                       + " (map? (IToMutable/to-mutable {:a 1})) "
                       + " (set? (IToMutable/to-mutable #{1}))]")
               .toString());
+    }
+  }
+
+  @Test
+  public void seqDoesNotSatisfyConjOrSupportConjInvocation() {
+    try (Context context = context()) {
+      assertFalse(context.eval(HaraLanguage.ID, "(satisfies? IConj (seq [1 2]))").asBoolean());
+      assertThrows(
+          PolyglotException.class,
+          () -> context.eval(HaraLanguage.ID, "(IConj/conj (seq [1 2]) 3)"));
     }
   }
 
@@ -2009,12 +2020,10 @@ public class HaraLanguageTest {
             specsRegistry()
                 .resolve("01-lang/001-language/draft/conformance/protocols.edn"));
     String source =
-        canonicalizeProtocolMethodPaths(
-            Files.readString(
-                specsRegistry()
-                    .resolve(
-                        "01-lang/001-language/draft/conformance/fixtures/protocol_surface.hal")),
-            protocols);
+        Files.readString(
+            specsRegistry()
+                .resolve(
+                    "01-lang/001-language/draft/conformance/fixtures/protocol_surface.hal"));
     Matcher calls =
         Pattern.compile("\\(std\\.protocol\\.[a-z]+\\.I[A-Za-z]+/[a-z?\\-]+\\s+fixture")
             .matcher(source);
@@ -2046,12 +2055,10 @@ public class HaraLanguageTest {
             specsRegistry()
                 .resolve("01-lang/001-language/draft/conformance/protocols.edn"));
     String source =
-        canonicalizeProtocolMethodPaths(
-            Files.readString(
-                specsRegistry()
-                    .resolve(
-                        "01-lang/001-language/draft/conformance/fixtures/protocol_behavioral.hal")),
-            protocols);
+        Files.readString(
+            specsRegistry()
+                .resolve(
+                    "01-lang/001-language/draft/conformance/fixtures/protocol_behavioral.hal"));
     assertTrue(
         "protocol types must resolve unqualified in guest source",
         !Pattern.compile("std\\.protocol\\.[^\\s/]+/I[A-Z]").matcher(source).find());
@@ -2865,36 +2872,6 @@ public class HaraLanguageTest {
                   "(ex-native-type (new RuntimeException \"host\"))")
               .asString());
     }
-  }
-
-  private static String canonicalizeProtocolMethodPaths(String source, String protocols) {
-    java.util.Map<String, String> protocolNames = new java.util.LinkedHashMap<>();
-    Matcher names = Pattern.compile(":name\\s+(I[A-Za-z]+)").matcher(protocols);
-    while (names.find()) {
-      String protocol = names.group(1);
-      protocolNames.put(protocol.toLowerCase(java.util.Locale.ROOT), protocol);
-    }
-    Matcher paths =
-        Pattern.compile("std\\.protocol\\.([a-z][a-z0-9]*)/([a-z][a-z0-9?\\-]*)")
-            .matcher(source);
-    StringBuffer canonical = new StringBuffer();
-    while (paths.find()) {
-      String protocol = protocolNames.get(paths.group(1));
-      if (protocol == null) {
-        throw new IllegalArgumentException("Unknown protocol namespace: " + paths.group(1));
-      }
-      paths.appendReplacement(
-          canonical,
-          Matcher.quoteReplacement(
-              "std.protocol."
-                  + paths.group(1)
-                  + "."
-                  + protocol
-                  + "/"
-                  + paths.group(2)));
-    }
-    paths.appendTail(canonical);
-    return canonical.toString();
   }
 
   private static Context context() {

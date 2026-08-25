@@ -65,17 +65,6 @@ mod tests {
             .collect()
     }
 
-    fn canonicalize_protocol_method_paths(source: &str) -> String {
-        core::protocol_declarations()
-            .iter()
-            .fold(source.to_owned(), |source, declaration| {
-                source.replace(
-                    &format!("std.protocol.{}/", declaration.name.to_ascii_lowercase()),
-                    &format!("{}/", declaration.runtime_name()),
-                )
-            })
-    }
-
     fn sandbox_eval(
         kernel: &mut SessionKernel,
         sandbox: SandboxId,
@@ -2299,10 +2288,10 @@ mod tests {
         else {
             return;
         };
-        let fixture = canonicalize_protocol_method_paths(
-            &repo_text("01-lang/001-language/draft/conformance/fixtures/protocol_surface.hal")
-                .expect("the specs-owned protocol surface fixture must be available"),
-        );
+        let fixture = repo_text(
+            "01-lang/001-language/draft/conformance/fixtures/protocol_surface.hal",
+        )
+        .expect("the specs-owned protocol surface fixture must be available");
         let foundation = runtime
             .namespace_registry
             .find("std.foundation")
@@ -2463,7 +2452,7 @@ mod tests {
         );
         assert_eq!(
             runtime
-                .eval_text("(require 'std.protocol.ifind) :loaded")
+                .eval_text("(require [std.protocol.ifind.IFind]) :loaded")
                 .unwrap(),
             ":loaded"
         );
@@ -2658,12 +2647,14 @@ mod tests {
     #[test]
     fn shared_foundation_protocol_conformance_fixture_runs_in_the_native_runtime() {
         let mut runtime = Runtime::new();
-        let source = canonicalize_protocol_method_paths(
-            &repo_text("01-lang/001-language/draft/conformance/fixtures/protocol_surface.hal")
-                .expect("the specs-owned protocol surface fixture must be available"),
-        );
+        let source = repo_text(
+            "01-lang/001-language/draft/conformance/fixtures/protocol_surface.hal",
+        )
+        .expect("the specs-owned protocol surface fixture must be available");
+        let legacy_protocol_type = regex::Regex::new(r"std\.protocol\.[^\s/]+/I[A-Z]")
+            .expect("legacy protocol type path pattern must compile");
         assert!(
-            !source.contains("/I"),
+            !legacy_protocol_type.is_match(&source),
             "protocol types must resolve unqualified in guest source"
         );
         let result = runtime.eval_text(&source).unwrap();
@@ -2687,8 +2678,10 @@ mod tests {
         let source =
             repo_text("01-lang/001-language/draft/conformance/fixtures/protocol_behavioral.hal")
                 .expect("the specs-owned behavioral protocol corpus must be available");
+        let legacy_protocol_type = regex::Regex::new(r"std\.protocol\.[^\s/]+/I[A-Z]")
+            .expect("legacy protocol type path pattern must compile");
         assert!(
-            !source.contains("/I"),
+            !legacy_protocol_type.is_match(&source),
             "protocol types must resolve unqualified in guest source"
         );
         let catalog = repo_text("01-lang/001-language/draft/conformance/protocol-method-cases.edn")
@@ -4102,10 +4095,12 @@ mod tests {
                      (seq? (seq [1 2]))\
                      (seq? [1 2])\
                      (iter? (iter [1 2]))\
-                     (iter? [1 2])]"
+                     (iter? [1 2])\
+                     (map? (IToMutable/to-mutable {:a 1}))\
+                     (set? (IToMutable/to-mutable #{1}))]"
                 )
                 .unwrap(),
-            "[true true false true true false true true true true true false false false true false true false true false true true]"
+            "[true true false true true false true true true true true true false false false false true false true false true true]"
         );
         assert_eq!(
             runtime

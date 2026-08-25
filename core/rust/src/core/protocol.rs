@@ -1685,6 +1685,7 @@ fn protocol_conj(arguments: &[Value]) -> Result<Value, String> {
             drop(output);
             Ok(Value::Object(values.clone()))
         }
+        Value::Seq(_) => Err("protocol/unsupported-receiver: IConj/conj does not support Seq".into()),
         Value::Tuple(values) => tuple_push_last(values, item.clone()),
         Value::Vector(values) => {
             let output = values.push_last(item.clone());
@@ -1819,7 +1820,12 @@ impl Value {
     fn supports_native_ilineartype(value: &Self) -> bool {
         matches!(
             value,
-            Self::List(_) | Self::Queue(_) | Self::Deque(_) | Self::Tuple(_) | Self::Vector(_)
+            Self::List(_)
+                | Self::Cons(_)
+                | Self::Queue(_)
+                | Self::Deque(_)
+                | Self::Tuple(_)
+                | Self::Vector(_)
         ) || mutable_linear_satisfies(value, true, true)
     }
     fn supports_native_isettype(value: &Self) -> bool {
@@ -1930,6 +1936,7 @@ impl Value {
         matches!(
             value,
             Self::List(_)
+                | Self::Cons(_)
                 | Self::Queue(_)
                 | Self::Deque(_)
                 | Self::Tuple(_)

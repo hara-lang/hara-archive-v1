@@ -147,8 +147,16 @@ impl Session {
         self.ensure_live_owner_active()?;
         let live_session_id = live_session_id.into();
         self.ensure_live_session_identity_available(&live_session_id)?;
-        let live_session =
-            crate::live_session::WholeWasmLiveSession::start(live_session_id, source)?;
+        let owner_session_id = self.name().to_owned();
+        let runtime = self
+            .runtime()
+            .map_err(|message| LiveSessionError::new("live-session/owner-closed", message))?;
+        let live_session = crate::live_session::WholeWasmLiveSession::start(
+            runtime,
+            owner_session_id,
+            live_session_id,
+            source,
+        )?;
         self.register_live_session(Box::new(live_session))
     }
 
@@ -164,7 +172,13 @@ impl Session {
         self.ensure_live_owner_active()?;
         let live_session_id = live_session_id.into();
         self.ensure_live_session_identity_available(&live_session_id)?;
+        let owner_session_id = self.name().to_owned();
+        let runtime = self
+            .runtime()
+            .map_err(|message| LiveSessionError::new("live-session/owner-closed", message))?;
         let live_session = crate::live_session::WholeWasmLiveSession::from_artifact(
+            runtime,
+            owner_session_id,
             live_session_id,
             source,
             artifact.to_vec(),

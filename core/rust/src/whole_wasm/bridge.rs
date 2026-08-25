@@ -51,6 +51,15 @@ pub fn validate_result_mode(mode: i64) -> Result<(), String> {
     }
 }
 
+pub fn result_mode_name(mode: i64) -> Option<&'static str> {
+    match mode {
+        RESULT_HANDLE => Some("handle"),
+        RESULT_I64 => Some("i64"),
+        RESULT_BOOL => Some("bool"),
+        _ => None,
+    }
+}
+
 pub fn validate_slots(slots: &[Slot]) -> Result<(), String> {
     if slots.len() > usize::try_from(MAX_SLOTS).expect("constant fits usize") {
         return Err(format!(

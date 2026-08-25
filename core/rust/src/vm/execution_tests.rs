@@ -775,10 +775,7 @@ fn workload_disassembly_is_deterministic() {
     assert_eq!(first, second);
     assert!(first.contains("JumpIfFalse ->"), "{first}");
     assert!(first.contains("StoreLocal 1"), "{first}");
-    assert!(
-        first.contains("PrimitiveLocalConst < local 0 constant 1"),
-        "{first}"
-    );
+    assert!(first.contains("IntrinsicCall target"), "{first}");
 }
 
 // ------------------------------------------------------------------

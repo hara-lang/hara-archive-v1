@@ -70,6 +70,31 @@ fn empty_hub_has_no_enabled_events() {
 }
 
 #[test]
+fn whole_wasm_target_accepts_protocol_call_instrumentation() {
+    let mut hub = InstrumentationHub::new();
+    let target = hub
+        .register_target(target(
+            "whole-wasm",
+            "session",
+            TargetKind::WholeWasm,
+            [Capability::EventSemanticBoundary, Capability::InspectSnapshot],
+        ))
+        .expect("whole-Wasm target registration");
+    let instrument = hub
+        .register(passive_registration(
+            "bridge-trace",
+            "session",
+            [EventKind::ProtocolCall],
+        ))
+        .expect("protocol-call registration");
+    hub.attach(&instrument, &target)
+        .expect("protocol-call attachment");
+    assert!(hub
+        .enabled_for_target(&target, EventKind::ProtocolCall)
+        .expect("target is live"));
+}
+
+#[test]
 fn attachments_follow_registration_order() {
     let mut hub = InstrumentationHub::new();
     let first = hub

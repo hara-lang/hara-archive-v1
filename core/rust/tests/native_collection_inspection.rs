@@ -121,8 +121,24 @@ fn portable_collection_categories_classify_all_portable_families() {
                  (iter? [1 2])]"
             )
             .unwrap(),
-        "[true true false true true false true true true true true true false false true false true false true false]"
+        "[true true false true true false true true true true true true false false false false true false true false]"
     );
+}
+
+#[test]
+fn seq_does_not_satisfy_conj_or_support_conj_invocation() {
+    let mut runtime = Runtime::new();
+    assert_eq!(
+        runtime
+            .eval_native("(satisfies? IConj (seq [1 2]))")
+            .unwrap(),
+        "false"
+    );
+    let error = runtime
+        .eval_native("(IConj/conj (seq [1 2]) 3)")
+        .unwrap_err();
+    eprintln!("Seq IConj/conj error: {error}");
+    assert!(error.contains("IConj/conj does not support Seq"));
 }
 
 #[test]

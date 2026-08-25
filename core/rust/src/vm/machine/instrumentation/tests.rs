@@ -41,10 +41,10 @@ fn counters_cover_instructions_opcodes_and_depths() {
     let metrics = probe.metrics();
     assert_eq!(metrics.schema, BYTECODE_METRICS_SCHEMA);
     assert!(metrics.instructions >= 2);
-    assert!(probe.opcode_count(Opcode::IntrinsicOp) >= 1);
+    assert!(probe.opcode_count(Opcode::IntrinsicCall) >= 1);
     assert!(metrics
         .named_opcode_counts()
-        .any(|entry| entry.opcode == "primitive" && entry.count >= 1));
+        .any(|entry| entry.opcode == "intrinsic-call" && entry.count >= 1));
     assert_eq!(metrics.terminal_returns, 1);
     assert_eq!(metrics.failures, 0);
     assert!(metrics.max_stack_depth >= 1);

@@ -224,8 +224,11 @@ fn instrumented_hbc_live_session_starts_from_validated_artifact() {
 #[test]
 fn whole_wasm_live_session_exposes_prepared_call_contract_only() {
     use super::whole_wasm::WholeWasmLiveSession;
+    let runtime = crate::Runtime::core();
 
     let mut session = WholeWasmLiveSession::start(
+        &runtime,
+        "fixture/session",
         "fixture/live-whole-wasm",
         source("whole-wasm.hal", "sha256:whole-wasm", "(+ 19 23)"),
     )

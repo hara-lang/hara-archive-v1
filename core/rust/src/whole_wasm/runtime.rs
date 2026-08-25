@@ -1,8 +1,12 @@
+use std::cell::RefCell;
 use std::rc::Rc;
 
 use wasmtime::{Engine, FuncType, Instance, Linker, Module, Store, Val, ValType};
 
 use crate::core::Value;
+use crate::instrumentation::{
+    EventAccess, EventKind, InstrumentationHub, ProducerEvent, TargetHandle,
+};
 use crate::vm::{FunctionId, Machine, VmOutcome};
 
 use super::artifact::{decode_artifact, NativeArtifact};
@@ -20,6 +24,13 @@ struct HostState {
     handles: HandleScope,
     constants: Vec<Value>,
     error_code: i32,
+    instrumentation: Option<BridgeInstrumentation>,
+}
+
+#[derive(Clone)]
+struct BridgeInstrumentation {
+    hub: Rc<RefCell<InstrumentationHub>>,
+    target: TargetHandle,
 }
 
 /// A validated HNW0 module instantiated by Wasmtime. Calls enter a generated
@@ -34,6 +45,21 @@ pub struct NativeModule {
 
 impl NativeModule {
     pub fn load(bytes: &[u8]) -> Result<Self, String> {
+        Self::load_internal(bytes, None)
+    }
+
+    pub(crate) fn load_with_instrumentation(
+        bytes: &[u8],
+        hub: Rc<RefCell<InstrumentationHub>>,
+        target: TargetHandle,
+    ) -> Result<Self, String> {
+        Self::load_internal(bytes, Some(BridgeInstrumentation { hub, target }))
+    }
+
+    fn load_internal(
+        bytes: &[u8],
+        instrumentation: Option<BridgeInstrumentation>,
+    ) -> Result<Self, String> {
         let artifact = decode_artifact(bytes)?;
         let engine = Engine::default();
         let module = Module::new(&engine, &artifact.wasm).map_err(|error| error.to_string())?;
@@ -43,6 +69,7 @@ impl NativeModule {
                 handles: HandleScope::default(),
                 constants: artifact.program.constants.clone(),
                 error_code: 0,
+                instrumentation,
             },
         );
         let mut linker = Linker::new(&engine);
@@ -64,6 +91,20 @@ impl NativeModule {
 
     pub fn artifact(&self) -> &NativeArtifact {
         &self.artifact
+    }
+
+    pub(crate) fn emit_terminal(&mut self, status: &str) -> Result<(), String> {
+        let Some(instrumentation) = self.store.data().instrumentation.clone() else {
+            return Ok(());
+        };
+        let event = ProducerEvent::live(EventKind::ExecutionTerminal).with_data("status", status);
+        let result = instrumentation
+            .hub
+            .borrow_mut()
+            .emit(&instrumentation.target, event, &mut BridgeEventAccess)
+            .map(|_| ())
+            .map_err(|error| error.to_string());
+        result
     }
 
     /// Calls a whole-Wasm function whose arguments and result use the dynamic
@@ -247,21 +288,88 @@ fn define_target_import(linker: &mut Linker<HostState>) -> Result<(), String> {
                     .collect::<Result<Vec<_>, _>>()?;
                 let name = bridge::target_name(target)
                     .ok_or_else(|| host_error(format!("unknown whole-Wasm target {target}")))?;
-                let value = if name.starts_with("std.protocol.") {
-                    crate::core::protocol_intrinsic_call(name, &arguments).map_err(host_error)?
-                } else {
-                    crate::core::apply_intrinsic_name(name, &arguments).map_err(host_error)?
-                };
-                outputs[0] = Val::I64(encode_bridge_result(
-                    &mut caller,
-                    value,
+                let instrumentation = caller.data().instrumentation.clone();
+                emit_bridge_event(
+                    instrumentation.as_ref(),
+                    name,
+                    arguments.len(),
                     result_mode,
-                )?);
+                    "enter",
+                )
+                .map_err(host_error)?;
+                let value = match if name.starts_with("std.protocol.") {
+                    crate::core::protocol_intrinsic_call(name, &arguments).map_err(host_error)
+                } else {
+                    crate::core::apply_intrinsic_name(name, &arguments).map_err(host_error)
+                } {
+                    Ok(value) => value,
+                    Err(error) => {
+                        let _ = emit_bridge_event(
+                            instrumentation.as_ref(),
+                            name,
+                            arguments.len(),
+                            result_mode,
+                            "error",
+                        );
+                        return Err(error);
+                    }
+                };
+                let encoded = match encode_bridge_result(&mut caller, value, result_mode) {
+                    Ok(encoded) => encoded,
+                    Err(error) => {
+                        let _ = emit_bridge_event(
+                            instrumentation.as_ref(),
+                            name,
+                            arguments.len(),
+                            result_mode,
+                            "error",
+                        );
+                        return Err(error);
+                    }
+                };
+                emit_bridge_event(
+                    instrumentation.as_ref(),
+                    name,
+                    arguments.len(),
+                    result_mode,
+                    "return",
+                )
+                .map_err(host_error)?;
+                outputs[0] = Val::I64(encoded);
                 Ok(())
             },
         )
         .map_err(|error| error.to_string())
         .map(|_| ())
+}
+
+struct BridgeEventAccess;
+
+impl EventAccess for BridgeEventAccess {}
+
+fn emit_bridge_event(
+    instrumentation: Option<&BridgeInstrumentation>,
+    target: &str,
+    arity: usize,
+    result_mode: i64,
+    status: &str,
+) -> Result<(), String> {
+    let Some(instrumentation) = instrumentation else {
+        return Ok(());
+    };
+    let result_mode = bridge::result_mode_name(result_mode)
+        .ok_or_else(|| format!("unknown whole-Wasm result mode {result_mode}"))?;
+    let event = ProducerEvent::live(EventKind::ProtocolCall)
+        .with_data("target", target)
+        .with_data("arity", arity.to_string())
+        .with_data("result-mode", result_mode)
+        .with_data("status", status);
+    instrumentation
+        .hub
+        .borrow_mut()
+        .emit(&instrumentation.target, event, &mut BridgeEventAccess)
+        .map(|_| ())
+        .map_err(|error| error.to_string())
 }
 
 fn define_value_construct_import(linker: &mut Linker<HostState>) -> Result<(), String> {

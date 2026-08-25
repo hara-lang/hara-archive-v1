@@ -134,6 +134,9 @@ public final class HaraProtocol implements TruffleObject {
   /** Returns true when receiver implements every method in this protocol. */
   @TruffleBoundary
   public boolean satisfies(Object receiver) {
+    if (name.endsWith(".IConj") && receiver instanceof hara.lang.data.Seq<?>) {
+      return false;
+    }
     for (HaraProtocol parent : parents) {
       if (!parent.satisfies(receiver)) return false;
     }

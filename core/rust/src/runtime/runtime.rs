@@ -6,6 +6,12 @@ const EMBEDDED_FOUNDATION_BYTECODE: &[u8] = include_bytes!(concat!(
 
 #[cfg_attr(not(feature = "raw-wasm"), wasm_bindgen)]
 impl Runtime {
+    pub(crate) fn instrumentation_handle(
+        &self,
+    ) -> Rc<RefCell<crate::instrumentation::InstrumentationHub>> {
+        self.execution.instrumentation_handle()
+    }
+
     fn empty() -> Runtime {
         let namespace_registry = core::minimal_namespace_registry();
         let vm_provider = namespace_registry.find_or_create("tool.vm.provider");
