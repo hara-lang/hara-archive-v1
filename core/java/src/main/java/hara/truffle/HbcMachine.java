@@ -23,8 +23,10 @@ import hara.truffle.bytecode.HbcProgram.TryEntry;
 import java.util.ArrayList;
 import java.util.ArrayDeque;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Set;
 
 /** Executes a validated portable HBC0 program using the ordinary Hara runtime boundaries. */
 public final class HbcMachine {
@@ -494,15 +496,32 @@ public final class HbcMachine {
                         : "defstruct")
                     + " fields constant is not a vector");
           }
-          String[] names = new String[Math.toIntExact(fields.count())];
-          for (int i = 0; i < names.length; i++) {
+          HalcSchema.NamedField[] specifications =
+              new HalcSchema.NamedField[Math.toIntExact(fields.count())];
+          Set<String> seen = new HashSet<>();
+          for (int i = 0; i < specifications.length; i++) {
             Object field = fields.nth(i);
-            names[i] = field instanceof Symbol symbol ? symbol.getName() : String.valueOf(field);
+            HalcSchema.NamedField specification;
+            try {
+              specification = HalcSchema.normalizeNamedField(field);
+            } catch (HaraException error) {
+              throw new HaraException(
+                  (instruction.opcode() == HbcProgram.Opcode.DEF_MUTABLE
+                          ? "defmutable"
+                          : "defstruct")
+                      + " field is invalid: "
+                      + error.getMessage());
+            }
+            if (!seen.add(specification.name())) {
+              throw new HaraException(
+                  "Duplicate named value field: " + specification.name());
+            }
+            specifications[i] = specification;
           }
           stack.add(
               context.defineNamedType(
                   Symbol.create(name),
-                  names,
+                  specifications,
                   instruction.opcode() == HbcProgram.Opcode.DEF_MUTABLE));
         }
         case BUILD_VECTOR -> {

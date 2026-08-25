@@ -49,7 +49,9 @@
             (let [analyzed
                   (analyze/analyze-scan
                    scan
-                   (assoc options :known-namespaces known-namespaces))
+                   (assoc options
+                          :known-namespaces known-namespaces
+                          :schema-index schema-index))
                   contracted
                   (lint-schema/enrich-document
                    analyzed

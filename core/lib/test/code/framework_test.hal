@@ -42,6 +42,15 @@
       [:constructor "map->Task"]
       [:constructor "->Task"]])
 
+(fact "defmutable shares the struct declaration family and constructor products"
+  (map (fn [entry] [(:kind entry) (:name entry)])
+       (:definitions
+        (framework/analyse-source
+         "(ns demo.core)\n(defmutable Cursor [[position :int]])\n")))
+  => [[:struct "Cursor"]
+      [:constructor "map->Cursor"]
+      [:constructor "->Cursor"]])
+
 (fact "defimpl is not part of the native framework surface"
   (:definitions
    (framework/analyse-source

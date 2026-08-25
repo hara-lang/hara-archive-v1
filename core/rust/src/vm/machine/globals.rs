@@ -4,7 +4,7 @@ use crate::lang::data::Symbol;
 use std::rc::Rc;
 
 use super::{
-    constant_string, constant_string_vector, Machine, Program, Value, VmClosure, VmMultiArity,
+    constant_named_fields, constant_string, Machine, Program, Value, VmClosure, VmMultiArity,
     VmSlot,
 };
 
@@ -185,7 +185,7 @@ impl Machine {
         let Some(name) = constant_string(program, name) else {
             return Err(format!("constant index {name} out of range"));
         };
-        let Some(field_names) = constant_string_vector(program, fields) else {
+        let Some(field_names) = constant_named_fields(program, fields, "defstruct")? else {
             return Err(format!("constant index {fields} out of range"));
         };
         let value = crate::core::vm_defstruct(name, field_names)?;
@@ -203,7 +203,7 @@ impl Machine {
         let Some(name) = constant_string(program, name) else {
             return Err(format!("constant index {name} out of range"));
         };
-        let Some(field_names) = constant_string_vector(program, fields) else {
+        let Some(field_names) = constant_named_fields(program, fields, "defmutable")? else {
             return Err(format!("constant index {fields} out of range"));
         };
         let value = crate::core::vm_defmutable(name, field_names)?;

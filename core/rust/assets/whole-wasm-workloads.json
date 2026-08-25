@@ -22,13 +22,13 @@
     {
       "id": "recursive-tree-eval",
       "operations": 400,
-      "hara_source": "(do (defn bench-tree-walk [node] (if (std.native.Base/number? node) node (loop [i 0 acc 0] (if (< i (count node)) (recur (+ i 1) (+ acc (bench-tree-walk (nth node i)))) acc)))) (let [tree [1 [2 3 4] [5 [6 7] 8]]] (loop [i 0 acc 0] (if (< i 400) (recur (+ i 1) (+ acc (bench-tree-walk tree))) acc))))",
+      "hara_source": "(do (defn bench-tree-walk [node] (if (std.native.Base/number? node) node (loop [i 0 acc 0] (if (< i (ICount/count node)) (recur (+ i 1) (+ acc (bench-tree-walk (INth/nth node i)))) acc)))) (let [tree [1 [2 3 4] [5 [6 7] 8]]] (loop [i 0 acc 0] (if (< i 400) (recur (+ i 1) (+ acc (bench-tree-walk tree))) acc))))",
       "expected": "14400"
     },
     {
       "id": "persistent-nested-transform",
       "operations": 2500,
-      "hara_source": "(loop [i 0 state {:left [1 2 3] :right {:count 0}} checksum 0] (if (< i 2500) (let [next (assoc state :right {:count (+ i 1)})] (recur (+ i 1) next (+ checksum (get (get next :right) :count)))) checksum))",
+      "hara_source": "(loop [i 0 state {:left [1 2 3] :right {:count 0}} checksum 0] (if (< i 2500) (let [next (IAssoc/assoc state :right {:count (+ i 1)})] (recur (+ i 1) next (+ checksum (ILookup/lookup (ILookup/lookup next :right) :count)))) checksum))",
       "expected": "3126250"
     }
   ]

@@ -113,7 +113,10 @@
                         definition-name)
            :head head
            :kind (if (or (= head 'defmacro) (= head 'defmacro-)) :macro
-                   (if (or (= head 'defn) (= head 'defn-)) :function :var))
+                   (if (or (= head 'defn) (= head 'defn-)) :function
+                     (if (or (= head 'defstruct) (= head 'defmutable))
+                       :struct
+                       :var)))
            :visibility (if (or (= head 'defn-) (= head 'defmacro-))
                          :private
                          :public)
@@ -535,7 +538,17 @@
 (defn analyze-scan
   [scan options]
   (let [definitions (:definitions scan)
-        names (into #{} (map :name definitions))
+        names
+        (into
+         (into #{} (map :name definitions))
+         (map
+          (fn [qualified]
+            (symbol (name qualified)))
+          (filter
+           (fn [qualified]
+             (= (str (get-in scan [:namespace :name]))
+                (namespace qualified)))
+           (keys (or (get-in options [:schema-index :functions]) {})))))
         signatures (reduce (fn [output definition]
                              (assoc output (:name definition) (:signature definition)))
                            {} definitions)

@@ -6,6 +6,7 @@ import static org.junit.Assert.assertTrue;
 
 import java.util.List;
 import java.util.Map;
+import hara.lang.data.Keyword;
 import org.junit.Test;
 
 public class HalcSchemaTest {
@@ -36,6 +37,26 @@ public class HalcSchemaTest {
               .getMessage()
               .contains("schema"));
     }
+  }
+
+  @Test
+  public void normalizesNamedDeclarationFieldsIntoOneMutableStructSchema() {
+    Object fieldForm = HaraLanguage.readAll("[position :int]", "schema.hal")[0];
+    HalcSchema.NamedField field = HalcSchema.normalizeNamedField(fieldForm);
+    assertEquals("position", field.name());
+    assertEquals(new HalcSchema.Primitive("int"), field.type());
+
+    HalcSchema.Type normalized =
+        HalcSchema.normalize(
+            HalcSchema.namedTypeSchema(
+                "demo/Cursor", true, new HalcSchema.NamedField[] {field}));
+    assertEquals(
+        new HalcSchema.StructType(
+            "demo/Cursor",
+            true,
+            List.of(new HalcSchema.Field(Keyword.create("position"), null,
+                new HalcSchema.Primitive("int")))),
+        normalized);
   }
 
   @Test

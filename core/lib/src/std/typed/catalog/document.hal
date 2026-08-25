@@ -2,9 +2,9 @@
 (ns std.typed.catalog.document
   (:require [std.typed.catalog :as catalog]))
 
-(def +document-format+ "std.typed.catalog/1")
-(def +hash-epoch+ "std.typed.schema/catalog-v1")
-(def +component-epoch+ "std.typed.catalog/component-v1")
+(def +document-format+ "std.typed.catalog/2")
+(def +hash-epoch+ "std.typed.schema/catalog-v2")
+(def +component-epoch+ "std.typed.catalog/component-v2")
 (def +missing+ :std.typed.catalog.document/missing)
 (def +hex-digits+ "0123456789abcdef")
 
@@ -84,15 +84,6 @@
     (document-error
      :std.typed.catalog.document/string-required
      (str path " must be a non-empty string")
-     {:path path :value value})))
-
-(defn- require-version
-  [value path]
-  (if (and (long? value) (>= value 0))
-    value
-    (document-error
-     :std.typed.catalog.document/version-invalid
-     (str path " must be a non-negative integer")
      {:path path :value value})))
 
 (defn- lowercase-hex?
@@ -211,16 +202,15 @@
 (defn- coordinate-key
   [coordinate]
   [(str (second coordinate))
-   (nth coordinate 2)
-   (nth coordinate 3)])
+   (nth coordinate 2)])
 
 (defn- parse-coordinate
   [value path]
   (let [value (require-vector value path)
         count-valid (ensure
-           (= 4 (count value))
+           (= 3 (count value))
            :std.typed.catalog.document/coordinate-invalid
-           (str path " must contain four values")
+           (str path " must contain three values")
            {:path path :value value})
         kind (first value)
         kind-valid (ensure
@@ -229,9 +219,8 @@
            (str path " must begin with schema")
            {:path path :value value})
         id (schema-id (second value) (str path "/1"))
-        version (require-version (nth value 2) (str path "/2"))
-        hash (require-hash (nth value 3) (str path "/3"))]
-    [:schema id version hash]))
+        hash (require-hash (nth value 2) (str path "/2"))]
+    [:schema id hash]))
 
 (defn- parse-coordinate-vector
   [value path]
@@ -316,10 +305,6 @@
         (schema-id
          (require-field value "schema/id" path)
          (str path "/schema/id"))
-        version
-        (require-version
-         (require-field value "schema/version" path)
-         (str path "/schema/version"))
         hash
         (require-hash
          (require-field value "schema/hash" path)
@@ -340,7 +325,7 @@
         (parse-coordinate-vector
          (require-field value "schema/dependencies" path)
          (str path "/schema/dependencies"))
-        expected [:schema id version hash]
+        expected [:schema id hash]
         coordinate-valid (ensure
            (= coordinate expected)
            :std.typed.catalog.document/coordinate-mismatch
@@ -349,13 +334,11 @@
             :schema/coordinate coordinate
             :schema/expected-coordinate expected})]
     {:id id
-     :version version
      :coordinate coordinate
      :normal normal
      :dependencies dependencies
      :catalog-entry
      {:schema/id id
-      :schema/version version
       :schema/hash hash
       :schema/form form}}))
 
@@ -437,47 +420,12 @@
      :component/recursive? recursive?
      :component/dependencies dependencies}))
 
-(defn- parse-latest
-  [value]
-  (let [value (require-map value "catalog/tooling/latest")]
-    (reduce-kv
-     (fn [output raw-id raw-coordinate]
-       (let [id (schema-id raw-id "catalog/tooling/latest")
-             coordinate
-             (parse-coordinate
-              raw-coordinate
-              (str "catalog/tooling/latest/" (wire-key raw-id)))]
-         (ensure
-          (= id (second coordinate))
-          :std.typed.catalog.document/latest-coordinate-mismatch
-          "tooling latest coordinate does not match its schema id"
-          {:schema/id id :schema/coordinate coordinate})
-         (assoc output id coordinate)))
-     {}
-     value)))
-
-(defn- actual-latest
-  [catalog-value entries]
-  (reduce
-   (fn [output id]
-     (assoc
-      output
-      id
-      (:schema/coordinate (catalog/lookup catalog-value id))))
-   {}
-   (vec
-    (distinct
-     (sort-by
-      (fn [id] (str id))
-      (map (fn [entry] (:id entry)) entries))))))
-
 (defn ^{:schema [:fn [:map] :map]}
   verify
   "Verifies one parsed registry catalog document through std.typed.catalog.
 
    Schema forms, hashes, exact dependencies, and recursive components are
-   recomputed by std.typed.catalog. Registry tooling/latest data is checked but
-   never used to construct or resolve the executable catalog. The function is
+   recomputed by std.typed.catalog. The function is
    pure and returns no catalog or partial state unless every check succeeds."
   [document]
   (let [document (require-map document "catalog")
@@ -569,30 +517,6 @@
            "published component order does not match std.typed.catalog"
            {:component/expected-order component-order
             :component/actual-order actual-component-order})
-        tooling
-        (require-map
-         (require-field document "catalog/tooling" "catalog")
-         "catalog/tooling")
-        latest
-        (parse-latest
-         (require-field tooling "latest" "catalog/tooling"))
-        execution-may-use-latest
-        (require-field
-         tooling
-         "execution-may-use-latest"
-         "catalog/tooling")
-        latest-policy-verified (ensure
-           (= false execution-may-use-latest)
-           :std.typed.catalog.document/latest-execution-forbidden
-           "catalog tooling latest projection must not be executable"
-           {:execution-may-use-latest execution-may-use-latest})
-        expected-latest (actual-latest catalog-value entries)
-        latest-verified (ensure
-           (= latest expected-latest)
-           :std.typed.catalog.document/latest-evidence-mismatch
-           "catalog tooling latest projection does not match exact entries"
-           {:catalog/expected-latest expected-latest
-            :catalog/actual-latest latest})
         document-digest
         (require-hash
          (require-field document "catalog/document-digest" "catalog")
@@ -607,8 +531,7 @@
          :catalog/entry-count (count entries)
          :catalog/component-count (count components)
          :catalog/coordinates coordinates
-         :catalog/component-order component-order
-         :catalog/latest-tooling-only? true}]
+         :catalog/component-order component-order}]
     {:catalog catalog-value
      :verification verification}))
 

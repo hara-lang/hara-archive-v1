@@ -234,7 +234,7 @@ pub(super) fn package_manifest(
         .find(|(path, _)| path == Path::new("catalog/std-typed-catalog.json"))
         .map(|(_, bytes)| {
             format!(
-                "\n :schema/catalog {{:format \"std.typed.catalog/1\" :path \"catalog/std-typed-catalog.json\" :sha256 \"sha256:{}\"}}",
+                "\n :schema/catalog {{:format \"std.typed.catalog/2\" :path \"catalog/std-typed-catalog.json\" :sha256 \"sha256:{}\"}}",
                 hex(&Sha256::digest(bytes))
             )
         })

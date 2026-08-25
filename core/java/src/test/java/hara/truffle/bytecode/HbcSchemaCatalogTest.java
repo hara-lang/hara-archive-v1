@@ -13,10 +13,9 @@ import java.util.List;
 import org.junit.Test;
 
 public class HbcSchemaCatalogTest {
-  private static HbcSchemaLinks.SchemaCoordinate coordinate(
-      String id, long version, char digit) {
+  private static HbcSchemaLinks.SchemaCoordinate coordinate(String id, char digit) {
     return new HbcSchemaLinks.SchemaCoordinate(
-        id, version, "sha256:" + String.valueOf(digit).repeat(64));
+        id, "sha256:" + String.valueOf(digit).repeat(64));
   }
 
   private static HbcSchemaCatalog.CatalogComponent component(
@@ -28,16 +27,16 @@ public class HbcSchemaCatalogTest {
 
   @Test
   public void componentIdentityMatchesThePortableCatalogEpoch() {
-    HbcSchemaLinks.SchemaCoordinate identifier = coordinate("model/id", 1, '1');
+    HbcSchemaLinks.SchemaCoordinate identifier = coordinate("model/id", '1');
     assertEquals(
-        "sha256:2adf3278d7b517357e21f1ba2be75d3755851f22eadfe7416e9d1b15af57b941",
+        "sha256:eb2433d563d47c84b3469d37f8786ee00ae0f7080b2505fc839d851615171c32",
         HbcSchemaCatalog.componentId(List.of(identifier)));
   }
 
   @Test
   public void linkedProgramIsReleasedWithDependencyFirstExactClosure() {
-    HbcSchemaLinks.SchemaCoordinate identifier = coordinate("model/id", 1, '1');
-    HbcSchemaLinks.SchemaCoordinate profile = coordinate("model/profile", 2, '2');
+    HbcSchemaLinks.SchemaCoordinate identifier = coordinate("model/id", '1');
+    HbcSchemaLinks.SchemaCoordinate profile = coordinate("model/profile", '2');
     HbcSchemaCatalog.CatalogComponent identifierComponent =
         component(List.of(identifier), List.of());
     HbcSchemaCatalog.CatalogComponent profileComponent =
@@ -58,12 +57,12 @@ public class HbcSchemaCatalogTest {
 
   @Test
   public void staleOrMissingExactLinksFailBeforeProgramRelease() {
-    HbcSchemaLinks.SchemaCoordinate identifier = coordinate("model/id", 1, '1');
+    HbcSchemaLinks.SchemaCoordinate identifier = coordinate("model/id", '1');
     HbcSchemaCatalog.AdmittedCatalog catalog =
         HbcSchemaCatalog.admitCatalog(
             List.of(new HbcSchemaCatalog.CatalogEntry(identifier, List.of())),
             List.of(component(List.of(identifier), List.of())));
-    HbcSchemaLinks.SchemaCoordinate stale = coordinate("model/id", 1, '2');
+    HbcSchemaLinks.SchemaCoordinate stale = coordinate("model/id", '2');
     byte[] artifact = HbcSchemaLinks.encode(arithmeticProgram(), List.of(stale));
     HbcFormatException failure =
         assertThrows(
@@ -74,8 +73,8 @@ public class HbcSchemaCatalogTest {
 
   @Test
   public void forgedComponentEvidenceIsRejectedAtomically() {
-    HbcSchemaLinks.SchemaCoordinate identifier = coordinate("model/id", 1, '1');
-    HbcSchemaLinks.SchemaCoordinate profile = coordinate("model/profile", 2, '2');
+    HbcSchemaLinks.SchemaCoordinate identifier = coordinate("model/id", '1');
+    HbcSchemaLinks.SchemaCoordinate profile = coordinate("model/profile", '2');
     HbcSchemaCatalog.CatalogComponent forged =
         component(List.of(identifier, profile), List.of());
     HbcFormatException failure =
@@ -94,7 +93,7 @@ public class HbcSchemaCatalogTest {
 
   @Test
   public void validSelfRecursionRemainsOneAdmittedComponent() {
-    HbcSchemaLinks.SchemaCoordinate node = coordinate("tree/node", 1, '3');
+    HbcSchemaLinks.SchemaCoordinate node = coordinate("tree/node", '3');
     HbcSchemaCatalog.AdmittedCatalog catalog =
         HbcSchemaCatalog.admitCatalog(
             List.of(new HbcSchemaCatalog.CatalogEntry(node, List.of(node))),

@@ -57,6 +57,95 @@ pub struct ExtensionValue {
     pub handle: u64,
 }
 
+/// One field in a named value declaration. The runtime only needs the name
+/// for storage, while the source declaration keeps the schema and optional
+/// field properties beside it until the type Var is published.
+#[derive(Debug, Clone, PartialEq)]
+pub struct NamedField {
+    pub name: String,
+    pub properties: Option<Form>,
+    pub schema: Form,
+}
+
+impl NamedField {
+    pub(crate) fn from_form(form: &Form, kind: &str) -> Result<Self, String> {
+        let Form::Vector(parts) = form else {
+            return Err(format!("{kind} fields must be symbols or [name schema] vectors"));
+        };
+        let (name, properties, schema) = match parts.as_slice() {
+            [Form::Symbol(name), schema] => (name, None, schema),
+            [Form::Symbol(name), Form::Map(properties), schema] => {
+                (name, Some(Form::Map(properties.clone())), schema)
+            }
+            _ => {
+                return Err(format!(
+                    "{kind} fields must be [name schema] or [name properties schema]"
+                ))
+            }
+        };
+        if name.is_empty() || name.contains('/') {
+            return Err(format!("{kind} field names must be unqualified symbols"));
+        }
+        Ok(Self {
+            name: name.clone(),
+            properties,
+            schema: schema.clone(),
+        })
+    }
+
+    pub(crate) fn legacy(name: &str) -> Self {
+        Self {
+            name: name.to_owned(),
+            properties: None,
+            schema: Form::Keyword("any".into()),
+        }
+    }
+
+    pub(crate) fn from_value(value: &Value, kind: &str) -> Result<Self, String> {
+        match value {
+            Value::String(name) if !name.is_empty() && !name.contains('/') => {
+                Ok(Self::legacy(name))
+            }
+            Value::Vector(_) | Value::Tuple(_) => {
+                let form = value_to_form(value)?;
+                Self::from_form(&form, kind)
+            }
+            _ => Err(format!(
+                "{kind} fields must contain field names or field specification vectors"
+            )),
+        }
+    }
+
+    pub(crate) fn schema_form(&self) -> Form {
+        let mut parts = vec![Form::Keyword(self.name.clone())];
+        if let Some(properties) = &self.properties {
+            parts.push(properties.clone());
+        }
+        parts.push(self.schema.clone());
+        Form::Vector(parts)
+    }
+}
+
+pub(crate) fn named_value_schema_form(
+    type_name: &str,
+    mutable: bool,
+    fields: &[NamedField],
+) -> Form {
+    let mut parts = vec![Form::Keyword("struct".into())];
+    if mutable {
+        parts.push(Form::Map(vec![(
+            Form::Keyword("mutable?".into()),
+            Form::Bool(true),
+        )]));
+    }
+    parts.push(Form::List(vec![
+        Form::Symbol("var".into()),
+        Form::Symbol(type_name.to_owned()),
+    ]));
+    parts.extend(fields.iter().map(NamedField::schema_form));
+    Form::Vector(parts)
+}
+
 #[derive(Debug, Clone)]
 pub struct StructType {
     pub name: String,

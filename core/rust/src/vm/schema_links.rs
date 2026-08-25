@@ -4,7 +4,7 @@
 //! structural program remains one unchanged HBC0 artifact; HBC1 authenticates
 //! that artifact together with a canonical vector of exact schema coordinates.
 //! Runtime installation must resolve those coordinates through an admitted
-//! catalog and must never fall back to an unpinned latest schema.
+//! catalog and must never fall back to an unpinned schema.
 
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
@@ -20,19 +20,16 @@ const HASH_PREFIX: &str = "sha256:";
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SchemaCoordinate {
     pub id: String,
-    pub version: u32,
     pub hash: String,
 }
 
 impl SchemaCoordinate {
     pub fn new(
         id: impl Into<String>,
-        version: u32,
         hash: impl Into<String>,
     ) -> Result<Self, String> {
         let value = Self {
             id: id.into(),
-            version,
             hash: hash.into(),
         };
         validate_coordinate(&value)?;
@@ -65,7 +62,7 @@ pub fn encode_linked_program(
 }
 
 /// Decodes and authenticates HBC1 without resolving any catalog alias or
-/// tooling-oriented latest-version view.
+/// tooling-oriented fallback view.
 pub fn decode_linked_program(bytes: &[u8]) -> Result<LinkedProgram, String> {
     let payload = decode_envelope(bytes)?;
     let mut reader = Reader::new(payload);
@@ -86,10 +83,10 @@ pub fn decode_linked_program(bytes: &[u8]) -> Result<LinkedProgram, String> {
 fn canonical_links(schema_links: &[SchemaCoordinate]) -> Result<Vec<SchemaCoordinate>, String> {
     let mut values = schema_links.to_vec();
     values.sort();
-    let mut identities = BTreeMap::<(String, u32), String>::new();
+    let mut identities = BTreeMap::<String, String>::new();
     for coordinate in &values {
         validate_coordinate(coordinate)?;
-        let identity = (coordinate.id.clone(), coordinate.version);
+        let identity = coordinate.id.clone();
         if let Some(existing) = identities.insert(identity, coordinate.hash.clone()) {
             if existing == coordinate.hash {
                 return Err("linked bytecode artifact contains duplicate schema coordinate".into());
@@ -154,19 +151,17 @@ fn display_hash(bytes: &[u8; DIGEST_BYTES]) -> String {
 
 fn write_coordinate(out: &mut Writer, coordinate: &SchemaCoordinate) -> Result<(), String> {
     out.string(&coordinate.id)?;
-    out.u32(coordinate.version);
     out.raw(&hash_bytes(&coordinate.hash)?);
     Ok(())
 }
 
 fn read_coordinate(reader: &mut Reader<'_>) -> Result<SchemaCoordinate, String> {
     let id = reader.string()?;
-    let version = reader.u32()?;
     let digest: [u8; DIGEST_BYTES] = reader
         .take(DIGEST_BYTES)?
         .try_into()
         .expect("fixed digest length");
-    SchemaCoordinate::new(id, version, display_hash(&digest))
+    SchemaCoordinate::new(id, display_hash(&digest))
 }
 
 fn encode_envelope(payload: &[u8]) -> Result<Vec<u8>, String> {
@@ -296,10 +291,9 @@ mod tests {
     use super::*;
     use crate::vm::compile_source;
 
-    fn coordinate(id: &str, version: u32, digit: char) -> SchemaCoordinate {
+    fn coordinate(id: &str, digit: char) -> SchemaCoordinate {
         SchemaCoordinate::new(
             id,
-            version,
             format!("sha256:{}", digit.to_string().repeat(64)),
         )
         .unwrap()
@@ -308,8 +302,8 @@ mod tests {
     #[test]
     fn exact_schema_links_round_trip_canonically() {
         let program = compile_source("(+ 19 23)").unwrap();
-        let account = coordinate("model/account", 2, '2');
-        let identifier = coordinate("model/id", 1, '1');
+        let account = coordinate("model/account", '2');
+        let identifier = coordinate("model/id", '1');
         let encoded =
             encode_linked_program(&program, &[identifier.clone(), account.clone()]).unwrap();
         assert!(encoded.starts_with(b"HBC1"));
@@ -328,12 +322,12 @@ mod tests {
     #[test]
     fn duplicate_and_conflicting_schema_links_are_rejected() {
         let program = compile_source("42").unwrap();
-        let first = coordinate("model/id", 1, '1');
+        let first = coordinate("model/id", '1');
         assert_eq!(
             encode_linked_program(&program, &[first.clone(), first.clone()]).unwrap_err(),
             "linked bytecode artifact contains duplicate schema coordinate"
         );
-        let conflicting = coordinate("model/id", 1, '2');
+        let conflicting = coordinate("model/id", '2');
         assert_eq!(
             encode_linked_program(&program, &[first, conflicting]).unwrap_err(),
             "linked bytecode artifact contains conflicting schema identity"
@@ -343,11 +337,11 @@ mod tests {
     #[test]
     fn malformed_coordinates_are_rejected_before_encoding() {
         assert!(
-            SchemaCoordinate::new("unqualified", 1, format!("sha256:{}", "1".repeat(64)),)
+            SchemaCoordinate::new("unqualified", format!("sha256:{}", "1".repeat(64)))
                 .unwrap_err()
                 .contains("qualified keyword name")
         );
-        assert!(SchemaCoordinate::new("model/id", 1, "sha256:BAD")
+        assert!(SchemaCoordinate::new("model/id", "sha256:BAD")
             .unwrap_err()
             .contains("canonical lowercase hex"));
     }
@@ -356,7 +350,7 @@ mod tests {
     fn corruption_is_rejected_before_nested_program_decode() {
         let program = compile_source("42").unwrap();
         let mut encoded =
-            encode_linked_program(&program, &[coordinate("model/id", 1, '1')]).unwrap();
+            encode_linked_program(&program, &[coordinate("model/id", '1')]).unwrap();
         encoded[12] ^= 1;
         assert_eq!(
             decode_linked_program(&encoded).unwrap_err(),

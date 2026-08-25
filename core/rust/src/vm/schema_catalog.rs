@@ -11,7 +11,7 @@ use std::fmt::Write as _;
 
 use crate::hbc_schema_links::{decode_linked_program, LinkedProgram, SchemaCoordinate};
 
-const COMPONENT_EPOCH: &str = ":std.typed.catalog/component-v1";
+const COMPONENT_EPOCH: &str = ":std.typed.catalog/component-v2";
 const HASH_PREFIX: &str = "sha256:";
 const DIGEST_HEX_LENGTH: usize = 64;
 
@@ -102,7 +102,7 @@ pub struct AdmittedLinkedProgram {
 }
 
 /// Reproduces the portable #901 component identity exactly:
-/// `sha256(pr-str [:std.typed.catalog/component-v1 members])`.
+/// `sha256(pr-str [:std.typed.catalog/component-v2 members])`.
 pub fn component_id(members: &[SchemaCoordinate]) -> Result<String, String> {
     let members = canonical_coordinates(members, "schema catalog component members")?;
     if members.is_empty() {
@@ -115,8 +115,8 @@ pub fn component_id(members: &[SchemaCoordinate]) -> Result<String, String> {
         }
         write!(
             &mut input,
-            "[:schema :{} {} \"{}\"]",
-            coordinate.id, coordinate.version, coordinate.hash
+            "[:schema :{} \"{}\"]",
+            coordinate.id, coordinate.hash
         )
         .expect("writing to String cannot fail");
     }
@@ -135,11 +135,11 @@ pub fn admit_catalog(
     components: &[CatalogComponent],
 ) -> Result<AdmittedCatalog, String> {
     let mut entry_index = BTreeMap::new();
-    let mut identities = BTreeMap::<(String, u32), String>::new();
+        let mut identities = BTreeMap::<String, String>::new();
     for raw_entry in entries {
         let entry =
             CatalogEntry::new(raw_entry.coordinate.clone(), raw_entry.dependencies.clone())?;
-        let identity = (entry.coordinate.id.clone(), entry.coordinate.version);
+        let identity = entry.coordinate.id.clone();
         if let Some(existing) = identities.insert(identity, entry.coordinate.hash.clone()) {
             if existing == entry.coordinate.hash {
                 return Err("schema catalog contains duplicate exact entry".into());
@@ -290,11 +290,7 @@ pub fn admit_linked_program(
 }
 
 fn validate_coordinate(coordinate: &SchemaCoordinate) -> Result<(), String> {
-    SchemaCoordinate::new(
-        coordinate.id.clone(),
-        coordinate.version,
-        coordinate.hash.clone(),
-    )
+    SchemaCoordinate::new(coordinate.id.clone(), coordinate.hash.clone())
     .map(|_| ())
 }
 
@@ -319,10 +315,10 @@ fn canonical_coordinates(
 ) -> Result<Vec<SchemaCoordinate>, String> {
     let mut output = values.to_vec();
     output.sort();
-    let mut identities = BTreeMap::<(String, u32), String>::new();
+    let mut identities = BTreeMap::<String, String>::new();
     for coordinate in &output {
         validate_coordinate(coordinate)?;
-        let identity = (coordinate.id.clone(), coordinate.version);
+        let identity = coordinate.id.clone();
         if let Some(existing) = identities.insert(identity, coordinate.hash.clone()) {
             if existing == coordinate.hash {
                 return Err(format!("{label} contain a duplicate coordinate"));
@@ -477,10 +473,7 @@ fn dependency_first_order(
 }
 
 fn display_coordinate(coordinate: &SchemaCoordinate) -> String {
-    format!(
-        "[:schema :{} {} \"{}\"]",
-        coordinate.id, coordinate.version, coordinate.hash
-    )
+    format!("[:schema :{} \"{}\"]", coordinate.id, coordinate.hash)
 }
 
 #[cfg(test)]
@@ -489,10 +482,9 @@ mod tests {
     use crate::hbc_schema_links::encode_linked_program;
     use crate::vm::compile_source;
 
-    fn coordinate(id: &str, version: u32, digit: char) -> SchemaCoordinate {
+    fn coordinate(id: &str, digit: char) -> SchemaCoordinate {
         SchemaCoordinate::new(
             id,
-            version,
             format!("sha256:{}", digit.to_string().repeat(64)),
         )
         .unwrap()
@@ -504,17 +496,17 @@ mod tests {
 
     #[test]
     fn component_identity_matches_the_portable_catalog_epoch() {
-        let identifier = coordinate("model/id", 1, '1');
+        let identifier = coordinate("model/id", '1');
         assert_eq!(
             component_id(&[identifier]).unwrap(),
-            "sha256:2adf3278d7b517357e21f1ba2be75d3755851f22eadfe7416e9d1b15af57b941"
+            "sha256:eb2433d563d47c84b3469d37f8786ee00ae0f7080b2505fc839d851615171c32"
         );
     }
 
     #[test]
     fn linked_program_is_released_with_dependency_first_exact_closure() {
-        let identifier = coordinate("model/id", 1, '1');
-        let profile = coordinate("model/profile", 2, '2');
+        let identifier = coordinate("model/id", '1');
+        let profile = coordinate("model/profile", '2');
         let identifier_component = component(vec![identifier.clone()], vec![]);
         let profile_component =
             component(vec![profile.clone()], vec![identifier_component.id.clone()]);
@@ -536,13 +528,13 @@ mod tests {
 
     #[test]
     fn stale_or_missing_exact_links_fail_before_program_release() {
-        let identifier = coordinate("model/id", 1, '1');
+        let identifier = coordinate("model/id", '1');
         let catalog = admit_catalog(
             &[CatalogEntry::new(identifier.clone(), vec![]).unwrap()],
             &[component(vec![identifier], vec![])],
         )
         .unwrap();
-        let stale = coordinate("model/id", 1, '2');
+        let stale = coordinate("model/id", '2');
         let program = compile_source("42").unwrap();
         let artifact = encode_linked_program(&program, &[stale]).unwrap();
         assert!(admit_linked_program(&artifact, &catalog)
@@ -552,8 +544,8 @@ mod tests {
 
     #[test]
     fn forged_component_evidence_is_rejected_atomically() {
-        let identifier = coordinate("model/id", 1, '1');
-        let profile = coordinate("model/profile", 2, '2');
+        let identifier = coordinate("model/id", '1');
+        let profile = coordinate("model/profile", '2');
         let forged = component(vec![identifier.clone(), profile.clone()], vec![]);
         assert_eq!(
             admit_catalog(
@@ -570,7 +562,7 @@ mod tests {
 
     #[test]
     fn valid_self_recursion_remains_one_admitted_component() {
-        let node = coordinate("tree/node", 1, '3');
+        let node = coordinate("tree/node", '3');
         let catalog = admit_catalog(
             &[CatalogEntry::new(node.clone(), vec![node.clone()]).unwrap()],
             &[component(vec![node.clone()], vec![])],

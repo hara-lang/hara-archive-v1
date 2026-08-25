@@ -254,6 +254,32 @@ final class HalcArtifact {
         values.put(name.getName(), definition.nth(2));
         continue;
       }
+      if (("defstruct".equals(operator.getName()) || "defmutable".equals(operator.getName()))
+          && definition.count() >= 3
+          && definition.nth(2) instanceof ILinearType<?> fieldValues) {
+        HalcSchema.NamedField[] fields =
+            new HalcSchema.NamedField[Math.toIntExact(fieldValues.count())];
+        Set<String> seen = new HashSet<>();
+        for (int index = 0; index < fields.length; index++) {
+          try {
+            fields[index] = HalcSchema.normalizeNamedField(fieldValues.nth(index));
+          } catch (HaraException error) {
+            throw new HaraException(
+                "invalid " + operator.getName() + " field: " + error.getMessage());
+          }
+          if (!seen.add(fields[index].name())) {
+            throw new HaraException(
+                "Duplicate " + operator.getName() + " field: " + fields[index].name());
+          }
+        }
+        values.put(
+            name.getName(),
+            HalcSchema.namedTypeSchema(
+                namespace + "/" + name.getName(),
+                "defmutable".equals(operator.getName()),
+                fields));
+        continue;
+      }
       if (!("defn".equals(operator.getName()) || "defn-".equals(operator.getName()))
           || !(name.meta() instanceof IMapType<?, ?> rawMetadata)) continue;
       Object schema = ((IMapType<Object, Object>) rawMetadata).lookup(Keyword.create("schema"));

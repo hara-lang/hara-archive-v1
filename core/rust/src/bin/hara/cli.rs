@@ -385,8 +385,8 @@ mod spec_tests {
             eprintln!("skipping: hara-specs-registry sibling repo not present");
             return;
         }
-        let document_path =
-            specs_root.join("00-unsorted/contrib/greenways/build/spec/draft/greenways-buildspec.edn");
+        let document_path = specs_root
+            .join("00-unsorted/contrib/greenways/build/spec/draft/greenways-buildspec.edn");
         let document = read_spec_document(&fs::read_to_string(&document_path).unwrap()).unwrap();
         let metaspec = read_spec_document(&fs::read_to_string(metaspec_path).unwrap()).unwrap();
         assert!(validate_against_metaspec(&document, &metaspec, &document_path).is_empty());

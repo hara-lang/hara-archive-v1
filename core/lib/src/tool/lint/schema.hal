@@ -20,7 +20,7 @@
 (def compatible? schema/compatible?)
 
 (def +schema-heads+
-  #{:or :maybe :vector :tuple :map :fn :function :enum :result})
+  #{:or :maybe :vector :tuple :map :struct :fn :function :enum :result})
 
 (def +schema-primitives+
   #{:any :nil
@@ -172,6 +172,102 @@
         (second tail)
         :else (first tail)))))
 
+(defn declaration-fields
+  "Returns normalized field surfaces from a defstruct or defmutable form."
+  [definition]
+  (let [children (code-children (:form definition))
+        name-index (block-index children (:block definition))
+        tail (if (nil? name-index)
+               []
+               (vec
+                (filter (fn [value]
+                          (not= :meta (block/tag value)))
+                        (drop (inc name-index) children))))
+        field-block (first tail)]
+    (if (or (nil? field-block) (not= :vector (block/tag field-block)))
+      (throw
+       (ex :serialization {:definition (:qualified definition)}
+           :ex/message "struct declarations require a field vector"))
+      (let [fields
+            (vec
+             (map
+              (fn [field]
+                (cond
+                  (symbol? field)
+                  [field :any]
+
+                  (and (vector? field)
+                       (= 2 (count field))
+                       (symbol? (first field)))
+                  field
+
+                  (and (vector? field)
+                       (= 3 (count field))
+                       (symbol? (first field))
+                       (map? (second field)))
+                  field
+
+                  :else
+                  (throw
+                   (ex :serialization {:field field}
+                       :ex/message "struct fields must be symbols or typed field vectors"))))
+              (map block/value (code-children field-block))))]
+        (loop [remaining fields
+               names #{}
+               output []]
+          (if (empty? remaining)
+            output
+            (let [field (first remaining)
+                  field-name (first field)]
+              (if (has? names field-name)
+                (throw
+                 (ex :conflict {:field field-name}
+                     :ex/message "struct field names must be unique"))
+                (recur (rest remaining)
+                       (conj names field-name)
+                       (conj output field))))))))))
+
+(defn declaration-descriptor
+  "Builds the portable declaration descriptor shared by type and constructors."
+  [definition]
+  (let [fields (declaration-fields definition)
+        mutable? (= 'defmutable (:head definition))
+        type-name (:qualified definition)
+        type-reference (list 'var type-name)
+        prefix (if mutable?
+                 [:struct {:mutable? true} type-reference]
+                 [:struct type-reference])
+        surface (vec (concat prefix fields))
+        normalized (schema/normalize surface)
+        field-types
+        (vec
+         (map (fn [field]
+                (if (= 2 (count field))
+                  (second field)
+                  (nth field 2)))
+              fields))
+        map-input (vec (concat [:map] fields))
+        generated
+        [{:name (symbol (str (namespace type-name))
+                        (str "->" (name type-name)))
+          :kind :constructor
+          :constructor :positional
+          :target type-name
+          :schema (schema/normalize [:fn field-types normalized])}
+         {:name (symbol (str (namespace type-name))
+                        (str "map->" (name type-name)))
+          :kind :constructor
+          :constructor :map
+          :target type-name
+          :schema (schema/normalize [:fn [map-input] normalized])}]]
+    {:kind :struct
+     :name type-name
+     :mutable? mutable?
+     :fields (:fields normalized)
+     :schema normalized
+     :surface surface
+     :generated generated}))
+
 (defn definition-records
   "Enriches analyzer definitions with passive source schema metadata."
   [scan]
@@ -185,15 +281,25 @@
               metadata (merge (or (:metadata entry) {})
                               (or (:metadata definition) {})
                               (:metadata inline))
+              declaration
+              (when (= :struct (:kind definition))
+                (try
+                  (declaration-descriptor definition)
+                  (catch Throwable error
+                    {:error (str error)})))
+              generated-schema (get-in declaration [:schema])
               schema-block (or (:schema-block inline)
                                (:metadata-block definition)
                                (when (has? (or (:metadata entry) {}) :schema)
-                                 (:metadata-block entry)))]
+                                 (:metadata-block entry))
+                               (when declaration (:block definition)))]
           (assoc definition
                  :file file
                  :metadata metadata
-                 :has-schema (has? metadata :schema)
-                 :schema-surface (get metadata :schema)
+                 :declaration declaration
+                 :has-schema (or (has? metadata :schema)
+                                 (and generated-schema true))
+                 :schema-surface (or generated-schema (get metadata :schema))
                  :schema-block schema-block
                  :initializer (definition-initializer definition))))
       (:definitions scan)))))
@@ -279,19 +385,23 @@
        (map
         (fn [definition]
           (let [initializer (:initializer definition)
-                surface (when initializer (block/value initializer))]
-            (when (and (= :var (:kind definition))
+                surface (or (get-in definition [:declaration :schema])
+                            (when initializer (block/value initializer)))]
+            (when (and (or (= :struct (:kind definition))
+                           (= :var (:kind definition)))
                        (schema-surface? surface))
               {:qualified (:qualified definition)
                :surface surface
                :scan scan
-               :definition definition})))
+               :definition definition
+               :declaration (:declaration definition)})))
         (definition-records scan))))
     scans)))
 
 (defn external-definitions
   [options]
-  (or (get-in options [:schema-index :definitions]) {}))
+  (merge (or (get-in options [:schema-index :definitions]) {})
+         (or (get-in options [:schema-index :types]) {})))
 
 (defn raw-global-registry
   [candidates options]
@@ -336,6 +446,11 @@
       (= kind :tuple)
       (first (filter identity (map schema-problem (:items value))))
       (= kind :map)
+      (first
+       (filter identity
+               (map (fn [field] (schema-problem (:type field)))
+                    (:fields value))))
+      (= kind :struct)
       (first
        (filter identity
                (map (fn [field] (schema-problem (:type field)))
@@ -466,9 +581,40 @@
            (= :var (:kind definition))
            (assoc-in output [:values (:qualified definition)] (:resolved record))
 
+           (= :struct (:kind definition))
+           (let [declaration (:declaration record)
+                 generated (:generated declaration)
+                 functions
+                 (reduce
+                  (fn [values product]
+                    (assoc values (:name product) (:schema product)))
+                  (:functions output)
+                  generated)]
+             (assoc output
+                    :functions functions
+                    :types (assoc (:types output)
+                                  (:qualified definition)
+                                  (:resolved record))
+                    :declarations
+                    (assoc (:declarations output)
+                           (:qualified definition)
+                           (assoc declaration :schema (:resolved record)))))
+
            :else output))))
-   {:values {} :functions {}}
+   {:values {} :functions {} :types {} :declarations {}}
    records))
+
+(defn declaration-finding
+  [definition options]
+  (when (and (= :struct (:kind definition))
+             (get-in definition [:declaration :error]))
+    (definition-finding
+     definition
+     (:block definition)
+     :tool.lint/invalid-declaration
+     (str "invalid declaration for " (:qualified definition))
+     options
+     :tool.source-analysis/declaration-normalization)))
 
 (defn build-schema-index
   "Builds a project-wide registry and passive metadata contract index."
@@ -497,20 +643,35 @@
                  (definition-records scan)))))
            scans))
          tables (contract-tables records)
-         findings (vec (mapcat (fn [record] (:findings record)) records))]
+         declarations
+         (vec
+          (mapcat
+           (fn [scan]
+             (filter identity
+                     (map
+                      (fn [definition]
+                        (declaration-finding definition options))
+                      (definition-records scan))))
+           scans))
+         findings (vec (concat declarations
+                                (mapcat (fn [record] (:findings record)) records)))]
      {:registry (:registry global)
       :definitions (:definitions global)
       :values (merge (or (get-in options [:schema-index :values]) {})
                      (:values tables))
       :functions (merge (or (get-in options [:schema-index :functions]) {})
                         (:functions tables))
+      :types (merge (or (get-in options [:schema-index :types]) {})
+                    (:types tables))
+      :declarations (merge (or (get-in options [:schema-index :declarations]) {})
+                           (:declarations tables))
       :records records
       :findings findings
       :mode (schema-mode options)})))
 
 (defn public-index
   [index]
-  (select-keys index [:definitions :values :functions :mode]))
+  (select-keys index [:definitions :values :functions :types :declarations :mode]))
 
 (defn file-findings
   [index file]

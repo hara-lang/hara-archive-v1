@@ -11,7 +11,7 @@ has been admitted atomically.
 Admission verifies the same identity and graph evidence produced by
 `std.typed.catalog`:
 
-- exact `[:schema id version hash]` coordinates;
+- exact `[:schema id hash]` coordinates;
 - exact direct dependencies;
 - deterministic strongly connected components from #901;
 - deterministic component dependencies and dependency-first order;
@@ -23,14 +23,14 @@ One admitted entry is portable data equivalent to:
 
 ```hara
 {:schema/coordinate
- [:schema :model/profile 2 "sha256:..."]
+ [:schema :model/profile "sha256:..."]
  :schema/dependencies
- [[:schema :model/id 1 "sha256:..."]]}
+ [[:schema :model/id "sha256:..."]]}
 ```
 
 Every dependency must name another exact entry in the same admitted manifest.
-Duplicate coordinates are invalid. Reusing one id/version with a different hash
-is an immutable identity conflict.
+Duplicate coordinates are invalid. Reusing one id with a different hash is an
+immutable identity conflict.
 
 ## Component projection
 
@@ -39,7 +39,7 @@ One admitted component is portable data equivalent to:
 ```hara
 {:component/id "sha256:..."
  :component/members
- [[:schema :model/profile 2 "sha256:..."]]
+ [[:schema :model/profile "sha256:..."]]
  :component/dependencies ["sha256:..."]}
 ```
 
@@ -50,7 +50,7 @@ The component identity is exactly the existing #901 operation:
      (Crypto/sha256
       (str/encode-utf8
        (pr-str
-        [:std.typed.catalog/component-v1 members]))))
+  [:std.typed.catalog/component-v2 members]))))
 ```
 
 Members and component dependencies are canonically ordered. Native admission
@@ -62,7 +62,7 @@ forged, incomplete, overlapping, or missing component evidence.
 Admission succeeds only when all of these checks pass:
 
 1. every coordinate and component digest is canonical lowercase SHA-256;
-2. every id/version pair has one immutable hash;
+2. every schema id has one immutable hash;
 3. every direct dependency exists exactly;
 4. every entry belongs to exactly one component;
 5. declared components equal the graph's strongly connected components;

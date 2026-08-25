@@ -20,25 +20,22 @@ import java.util.Map;
  *
  * <p>The first catalog artifact epoch is external-link-only. Runtime installation must resolve
  * every exact coordinate through an admitted catalog and must never substitute a tooling-oriented
- * latest version.
+ * fallback.
  */
 public final class HbcSchemaLinks {
   private static final byte[] MAGIC = {'H', 'B', 'C', '1'};
   private static final int DIGEST_BYTES = 32;
   private static final String HASH_PREFIX = "sha256:";
-  private static final long MAX_U32 = 0xffff_ffffL;
   private static final Comparator<SchemaCoordinate> COORDINATE_ORDER =
       Comparator.comparing(SchemaCoordinate::id)
-          .thenComparingLong(SchemaCoordinate::version)
           .thenComparing(SchemaCoordinate::hash);
 
   private HbcSchemaLinks() {}
 
   /** One immutable exact schema coordinate. The id excludes the leading keyword colon. */
-  public record SchemaCoordinate(String id, long version, String hash) {
+  public record SchemaCoordinate(String id, String hash) {
     public SchemaCoordinate {
       validateId(id);
-      validateVersion(version);
       hashBytes(hash);
     }
   }
@@ -88,7 +85,7 @@ public final class HbcSchemaLinks {
     Map<String, String> identities = new LinkedHashMap<>();
     for (SchemaCoordinate coordinate : values) {
       if (coordinate == null) throw malformed("linked bytecode schema coordinate is required");
-      String identity = coordinate.id() + "\u0000" + coordinate.version();
+      String identity = coordinate.id();
       String existing = identities.put(identity, coordinate.hash());
       if (existing != null) {
         if (existing.equals(coordinate.hash())) {
@@ -109,12 +106,6 @@ public final class HbcSchemaLinks {
         || id.startsWith(":")
         || id.chars().anyMatch(Character::isWhitespace)) {
       throw malformed("linked bytecode schema id must be a qualified keyword name");
-    }
-  }
-
-  private static void validateVersion(long version) {
-    if (version < 0 || version > MAX_U32) {
-      throw malformed("linked bytecode schema version must fit u32");
     }
   }
 
@@ -151,15 +142,13 @@ public final class HbcSchemaLinks {
 
   private static void writeCoordinate(Writer output, SchemaCoordinate coordinate) {
     output.string(coordinate.id());
-    output.u32(coordinate.version());
     output.raw(hashBytes(coordinate.hash()));
   }
 
   private static SchemaCoordinate readCoordinate(Reader input) {
     String id = input.string();
-    long version = input.u32();
     String hash = displayHash(input.raw(DIGEST_BYTES));
-    return new SchemaCoordinate(id, version, hash);
+    return new SchemaCoordinate(id, hash);
   }
 
   private static byte[] decodeEnvelope(byte[] artifact) {
@@ -267,7 +256,7 @@ public final class HbcSchemaLinks {
     private final ByteArrayOutputStream output = new ByteArrayOutputStream();
 
     void u32(long value) {
-      if (value < 0 || value > MAX_U32) {
+      if (value < 0 || value > 0xffffffffL) {
         throw malformed("linked bytecode field does not fit u32");
       }
       for (int shift = 24; shift >= 0; shift -= 8) output.write((int) (value >>> shift));

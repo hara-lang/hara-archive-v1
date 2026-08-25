@@ -81,4 +81,16 @@
     (finding-types report))
   => [])
 
+^{:refer 'tool.lint.schema.call/enrich-document
+  :id 'generated-struct-constructor-contracts}
+(fact "uses the declaration registry to type positional constructors"
+  (let [source
+        (str "(ns demo)\n"
+             "(defstruct Host [[name :str]])\n"
+             "(->Host 42)")
+        report (report-data (lint/lint-source source))]
+    [(finding-types report)
+     (has? (into #{} (finding-types report)) :tool.lint/unresolved-symbol)])
+  => [[:tool.lint/schema-argument-mismatch] false])
+
 (pr-str (run '[tool.lint-schema-call-test]))

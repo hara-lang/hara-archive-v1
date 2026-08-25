@@ -665,6 +665,31 @@ fn write_schema_type(out: &mut Writer, schema: &SchemaType) -> Result<(), String
                 write_schema_type(out, &field.value_type)?;
             }
         }
+        SchemaType::Struct {
+            name,
+            mutable,
+            fields,
+        } => {
+            out.byte(13);
+            out.string(name)?;
+            out.byte(u8::from(*mutable));
+            let property_aware = fields.iter().any(|field| field.properties.is_some());
+            out.byte(u8::from(property_aware));
+            out.len(fields.len())?;
+            for field in fields {
+                write_schema_form(out, &field.name)?;
+                if property_aware {
+                    match &field.properties {
+                        Some(properties) => {
+                            out.byte(1);
+                            write_schema_form(out, properties)?;
+                        }
+                        None => out.byte(0),
+                    }
+                }
+                write_schema_type(out, &field.value_type)?;
+            }
+        }
         SchemaType::WithProperties { schema, properties } => {
             out.byte(11);
             write_schema_type(out, schema)?;
@@ -753,6 +778,32 @@ fn read_schema_type(reader: &mut Reader<'_>) -> Result<SchemaType, String> {
                 value_type: read_schema_type(reader)?,
             })
         })?),
+        13 => {
+            let name = reader.string()?;
+            let mutable = reader.boolean()?;
+            let property_aware = reader.boolean()?;
+            SchemaType::Struct {
+                name,
+                mutable,
+                fields: reader.many(|reader| {
+                    let name = read_schema_form(reader)?;
+                    let properties = if property_aware {
+                        if reader.boolean()? {
+                            Some(read_schema_form(reader)?)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
+                    Ok(SchemaField {
+                        name,
+                        properties,
+                        value_type: read_schema_type(reader)?,
+                    })
+                })?,
+            }
+        }
         _ => return Err("bytecode artifact contains unknown schema type".into()),
     })
 }

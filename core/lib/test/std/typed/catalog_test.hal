@@ -5,67 +5,51 @@
 
 (def +entries+
   [{:schema/id :model/id
-    :schema/version 1
     :schema/form :int
-    :source/file "model_v1.hal"}
+    :source/file "model.hal"}
    {:schema/id :model/profile
-    :schema/version 1
     :schema/form
     '[:map
       {:title "Profile documentation"}
-      [:id (var Id)]]}
-   {:schema/id :model/profile
-    :schema/version 2
-    :schema/form
-    '[:map
-      {:title "Profile documentation v2"}
       [:id (var Id)]
       [:nickname {:optional true :description "Display name"} :str]]}
    {:schema/id :model/account
-    :schema/version 1
     :schema/form
     '[:map
       [:profile (var Profile)]]}])
 
 (def +catalog+ (catalog/catalog +entries+))
-(def +id-coordinate+ (catalog/coordinate +catalog+ :model/id 1))
-(def +profile-v1-coordinate+ (catalog/coordinate +catalog+ :model/profile 1))
-(def +profile-v2-coordinate+ (catalog/coordinate +catalog+ :model/profile 2))
-(def +account-coordinate+ (catalog/coordinate +catalog+ :model/account 1))
+(def +id-coordinate+ (catalog/coordinate +catalog+ :model/id))
+(def +profile-coordinate+ (catalog/coordinate +catalog+ :model/profile))
+(def +account-coordinate+ (catalog/coordinate +catalog+ :model/account))
 
 ^{:refer std.typed.catalog/catalog
   :id 'stable-schema-identity}
-(fact "catalog entries have canonical ids, versions, and reproducible hashes"
-  (let [profile-v1 (catalog/lookup +catalog+ :model/profile 1)
-        profile-latest (catalog/lookup +catalog+ 'model/profile)
+(fact "catalog entries have canonical ids and reproducible hashes"
+  (let [profile (catalog/lookup +catalog+ :model/profile)
         reordered
         (catalog/catalog
          [{:schema/form
            '[:map
              {:owner :docs :title "Ignored documentation"}
-             [:id (var Id)]]
-           :schema/version 1
+             [:id (var Id)]
+             [:nickname {:optional true :description "Display name"} :str]]
            :schema/id :model/profile}
           {:schema/form :int
-           :schema/id :model/id
-           :schema/version 1}])
+           :schema/id :model/id}])
         semantic-change
         (catalog/catalog
-         [{:schema/id :model/id :schema/version 1 :schema/form :int}
+         [{:schema/id :model/id :schema/form :int}
           {:schema/id :model/profile
-           :schema/version 1
-           :schema/form
-           '[:map [:id (var Id)] [:name :str]]}])]
-    [(:schema/id profile-v1)
-     (:schema/version profile-v1)
-     (str/starts-with? (:schema/hash profile-v1) "sha256:")
-     (count (:schema/hash profile-v1))
-     (:schema/version profile-latest)
-     (= (:schema/hash profile-v1)
-        (:schema/hash (catalog/lookup reordered :model/profile 1)))
-     (not= (:schema/hash profile-v1)
-           (:schema/hash (catalog/lookup semantic-change :model/profile 1)))])
-  => [:model/profile 1 true 71 2 true true])
+           :schema/form '[:map [:id (var Id)] [:name :str]]}])]
+    [(:schema/id profile)
+     (str/starts-with? (:schema/hash profile) "sha256:")
+     (= 71 (count (:schema/hash profile)))
+     (= (:schema/hash profile)
+        (:schema/hash (catalog/lookup reordered :model/profile)))
+     (not= (:schema/hash profile)
+           (:schema/hash (catalog/lookup semantic-change :model/profile)))])
+  => [:model/profile true true true true])
 
 ^{:refer std.typed.catalog/catalog
   :id 'map-entry-order-does-not-change-hash}
@@ -73,34 +57,47 @@
   (let [left
         (catalog/catalog
          [{:schema/id :fixture/value
-           :schema/version 1
            :schema/form
            '[:map {:optional true :description "x"}
              [:id :int]]}])
         right
         (catalog/catalog
          [{:schema/id :fixture/value
-           :schema/version 1
            :schema/form
            '[:map {:description "x" :optional true}
              [:id :int]]}])
-        left-hash (:schema/hash (catalog/lookup left :fixture/value 1))
-        right-hash (:schema/hash (catalog/lookup right :fixture/value 1))]
-    [left-hash right-hash (= left-hash right-hash)])
-  => ["sha256:ce5a64c050ea73b6f76e6f3083bcb1327c9f753114bc5effd7337fbfbb5ba3d7"
-      "sha256:ce5a64c050ea73b6f76e6f3083bcb1327c9f753114bc5effd7337fbfbb5ba3d7"
-      true])
+        left-hash (:schema/hash (catalog/lookup left :fixture/value))
+        right-hash (:schema/hash (catalog/lookup right :fixture/value))]
+    [(= left-hash right-hash)
+     (= 71 (count left-hash))
+     (str/starts-with? left-hash "sha256:")])
+  => [true true true])
 
 ^{:refer std.typed.catalog/catalog
-  :id 'schema-version-participates-in-hash}
-(fact "the same semantic form at a different version has a different hash"
-  (let [value
-        (catalog/catalog
-         [{:schema/id :demo/value :schema/version 1 :schema/form :str}
-          {:schema/id :demo/value :schema/version 2 :schema/form :str}])]
-    (not=
-     (:schema/hash (catalog/lookup value :demo/value 1))
-     (:schema/hash (catalog/lookup value :demo/value 2))))
+  :id 'schema-version-is-not-a-catalog-coordinate}
+(fact "schema version metadata is rejected instead of becoming identity"
+  (try
+    (catalog/catalog
+     [{:schema/id :demo/value
+       :schema/version 1
+       :schema/form :str}])
+    false
+    (catch Throwable error
+      (= :std.typed.catalog/invalid-catalog
+         (:type (ex-data error)))))
+  => true)
+
+^{:refer std.typed.catalog/catalog
+  :id 'schema-ids-are-unique}
+(fact "a catalog cannot contain two entries for one schema id"
+  (try
+    (catalog/catalog
+     [{:schema/id :demo/value :schema/form :str}
+      {:schema/id :demo/value :schema/form :int}])
+    false
+    (catch Throwable error
+      (= :std.typed.catalog/invalid-catalog
+         (:type (ex-data error)))))
   => true)
 
 ^{:refer std.typed.catalog/dependencies
@@ -108,21 +105,20 @@
 (fact "direct dependencies are ordered independently of set iteration"
   (let [value
         (catalog/catalog
-         [{:schema/id :order/id :schema/version 1 :schema/form :int}
+         [{:schema/id :order/id :schema/form :int}
           {:schema/id :order/node
-           :schema/version 1
            :schema/form '[:map [:id (var Id)]]}
           {:schema/id :order/root
-           :schema/version 1
            :schema/form '[:map
                           [:node (var Node)]
                           [:id (var Id)]]}])
-        root (catalog/coordinate value :order/root 1)]
-    (catalog/dependencies value root))
-  => [[:schema :order/id 1
-       "sha256:60e8e3905ca0b3b9c0ea43caabc8ac328682f920726046edaf0428c8e921e31b"]
-      [:schema :order/node 1
-       "sha256:0dee5d74fbd3c812e4b405f96e6bce59de2935cb48381796bfa48d77cbe0fa28"]])
+        root (catalog/coordinate value :order/root)
+        dependencies (catalog/dependencies value root)]
+    [(= dependencies
+        [(catalog/coordinate value :order/id)
+         (catalog/coordinate value :order/node)])
+     (= 2 (count dependencies))])
+  => [true true])
 
 ^{:refer std.typed.catalog/catalog
   :id 'reject-mismatched-schema-hash}
@@ -130,7 +126,6 @@
   (try
     (catalog/catalog
      [{:schema/id :demo/value
-       :schema/version 1
        :schema/hash "sha256:deadbeef"
        :schema/form :int}])
     false
@@ -144,17 +139,14 @@
 (fact "catalogs expose exact pinned schema dependencies through IDeps"
   [(= :model/account (:schema/id (dep-get +catalog+ +account-coordinate+)))
    (dep-entries +catalog+ +account-coordinate+)
-   (dep-entries +catalog+ +profile-v2-coordinate+)
+   (dep-entries +catalog+ +profile-coordinate+)
    (set (dep-keys +catalog+))
    (deps-ordered +catalog+ [+account-coordinate+])]
   => [true
-      #{+profile-v2-coordinate+}
+      #{+profile-coordinate+}
       #{+id-coordinate+}
-      #{+id-coordinate+
-        +profile-v1-coordinate+
-        +profile-v2-coordinate+
-        +account-coordinate+}
-      [+id-coordinate+ +profile-v2-coordinate+ +account-coordinate+]])
+      #{+id-coordinate+ +profile-coordinate+ +account-coordinate+}
+      [+id-coordinate+ +profile-coordinate+ +account-coordinate+]])
 
 ^{:refer std.typed.catalog/schema-registry
   :id 'ordinary-symbol-registry-view}
@@ -163,7 +155,7 @@
    (registry/lookup (catalog/schema-registry +catalog+) 'model/Profile)]
   => [:int
       '[:map
-        {:title "Profile documentation v2"}
+        {:title "Profile documentation"}
         [:id (var Id)]
         [:nickname {:optional true :description "Display name"} :str]]])
 
@@ -173,13 +165,11 @@
   (let [value
         (catalog/catalog
          [{:schema/id :demo/identifier
-           :schema/version 1
            :schema/form :int}
           {:schema/id :demo/user-profile
-           :schema/version 1
            :schema/form '[:map [:id (var Identifier)]]}])
-        identifier (catalog/coordinate value :demo/identifier 1)
-        profile (catalog/coordinate value :demo/user-profile 1)]
+        identifier (catalog/coordinate value :demo/identifier)
+        profile (catalog/coordinate value :demo/user-profile)]
     [(= [identifier] (catalog/dependencies value profile))
      (registry/lookup (catalog/schema-registry value) 'demo/UserProfile)])
   => [true '[:map [:id (var Identifier)]]])
@@ -187,10 +177,8 @@
 (def +recursive-catalog+
   (catalog/catalog
    [{:schema/id :tree/id
-     :schema/version 1
      :schema/form :int}
     {:schema/id :tree/node
-     :schema/version 1
      :schema/form
      '[:map
        [:id (var Id)]
@@ -201,34 +189,32 @@
        [:outcome [:result (var Node)]]]}]))
 
 (def +recursive-id-coordinate+
-  (catalog/coordinate +recursive-catalog+ :tree/id 1))
+  (catalog/coordinate +recursive-catalog+ :tree/id))
 
 (def +recursive-coordinate+
-  (catalog/coordinate +recursive-catalog+ :tree/node 1))
+  (catalog/coordinate +recursive-catalog+ :tree/node))
 
 (def +mutual-entries+
   [{:schema/id :graph/a
-    :schema/version 1
     :schema/form
     '[:map [:next [:maybe (var B)]]]}
    {:schema/id :graph/b
-    :schema/version 1
     :schema/form
     '[:map [:previous [:maybe (var A)]]]}])
 
 (def +mutual-catalog+ (catalog/catalog +mutual-entries+))
 (def +mutual-a-coordinate+
-  (catalog/coordinate +mutual-catalog+ :graph/a 1))
+  (catalog/coordinate +mutual-catalog+ :graph/a))
 (def +mutual-b-coordinate+
-  (catalog/coordinate +mutual-catalog+ :graph/b 1))
+  (catalog/coordinate +mutual-catalog+ :graph/b))
 
 ^{:refer std.typed.catalog/dependency-closure
   :id 'exact-transitive-dependency-closure}
 (fact "dependency closure and order remain exact and dependency-first"
   [(catalog/dependency-closure +catalog+ +account-coordinate+)
    (catalog/dependency-order +catalog+ [+account-coordinate+])]
-  => [[+id-coordinate+ +profile-v2-coordinate+]
-      [+id-coordinate+ +profile-v2-coordinate+ +account-coordinate+]])
+  => [[+id-coordinate+ +profile-coordinate+]
+      [+id-coordinate+ +profile-coordinate+ +account-coordinate+]])
 
 ^{:refer std.typed.catalog/dependency-components
   :id 'self-recursive-schema-component}
@@ -259,8 +245,7 @@
   :id 'mutually-recursive-schema-component}
 (fact "mutual structural recursion is deterministic under entry reordering"
   (let [reordered (catalog/catalog (vec (reverse +mutual-entries+)))
-        reordered-a (catalog/coordinate reordered :graph/a 1)
-        reordered-b (catalog/coordinate reordered :graph/b 1)
+        reordered-a (catalog/coordinate reordered :graph/a)
         components
         (catalog/dependency-components
          +mutual-catalog+
@@ -290,10 +275,8 @@
   (try
     (catalog/catalog
      [{:schema/id :alias/a
-       :schema/version 1
        :schema/form 'B}
       {:schema/id :alias/b
-       :schema/version 1
        :schema/form 'A}])
     nil
     (catch Throwable error
@@ -306,29 +289,6 @@
       :std.typed.catalog/reference-only-cycle
       :std.typed.schema/cyclic-reference
       2])
-
-^{:refer std.typed.catalog/dependency-components
-  :id 'exact-version-pinning-in-components}
-(fact "component analysis retains the exact version selected at construction"
-  (let [value
-        (catalog/catalog
-         [{:schema/id :version/item
-           :schema/version 1
-           :schema/form :int}
-          {:schema/id :version/item
-           :schema/version 2
-           :schema/form :str}
-          {:schema/id :version/container
-           :schema/version 1
-           :schema/form
-           '[:map [:item (var Item)]]}])
-        item-v1 (catalog/coordinate value :version/item 1)
-        item-v2 (catalog/coordinate value :version/item 2)
-        container (catalog/coordinate value :version/container 1)]
-    [(= (catalog/dependency-closure value container) [item-v2])
-     (has? (set (catalog/dependency-order value)) item-v1)
-     (has? (set (catalog/dependency-order value)) item-v2)])
-  => [true true true])
 
 (let [result (run '[std.typed.catalog-test])]
   (if (= :passed (:status result))

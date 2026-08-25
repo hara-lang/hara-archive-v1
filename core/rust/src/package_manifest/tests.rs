@@ -249,7 +249,7 @@ fn schema_catalog_descriptor_is_bound_to_declared_bytes_and_canonical_admission(
              :files {"catalog/std-typed-catalog.json"
                      {:sha256 "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
                       :size 2}}
-             :schema/catalog {:format "std.typed.catalog/1"
+             :schema/catalog {:format "std.typed.catalog/2"
                               :path "catalog/std-typed-catalog.json"
                               :sha256 "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"}}"#,
     )
@@ -268,7 +268,7 @@ fn schema_catalog_descriptor_rejects_unsupported_format_before_runtime() {
                     :files {"catalog.json"
                             {:sha256 "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
                              :size 2}}
-                    :schema/catalog {:format "std.typed.catalog/2"
+                    :schema/catalog {:format "std.typed.catalog/1"
                                      :path "catalog.json"
                                      :sha256 "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"}}"#;
     let manifest = PackageManifest::parse(source).unwrap();

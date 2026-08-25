@@ -1071,14 +1071,23 @@ pub(crate) fn vm_resolve_global(name: &str) -> Result<KernelVar<Value>, String> 
     Err(format!("unbound symbol: {name}"))
 }
 
-fn validate_named_definition(kind: &str, name: &str, fields: &[String]) -> Result<(), String> {
+fn validate_named_definition(kind: &str, name: &str, fields: &[NamedField]) -> Result<(), String> {
     if name.contains('/') {
         return Err(format!("{kind} name must be an unqualified symbol"));
     }
-    if fields.iter().any(|field| field.contains('/')) {
+    if fields
+        .iter()
+        .any(|field| field.name.is_empty() || field.name.contains('/'))
+    {
         return Err(format!("{kind} field names must be unqualified symbols"));
     }
-    if fields.iter().collect::<HashSet<_>>().len() != fields.len() {
+    if fields
+        .iter()
+        .map(|field| &field.name)
+        .collect::<HashSet<_>>()
+        .len()
+        != fields.len()
+    {
         return Err(format!("Duplicate {kind} field"));
     }
     Ok(())
@@ -1135,21 +1144,33 @@ fn prepare_named_binding(namespace: &crate::kernel::Namespace<Value>, name: &str
 pub(crate) fn publish_named_value(
     kind: &str,
     name: &str,
-    fields: Vec<String>,
+    fields: Vec<NamedField>,
     environment: &mut HashMap<String, Value>,
+    metadata: Option<Rc<Metadata>>,
 ) -> Result<Value, String> {
     validate_named_definition(kind, name, &fields)?;
+    let mutable = kind == "defmutable";
+    let schema_form = named_value_schema_form(
+        &format!("{}/{}", namespace_registry()?.current().name().as_str(), name),
+        mutable,
+        &fields,
+    );
+    let metadata = assoc_metadata(metadata, "schema", metadata_value(&schema_form)?)
+        .ok_or_else(|| "named value schema metadata could not be created".to_string())?;
+    let field_names = fields
+        .iter()
+        .map(|field| field.name.clone())
+        .collect::<Vec<_>>();
     with_declaration_transaction(environment, |environment| {
         let registry = namespace_registry()?;
         let namespace = registry.current();
         let namespace_name = namespace.name().as_str().to_owned();
         let type_name = format!("{}/{}", namespace_name, name);
-        let mutable = kind == "defmutable";
 
         let (type_value, map_constructor) = if mutable {
             let ty = Rc::new(MutableType {
                 name: type_name.clone(),
-                fields,
+                fields: field_names.clone(),
             });
             let map_type = ty.clone();
             let constructor = native_function(&format!("map->{}", name), 1, move |values| {
@@ -1173,7 +1194,7 @@ pub(crate) fn publish_named_value(
         } else {
             let ty = Rc::new(StructType {
                 name: type_name,
-                fields,
+                fields: field_names,
             });
             let map_type = ty.clone();
             let constructor = native_function(&format!("map->{}", name), 1, move |values| {
@@ -1205,6 +1226,10 @@ pub(crate) fn publish_named_value(
             prepare_named_binding(&namespace, &binding);
             let var = namespace.intern(&binding, value);
             var.set_origin(definition_origin());
+            if binding == name {
+                var.set_hara_metadata(Some(metadata.clone()));
+                refresh_schema_contract(&var)?;
+            }
             environment.insert(binding.clone(), Value::Var(var.clone()));
             environment.insert(
                 format!("{}/{}", namespace_name, binding),
@@ -1353,17 +1378,17 @@ pub(crate) fn publish_guest_protocol(
 /// `defstruct` against the registry directly, mirroring the evaluator's
 /// declaration arm minus inline protocol clauses. Interns `Name`, `->Name`,
 /// and `map->Name` into the current namespace and returns nil.
-pub(crate) fn vm_defstruct(name: &str, fields: Vec<String>) -> Result<Value, String> {
+pub(crate) fn vm_defstruct(name: &str, fields: Vec<NamedField>) -> Result<Value, String> {
     let mut environment = HashMap::new();
-    publish_named_value("defstruct", name, fields, &mut environment)
+    publish_named_value("defstruct", name, fields, &mut environment, None)
 }
 
 /// `defmutable` against the registry directly. Mutable values use a distinct
 /// type descriptor and fixed-field storage while retaining the constructor
 /// naming conventions of `defstruct`.
-pub(crate) fn vm_defmutable(name: &str, fields: Vec<String>) -> Result<Value, String> {
+pub(crate) fn vm_defmutable(name: &str, fields: Vec<NamedField>) -> Result<Value, String> {
     let mut environment = HashMap::new();
-    publish_named_value("defmutable", name, fields, &mut environment)
+    publish_named_value("defmutable", name, fields, &mut environment, None)
 }
 
 /// Direct field access is reserved for mutable named values. Immutable

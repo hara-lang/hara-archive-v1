@@ -5,7 +5,7 @@
   (:config {:override [resolve]}))
 
 (def +catalog-type+ :std.typed.catalog/catalog)
-(def +hash-format+ :std.typed.schema/catalog-v1)
+(def +hash-format+ :std.typed.schema/catalog-v2)
 (def +semantic-property-keys+
   #{:min-count :max-count :pattern :qualified :distinct
     :closed :optional :status :error-code})
@@ -54,13 +54,6 @@
     (keyword (namespace value) (str/spear-case (name value)))
     (catalog-error "schema dependency must be a qualified symbol"
                    {:dependency value})))
-
-(defn- require-version
-  [value]
-  (if (and (long? value) (>= value 0))
-    value
-    (catalog-error ":schema/version must be a non-negative integer"
-                   {:schema/version value})))
 
 (defn- semantic-properties
   [properties]
@@ -146,11 +139,10 @@
      {:value value})))
 
 (defn- canonical-hash
-  [id version normalized]
+  [id normalized]
   (let [input
         [+hash-format+
          id
-         version
          (canonical-value (semantic-value normalized))]]
     (str "sha256:"
          (Crypto/sha256
@@ -162,49 +154,32 @@
     (if (not (has? entry :schema/id))
       (catalog-error "schema catalog entry requires :schema/id"
                      {:entry entry}))
-    (if (not (has? entry :schema/version))
-      (catalog-error "schema catalog entry requires :schema/version"
+    (if (has? entry :schema/version)
+      (catalog-error "schema catalog entries do not support :schema/version"
                      {:entry entry}))
     (if (not (has? entry :schema/form))
       (catalog-error "schema catalog entry requires :schema/form"
                      {:entry entry}))
-    (assoc entry
-           :schema/id (canonical-id (:schema/id entry))
-           :schema/version (require-version (:schema/version entry)))))
+    (assoc entry :schema/id (canonical-id (:schema/id entry)))))
 
 (defn- group-entries
   [entries]
   (reduce
    (fn [output raw-entry]
      (let [entry (require-entry raw-entry)
-           id (:schema/id entry)
-           version (:schema/version entry)
-           versions (get output id {})]
-       (if (has? versions version)
-         (catalog-error "duplicate schema catalog id/version"
-                        {:schema/id id :schema/version version}))
-       (assoc output id (assoc versions version entry))))
+           id (:schema/id entry)]
+       (if (has? output id)
+         (catalog-error "duplicate schema catalog id"
+                        {:schema/id id}))
+       (assoc output id entry)))
    {}
    entries))
 
-(defn- latest-entry
-  [versions]
-  (reduce
-   (fn [selected entry]
-     (if (or (nil? selected)
-             (> (:schema/version entry) (:schema/version selected)))
-       entry
-       selected))
-   nil
-   (vals versions)))
-
-(defn- latest-forms
+(defn- entry-forms
   [grouped]
   (reduce-kv
-   (fn [output id versions]
-     (assoc output
-            (id-symbol id)
-            (:schema/form (latest-entry versions))))
+   (fn [output id entry]
+     (assoc output (id-symbol id) (:schema/form entry)))
    {}
    grouped))
 
@@ -238,48 +213,38 @@
         (schema/normalize-with
          (:schema/form entry)
          (entry-registry base options (:schema/id entry)))
-        hash
-        (canonical-hash (:schema/id entry)
-                        (:schema/version entry)
-                        normalized)
+        hash (canonical-hash (:schema/id entry) normalized)
         supplied (get entry :schema/hash nil)]
     (if (and supplied (not= supplied hash))
       (catalog-error "supplied :schema/hash does not match canonical schema"
                      {:schema/id (:schema/id entry)
-                      :schema/version (:schema/version entry)
                       :schema/hash supplied
                       :schema/expected-hash hash}))
     (assoc entry
            :schema/hash hash
            :schema/coordinate
-           [:schema (:schema/id entry) (:schema/version entry) hash]
+           [:schema (:schema/id entry) hash]
            :schema/normal normalized)))
 
 (defn- hash-entries
   [base options grouped]
   (reduce-kv
-   (fn [output id versions]
-     (assoc
-      output id
-      (reduce-kv
-       (fn [version-output version entry]
-         (assoc version-output version (hash-entry base options entry)))
-       {}
-       versions)))
+   (fn [output id entry]
+     (assoc output id (hash-entry base options entry)))
    {}
    grouped))
 
 (defn- exact-entry
-  [grouped id version]
-  (get (get grouped (canonical-id id) {}) (require-version version)))
+  [grouped id]
+  (get grouped (canonical-id id)))
 
 (defn- coordinate-entry
   [grouped coordinate]
   (if (and (vector? coordinate)
-           (= 4 (count coordinate))
+           (= 3 (count coordinate))
            (= :schema (first coordinate)))
-    (let [entry (exact-entry grouped (second coordinate) (nth coordinate 2))]
-      (if (and entry (= (:schema/hash entry) (nth coordinate 3)))
+    (let [entry (exact-entry grouped (second coordinate))]
+      (if (and entry (= (:schema/hash entry) (nth coordinate 2)))
         entry
         nil))
     nil))
@@ -287,30 +252,24 @@
 (defn- dependency-coordinate
   [grouped reference owner]
   (let [id (symbol-id reference)
-        versions (get grouped id nil)
-        target (if versions (latest-entry versions) nil)]
+        target (get grouped id nil)]
     (if target
       (:schema/coordinate target)
       (catalog-error "identified schema dependency is not in the catalog"
                      {:schema/id (:schema/id owner)
-                      :schema/version (:schema/version owner)
                       :dependency reference}))))
 
 (defn- dependency-index
   [grouped]
   (reduce-kv
-   (fn [output _ versions]
-     (reduce-kv
-      (fn [version-output _ entry]
-        (let [references (schema/reference-names (:schema/normal entry))
-              dependencies
-              (set
-               (map (fn [reference]
-                      (dependency-coordinate grouped reference entry))
-                    references))]
-          (assoc version-output (:schema/coordinate entry) dependencies)))
-      output
-      versions))
+   (fn [output _ entry]
+     (let [references (schema/reference-names (:schema/normal entry))
+           dependencies
+           (set
+            (map (fn [reference]
+                   (dependency-coordinate grouped reference entry))
+                 references))]
+       (assoc output (:schema/coordinate entry) dependencies)))
    {}
    grouped))
 
@@ -322,8 +281,8 @@
   catalog
   "Creates an immutable catalog of identified schema entries.
 
-   Each entry requires qualified :schema/id, non-negative :schema/version, and
-   :schema/form. Hashes are SHA-256 over a versioned canonical semantic form.
+   Each entry requires a qualified :schema/id and :schema/form. Hashes are
+   SHA-256 over the canonical semantic form and the catalog hash epoch.
    References are qualified in the entry's own namespace and pinned to exact
    catalog coordinates."
   ([entries]
@@ -335,7 +294,7 @@
                                   {:entries entries}))
          options (require-options options)
          raw-grouped (group-entries entries)
-         base (registry/registry (latest-forms raw-grouped))
+         base (registry/registry (entry-forms raw-grouped))
          grouped (hash-entries base options raw-grouped)
          dependencies (dependency-index grouped)
          visible-registry
@@ -349,34 +308,27 @@
        (dependency-components catalog-value)
        catalog-value))))
 
-(defn ^{:schema [:function
-                 [:fn [:any :any] :any]
-                 [:fn [:any :any :int] :any]]}
+(defn ^{:schema [:fn [:any :any] :any]}
   lookup
-  "Returns the latest entry for id, or an exact version when supplied."
+  "Returns the unique entry for id."
   ([catalog-value id]
    (let [catalog-value
          (if (catalog? catalog-value)
            catalog-value
            (catalog-error "lookup expects a schema catalog"
                           {:catalog catalog-value}))
-         versions (get (:entries catalog-value) (canonical-id id) nil)]
-     (if versions (latest-entry versions) nil)))
-  ([catalog-value id version]
-   (if (not (catalog? catalog-value))
-     (catalog-error "lookup expects a schema catalog"
-                    {:catalog catalog-value}))
-   (exact-entry (:entries catalog-value) id version)))
+         entry (exact-entry (:entries catalog-value) id)]
+     entry)))
 
-(defn ^{:schema [:fn [:any :any :int] :vector]}
+(defn ^{:schema [:fn [:any :any] :vector]}
   coordinate
-  "Returns the exact [kind id version hash] coordinate for a catalog entry."
-  [catalog-value id version]
-  (let [entry (lookup catalog-value id version)]
+  "Returns the exact [kind id hash] coordinate for a catalog entry."
+  [catalog-value id]
+  (let [entry (lookup catalog-value id)]
     (if entry
       (:schema/coordinate entry)
       (catalog-error "schema catalog coordinate is unresolved"
-                     {:schema/id id :schema/version version}))))
+                     {:schema/id id}))))
 
 (defn ^{:schema [:fn [:any :vector] :any]}
   resolve
@@ -509,7 +461,7 @@
    (Crypto/sha256
     (str/encode-utf8
      (pr-str
-      [:std.typed.catalog/component-v1 members])))))
+      [:std.typed.catalog/component-v2 members])))))
 
 (defn- component-owners
   [component-members]

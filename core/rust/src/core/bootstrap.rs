@@ -90,6 +90,9 @@ pub fn minimal_namespace_registry() -> NamespaceRegistry<Value> {
             },
         );
         namespace.map_var(Symbol::parse(&name), var);
+        namespaces
+            .register_global_alias(&name, &namespace_name)
+            .unwrap_or_else(|error| panic!("{error}"));
     }
     for (namespace, name, method) in builtin_protocol_method_values() {
         namespaces.find_or_create(namespace).intern_with_origin(

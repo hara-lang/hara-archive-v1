@@ -549,23 +549,28 @@ pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, Stri
                     if fs.len() < 3 {
                         return Err(format!("{n} expects a name and field vector"));
                     }
-                    let name = match &fs[1] {
-                        Form::Symbol(name) if !name.contains('/') => name.clone(),
-                        _ => return Err(format!("{n} name must be an unqualified symbol")),
-                    };
+                    let (name, name_metadata) = binding_symbol(&fs[1], &format!("{n} name"))?;
+                    if name.contains('/') {
+                        return Err(format!("{n} name must be an unqualified symbol"));
+                    }
                     let fields = match &fs[2] {
                         Form::Vector(fields) => fields
                             .iter()
                             .map(|field| match field {
-                                Form::Symbol(field) if !field.contains('/') => Ok(field.clone()),
-                                _ => Err(format!("{n} field names must be unqualified symbols")),
+                                Form::Symbol(field) if !field.contains('/') => {
+                                    Ok(NamedField::legacy(field))
+                                }
+                                Form::Vector(_) => NamedField::from_form(field, n),
+                                _ => Err(format!(
+                                    "{n} fields must be symbols or [name schema] vectors"
+                                )),
                             })
                             .collect::<Result<Vec<_>, String>>()?,
                         _ => return Err(format!("{n} expects a field vector")),
                     };
                     let kind = n.clone();
                     with_declaration_transaction(env, |env| {
-                        publish_named_value(&kind, &name, fields, env)?;
+                        publish_named_value(&kind, &name, fields, env, name_metadata.clone())?;
                         let mut index = 3;
                         while index < fs.len() {
                             let Form::Symbol(protocol) = &fs[index] else {

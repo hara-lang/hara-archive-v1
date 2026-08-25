@@ -37,7 +37,9 @@ fn foundation_child_paths_load_the_root_first() {
         "(ns std.foundation.child) (defn child-marker [] (foundation-marker))",
     );
     assert_eq!(
-        runtime.require_resource("std/foundation/child.hal").unwrap(),
+        runtime
+            .require_resource("std/foundation/child.hal")
+            .unwrap(),
         "#'std.foundation.child/child-marker"
     );
     assert_eq!(

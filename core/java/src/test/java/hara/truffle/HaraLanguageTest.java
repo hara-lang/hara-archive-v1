@@ -33,6 +33,18 @@ public class HaraLanguageTest {
   }
 
   @Test
+  public void displaysCharactersThroughTheDisplayProtocol() {
+    try (Context context = context()) {
+      assertEquals("\\a", context.eval(HaraLanguage.ID, "(IDisplay/display \\a)").asString());
+      assertEquals(
+          "\\space", context.eval(HaraLanguage.ID, "(IDisplay/display \\space)").asString());
+      assertEquals(
+          "\\newline",
+          context.eval(HaraLanguage.ID, "(IDisplay/display \\newline)").asString());
+    }
+  }
+
+  @Test
   public void collectionCategoryPredicatesUsePortableProtocols() {
     try (Context context = context()) {
       assertEquals(

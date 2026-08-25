@@ -2134,6 +2134,36 @@ mod tests {
     }
 
     #[test]
+    fn typed_named_values_publish_one_type_schema_contract() {
+        let source = "(do (defstruct Person [[name :str] [age {:optional true} :int]]) \
+                      (let [schema (std.native.Schema/of (var Person)) \
+                            person (Person \"Ada\" 37)] \
+                        [(std.native.Schema/kind schema) \
+                         (= schema (std.native.Schema/of (var Person))) \
+                         (:name person) (:age (map->Person {:name \"Ada\" :age 37})) \
+                         (nil? (get (meta (var ->Person)) :schema))]))";
+        let mut runtime = Runtime::new();
+        assert_eq!(runtime.eval_text(source).unwrap(), "[:struct true \"Ada\" 37 true]");
+
+        assert!(runtime
+            .eval_text("(defstruct Broken [[value :int] [value :str]])")
+            .unwrap_err()
+            .contains("Duplicate defstruct field"));
+    }
+
+    #[cfg(feature = "bytecode-vm")]
+    #[test]
+    fn bytecode_typed_named_values_match_the_evaluator() {
+        let source = "(do (defmutable Cursor [[position :int] [limit {:optional true} :int]]) \
+                      (let [cursor (Cursor 2 10)] \
+                        [(std.native.Schema/kind (std.native.Schema/of (var Cursor))) \
+                         (field cursor :position) (field cursor :limit)]))";
+        let mut runtime = Runtime::new();
+        assert_eq!(runtime.eval_native(source).unwrap(), "[:struct 2 10]");
+        assert_eq!(runtime.eval_bytecode_native(source).unwrap(), "[:struct 2 10]");
+    }
+
+    #[test]
     fn map_destructuring_uses_defstruct_lookup_semantics() {
         let mut runtime = Runtime::new();
         assert_eq!(

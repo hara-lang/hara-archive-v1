@@ -770,6 +770,7 @@ fn schema_kind(schema: &crate::kernel::SchemaType) -> &'static str {
         Set(_) => "set",
         Tuple(_) => "tuple",
         Map(_) => "map",
+        Struct { .. } => "struct",
         WithProperties { schema, .. } => schema_kind(schema),
         Function(arities) if arities.len() == 1 => "fn",
         Function(_) => "function",
@@ -847,6 +848,31 @@ fn schema_ast_form(schema: &crate::kernel::SchemaType) -> Form {
         ]),
         Map(fields) => schema_ast_map(vec![
             ("kind", Form::Keyword("map".into())),
+            (
+                "fields",
+                Form::Vector(
+                    fields
+                        .iter()
+                        .map(|field| {
+                            let mut entries = vec![("name", field.name.clone())];
+                            if let Some(properties) = &field.properties {
+                                entries.push(("properties", properties.clone()));
+                            }
+                            entries.push(("type", schema_ast_form(&field.value_type)));
+                            schema_ast_map(entries)
+                        })
+                        .collect(),
+                ),
+            ),
+        ]),
+        Struct {
+            name,
+            mutable,
+            fields,
+        } => schema_ast_map(vec![
+            ("kind", Form::Keyword("struct".into())),
+            ("name", Form::Symbol(name.clone())),
+            ("mutable?", Form::Bool(*mutable)),
             (
                 "fields",
                 Form::Vector(
@@ -2439,4 +2465,25 @@ fn promise_chain(source: Promise, operation: &str, function: Rc<Function>) -> Pr
         PromiseState::Pending => {}
     }));
     output
+}
+
+#[cfg(test)]
+mod protocol_tests {
+    use super::{protocol_display, Value};
+
+    #[test]
+    fn idisplay_renders_characters() {
+        assert_eq!(
+            protocol_display(&[Value::Character('a')]).unwrap(),
+            Value::String("\\a".into())
+        );
+        assert_eq!(
+            protocol_display(&[Value::Character(' ')]).unwrap(),
+            Value::String("\\space".into())
+        );
+        assert_eq!(
+            protocol_display(&[Value::Character('\n')]).unwrap(),
+            Value::String("\\newline".into())
+        );
+    }
 }

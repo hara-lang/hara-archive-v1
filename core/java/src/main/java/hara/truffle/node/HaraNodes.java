@@ -36,6 +36,7 @@ import hara.truffle.HaraContext;
 import hara.truffle.HaraException;
 import hara.truffle.HaraFunction;
 import hara.truffle.HaraLanguage;
+import hara.truffle.HalcSchema;
 import hara.truffle.HaraMultiFunction;
 import hara.truffle.HaraMutable;
 import hara.truffle.HaraProtocol;
@@ -1396,13 +1397,13 @@ public final class HaraNodes {
 
   public static final class DefineNamedType extends HaraExpressionNode {
     private final Symbol symbol;
-    private final String[] fields;
+    private final HalcSchema.NamedField[] fields;
     private final boolean mutable;
     @Children private final HaraExpressionNode[] extensions;
 
     public DefineNamedType(
         Symbol symbol,
-        String[] fields,
+        HalcSchema.NamedField[] fields,
         boolean mutable,
         HaraExpressionNode[] extensions) {
       this.symbol = symbol;

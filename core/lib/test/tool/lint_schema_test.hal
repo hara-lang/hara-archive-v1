@@ -12,6 +12,36 @@
   [report]
   (vec (map :type (:findings report))))
 
+^{:refer 'tool.lint.schema/declaration-fields
+  :id 'typed-declaration-field-normalization}
+(fact "normalizes legacy and typed declaration fields through one field vector"
+  (let [scan
+        (analyze/scan-source
+         "(ns demo)\n(defstruct Host [environment [name :str] [limit {:optional true} :int]])")
+        definition (first (:definitions scan))]
+    (lint-schema/declaration-fields definition))
+  => '[environment :any [name :str] [limit {:optional true} :int]])
+
+^{:refer 'tool.lint.schema/declaration-descriptor
+  :id 'typed-declaration-descriptor}
+(fact "publishes one struct schema and constructor products"
+  (let [scan
+        (analyze/scan-source
+         "(ns demo)\n(defmutable Cursor [[position :int] [limit {:optional true} :int]])")
+        definition (first (:definitions scan))
+        descriptor (lint-schema/declaration-descriptor definition)]
+    [(:kind descriptor)
+     (:mutable? descriptor)
+     (map (fn [field] [(:name field) (:properties field)])
+          (:fields descriptor))
+     (map (fn [product] [(:name product) (:kind (:schema product))])
+          (:generated descriptor))])
+  => [:struct true
+      [['position nil]
+       ['limit {:optional true}]]
+      [['demo/->Cursor :fn]
+       ['demo/map->Cursor :fn]]])
+
 ^{:refer 'tool.lint.schema/build-schema-index
   :id 'project-registry-and-alias-resolution}
 (fact "builds one project schema registry and resolves metadata through aliases"
@@ -105,5 +135,51 @@
   => {:kind :fn
       :inputs {:fixed [{:kind :primitive :name :int}] :rest nil}
       :output {:kind :primitive :name :int}})
+
+^{:refer 'tool.lint.schema/build-schema-index
+  :id 'declaration-registry-and-constructor-contracts}
+(fact "indexes immutable and mutable declarations with generated constructors"
+  (let [scan
+        (analyze/scan-source
+         (str "(ns demo)\n"
+              "(defstruct Host [[environment :any] [name :str]])\n"
+              "(defmutable Cursor [[position :int] [limit {:optional true} :int]])"))
+        index (lint-schema/build-schema-index [scan])]
+    [(get-in index [:types 'demo/Host :mutable?])
+     (get-in index [:types 'demo/Cursor :mutable?])
+     (map (fn [field] (:name field))
+          (get-in index [:types 'demo/Host :fields]))
+     (get-in index [:types 'demo/Cursor :fields 1 :properties :optional])
+     (get-in index [:functions 'demo/->Host :kind])
+     (get-in index [:functions 'demo/map->Cursor :kind])
+     (get-in index [:declarations 'demo/Host :kind])])
+  => [false true
+      ['environment 'name]
+      true
+      :fn
+      :fn
+      :struct])
+
+^{:refer 'tool.lint.schema/build-schema-index
+  :id 'invalid-declaration-fields}
+(fact "reports duplicate declaration fields before publishing a registry entry"
+  (let [scan (analyze/scan-source
+              "(ns demo)\n(defstruct Broken [value value])")
+        index (lint-schema/build-schema-index [scan])]
+    [(map :type (:findings index))
+     (has? (:definitions index) 'demo/Broken)])
+  => [[:tool.lint/invalid-declaration] false])
+
+^{:refer 'tool.lint.schema/declaration-finding
+  :id 'invalid-declaration-finding}
+(fact "anchors invalid declaration diagnostics at the declaration name"
+  (let [scan (analyze/scan-source
+              "(ns demo)\n(defstruct Broken [value value])")
+        definition (first (:definitions scan))
+        finding (lint-schema/declaration-finding definition {})]
+    [(:type finding)
+     (:level finding)
+     (:file finding)])
+  => [:tool.lint/invalid-declaration :warning "<memory>"])
 
 (pr-str (run '[tool.lint-schema-test]))

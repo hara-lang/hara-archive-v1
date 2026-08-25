@@ -1476,17 +1476,18 @@ final class HaraAnalyzer {
     }
 
     ILinearType<?> fields = (ILinearType<?>) form.nth(2);
-    String[] fieldNames = new String[(int) fields.count()];
+    HalcSchema.NamedField[] fieldSpecifications =
+        new HalcSchema.NamedField[(int) fields.count()];
     Set<String> seen = new HashSet<>();
-    for (int i = 0; i < fieldNames.length; i++) {
+    for (int i = 0; i < fieldSpecifications.length; i++) {
       Object field = fields.nth(i);
-      if (!(field instanceof Symbol) || ((Symbol) field).getNamespace() != null) {
-        throw error(kind + " field names must be unqualified symbols");
+      if (!(field instanceof Symbol) && !isBindingVector(field)) {
+        throw error(kind + " fields must be symbols or [name schema] declarations");
       }
-      Symbol fieldSymbol = (Symbol) field;
-      fieldNames[i] = fieldSymbol.getName();
-      if (!seen.add(fieldNames[i])) {
-        throw error("Duplicate " + kind + " field: " + fieldNames[i]);
+      HalcSchema.NamedField specification = HalcSchema.normalizeNamedField(field);
+      fieldSpecifications[i] = specification;
+      if (!seen.add(specification.name())) {
+        throw error("Duplicate " + kind + " field: " + specification.name());
       }
     }
 
@@ -1510,7 +1511,10 @@ final class HaraAnalyzer {
       extensions.add(analyzeExtendType(List.Standard.from(null, extension)));
     }
     return new HaraNodes.DefineNamedType(
-        symbol, fieldNames, mutable, extensions.toArray(new HaraExpressionNode[0]));
+        symbol,
+        fieldSpecifications,
+        mutable,
+        extensions.toArray(new HaraExpressionNode[0]));
   }
 
   private HaraExpressionNode analyzeField(List<?> form) {

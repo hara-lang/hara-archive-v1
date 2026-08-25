@@ -3,7 +3,7 @@
 Status: draft implementation contract
 Owner issue: `hara-lang/hara#903`
 Registry fixture:
-`hara-lang/hara-specs-registry/01-lang/011-typed-catalog/draft/conformance/catalog-v1.json`
+`hara-lang/hara-specs-registry/01-lang/011-typed-catalog/draft/conformance/catalog-v2.json`
 
 ## Purpose
 
@@ -28,16 +28,15 @@ A successful call returns:
 {:catalog <verified SchemaCatalog>
  :verification
  {:status :verified
-  :catalog/format "std.typed.catalog/1"
-  :catalog/hash-epoch "std.typed.schema/catalog-v1"
-  :catalog/component-epoch "std.typed.catalog/component-v1"
+  :catalog/format "std.typed.catalog/2"
+  :catalog/hash-epoch "std.typed.schema/catalog-v2"
+  :catalog/component-epoch "std.typed.catalog/component-v2"
   :catalog/provenance ...
   :catalog/document-digest "sha256:..."
   :catalog/entry-count ...
   :catalog/component-count ...
   :catalog/coordinates [...]
-  :catalog/component-order [...]
-  :catalog/latest-tooling-only? true}}
+  :catalog/component-order [...]}}
 ```
 
 No catalogue value is returned when any check fails.
@@ -46,18 +45,16 @@ No catalogue value is returned when any check fails.
 
 The document reader performs the following work in order:
 
-1. Require the versioned document, hash, and component epochs.
+1. Require the document, hash, and component epochs.
 2. Validate immutable source provenance and canonical source paths.
 3. Parse each `schema/form` and `schema/normal` as one HAL/EDN data value.
-4. Convert all coordinates to exact `[:schema id version hash]` values.
+4. Convert all coordinates to exact `[:schema id hash]` values.
 5. Construct one `std.typed.catalog/SchemaCatalog` using the supplied hashes as
    assertions.
 6. Recompute and compare every normalized schema and direct exact dependency.
 7. Recompute strongly connected components, component identities, recursion
    evidence, component dependencies, and dependency-first component order.
-8. Verify the registry's latest-version projection only as non-executable
-   tooling evidence.
-9. Return the catalogue and deterministic verification report atomically.
+8. Return the catalogue and deterministic verification report atomically.
 
 The document layer does not contain another schema grammar, semantic hash
 algorithm, dependency traversal, or strongly connected component
@@ -68,13 +65,11 @@ implementation. Those remain owned by `std.typed.catalog`.
 Execution links remain exact coordinates:
 
 ```clojure
-[:schema :catalog.fixture/profile 2 "sha256:..."]
+[:schema :catalog.fixture/profile "sha256:..."]
 ```
 
-The `catalog/tooling/latest` map is checked against the admitted exact entries,
-but it is never used to build the catalogue or resolve an execution dependency.
-A document with `execution-may-use-latest` set to any value other than `false`
-is rejected.
+There is no latest-version projection in the admitted catalog. Execution uses
+the exact coordinate directly.
 
 ## Digest ownership
 
@@ -106,8 +101,6 @@ Important findings include:
 - `schema-dependencies-mismatch`
 - `component-evidence-mismatch`
 - `component-order-mismatch`
-- `latest-execution-forbidden`
-- `latest-evidence-mismatch`
 
 When canonical catalogue construction rejects an entry, the wrapper retains the
 underlying `:cause/type`, including
@@ -122,8 +115,7 @@ an HBC program, perform network I/O, or retain partial catalogue state.
 
 Rust package manifest and archive admission now consume this verified result
 before package build, read, install, or activation. The package boundary keeps
-the exact coordinates from the verified catalogue; it does not resolve the
-tooling-only `catalog/tooling/latest` projection. HBC1 remains an exact-link
+the exact coordinates from the verified catalogue. HBC1 remains an exact-link
 boundary: linked programs carry exact schema coordinates and do not embed the
 registry JSON document.
 

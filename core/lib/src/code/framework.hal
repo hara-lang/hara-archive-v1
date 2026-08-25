@@ -1,8 +1,7 @@
 ;; Foundation-compatible, pure source analysis primitives. Host adapters
 ;; supply file text; this namespace never grants filesystem authority.
 (ns code.framework
-  (:require [code.framework.navigation :as navigation]
-            [code.framework.source :as source]
+  (:require [code.framework.source :as source]
             [std.lib.context.definition :as definition]
             [std.block.base :as block]
             [std.block.parse :as parse]))
@@ -253,7 +252,7 @@
     :kind :macro}
    {:id :hara/struct
     :origin :code.framework/native
-    :exact #{"defstruct"}
+    :exact #{"defstruct" "defmutable"}
     :kind :struct
     :type-export true
     :generated [{:name-prefix "map->" :kind :constructor}

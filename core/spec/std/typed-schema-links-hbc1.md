@@ -6,8 +6,8 @@ Status: first implementation tranche for hara-lang/hara#902.
 
 HBC1 binds one canonical HBC0 program to an immutable vector of identified
 `std.typed` schema coordinates. It does not place identity inside structural
-`SchemaType` / `HalcSchema.Type` nodes and it never resolves an unversioned
-registry alias or tooling-oriented latest entry.
+`SchemaType` / `HalcSchema.Type` nodes and it never resolves a registry alias
+or tooling-oriented latest entry.
 
 The first epoch is **external-link-only**. An HBC1 consumer must admit and
 verify a catalog containing every exact coordinate before installing or
@@ -20,22 +20,21 @@ contract.
 A coordinate is the binary projection of:
 
 ```hara
-[:schema :qualified/id non-negative-version "sha256:..."]
+[:schema :qualified/id "sha256:..."]
 ```
 
 The binary record stores:
 
 1. qualified keyword name without the leading colon, as canonical UTF-8;
-2. unsigned 32-bit version;
-3. the 32 raw bytes represented by the lowercase `sha256:` hash.
+2. the 32 raw bytes represented by the lowercase `sha256:` hash.
 
 The id must contain exactly one namespace separator and non-empty namespace
 and name components. Hash input must be exactly 64 lowercase hexadecimal
 characters after `sha256:`.
 
-Coordinates are ordered by id, then version, then hash. Duplicate exact
-coordinates are invalid. Reusing one id/version with a different hash is an
-immutable identity conflict.
+Coordinates are ordered by id, then hash. Duplicate exact coordinates are
+invalid. Reusing one id with a different hash is an immutable identity
+conflict.
 
 ## Envelope
 

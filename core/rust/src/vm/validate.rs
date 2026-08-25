@@ -2,6 +2,8 @@
 //! vector before any execution. After validation the machine indexes
 //! without re-checking, and malformed programs never reach a panic.
 
+use std::collections::HashSet;
+
 use super::error::ValidationError;
 use super::opcode::Instruction;
 use super::program::{
@@ -387,12 +389,28 @@ pub(crate) fn stack_heights(
             }
             Instruction::DefStruct { name, fields } | Instruction::DefMutable { name, fields } => {
                 string_constant(program, *name, at)?;
+                let kind = if matches!(instruction, Instruction::DefMutable { .. }) {
+                    "defmutable"
+                } else {
+                    "defstruct"
+                };
                 match program.constants.get(*fields as usize) {
-                    Some(Value::Vector(fields))
-                        if fields.iter().all(|field| matches!(field, Value::String(_))) => {}
+                    Some(Value::Vector(fields)) => {
+                        let mut names = HashSet::new();
+                        for field in fields.iter() {
+                            let named = crate::core::NamedField::from_value(field, kind)
+                                .map_err(|message| ValidationError::new(message, at))?;
+                            if !names.insert(named.name) {
+                                return Err(ValidationError::new(
+                                    format!("Duplicate {kind} field"),
+                                    at,
+                                ));
+                            }
+                        }
+                    }
                     Some(_) => {
                         return Err(ValidationError::new(
-                            format!("named fields constant {fields} is not a string vector"),
+                            format!("named fields constant {fields} is not a field vector"),
                             at,
                         ))
                     }

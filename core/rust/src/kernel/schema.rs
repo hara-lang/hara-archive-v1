@@ -30,6 +30,11 @@ pub enum SchemaType {
     Set(Box<SchemaType>),
     Tuple(Vec<SchemaType>),
     Map(Vec<SchemaField>),
+    Struct {
+        name: String,
+        mutable: bool,
+        fields: Vec<SchemaField>,
+    },
     WithProperties {
         schema: Box<SchemaType>,
         properties: Form,
@@ -85,6 +90,32 @@ pub fn schema_shorthand(schema: &SchemaType) -> Form {
                 }))
                 .collect(),
         ),
+        SchemaType::Struct {
+            name,
+            mutable,
+            fields,
+        } => {
+            let mut values = vec![Form::Keyword("struct".into())];
+            if *mutable {
+                values.push(Form::Map(vec![(
+                    Form::Keyword("mutable?".into()),
+                    Form::Bool(true),
+                )]));
+            }
+            values.push(Form::List(vec![
+                Form::Symbol("var".into()),
+                Form::Symbol(name.clone()),
+            ]));
+            values.extend(fields.iter().map(|field| {
+                let mut pair = vec![field.name.clone()];
+                if let Some(properties) = &field.properties {
+                    pair.push(properties.clone());
+                }
+                pair.push(nested(&field.value_type));
+                Form::Vector(pair)
+            }));
+            Form::Vector(values)
+        }
         SchemaType::Function(arities) => {
             let function = |arity: &FunctionSchema| {
                 let mut inputs = arity.fixed.iter().map(nested).collect::<Vec<_>>();
@@ -230,6 +261,76 @@ fn normalize_longhand_field(field: &Form) -> Result<SchemaField, String> {
     })
 }
 
+fn normalize_struct_name(value: &Form) -> Result<String, String> {
+    match value {
+        Form::List(reference)
+            if reference.len() == 2
+                && matches!(&reference[0], Form::Symbol(operator) if operator == "var") =>
+        {
+            match &reference[1] {
+                Form::Symbol(name) if name.contains('/') => Ok(name.clone()),
+                Form::Symbol(name) => Err(format!(
+                    "named struct schema reference is not fully qualified: {name}"
+                )),
+                _ => Err("named struct schema reference must target a symbol".into()),
+            }
+        }
+        Form::Symbol(name) if name.contains('/') => Ok(name.clone()),
+        Form::Symbol(name) => Err(format!(
+            "named struct schema reference is not fully qualified: {name}"
+        )),
+        _ => Err("struct schema name must be a qualified symbol or (var ...) reference".into()),
+    }
+}
+
+fn normalize_struct_field(argument: &Form) -> Result<SchemaField, String> {
+    let Form::Vector(pair) = argument else {
+        return Err(":struct schema fields must be [name type] or [name properties type]".into());
+    };
+    match pair.as_slice() {
+        [name, value_type] => Ok(SchemaField {
+            name: name.clone(),
+            properties: None,
+            value_type: normalize_schema(value_type)?,
+        }),
+        [name, Form::Map(properties), value_type] => Ok(SchemaField {
+            name: name.clone(),
+            properties: Some(Form::Map(properties.clone())),
+            value_type: normalize_schema(value_type)?,
+        }),
+        _ => Err(":struct schema fields must be [name type] or [name properties type]".into()),
+    }
+}
+
+fn normalize_struct_forms(arguments: &[Form], mutable: bool) -> Result<SchemaType, String> {
+    let Some(name) = arguments.first() else {
+        return Err(":struct schema requires a qualified name".into());
+    };
+    Ok(SchemaType::Struct {
+        name: normalize_struct_name(name)?,
+        mutable,
+        fields: arguments[1..]
+            .iter()
+            .map(normalize_struct_field)
+            .collect::<Result<Vec<_>, _>>()?,
+    })
+}
+
+fn struct_mutability(arguments: &[Form]) -> Result<(bool, &[Form]), String> {
+    let Some(Form::Map(properties)) = arguments.first() else {
+        return Ok((false, arguments));
+    };
+    let Some(value) = properties.iter().find_map(|(key, value)| {
+        matches!(key, Form::Keyword(key) if key == "mutable?").then_some(value)
+    }) else {
+        return Ok((false, arguments));
+    };
+    let Form::Bool(mutable) = value else {
+        return Err(":struct schema :mutable? must be boolean".into());
+    };
+    Ok((*mutable, &arguments[1..]))
+}
+
 fn normalize_function_inputs(
     inputs: &Form,
 ) -> Result<(Vec<SchemaType>, Option<Box<SchemaType>>), String> {
@@ -356,6 +457,29 @@ fn normalize_longhand(entries: &[(Form, Form)]) -> Result<SchemaType, String> {
                     .collect::<Result<Vec<_>, _>>()
                     .map(SchemaType::Map)
             }
+        }
+        "struct" => {
+            let mutable = match longhand_value(entries, "mutable?") {
+                None => false,
+                Some(Form::Bool(value)) => *value,
+                Some(_) => return Err("struct schema :mutable? must be boolean".into()),
+            };
+            let name = longhand_value(entries, "name").or_else(|| children.first())
+                .ok_or_else(|| ":struct schema requires a qualified name".to_string())?;
+            let field_fallback = if children.is_empty() {
+                &[][..]
+            } else {
+                &children[1..]
+            };
+            let fields = longhand_sequence(entries, "fields", field_fallback)?
+                .iter()
+                .map(normalize_struct_field)
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(SchemaType::Struct {
+                name: normalize_struct_name(name)?,
+                mutable,
+                fields,
+            })
         }
         "fn" => normalize_longhand_function(entries).map(|arity| SchemaType::Function(vec![arity])),
         "function" => {
@@ -751,6 +875,10 @@ fn normalize_composite(items: &[Form]) -> Result<SchemaType, String> {
             .map(normalize_map_field)
             .collect::<Result<Vec<_>, _>>()
             .map(SchemaType::Map),
+        "struct" => {
+            let (mutable, arguments) = struct_mutability(arguments)?;
+            normalize_struct_forms(arguments, mutable)
+        }
         "fn" => normalize_function(items).map(|arity| SchemaType::Function(vec![arity])),
         "function" => {
             if arguments.is_empty() {
@@ -856,6 +984,50 @@ mod tests {
         assert!(normalize_schema(&parse("[:map [:name]]").unwrap()).is_err());
         assert!(normalize_schema(&parse("[:fn [:str & :int :bool] :str]").unwrap()).is_err());
         assert!(normalize_schema(&parse("[:maybe]").unwrap()).is_err());
+    }
+
+    #[test]
+    fn struct_schema_is_a_first_class_normal_form() {
+        let schema = normalize_schema(
+            &parse(
+                "[:struct {:mutable? true} (var demo/Cursor) \
+                 [:position :int] [:limit {:optional true} [:maybe :int]]]",
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            schema,
+            SchemaType::Struct {
+                name: "demo/Cursor".into(),
+                mutable: true,
+                fields: vec![
+                    SchemaField {
+                        name: Form::Symbol("position".into()),
+                        properties: None,
+                        value_type: SchemaType::Primitive("int".into()),
+                    },
+                    SchemaField {
+                        name: Form::Symbol("limit".into()),
+                        properties: Some(Form::Map(vec![(
+                            Form::Keyword("optional".into()),
+                            Form::Bool(true),
+                        )])),
+                        value_type: SchemaType::Union(vec![
+                            SchemaType::Primitive("int".into()),
+                            SchemaType::Primitive("nil".into()),
+                        ]),
+                    },
+                ],
+            }
+        );
+        assert_eq!(normalize_schema(&schema_shorthand(&schema)).unwrap(), schema);
+    }
+
+    #[test]
+    fn struct_schema_requires_a_qualified_type_name() {
+        assert!(normalize_schema(&parse("[:struct (var Cursor) [:value :any]]").unwrap()).is_err());
+        assert!(normalize_schema(&parse("[:struct (var demo/Cursor) [:value]]").unwrap()).is_err());
     }
 
     #[test]

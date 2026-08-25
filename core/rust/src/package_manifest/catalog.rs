@@ -5,7 +5,7 @@ pub(super) fn admit(
     format: &str,
     source: &str,
 ) -> Result<PackageCatalogAdmission, PackageManifestError> {
-    if format != "std.typed.catalog/1" {
+    if format != "std.typed.catalog/2" {
         return Err(PackageManifestError::new(
             "package/catalog-unsupported",
             format!("unsupported :schema/catalog :format {format}"),

@@ -11,14 +11,13 @@
 (def recursive-catalog
   (catalog/catalog
    [{:schema/id :probe/node
-     :schema/version 1
      :schema/form
      '[:map
        [:value :int]
        [:next [:maybe (var Node)]]]}]))
 
 (def recursive-coordinate
-  (catalog/coordinate recursive-catalog :probe/node 1))
+  (catalog/coordinate recursive-catalog :probe/node))
 
 (let [union (explain/explain [:or :int :str] :wrong)
       recursive (explain/explain 'Node

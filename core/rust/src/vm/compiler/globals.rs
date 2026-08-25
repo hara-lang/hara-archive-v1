@@ -358,12 +358,8 @@ impl Compiler {
                 Some(span.start),
             ));
         }
-        let Form::Symbol(name) = children[1].form else {
-            return Err(unsupported(
-                format!("{kind} name must be an unqualified symbol"),
-                children[1].span.start,
-            ));
-        };
+        let (name, _) = binding_symbol(children[1].form, &format!("{kind} name"))
+            .map_err(|message| unsupported(message, children[1].span.start))?;
         if name.contains('/') {
             return Err(unsupported(
                 format!("{kind} name must be an unqualified symbol"),
@@ -380,37 +376,47 @@ impl Compiler {
                 ))
             }
         };
-        let mut names: Vec<crate::core::Value> = Vec::with_capacity(fields.len());
+        let mut names = Vec::with_capacity(fields.len());
+        let mut field_values = Vec::with_capacity(fields.len());
         for field in fields {
-            let Form::Symbol(field) = field else {
-                return Err(unsupported(
-                    format!("{kind} field names must be unqualified symbols"),
-                    children[2].span.start,
-                ));
+            let (field_name, field_value) = match field {
+                Form::Symbol(field) if !field.contains('/') => (
+                    field.clone(),
+                    crate::core::Value::String(field.clone()),
+                ),
+                Form::Vector(_) => {
+                    let named = crate::core::NamedField::from_form(field, kind).map_err(
+                        |message| unsupported(message, children[2].span.start),
+                    )?;
+                    let value = crate::core::form_to_value(field).map_err(|message| {
+                        unsupported(message, children[2].span.start)
+                    })?;
+                    (named.name, value)
+                }
+                _ => {
+                    return Err(unsupported(
+                        format!(
+                            "{kind} fields must be symbols or [name schema] vectors"
+                        ),
+                        children[2].span.start,
+                    ))
+                }
             };
-            if field.contains('/') {
-                return Err(unsupported(
-                    format!("{kind} field names must be unqualified symbols"),
-                    children[2].span.start,
-                ));
-            }
-            if names
-                .iter()
-                .any(|candidate| matches!(candidate, crate::core::Value::String(c) if c == field))
-            {
+            if names.iter().any(|candidate| candidate == &field_name) {
                 return Err(unsupported(
                     format!("Duplicate {kind} field"),
                     children[2].span.start,
                 ));
             }
-            names.push(crate::core::Value::String(field.clone()));
+            names.push(field_name);
+            field_values.push(field_value);
         }
-        let name_index = self.name_constant(name, children[1].span)?;
+        let name_index = self.name_constant(&name, children[1].span)?;
         let fields_index = self.constant_index_of(
-            crate::core::Value::Vector(names.into_iter().collect()),
+            crate::core::Value::Vector(field_values.into_iter().collect()),
             span,
         )?;
-        self.declare_program_global(name);
+        self.declare_program_global(&name);
         self.declare_program_global(&format!("->{name}"));
         self.declare_program_global(&format!("map->{name}"));
         self.emit(

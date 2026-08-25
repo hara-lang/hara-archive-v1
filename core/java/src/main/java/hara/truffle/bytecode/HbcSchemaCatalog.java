@@ -13,17 +13,16 @@ import java.util.TreeSet;
 
 /** Admits exact std.typed catalog evidence before an HBC1 program becomes usable. */
 public final class HbcSchemaCatalog {
-  private static final String COMPONENT_EPOCH = ":std.typed.catalog/component-v1";
+  private static final String COMPONENT_EPOCH = ":std.typed.catalog/component-v2";
   private static final String HASH_PREFIX = "sha256:";
   private static final int DIGEST_HEX_LENGTH = 64;
   private static final Comparator<HbcSchemaLinks.SchemaCoordinate> COORDINATE_ORDER =
       Comparator.comparing(HbcSchemaLinks.SchemaCoordinate::id)
-          .thenComparingLong(HbcSchemaLinks.SchemaCoordinate::version)
           .thenComparing(HbcSchemaLinks.SchemaCoordinate::hash);
 
   private HbcSchemaCatalog() {}
 
-  private record Identity(String id, long version) {}
+  private record Identity(String id) {}
 
   /** One exact catalog entry and its exact direct dependencies. */
   public record CatalogEntry(
@@ -71,7 +70,7 @@ public final class HbcSchemaCatalog {
     }
   }
 
-  /** Reproduces sha256(pr-str [:std.typed.catalog/component-v1 members]). */
+  /** Reproduces sha256(pr-str [:std.typed.catalog/component-v2 members]). */
   public static String componentId(List<HbcSchemaLinks.SchemaCoordinate> rawMembers) {
     List<HbcSchemaLinks.SchemaCoordinate> members =
         canonicalCoordinates(rawMembers, "schema catalog component members");
@@ -85,8 +84,6 @@ public final class HbcSchemaCatalog {
       input
           .append("[:schema :")
           .append(coordinate.id())
-          .append(' ')
-          .append(coordinate.version())
           .append(" \"")
           .append(coordinate.hash())
           .append("\"]");
@@ -104,12 +101,11 @@ public final class HbcSchemaCatalog {
     Map<HbcSchemaLinks.SchemaCoordinate, CatalogEntry> entries =
         new TreeMap<>(COORDINATE_ORDER);
     Map<Identity, String> identities =
-        new TreeMap<>(
-            Comparator.comparing(Identity::id).thenComparingLong(Identity::version));
+        new TreeMap<>(Comparator.comparing(Identity::id));
     for (CatalogEntry rawEntry : rawEntries) {
       if (rawEntry == null) throw malformed("schema catalog entry is required");
       CatalogEntry entry = new CatalogEntry(rawEntry.coordinate(), rawEntry.dependencies());
-      Identity identity = new Identity(entry.coordinate().id(), entry.coordinate().version());
+      Identity identity = new Identity(entry.coordinate().id());
       String previousHash = identities.put(identity, entry.coordinate().hash());
       if (previousHash != null) {
         if (previousHash.equals(entry.coordinate().hash())) {
@@ -237,7 +233,7 @@ public final class HbcSchemaCatalog {
       HbcSchemaLinks.SchemaCoordinate coordinate) {
     if (coordinate == null) throw malformed("schema catalog coordinate is required");
     return new HbcSchemaLinks.SchemaCoordinate(
-        coordinate.id(), coordinate.version(), coordinate.hash());
+        coordinate.id(), coordinate.hash());
   }
 
   private static List<HbcSchemaLinks.SchemaCoordinate> canonicalCoordinates(
@@ -245,11 +241,10 @@ public final class HbcSchemaCatalog {
     if (values == null) throw malformed(label + " are required");
     ArrayList<HbcSchemaLinks.SchemaCoordinate> output = new ArrayList<>();
     Map<Identity, String> identities =
-        new TreeMap<>(
-            Comparator.comparing(Identity::id).thenComparingLong(Identity::version));
+        new TreeMap<>(Comparator.comparing(Identity::id));
     for (HbcSchemaLinks.SchemaCoordinate raw : values) {
       HbcSchemaLinks.SchemaCoordinate coordinate = requireCoordinate(raw);
-      Identity identity = new Identity(coordinate.id(), coordinate.version());
+      Identity identity = new Identity(coordinate.id());
       String previousHash = identities.put(identity, coordinate.hash());
       if (previousHash != null) {
         if (previousHash.equals(coordinate.hash())) {
@@ -325,8 +320,6 @@ public final class HbcSchemaCatalog {
   private static String displayCoordinate(HbcSchemaLinks.SchemaCoordinate coordinate) {
     return "[:schema :"
         + coordinate.id()
-        + " "
-        + coordinate.version()
         + " \""
         + coordinate.hash()
         + "\"]";

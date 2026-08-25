@@ -1,5 +1,5 @@
-use hara_wasm::vm::conformance::{parse_corpus, run_embedded, validate_upstream, EMBEDDED_CORPUS};
 use hara_wasm::spec_registry;
+use hara_wasm::vm::conformance::{parse_corpus, run_embedded, validate_upstream, EMBEDDED_CORPUS};
 use std::path::{Path, PathBuf};
 
 fn main() {
@@ -47,7 +47,10 @@ fn validate_embedded_upstream() -> Result<(), String> {
         .unwrap_or(&corpus.upstream);
     let candidates = spec_registry::resolve(relative)
         .into_iter()
-        .chain([PathBuf::from(&corpus.upstream), Path::new("..").join(&corpus.upstream)])
+        .chain([
+            PathBuf::from(&corpus.upstream),
+            Path::new("..").join(&corpus.upstream),
+        ])
         .collect::<Vec<_>>();
     let path = candidates
         .iter()

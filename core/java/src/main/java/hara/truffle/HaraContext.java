@@ -2022,16 +2022,30 @@ public final class HaraContext {
   }
 
   @TruffleBoundary
-  public HaraType defineNamedType(Symbol symbol, String[] fields, boolean mutable) {
+  public HaraType defineNamedType(
+      Symbol symbol, HalcSchema.NamedField[] fields, boolean mutable) {
     if (symbol.getNamespace() != null) {
       throw new HaraException("named type must be defined in the current namespace");
     }
-    String[] declaredFields = fields.clone();
+    HalcSchema.NamedField[] declaredSpecifications = fields.clone();
+    String[] declaredFields =
+        java.util.Arrays.stream(declaredSpecifications)
+            .map(HalcSchema.NamedField::name)
+            .toArray(String[]::new);
+    String qualifiedName = currentNamespace.name() + "/" + symbol.getName();
+    Object schema = HalcSchema.namedTypeSchema(qualifiedName, mutable, declaredSpecifications);
+    IMapType<Object, Object> metadata =
+        symbol.meta() instanceof IMapType<?, ?> existing
+            ? (IMapType<Object, Object>) existing
+            : hara.lang.data.Map.Standard.EMPTY;
+    metadata =
+        (IMapType<Object, Object>) metadata.assoc(Keyword.create("schema"), schema);
+    Symbol typedSymbol = symbol.withMeta(metadata);
     HaraType type =
         mutable
-            ? new HaraMutableType(currentNamespace.name() + "/" + symbol.getName(), declaredFields)
-            : new HaraType(currentNamespace.name() + "/" + symbol.getName(), declaredFields);
-    define(symbol, type);
+            ? new HaraMutableType(qualifiedName, declaredFields)
+            : new HaraType(qualifiedName, declaredFields);
+    define(typedSymbol, type);
     define(Symbol.create("->" + symbol.getName()), type);
     define(
         Symbol.create("map->" + symbol.getName()),
@@ -3563,6 +3577,7 @@ public final class HaraContext {
     if (ast instanceof HalcSchema.SetType) return "set";
     if (ast instanceof HalcSchema.Tuple) return "tuple";
     if (ast instanceof HalcSchema.MapType) return "map";
+    if (ast instanceof HalcSchema.StructType) return "struct";
     if (ast instanceof HalcSchema.FunctionType function && function.arities().size() == 1)
       return "fn";
     if (ast instanceof HalcSchema.FunctionType) return "function";
@@ -3660,6 +3675,29 @@ public final class HaraContext {
           });
       return schemaAstMap(
           Keyword.create("kind"), Keyword.create("map"),
+          Keyword.create("fields"), schemaAstVector(fields));
+    }
+    if (ast instanceof HalcSchema.StructType struct) {
+      ArrayList<Object> fields = new ArrayList<>();
+      struct.fields().forEach(
+          field -> {
+            if (field.properties() == null) {
+              fields.add(
+                  schemaAstMap(
+                      Keyword.create("name"), field.name(),
+                      Keyword.create("type"), schemaAst(field.type())));
+            } else {
+              fields.add(
+                  schemaAstMap(
+                      Keyword.create("name"), field.name(),
+                      Keyword.create("properties"), field.properties(),
+                      Keyword.create("type"), schemaAst(field.type())));
+            }
+          });
+      return schemaAstMap(
+          Keyword.create("kind"), Keyword.create("struct"),
+          Keyword.create("name"), Symbol.create(struct.name()),
+          Keyword.create("mutable?"), struct.mutable(),
           Keyword.create("fields"), schemaAstVector(fields));
     }
     if (ast instanceof HalcSchema.FunctionType function) {

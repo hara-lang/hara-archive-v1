@@ -14,17 +14,16 @@ import java.util.List;
 import org.junit.Test;
 
 public class HbcSchemaLinksTest {
-  private static HbcSchemaLinks.SchemaCoordinate coordinate(
-      String id, long version, char digit) {
+  private static HbcSchemaLinks.SchemaCoordinate coordinate(String id, char digit) {
     return new HbcSchemaLinks.SchemaCoordinate(
-        id, version, "sha256:" + String.valueOf(digit).repeat(64));
+        id, "sha256:" + String.valueOf(digit).repeat(64));
   }
 
   @Test
   public void exactSchemaLinksRoundTripCanonically() {
     HbcProgram program = arithmeticProgram();
-    HbcSchemaLinks.SchemaCoordinate identifier = coordinate("model/id", 1, '1');
-    HbcSchemaLinks.SchemaCoordinate account = coordinate("model/account", 2, '2');
+    HbcSchemaLinks.SchemaCoordinate identifier = coordinate("model/id", '1');
+    HbcSchemaLinks.SchemaCoordinate account = coordinate("model/account", '2');
     byte[] encoded = HbcSchemaLinks.encode(program, List.of(identifier, account));
     assertArrayEquals(new byte[] {'H', 'B', 'C', '1'}, Arrays.copyOf(encoded, 4));
 
@@ -37,7 +36,7 @@ public class HbcSchemaLinksTest {
   @Test
   public void duplicateAndConflictingSchemaLinksAreRejected() {
     HbcProgram program = arithmeticProgram();
-    HbcSchemaLinks.SchemaCoordinate first = coordinate("model/id", 1, '1');
+    HbcSchemaLinks.SchemaCoordinate first = coordinate("model/id", '1');
     HbcFormatException duplicate =
         assertThrows(
             HbcFormatException.class,
@@ -45,7 +44,7 @@ public class HbcSchemaLinksTest {
     assertEquals(
         "linked bytecode artifact contains duplicate schema coordinate", duplicate.getMessage());
 
-    HbcSchemaLinks.SchemaCoordinate conflicting = coordinate("model/id", 1, '2');
+    HbcSchemaLinks.SchemaCoordinate conflicting = coordinate("model/id", '2');
     HbcFormatException conflict =
         assertThrows(
             HbcFormatException.class,
@@ -59,13 +58,13 @@ public class HbcSchemaLinksTest {
     HbcFormatException identifier =
         assertThrows(
             HbcFormatException.class,
-            () -> coordinate("unqualified", 1, '1'));
+            () -> coordinate("unqualified", '1'));
     assertTrue(identifier.getMessage().contains("qualified keyword name"));
 
     HbcFormatException hash =
         assertThrows(
             HbcFormatException.class,
-            () -> new HbcSchemaLinks.SchemaCoordinate("model/id", 1, "sha256:BAD"));
+            () -> new HbcSchemaLinks.SchemaCoordinate("model/id", "sha256:BAD"));
     assertTrue(hash.getMessage().contains("canonical lowercase hex"));
   }
 
@@ -73,7 +72,7 @@ public class HbcSchemaLinksTest {
   public void corruptionIsRejectedBeforeNestedProgramDecode() {
     byte[] encoded =
         HbcSchemaLinks.encode(
-            arithmeticProgram(), List.of(coordinate("model/id", 1, '1')));
+            arithmeticProgram(), List.of(coordinate("model/id", '1')));
     encoded[12] ^= 1;
     HbcFormatException failure =
         assertThrows(HbcFormatException.class, () -> HbcSchemaLinks.decode(encoded));

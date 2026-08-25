@@ -3,7 +3,7 @@ use serde_json::Value;
 use std::fs;
 use std::path::PathBuf;
 
-const FIXTURE_PATH: &str = "01-lang/011-typed-catalog/draft/conformance/catalog-v1.json";
+const FIXTURE_PATH: &str = "01-lang/011-typed-catalog/draft/conformance/catalog-v2.json";
 const STALE_HASH: &str = "sha256:07304c8b522dece5a0fb44ba26a9489435fd8bb79c3f28640733dbfe81ffb65f";
 const FORGED_COMPONENT: &str =
     "sha256:0932e3b99be0a918adc4adc939bef7c0966c77a0007b86afd9a47fe732d7f01d";
@@ -112,15 +112,14 @@ fn exact_registry_bytes_round_trip_through_std_typed_catalog() {
                [(:status report) \
                 (:catalog/entry-count report) \
                 (:catalog/component-count report) \
-                (:catalog/latest-tooling-only? report) \
                 (= account-coordinate (:schema/coordinate account)) \
-                (= 5 (count order)) \
+                (= 4 (count order)) \
                 (= (:catalog/component-order report) \
                    (vec \
                     (map :component/id \
                          (std.typed/catalog-dependency-components admitted))))])"
         ),
-        "[:verified 5 5 true true true true]"
+        "[:verified 4 4 true true true]"
     );
 }
 
@@ -128,7 +127,7 @@ fn exact_registry_bytes_round_trip_through_std_typed_catalog() {
 fn stale_published_hash_is_rejected_by_the_canonical_hara_catalog() {
     let fixture = mutated_fixture(|document| {
         document["catalog/entries"][0]["schema/hash"] = Value::String(STALE_HASH.to_owned());
-        document["catalog/entries"][0]["schema/coordinate"][3] =
+        document["catalog/entries"][0]["schema/coordinate"][2] =
             Value::String(STALE_HASH.to_owned());
     });
     assert_eq!(
@@ -142,7 +141,7 @@ fn stale_published_hash_is_rejected_by_the_canonical_hara_catalog() {
 #[test]
 fn stale_exact_dependency_is_rejected_after_catalog_recomputation() {
     let fixture = mutated_fixture(|document| {
-        document["catalog/entries"][0]["schema/dependencies"][0][3] =
+        document["catalog/entries"][0]["schema/dependencies"][0][2] =
             Value::String(STALE_HASH.to_owned());
     });
     assert_eq!(
@@ -156,9 +155,9 @@ fn stale_exact_dependency_is_rejected_after_catalog_recomputation() {
 #[test]
 fn forged_component_evidence_is_rejected_after_catalog_recomputation() {
     let fixture = mutated_fixture(|document| {
-        document["catalog/components"][4]["component/id"] =
+        document["catalog/components"][3]["component/id"] =
             Value::String(FORGED_COMPONENT.to_owned());
-        document["catalog/component-order"][4] = Value::String(FORGED_COMPONENT.to_owned());
+        document["catalog/component-order"][3] = Value::String(FORGED_COMPONENT.to_owned());
     });
     assert_eq!(
         rejection_expression(&fixture),
@@ -171,7 +170,7 @@ fn forged_component_evidence_is_rejected_after_catalog_recomputation() {
 #[test]
 fn unsupported_hash_epoch_fails_before_catalog_admission() {
     let fixture = mutated_fixture(|document| {
-        document["catalog/hash-epoch"] = Value::String("std.typed.schema/catalog-v2".to_owned());
+        document["catalog/hash-epoch"] = Value::String("std.typed.schema/catalog-v1".to_owned());
     });
     assert_eq!(
         rejection_expression(&fixture),

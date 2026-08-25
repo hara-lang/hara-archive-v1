@@ -25,6 +25,7 @@ public final class HalcSchema {
           SetType,
           Tuple,
           MapType,
+          StructType,
           Properties,
           FunctionType,
           EnumType,
@@ -58,6 +59,15 @@ public final class HalcSchema {
       fields = List.copyOf(fields);
     }
   }
+
+  public record StructType(String name, boolean mutable, List<Field> fields) implements Type {
+    public StructType {
+      fields = List.copyOf(fields);
+    }
+  }
+
+  /** A named-value declaration field before it is published as a runtime descriptor. */
+  public record NamedField(String name, Object properties, Object schema, Type type) {}
 
   public record Properties(Type schema, Object properties) implements Type {}
 
@@ -124,6 +134,25 @@ public final class HalcSchema {
     if (schema instanceof MapType map) {
       ArrayList<Object> values = headed("map");
       map.fields().forEach(
+          field -> {
+            if (field.properties() == null)
+              values.add(vectorOf(field.name(), shorthand(field.type())));
+            else
+              values.add(vectorOf(field.name(), field.properties(), shorthand(field.type())));
+          });
+      return vectorOf(values.toArray());
+    }
+    if (schema instanceof StructType struct) {
+      ArrayList<Object> values = headed("struct");
+      if (struct.mutable()) {
+        values.add(
+            hara.lang.data.Map.Standard.from(
+                null, Keyword.create("mutable?"), Boolean.TRUE));
+      }
+      values.add(
+          hara.lang.data.List.Standard.from(
+              null, Symbol.create("var"), Symbol.create(struct.name())));
+      struct.fields().forEach(
           field -> {
             if (field.properties() == null)
               values.add(vectorOf(field.name(), shorthand(field.type())));
@@ -223,6 +252,22 @@ public final class HalcSchema {
       }
       case "tuple" -> new Tuple(normalizeAll(arguments));
       case "map" -> normalizeMap(arguments);
+      case "struct" -> {
+        boolean mutable = false;
+        List<Object> structArguments = arguments;
+        if (!arguments.isEmpty() && schemaMap(arguments.get(0)) != null) {
+          IMapType<Object, Object> structProperties = schemaMap(arguments.get(0));
+          Object mutableValue = longhandValue(structProperties, "mutable?");
+          if (mutableValue != null) {
+            if (!(mutableValue instanceof Boolean value)) {
+              throw invalid("struct schema :mutable? must be boolean");
+            }
+            mutable = value;
+            structArguments = arguments.subList(1, arguments.size());
+          }
+        }
+        yield normalizeStructForms(structArguments, mutable);
+      }
       case "fn" -> new FunctionType(List.of(normalizeFunction(vector)));
       case "function" -> {
         if (arguments.isEmpty()) {
@@ -305,6 +350,111 @@ public final class HalcSchema {
       throw invalid("named schema reference is not fully qualified: " + name.display());
     }
     return new Reference(name.display());
+  }
+
+  private static String normalizeStructName(Object value) {
+    if (value instanceof hara.lang.data.List<?> reference
+        && reference.count() == 2
+        && reference.nth(0) instanceof Symbol operator
+        && operator.getNamespace() == null
+        && "var".equals(operator.getName())) {
+      if (!(reference.nth(1) instanceof Symbol target)) {
+        throw invalid("named struct schema reference must target a symbol");
+      }
+      if (target.getNamespace() == null) {
+        throw invalid("named struct schema reference is not fully qualified: " + target.display());
+      }
+      return target.display();
+    }
+    if (value instanceof Symbol symbol) {
+      if (symbol.getNamespace() == null) {
+        throw invalid("named struct schema reference is not fully qualified: " + symbol.display());
+      }
+      return symbol.display();
+    }
+    throw invalid("struct schema name must be a qualified symbol or (var ...) reference");
+  }
+
+  private static Field normalizeStructField(Object argument) {
+    ILinearType<?> pair = vector(argument);
+    if (pair == null || (pair.count() != 2 && pair.count() != 3)) {
+      throw invalid(":struct schema fields must be [name type] or [name properties type]");
+    }
+    if (pair.count() == 2) {
+      return new Field(pair.nth(0), null, normalize(pair.nth(1)));
+    }
+    Object properties = pair.nth(1);
+    if (schemaMap(properties) == null) {
+      throw invalid(":struct schema field properties must be a map");
+    }
+    return new Field(pair.nth(0), properties, normalize(pair.nth(2)));
+  }
+
+  private static StructType normalizeStructForms(List<Object> arguments, boolean mutable) {
+    if (arguments.isEmpty()) throw invalid(":struct schema requires a qualified name");
+    String name = normalizeStructName(arguments.get(0));
+    List<Field> fields = new ArrayList<>();
+    for (int index = 1; index < arguments.size(); index++) {
+      fields.add(normalizeStructField(arguments.get(index)));
+    }
+    return new StructType(name, mutable, fields);
+  }
+
+  /** Parses one source or bytecode field declaration, accepting legacy symbols. */
+  public static NamedField normalizeNamedField(Object value) {
+    Object raw = HaraBox.unwrap(value);
+    if (raw instanceof Symbol symbol) {
+      if (symbol.getNamespace() != null) {
+        throw invalid("named value field names must be unqualified symbols");
+      }
+      return new NamedField(
+          symbol.getName(), null, Keyword.create("any"), new Primitive("any"));
+    }
+    if (raw instanceof String name && !name.isEmpty() && !name.contains("/")) {
+      return new NamedField(name, null, Keyword.create("any"), new Primitive("any"));
+    }
+    if (!(raw instanceof ILinearType<?> pair) || (pair.count() != 2 && pair.count() != 3)) {
+      throw invalid("named value fields must be symbols or [name schema] declarations");
+    }
+    Object rawName = pair.nth(0);
+    if (!(rawName instanceof Symbol symbol) || symbol.getNamespace() != null) {
+      throw invalid("named value field names must be unqualified symbols");
+    }
+    Object properties = null;
+    Object schema;
+    if (pair.count() == 2) {
+      schema = pair.nth(1);
+    } else {
+      properties = pair.nth(1);
+      if (schemaMap(properties) == null) {
+        throw invalid("named value field properties must be a map");
+      }
+      schema = pair.nth(2);
+    }
+    return new NamedField(symbol.getName(), properties, schema, normalize(schema));
+  }
+
+  /** Builds the portable schema attached to a named value declaration. */
+  public static Object namedTypeSchema(
+      String qualifiedName, boolean mutable, NamedField[] fields) {
+    ArrayList<Object> values = new ArrayList<>();
+    values.add(Keyword.create("struct"));
+    if (mutable) {
+      values.add(
+          hara.lang.data.Map.Standard.from(
+              null, Keyword.create("mutable?"), Boolean.TRUE));
+    }
+    values.add(
+        hara.lang.data.List.Standard.from(
+            null, Symbol.create("var"), Symbol.create(qualifiedName)));
+    for (NamedField field : fields) {
+      ArrayList<Object> fieldValues = new ArrayList<>();
+      fieldValues.add(Keyword.create(field.name()));
+      if (field.properties() != null) fieldValues.add(field.properties());
+      fieldValues.add(field.schema());
+      values.add(hara.lang.data.Vector.Standard.from(null, fieldValues.toArray()));
+    }
+    return hara.lang.data.Vector.Standard.from(null, values.toArray());
   }
 
   private static Type normalizeLonghandMap(
@@ -420,6 +570,28 @@ public final class HalcSchema {
       }
       case "tuple" -> new Tuple(normalizeAll(longhandValues(schema, "items", children)));
       case "map" -> normalizeLonghandMap(schema, children);
+      case "struct" -> {
+        Object mutableValue = longhandValue(schema, "mutable?");
+        boolean mutable = false;
+        if (mutableValue != null) {
+          if (!(mutableValue instanceof Boolean value)) {
+            throw invalid("struct schema :mutable? must be boolean");
+          }
+          mutable = value;
+        }
+        Object name = longhandValue(schema, "name");
+        if (name == null && !children.isEmpty()) name = children.get(0);
+        if (name == null) throw invalid(":struct schema requires a qualified name");
+        List<Object> fallback =
+            children.isEmpty() ? List.of() : children.subList(1, children.size());
+        List<Object> rawFields =
+            longhandEntry(schema, "fields") == null
+                ? fallback
+                : longhandValues(schema, "fields", List.of());
+        List<Field> fields = new ArrayList<>();
+        for (Object field : rawFields) fields.add(normalizeStructField(field));
+        yield new StructType(normalizeStructName(name), mutable, fields);
+      }
       case "fn" -> new FunctionType(List.of(normalizeLonghandFunction(schema)));
       case "function" -> normalizeLonghandFunctions(longhandValues(schema, "arities", children));
       case "enum" -> new EnumType(longhandValues(schema, "values", children));

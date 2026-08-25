@@ -134,26 +134,32 @@ fn schema_rep(schema: &SchemaType) -> Rep {
 fn function_is_scalar_kernel(program: &Program, function: &FunctionPrototype) -> bool {
     let mut saw_numeric_operation = false;
     for instruction in &function.code {
-        let Some(op) = instruction_intrinsic_op(program, instruction) else {
-            continue;
-        };
-        if !matches!(
-            op,
-            IntrinsicOp::Add
-                | IntrinsicOp::Subtract
-                | IntrinsicOp::Multiply
-                | IntrinsicOp::Divide
-                | IntrinsicOp::Remainder
-                | IntrinsicOp::Modulo
-                | IntrinsicOp::Equal
-                | IntrinsicOp::Less
-                | IntrinsicOp::LessOrEqual
-                | IntrinsicOp::Greater
-                | IntrinsicOp::GreaterOrEqual
-        ) {
-            return false;
+        match instruction {
+            Instruction::ProtocolCall { .. } => return false,
+            Instruction::IntrinsicCall { .. } => {
+                let Some(op) = instruction_intrinsic_op(program, instruction) else {
+                    return false;
+                };
+                if !matches!(
+                    op,
+                    IntrinsicOp::Add
+                        | IntrinsicOp::Subtract
+                        | IntrinsicOp::Multiply
+                        | IntrinsicOp::Divide
+                        | IntrinsicOp::Remainder
+                        | IntrinsicOp::Modulo
+                        | IntrinsicOp::Equal
+                        | IntrinsicOp::Less
+                        | IntrinsicOp::LessOrEqual
+                        | IntrinsicOp::Greater
+                        | IntrinsicOp::GreaterOrEqual
+                ) {
+                    return false;
+                }
+                saw_numeric_operation = true;
+            }
+            _ => {}
         }
-        saw_numeric_operation = true;
     }
     saw_numeric_operation
 }

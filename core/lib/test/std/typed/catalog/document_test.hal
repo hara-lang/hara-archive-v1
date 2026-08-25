@@ -6,26 +6,24 @@
 (def +catalog+
   (catalog/catalog
    [{:schema/id :fixture/value
-     :schema/version 1
      :schema/form :int}]))
 
-(def +entry+ (catalog/lookup +catalog+ :fixture/value 1))
-(def +coordinate+ (catalog/coordinate +catalog+ :fixture/value 1))
+(def +entry+ (catalog/lookup +catalog+ :fixture/value))
+(def +coordinate+ (catalog/coordinate +catalog+ :fixture/value))
 (def +component+ (first (catalog/dependency-components +catalog+ [+coordinate+])))
 (def +wire-coordinate+
-  ["schema" "fixture/value" 1 (:schema/hash +entry+)])
+  ["schema" "fixture/value" (:schema/hash +entry+)])
 
 (def +document+
-  {"catalog/format" "std.typed.catalog/1"
-   "catalog/hash-epoch" "std.typed.schema/catalog-v1"
-   "catalog/component-epoch" "std.typed.catalog/component-v1"
+  {"catalog/format" "std.typed.catalog/2"
+   "catalog/hash-epoch" "std.typed.schema/catalog-v2"
+   "catalog/component-epoch" "std.typed.catalog/component-v2"
    "catalog/provenance"
    {"repository" "hara-lang/hara"
     "revision" "0123456789abcdef0123456789abcdef01234567"
-    "sources" ["01-lang/011-typed-catalog/draft/conformance/catalog-v1.json"]}
+    "sources" ["01-lang/011-typed-catalog/draft/conformance/catalog-v2.json"]}
    "catalog/entries"
    [{"schema/id" "fixture/value"
-     "schema/version" 1
      "schema/hash" (:schema/hash +entry+)
      "schema/coordinate" +wire-coordinate+
      "schema/form" (pr-str (:schema/form +entry+))
@@ -37,9 +35,6 @@
      "component/recursive?" false
      "component/dependencies" []}]
    "catalog/component-order" [(:component/id +component+)]
-   "catalog/tooling"
-   {"latest" {"fixture/value" +wire-coordinate+}
-    "execution-may-use-latest" false}
    "catalog/document-digest"
    "sha256:0000000000000000000000000000000000000000000000000000000000000000"})
 
@@ -57,13 +52,13 @@
           nil
           (catch Throwable error
             (ex-data error)))
-        forbidden-latest
+        versioned-coordinate
         (assoc-in +document+
-                  ["catalog/tooling" "execution-may-use-latest"]
-                  true)
-        latest-result
+                  ["catalog/entries" 0 "schema/coordinate"]
+                  ["schema" "fixture/value" 1 (:schema/hash +entry+)])
+        coordinate-result
         (try
-          (document/verify forbidden-latest)
+          (document/verify versioned-coordinate)
           nil
           (catch Throwable error
             (ex-data error)))]
@@ -73,8 +68,8 @@
      (= +coordinate+ (first (:catalog/coordinates verification)))
      (= :std.typed.catalog.document/schema-normal-mismatch
         (:finding/type stale-result))
-     (= :std.typed.catalog.document/latest-execution-forbidden
-        (:finding/type latest-result))])
+     (= :std.typed.catalog.document/coordinate-invalid
+        (:finding/type coordinate-result))])
   => [true true true true true true])
 
 ^{:refer std.typed.catalog.document/verify-json}
@@ -85,7 +80,7 @@
      (= +coordinate+ (first (:catalog/coordinates verification)))
      (= (:component/id +component+)
         (first (:catalog/component-order verification)))
-     (= true (:catalog/latest-tooling-only? verification))])
+     (= "std.typed.catalog/2" (:catalog/format verification))])
   => [true true true true])
 
 (pr-str (run '[std.typed.catalog.document-test]))

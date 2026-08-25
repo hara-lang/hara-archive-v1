@@ -317,6 +317,23 @@ public final class HbcCodec {
               writeSchemaType(out, field.type());
             });
       }
+      case HalcSchema.StructType struct -> {
+        out.u8(13);
+        out.string(struct.name());
+        out.bool(struct.mutable());
+        boolean propertyAware = struct.fields().stream().anyMatch(field -> field.properties() != null);
+        out.bool(propertyAware);
+        out.many(
+            struct.fields(),
+            field -> {
+              writeSchemaSurface(out, field.name());
+              if (propertyAware) {
+                out.bool(field.properties() != null);
+                if (field.properties() != null) writeSchemaSurface(out, field.properties());
+              }
+              writeSchemaType(out, field.type());
+            });
+      }
       case HalcSchema.Properties properties -> {
         out.u8(11);
         writeSchemaType(out, properties.schema());
@@ -383,6 +400,21 @@ public final class HbcCodec {
                     Object properties = reader.bool() ? readSchemaSurface(reader) : null;
                     return new HalcSchema.Field(name, properties, readSchemaType(reader));
                   }));
+      case 13 -> {
+        String name = in.string();
+        boolean mutable = in.bool();
+        boolean propertyAware = in.bool();
+        yield new HalcSchema.StructType(
+            name,
+            mutable,
+            in.many(
+                reader -> {
+                  Object fieldName = readSchemaSurface(reader);
+                  Object properties =
+                      propertyAware && reader.bool() ? readSchemaSurface(reader) : null;
+                  return new HalcSchema.Field(fieldName, properties, readSchemaType(reader));
+                }));
+      }
       default -> throw malformed("bytecode artifact contains unknown schema type");
     };
   }
