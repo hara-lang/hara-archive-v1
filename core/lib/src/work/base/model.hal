@@ -1,6 +1,7 @@
 (ns work.base.model)
 
-(defstruct Work [spec])
+(defstruct WorkValue [spec])
+(def Work WorkValue)
 (defstruct WorkRef [id])
 (defstruct WorkObserver [function state])
 
@@ -64,11 +65,11 @@
   [runtime]
   (:work/schema-version (:work/policy runtime)))
 
-(extend-type Work IWork
+(extend-type WorkValue IWork
   (work-spec [work]
     (:spec work)))
 
-(extend-type Work IFn
+(extend-type WorkValue IFn
   (invoke [work & arguments]
     (let [function (:work/invoke (:spec work))]
       (if function
@@ -86,7 +87,7 @@
 
 (defn work-value
   [spec]
-  (work.base.model/Work spec))
+  (work.base.model/WorkValue spec))
 
 (defn work-spec-map
   [work]

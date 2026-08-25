@@ -239,12 +239,14 @@
   "Concatenates the display text of values, omitting nil values."
   ([] "")
   ([value & more]
-   (reduce (fn [output item]
-             (if (nil? item)
-               output
-               (str output (IDisplay/display item))))
-           (if (nil? value) "" (IDisplay/display value))
-           more)))
+   (String/join
+    ""
+    (map (fn [item]
+           (cond
+             (nil? item) ""
+             (string? item) item
+             :else (IDisplay/display item)))
+         (cons value more)))))
 
 (defn ^{:inline true :schema [:fn [:any] :str]}
   pr-str

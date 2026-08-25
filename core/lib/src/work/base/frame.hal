@@ -114,7 +114,7 @@
     (cond
       (native-runtime? runtime)
       (do
-        (native/emit event record)
+        (Work/emit event record)
         record)
 
       (nil? (base/runtime-store runtime))
@@ -167,7 +167,7 @@
   [runtime frame]
   (if (and (native-runtime? runtime)
            (not (:work/cleanup? frame)))
-    (native/check-cancelled)
+    (Work/check-cancelled)
     (result/then
      (cancelled? runtime frame)
      (fn [cancelled]

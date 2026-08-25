@@ -61,6 +61,13 @@
                  (std.foundation/uuid? :not-a-uuid)])
    :expected [true false]}])
 
+^{:refer std.foundation/str}
+(Test/run
+ [{:name "concatenates multiple values without recursive allocation"
+   :test (fn [] [(str "IWork" "Agent" "Driver" nil)
+                 (str "answer=" 42)])
+   :expected ["IWorkAgentDriver" "answer=42"]}])
+
 ^{:refer std.foundation/apply}
 (Test/run
  [{:name "applies leading arguments and a final sequence"
