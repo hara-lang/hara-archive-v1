@@ -4,15 +4,13 @@
 //! prioritises exact validation and disassembly over encoding density.
 //! Jump operands are absolute instruction indexes.
 
-use crate::core::Primitive;
-
 /// One VM instruction.
 ///
 /// Stack effects (validated before execution):
 ///
 /// - `Constant`, `Nil`, `True`, `False`, `LoadLocal`: push 1.
 /// - `StoreLocal`, `Pop`, `JumpIfFalse`: pop 1.
-/// - `Primitive`: pops `argc`, pushes 1 (net `1 - argc`).
+/// - `IntrinsicCall`, `ProtocolCall`: pop `argc`, push 1 (net `1 - argc`).
 /// - `Closure`: pops `captures`, pushes 1 (net `1 - captures`).
 /// - `Call`: pops `argc` arguments plus the callee, pushes 1 (net `-argc`).
 /// - `CallStatic`: pops `argc`, pushes 1 (net `1 - argc`).
@@ -42,17 +40,10 @@ pub enum Instruction {
     Pop,
     /// Duplicates the top stack value.
     Dup,
-    /// Pops `argc` arguments, applies the shared value-level primitive,
-    /// and pushes the result.
-    Primitive {
-        op: Primitive,
+    /// Pops `argc` arguments and invokes the named runtime intrinsic.
+    IntrinsicCall {
+        target: u32,
         argc: u8,
-    },
-    /// Applies a binary primitive to a local and a pooled constant.
-    PrimitiveLocalConst {
-        op: Primitive,
-        local: u16,
-        constant: u32,
     },
     /// Unconditional jump to an absolute instruction index.
     Jump(u32),
@@ -162,8 +153,8 @@ pub enum Instruction {
     DefMulti(u32),
     /// Adds one multimethod implementation from a validated declaration.
     DefMethod(u32),
-    /// Pushes a first-class callable for a primitive operator.
-    PrimitiveValue(Primitive),
+    /// Pushes a first-class callable for a runtime intrinsic.
+    IntrinsicValue(u32),
     /// Pushes a first-class callable implemented by the structural runtime.
     BuiltinValue(u32),
     /// Binds a dynamic Var to the value on top of the stack and leaves nil.
@@ -182,6 +173,12 @@ pub enum Instruction {
     /// Invokes a native collection method with an evaluated receiver and arguments.
     DotCall {
         method: u32,
+        argc: u8,
+    },
+    /// Pops `argc` protocol arguments, including the receiver, and dispatches
+    /// the canonical protocol method through the active protocol registry.
+    ProtocolCall {
+        target: u32,
         argc: u8,
     },
     /// Returns the top of the stack as the function result.
@@ -217,10 +214,11 @@ impl Instruction {
             | Instruction::LoadLocal(_) => 1,
             Instruction::StoreLocal(_) | Instruction::Pop | Instruction::JumpIfFalse(_) => -1,
             Instruction::Dup => 1,
-            Instruction::Primitive { argc, .. } | Instruction::CallStatic { argc, .. } => {
+            Instruction::IntrinsicCall { argc, .. }
+            | Instruction::ProtocolCall { argc, .. }
+            | Instruction::CallStatic { argc, .. } => {
                 1 - i32::from(*argc)
             }
-            Instruction::PrimitiveLocalConst { .. } => 1,
             Instruction::Closure { captures, .. } => 1 - i32::from(*captures),
             Instruction::Call { argc } => -i32::from(*argc),
             Instruction::GetGlobal(_)
@@ -232,7 +230,7 @@ impl Instruction {
             | Instruction::ExtendType(_)
             | Instruction::DefMulti(_)
             | Instruction::DefMethod(_) => 1,
-            Instruction::PrimitiveValue(_) => 1,
+            Instruction::IntrinsicValue(_) => 1,
             Instruction::BuiltinValue(_) => 1,
             Instruction::DynamicBind(_) => 0,
             Instruction::DynamicUnbind(_) => 1,
@@ -270,19 +268,8 @@ impl std::fmt::Display for Instruction {
             Instruction::StoreLocal(slot) => write!(formatter, "StoreLocal {slot}"),
             Instruction::Pop => formatter.write_str("Pop"),
             Instruction::Dup => formatter.write_str("Dup"),
-            Instruction::Primitive { op, argc } => {
-                write!(formatter, "Primitive {} {argc}", op.operator())
-            }
-            Instruction::PrimitiveLocalConst {
-                op,
-                local,
-                constant,
-            } => {
-                write!(
-                    formatter,
-                    "PrimitiveLocalConst {} local {local} constant {constant}",
-                    op.operator()
-                )
+            Instruction::IntrinsicCall { target, argc } => {
+                write!(formatter, "IntrinsicCall target {target} argc {argc}")
             }
             Instruction::Jump(target) => write!(formatter, "Jump {target:04}"),
             Instruction::JumpIfFalse(target) => write!(formatter, "JumpIfFalse {target:04}"),
@@ -336,8 +323,8 @@ impl std::fmt::Display for Instruction {
             Instruction::ExtendType(index) => write!(formatter, "ExtendType {index}"),
             Instruction::DefMulti(index) => write!(formatter, "DefMulti {index}"),
             Instruction::DefMethod(index) => write!(formatter, "DefMethod {index}"),
-            Instruction::PrimitiveValue(op) => {
-                write!(formatter, "PrimitiveValue {}", op.operator())
+            Instruction::IntrinsicValue(target) => {
+                write!(formatter, "IntrinsicValue target {target}")
             }
             Instruction::BuiltinValue(index) => write!(formatter, "BuiltinValue {index}"),
             Instruction::DynamicBind(index) => write!(formatter, "DynamicBind {index}"),
@@ -347,6 +334,9 @@ impl std::fmt::Display for Instruction {
             Instruction::HostCall => formatter.write_str("HostCall"),
             Instruction::DotCall { method, argc } => {
                 write!(formatter, "DotCall {method} {argc}")
+            }
+            Instruction::ProtocolCall { target, argc } => {
+                write!(formatter, "ProtocolCall target {target} argc {argc}")
             }
             Instruction::Return => formatter.write_str("Return"),
         }

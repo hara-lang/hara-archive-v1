@@ -197,11 +197,11 @@ fn operation_rep(operation: &SsaOp, reps: &[Rep]) -> Rep {
         Op::UnboxI64 { .. } | Op::TaggedUnboxI64 { .. } => Rep::I64,
         Op::Move { source, .. } => value_rep(*source),
         Op::Binary { op, .. } | Op::BinaryConstant { op, .. } => match op {
-            crate::core::Primitive::Add
-            | crate::core::Primitive::Subtract
-            | crate::core::Primitive::Multiply
-            | crate::core::Primitive::Divide
-            | crate::core::Primitive::Remainder => Rep::I64,
+            crate::core::IntrinsicOp::Add
+            | crate::core::IntrinsicOp::Subtract
+            | crate::core::IntrinsicOp::Multiply
+            | crate::core::IntrinsicOp::Divide
+            | crate::core::IntrinsicOp::Remainder => Rep::I64,
             _ => Rep::Bool,
         },
         Op::ArrayNew { .. } | Op::ArraySetI64 { .. } => Rep::ArrayRef,

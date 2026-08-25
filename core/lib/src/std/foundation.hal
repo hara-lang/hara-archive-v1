@@ -177,13 +177,19 @@
   (Base/apply Base/apply (ICons/cons arguments function)))
 
 (defn ^{:inline true :schema [:fn [:any] :bool]}
-  not "Returns true when value is false or nil." [value] (Base/not value))
+  not "Returns true when value is false or nil." [value] (if value false true))
 
 (defn ^{:inline true :schema [:fn [:any] :bool]}
   boolean "Coerces value to true or false using Hara truthiness." [value] (if value true false))
 
 (defn ^{:inline true :schema [:fn [:any :any] :int]}
-  compare "Compares two mutually orderable Hara values." [left right] (Base/compare left right))
+  compare "Compares two mutually orderable Hara values." [left right]
+  (cond (= left right)
+        0
+        (< left right)
+        -1
+        :else
+        1))
 
 (defn ^{:inline true :schema [:fn [:any :any] :bool]}
   not=
@@ -243,6 +249,51 @@
 
 (defn ^{:schema [:fn [:any] :bool]}
   fn? "Returns true when value satisfies std.protocol.ifn.IFn." [value] (satisfies? std.protocol.ifn.IFn value))
+
+(defn ^{:inline true :schema [:fn [:any] :bool]}
+  iterable? "Returns true when value satisfies IIter." [value] (satisfies? IIter value))
+
+(defn ^{:inline true :schema [:fn [:any] :bool]}
+  iterator? "Returns true when value satisfies IIterator." [value] (satisfies? IIterator value))
+
+(defn ^{:inline true :schema [:fn [:any] :bool]}
+  counted? "Returns true when value satisfies ICount." [value] (satisfies? ICount value))
+
+(defn ^{:inline true :schema [:fn [:any] :bool]}
+  reducible? "Returns true when value satisfies IReduce." [value] (satisfies? IReduce value))
+
+(defn ^{:inline true :schema [:fn [:any] :bool]}
+  indexed? "Returns true when value satisfies INth." [value] (satisfies? INth value))
+
+(defn ^{:inline true :schema [:fn [:any] :bool]}
+  associative? "Returns true when value satisfies IAssoc." [value] (satisfies? IAssoc value))
+
+(defn ^{:inline true :schema [:fn [:any] :bool]}
+  findable? "Returns true when value satisfies IFind." [value] (satisfies? IFind value))
+
+(defn ^{:inline true :schema [:fn [:any] :bool]}
+  lookupable? "Returns true when value satisfies ILookup." [value] (satisfies? ILookup value))
+
+(defn ^{:inline true :schema [:fn [:any] :bool]}
+  derefable? "Returns true when value satisfies IDeref." [value] (satisfies? IDeref value))
+
+(defn ^{:inline true :schema [:fn [:any] :bool]}
+  resettable? "Returns true when value satisfies IReset." [value] (satisfies? IReset value))
+
+(defn ^{:inline true :schema [:fn [:any] :bool]}
+  casable? "Returns true when value satisfies ICas." [value] (satisfies? ICas value))
+
+(defn ^{:inline true :schema [:fn [:any] :bool]}
+  watchable? "Returns true when value satisfies IWatch." [value] (satisfies? IWatch value))
+
+(defn ^{:inline true :schema [:fn [:any] :bool]}
+  applicable? "Returns true when value satisfies IApplicable." [value] (satisfies? IApplicable value))
+
+(defn ^{:inline true :schema [:fn [:any] :bool]}
+  mutable? "Returns true when value satisfies IMutable." [value] (satisfies? IMutable value))
+
+(defn ^{:inline true :schema [:fn [:any] :bool]}
+  persistent? "Returns true when value satisfies IPersistent." [value] (satisfies? IPersistent value))
 
 (defn ^{:inline true :schema [:fn [:any] :bool]}
   function? "Returns true when value is a native function." [value] (= (type value) :std.native.Function))
@@ -799,10 +850,14 @@
   first
   "Returns the first item of value, or nil if value is empty."
   [value]
-  (if (satisfies? std.protocol.ipeekfirst.IPeekFirst value)
-    (std.protocol.ipeekfirst.IPeekFirst/peek-first value)
-    (let [it (iter value)]
-      (if (iter-next? it) (iter-next it) nil))))
+  (if (satisfies? INth value)
+    (if (and (satisfies? ICount value) (= 0 (ICount/count value)))
+      nil
+      (INth/nth value 0))
+    (if (satisfies? IPeekFirst value)
+      (IPeekFirst/peek-first value)
+      (let [it (iter value)]
+        (if (iter-next? it) (iter-next it) nil)))))
 
 (defn ^{:schema [:fn [:any] :any]}
   second
@@ -824,13 +879,18 @@
   last
   "Returns the last item of value, or nil if value is empty."
   [value]
-  (if (satisfies? std.protocol.ipeeklast.IPeekLast value)
-    (std.protocol.ipeeklast.IPeekLast/peek-last value)
-    (let [it (iter value)]
-      (if (iter-next? it)
-        (loop [result (iter-next it)]
-          (if (iter-next? it) (recur (iter-next it)) result))
-        nil))))
+  (if (and (satisfies? INth value) (satisfies? ICount value))
+    (let [size (ICount/count value)]
+      (if (= 0 size)
+        nil
+        (INth/nth value (dec size))))
+    (if (satisfies? IPeekLast value)
+      (IPeekLast/peek-last value)
+      (let [it (iter value)]
+        (if (iter-next? it)
+          (loop [result (iter-next it)]
+            (if (iter-next? it) (recur (iter-next it)) result))
+          nil)))))
 
 (defn ^{:schema [:fn [:any] :any]}
   reverse

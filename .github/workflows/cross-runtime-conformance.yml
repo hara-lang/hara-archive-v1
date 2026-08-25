@@ -1,0 +1,199 @@
+name: Rust-Java conformance ladder
+
+on:
+  pull_request:
+    branches: [main, testing]
+    paths:
+      - '.github/workflows/cross-runtime-conformance.yml'
+      - 'core/java/**'
+      - 'core/lib/**'
+      - 'core/rust/**'
+  push:
+    branches: [main, testing]
+    paths:
+      - '.github/workflows/cross-runtime-conformance.yml'
+      - 'core/java/**'
+      - 'core/lib/**'
+      - 'core/rust/**'
+  workflow_dispatch:
+    inputs:
+      specs_ref:
+        description: Exact hara-specs-registry branch, tag, or commit to test
+        required: false
+        default: 60fd75c47b7e52705395bf8b5e567087843bad32
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cross-runtime-conformance-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  DEFAULT_SPECS_REF: 60fd75c47b7e52705395bf8b5e567087843bad32
+
+jobs:
+  interfaces:
+    name: Interfaces (Rust evaluator and Java Truffle)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check out the exact specs revision
+        uses: actions/checkout@v4
+        with:
+          repository: hara-lang/hara-specs-registry
+          ref: ${{ inputs.specs_ref || env.DEFAULT_SPECS_REF }}
+          path: hara-specs-registry
+          fetch-depth: 1
+
+      - name: Expose specs registry at the runtime fixture path
+        run: ln -sfn "$GITHUB_WORKSPACE/hara-specs-registry" "$GITHUB_WORKSPACE/../hara-specs-registry"
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Check Rust protocol declarations
+        run: cargo test --locked --manifest-path core/rust/Cargo.toml --test protocol_declarations
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+          cache-dependency-path: core/java/pom.xml
+
+      - name: Check Java protocol declarations
+        run: mvn -B -Ptruffle,conformance -Dtest=HaraDeclarationCoverageTest test --file core/java/pom.xml
+
+  native:
+    name: std.native (Rust evaluator and Java Truffle)
+    needs: interfaces
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check out the exact specs revision
+        uses: actions/checkout@v4
+        with:
+          repository: hara-lang/hara-specs-registry
+          ref: ${{ inputs.specs_ref || env.DEFAULT_SPECS_REF }}
+          path: hara-specs-registry
+          fetch-depth: 1
+
+      - name: Expose specs registry at the runtime fixture path
+        run: ln -sfn "$GITHUB_WORKSPACE/hara-specs-registry" "$GITHUB_WORKSPACE/../hara-specs-registry"
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Check Rust native inventory and behavior
+        run: >-
+          cargo test --locked
+          --manifest-path core/rust/Cargo.toml
+          native_behavioral_conformance_tests::
+          --lib -- --nocapture
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+          cache-dependency-path: core/java/pom.xml
+
+      - name: Check Java native inventory and behavior
+        run: >-
+          mvn -B -Ptruffle,conformance
+          -Dtest=NativeMethodParityTest,NativeBehavioralConformanceTest
+          test --file core/java/pom.xml
+
+  halc:
+    name: HALC (Rust evaluator and Java Truffle)
+    needs: native
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check out the exact specs revision
+        uses: actions/checkout@v4
+        with:
+          repository: hara-lang/hara-specs-registry
+          ref: ${{ inputs.specs_ref || env.DEFAULT_SPECS_REF }}
+          path: hara-specs-registry
+          fetch-depth: 1
+
+      - name: Expose specs registry at the runtime fixture path
+        run: ln -sfn "$GITHUB_WORKSPACE/hara-specs-registry" "$GITHUB_WORKSPACE/../hara-specs-registry"
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Check Rust HALC corpus
+        run: >-
+          cargo test --locked
+          --manifest-path core/rust/Cargo.toml
+          --lib
+          kernel::halc::tests::registry_golden_matches_rust_encoding
+          -- --nocapture
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+          cache-dependency-path: core/java/pom.xml
+
+      - name: Check Java HALC corpus
+        run: >-
+          mvn -B -Ptruffle,conformance
+          -Dtest=HalcArtifactTest#registryGoldenMatchesJavaEncoding
+          test --file core/java/pom.xml
+
+  hta:
+    name: HTA portable wire (Rust and Java)
+    needs: halc
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check out the exact specs revision
+        uses: actions/checkout@v4
+        with:
+          repository: hara-lang/hara-specs-registry
+          ref: ${{ inputs.specs_ref || env.DEFAULT_SPECS_REF }}
+          path: hara-specs-registry
+          fetch-depth: 1
+
+      - name: Expose specs registry at the runtime fixture path
+        run: ln -sfn "$GITHUB_WORKSPACE/hara-specs-registry" "$GITHUB_WORKSPACE/../hara-specs-registry"
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Check Rust HTA portable corpus
+        run: >-
+          cargo test --locked
+          --manifest-path core/rust/Cargo.toml
+          --test hta_portable
+          registry_golden_vector_matches_rust_encoding
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+          cache-dependency-path: core/java/pom.xml
+
+      - name: Check Java HTA portable corpus
+        run: >-
+          mvn -B -Ptruffle,conformance
+          -Dtest=HtaValueCodecTest#registryGoldenVectorMatchesJavaEncoding
+          test --file core/java/pom.xml

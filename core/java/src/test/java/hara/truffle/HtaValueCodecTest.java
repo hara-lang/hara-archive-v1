@@ -5,7 +5,14 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
+import hara.kernel.base.Parser;
 import hara.lang.data.Keyword;
+import hara.lang.protocol.ILinearType;
+import hara.lang.protocol.IMapType;
+import hara.spec.SpecRegistry;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -39,6 +46,21 @@ public class HtaValueCodecTest {
         },
         encoded);
     assertEquals(List.of("x", 42L, true), HtaValueCodec.decode(encoded));
+  }
+
+  @Test
+  @org.junit.experimental.categories.Category(hara.spec.RegistryConformance.class)
+  public void registryGoldenVectorMatchesJavaEncoding() throws Exception {
+    IMapType testCase = registryCase("golden-vector");
+    ILinearType input = linear(testCase.lookup(Keyword.create("case", "input")));
+    ILinearType expected = linear(testCase.lookup(Keyword.create("case", "expect")));
+    List<Object> values = new ArrayList<>();
+    for (int index = 0; index < input.count(); index++) values.add(input.nth(index));
+    byte[] expectedBytes = new byte[Math.toIntExact(expected.count())];
+    for (int index = 0; index < expected.count(); index++) {
+      expectedBytes[index] = ((Number) expected.nth(index)).byteValue();
+    }
+    assertArrayEquals(expectedBytes, HtaValueCodec.encode(values));
   }
 
   @Test
@@ -152,6 +174,29 @@ public class HtaValueCodecTest {
     assertEquals("example.lib", reference.namespaceName());
     assertEquals("answer", reference.symbolName());
     assertEquals(null, reference.deref());
+  }
+
+  private static IMapType registryCase(String caseName) throws Exception {
+    Path path =
+        SpecRegistry.resolve("02-platform/000050-transport-hta/draft/conformance/transport-hta.edn");
+    Object value = Parser.LispReader.readString(Files.readString(path), null);
+    IMapType suite = (IMapType) value;
+    ILinearType cases = linear(suite.lookup(Keyword.create("suite", "cases")));
+    for (int index = 0; index < cases.count(); index++) {
+      IMapType candidate = (IMapType) cases.nth(index);
+      Keyword id = (Keyword) candidate.lookup(Keyword.create("case", "id"));
+      if ("hta.case".equals(id.getNamespace()) && caseName.equals(id.getName())) {
+        return candidate;
+      }
+    }
+    throw new AssertionError("Missing registry HTA case: " + caseName);
+  }
+
+  private static ILinearType linear(Object value) {
+    if (!(value instanceof ILinearType values)) {
+      throw new AssertionError("Expected registry vector: " + value);
+    }
+    return values;
   }
 
 }

@@ -1,5 +1,5 @@
 use super::trace_ir::{Trace, TraceOp, TraceValue};
-use crate::core::{Primitive, Value};
+use crate::core::{IntrinsicOp, Value};
 use crate::vm::{Instruction, Program};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -92,70 +92,27 @@ impl TraceRecorder {
                 Instruction::Nil => operations.push(TraceOp::ConstantNil),
                 Instruction::True => operations.push(TraceOp::ConstantBool(true)),
                 Instruction::False => operations.push(TraceOp::ConstantBool(false)),
-                Instruction::Primitive { op, argc: 2 }
-                    if matches!(
-                        op,
-                        Primitive::Add
-                            | Primitive::Subtract
-                            | Primitive::Multiply
-                            | Primitive::Divide
-                            | Primitive::Remainder
-                            | Primitive::Less
-                            | Primitive::LessOrEqual
-                            | Primitive::Greater
-                            | Primitive::GreaterOrEqual
-                            | Primitive::Equal
-                    ) =>
+                Instruction::IntrinsicCall { target, argc: 2 }
+                    if intrinsic_op(program, *target).is_some_and(binary_i64) =>
                 {
-                    operations.push(TraceOp::BinaryI64(*op));
+                    operations.push(TraceOp::BinaryI64(
+                        intrinsic_op(program, *target).expect("guarded intrinsic operator"),
+                    ));
                 }
-                Instruction::Primitive { op, argc: 1 }
-                    if matches!(
-                        op,
-                        Primitive::Count | Primitive::First | Primitive::Rest | Primitive::Second
-                    ) =>
+                Instruction::IntrinsicCall { target, argc: 1 }
+                    if vector_operation(program, *target).is_some() =>
                 {
-                    operations.push(match op {
-                        Primitive::Count => TraceOp::VectorCountI64,
-                        Primitive::First => TraceOp::VectorFirstI64,
-                        Primitive::Rest => TraceOp::VectorRestI64,
-                        Primitive::Second => TraceOp::VectorSecondI64,
-                        _ => unreachable!(),
-                    });
+                    operations.push(vector_operation(program, *target).expect("guarded vector op"));
                 }
-                Instruction::Primitive {
-                    op: Primitive::Nth,
-                    argc: 2,
-                } => {
-                    operations.push(TraceOp::VectorNthI64);
+                Instruction::ProtocolCall { target, argc: 1 }
+                    if vector_operation(program, *target).is_some() =>
+                {
+                    operations.push(vector_operation(program, *target).expect("guarded vector op"));
                 }
-                Instruction::PrimitiveLocalConst {
-                    op,
-                    local,
-                    constant,
-                } => {
-                    let value = match program.constants.get(*constant as usize) {
-                        Some(Value::Number(value)) => *value,
-                        _ => return Err(RecordError::UnsupportedConstant(*constant)),
-                    };
-                    operations.push(match (op, locals.get(usize::from(*local))) {
-                        (Primitive::Nth, Some(TraceValue::Indexed(vector)))
-                            if numeric_vector(vector).is_some() =>
-                        {
-                            TraceOp::GuardLocalVectorI64 { local: *local }
-                        }
-                        (_, Some(TraceValue::I64(_))) if binary_i64(*op) => {
-                            TraceOp::GuardLocalI64 { local: *local }
-                        }
-                        _ => return Err(RecordError::UnsupportedLocal(*local)),
-                    });
-                    operations.push(TraceOp::LoadLocal { local: *local });
-                    operations.push(TraceOp::ConstantI64(value));
-                    operations.push(if *op == Primitive::Nth {
-                        TraceOp::VectorNthI64
-                    } else {
-                        TraceOp::BinaryI64(*op)
-                    });
+                Instruction::ProtocolCall { target, argc: 2 }
+                    if vector_operation(program, *target).is_some() =>
+                {
+                    operations.push(vector_operation(program, *target).expect("guarded vector op"));
                 }
                 Instruction::JumpIfFalse(target) => {
                     let expected = next != *target;
@@ -250,11 +207,11 @@ fn valid_types(operations: &[TraceOp], entry_locals: &[TraceValue]) -> bool {
                 stack.push(
                     if matches!(
                         op,
-                        Primitive::Equal
-                            | Primitive::Less
-                            | Primitive::LessOrEqual
-                            | Primitive::Greater
-                            | Primitive::GreaterOrEqual
+                        IntrinsicOp::Equal
+                            | IntrinsicOp::Less
+                            | IntrinsicOp::LessOrEqual
+                            | IntrinsicOp::Greater
+                            | IntrinsicOp::GreaterOrEqual
                     ) {
                         Bool
                     } else {
@@ -318,20 +275,48 @@ fn valid_types(operations: &[TraceOp], entry_locals: &[TraceValue]) -> bool {
     stack.is_empty()
 }
 
-fn binary_i64(op: Primitive) -> bool {
+fn binary_i64(op: IntrinsicOp) -> bool {
     matches!(
         op,
-        Primitive::Add
-            | Primitive::Subtract
-            | Primitive::Multiply
-            | Primitive::Divide
-            | Primitive::Remainder
-            | Primitive::Less
-            | Primitive::LessOrEqual
-            | Primitive::Greater
-            | Primitive::GreaterOrEqual
-            | Primitive::Equal
+        IntrinsicOp::Add
+            | IntrinsicOp::Subtract
+            | IntrinsicOp::Multiply
+            | IntrinsicOp::Divide
+            | IntrinsicOp::Remainder
+            | IntrinsicOp::Less
+            | IntrinsicOp::LessOrEqual
+            | IntrinsicOp::Greater
+            | IntrinsicOp::GreaterOrEqual
+            | IntrinsicOp::Equal
     )
+}
+
+fn target_name(program: &Program, target: u32) -> Option<&str> {
+    match program.constants.get(target as usize) {
+        Some(Value::String(name)) => Some(name),
+        _ => None,
+    }
+}
+
+fn intrinsic_op(program: &Program, target: u32) -> Option<IntrinsicOp> {
+    target_name(program, target).and_then(IntrinsicOp::from_symbol)
+}
+
+fn vector_operation(program: &Program, target: u32) -> Option<TraceOp> {
+    let name = target_name(program, target)?;
+    if name == "first" || name.ends_with("/first") {
+        Some(TraceOp::VectorFirstI64)
+    } else if name == "rest" || name.ends_with("/rest") {
+        Some(TraceOp::VectorRestI64)
+    } else if name == "second" || name.ends_with("/second") {
+        Some(TraceOp::VectorSecondI64)
+    } else if name == "count" || name.ends_with("/count") {
+        Some(TraceOp::VectorCountI64)
+    } else if name == "nth" || name.ends_with("/nth") {
+        Some(TraceOp::VectorNthI64)
+    } else {
+        None
+    }
 }
 
 fn numeric_vector(value: &Value) -> Option<Vec<i64>> {

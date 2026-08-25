@@ -27,12 +27,18 @@ pub(super) fn scan_program(program: &Program, analysis: &mut UnitAnalysis) {
                         .runtime_shims
                         .insert("hara.runtime/dynamic-binding".into());
                 }
-                Instruction::Primitive { op, .. }
-                | Instruction::PrimitiveLocalConst { op, .. }
-                | Instruction::PrimitiveValue(op) => {
-                    let name = op.operator().to_owned();
-                    analysis.native_roots.primitives.insert(name.clone());
-                    analysis.native_primitives.insert(name);
+                Instruction::IntrinsicCall { target, .. }
+                | Instruction::ProtocolCall { target, .. }
+                | Instruction::IntrinsicValue(target) => {
+                    if let Some(name) = string_constant(program, *target) {
+                        analysis.native_roots.primitives.insert(name.to_owned());
+                        analysis.native_primitives.insert(name.to_owned());
+                    } else {
+                        noncanonical_root(
+                            analysis,
+                            format!("intrinsic instruction has no string identity at constant {target}"),
+                        );
+                    }
                 }
                 Instruction::BuiltinValue(index) => {
                     if let Some(name) = string_constant(program, *index) {

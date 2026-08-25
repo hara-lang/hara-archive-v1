@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::core::{Primitive, Value};
+use crate::core::{IntrinsicOp, Value};
 use crate::vm::{FunctionId, Instruction, Program};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,13 +43,13 @@ pub enum Op<V> {
         destination: V,
         left: V,
         right: V,
-        op: Primitive,
+        op: IntrinsicOp,
     },
     BinaryConstant {
         destination: V,
         left: V,
         right: i64,
-        op: Primitive,
+        op: IntrinsicOp,
     },
     ArrayNew {
         destination: V,
@@ -352,7 +352,9 @@ pub(crate) fn lower_function(
                     source: stack(height - 1)?,
                 }),
                 Instruction::Pop => {}
-                Instruction::Primitive { op, argc: 2 } if scalar_binary(*op) => {
+                Instruction::IntrinsicCall { target, argc: 2 }
+                    if intrinsic_op(program, *target).is_some_and(scalar_binary) => {
+                    let op = intrinsic_op(program, *target).expect("guarded intrinsic operator");
                     for offset in 0..2 {
                         if matches!(
                             representations[ip].stack[height - 2 + offset],
@@ -368,24 +370,25 @@ pub(crate) fn lower_function(
                         destination: stack(height - 2)?,
                         left: stack(height - 2)?,
                         right: stack(height - 1)?,
-                        op: *op,
+                        op,
                     });
                 }
-                Instruction::Primitive { op, argc } if *argc > 2 && scalar_arithmetic(*op) => {
+                Instruction::IntrinsicCall { target, argc }
+                    if *argc > 2
+                        && intrinsic_op(program, *target).is_some_and(scalar_arithmetic) => {
+                    let op = intrinsic_op(program, *target).expect("guarded intrinsic operator");
                     let base = height - usize::from(*argc);
                     for offset in 1..usize::from(*argc) {
                         operations.push(MirOp::Binary {
                             destination: stack(base)?,
                             left: stack(base)?,
                             right: stack(base + offset)?,
-                            op: *op,
+                            op,
                         });
                     }
                 }
-                Instruction::Primitive {
-                    op: Primitive::ArrayNew,
-                    argc,
-                } => {
+                Instruction::IntrinsicCall { target, argc }
+                    if target_is(program, *target, "std.native.Arr/new") => {
                     let base = height - usize::from(*argc);
                     let values = (0..usize::from(*argc))
                         .map(|index| stack(base + index))
@@ -402,27 +405,21 @@ pub(crate) fn lower_function(
                         values,
                     });
                 }
-                Instruction::Primitive {
-                    op: Primitive::ArrayGet,
-                    argc: 2,
-                } => operations.push(MirOp::ArrayGetI64 {
+                Instruction::IntrinsicCall { target, argc: 2 }
+                    if target_is(program, *target, "std.native.Arr/get") => operations.push(MirOp::ArrayGetI64 {
                     destination: stack(height - 2)?,
                     array: stack(height - 2)?,
                     index: stack(height - 1)?,
                 }),
-                Instruction::Primitive {
-                    op: Primitive::ArraySet,
-                    argc: 3,
-                } => operations.push(MirOp::ArraySetI64 {
+                Instruction::IntrinsicCall { target, argc: 3 }
+                    if target_is(program, *target, "std.native.Arr/set") => operations.push(MirOp::ArraySetI64 {
                     destination: stack(height - 3)?,
                     array: stack(height - 3)?,
                     index: stack(height - 2)?,
                     value: stack(height - 1)?,
                 }),
-                Instruction::Primitive {
-                    op: Primitive::ObjectNew,
-                    argc,
-                } => {
+                Instruction::IntrinsicCall { target, argc }
+                    if target_is(program, *target, "std.native.Obj/new") => {
                     if *argc % 2 != 0 {
                         return Err(unsupported(id, ip, "object constructor pairs"));
                     }
@@ -445,18 +442,14 @@ pub(crate) fn lower_function(
                         entries,
                     });
                 }
-                Instruction::Primitive {
-                    op: Primitive::ObjectGet,
-                    argc: 2,
-                } => operations.push(MirOp::ObjectGetI64 {
+                Instruction::IntrinsicCall { target, argc: 2 }
+                    if target_is(program, *target, "std.native.Obj/get") => operations.push(MirOp::ObjectGetI64 {
                     destination: stack(height - 2)?,
                     object: stack(height - 2)?,
                     key: stack(height - 1)?,
                 }),
-                Instruction::Primitive {
-                    op: Primitive::ObjectSet,
-                    argc: 3,
-                } => operations.push(MirOp::ObjectSetI64 {
+                Instruction::IntrinsicCall { target, argc: 3 }
+                    if target_is(program, *target, "std.native.Obj/set") => operations.push(MirOp::ObjectSetI64 {
                     destination: stack(height - 3)?,
                     object: stack(height - 3)?,
                     key: stack(height - 2)?,
@@ -546,10 +539,8 @@ pub(crate) fn lower_function(
                         entries,
                     });
                 }
-                Instruction::Primitive {
-                    op: Primitive::Assoc,
-                    argc: 3,
-                } => {
+                Instruction::ProtocolCall { target, argc: 3 }
+                    if target_is(program, *target, "std.protocol.iassoc.IAssoc/assoc") => {
                     let base = height - 3;
                     if representations[ip].stack[base..height].contains(&Rep::TaggedRef) {
                         return Err(unsupported(id, ip, "tagged value escapes through assoc"));
@@ -570,14 +561,13 @@ pub(crate) fn lower_function(
                         value: stack(base + 2)?,
                     });
                 }
-                Instruction::Primitive {
-                    op: Primitive::Get,
-                    argc: 2,
-                } => {
+                Instruction::ProtocolCall { target, argc: 2 }
+                    if target_is(program, *target, "std.protocol.ilookup.ILookup/lookup") => {
                     let numeric_consumer =
                         function.code.get(ip + 1).is_some_and(|next| match next {
-                            Instruction::Primitive { op, .. }
-                            | Instruction::PrimitiveLocalConst { op, .. } => scalar_arithmetic(*op),
+                            Instruction::IntrinsicCall { target, .. } => {
+                                intrinsic_op(program, *target).is_some_and(scalar_arithmetic)
+                            }
                             _ => false,
                         });
                     if numeric_consumer {
@@ -594,10 +584,8 @@ pub(crate) fn lower_function(
                         });
                     }
                 }
-                Instruction::Primitive {
-                    op: Primitive::NumberPredicate,
-                    argc: 1,
-                } => {
+                Instruction::IntrinsicCall { target, argc: 1 }
+                    if target_is(program, *target, "std.native.Base/number?") => {
                     let operation = if representations[ip].stack[height - 1] == Rep::TaggedRef {
                         MirOp::TaggedIsNumber {
                             destination: stack(height - 1)?,
@@ -611,10 +599,8 @@ pub(crate) fn lower_function(
                     };
                     operations.push(operation);
                 }
-                Instruction::Primitive {
-                    op: Primitive::Count,
-                    argc: 1,
-                } => {
+                Instruction::ProtocolCall { target, argc: 1 }
+                    if target_is(program, *target, "std.protocol.icount.ICount/count") => {
                     let operation = if representations[ip].stack[height - 1] == Rep::TaggedRef {
                         MirOp::TaggedCount {
                             destination: stack(height - 1)?,
@@ -628,10 +614,8 @@ pub(crate) fn lower_function(
                     };
                     operations.push(operation);
                 }
-                Instruction::Primitive {
-                    op: Primitive::Nth,
-                    argc: 2,
-                } => {
+                Instruction::ProtocolCall { target, argc: 2 }
+                    if target_is(program, *target, "std.protocol.inth.INth/nth") => {
                     let operation = if representations[ip].stack[height - 2] == Rep::TaggedRef {
                         MirOp::TaggedNth {
                             destination: stack(height - 2)?,
@@ -646,37 +630,6 @@ pub(crate) fn lower_function(
                         }
                     };
                     operations.push(operation);
-                }
-                Instruction::PrimitiveLocalConst {
-                    op,
-                    local,
-                    constant,
-                } if scalar_binary(*op) => {
-                    let (right, _) = scalar_constant(program.constants.get(*constant as usize))
-                        .ok_or_else(|| unsupported(id, ip, "non-scalar primitive constant"))?;
-                    operations.push(MirOp::BinaryConstant {
-                        destination: stack(height)?,
-                        left: *local,
-                        right,
-                        op: *op,
-                    });
-                }
-                Instruction::PrimitiveLocalConst {
-                    op: Primitive::ArrayGet,
-                    local,
-                    constant,
-                } => {
-                    let (index, rep) =
-                        scalar_constant(program.constants.get(*constant as usize))
-                            .ok_or_else(|| unsupported(id, ip, "array index constant"))?;
-                    if rep != Rep::I64 {
-                        return Err(unsupported(id, ip, "array index must be i64"));
-                    }
-                    operations.push(MirOp::ArrayGetI64Constant {
-                        destination: stack(height)?,
-                        array: *local,
-                        index,
-                    });
                 }
                 Instruction::CallStatic { prototype, argc } => {
                     super::call_boundary::lower_static(
@@ -1193,30 +1146,45 @@ fn scalar_constant(value: Option<&Value>) -> Option<(i64, Rep)> {
     }
 }
 
-fn scalar_binary(op: Primitive) -> bool {
+fn target_name(program: &Program, target: u32) -> Option<&str> {
+    match program.constants.get(target as usize) {
+        Some(Value::String(name)) => Some(name),
+        _ => None,
+    }
+}
+
+fn target_is(program: &Program, target: u32, expected: &str) -> bool {
+    target_name(program, target) == Some(expected)
+}
+
+fn intrinsic_op(program: &Program, target: u32) -> Option<IntrinsicOp> {
+    target_name(program, target).and_then(IntrinsicOp::from_symbol)
+}
+
+fn scalar_binary(op: IntrinsicOp) -> bool {
     matches!(
         op,
-        Primitive::Add
-            | Primitive::Subtract
-            | Primitive::Multiply
-            | Primitive::Divide
-            | Primitive::Remainder
-            | Primitive::Equal
-            | Primitive::Less
-            | Primitive::LessOrEqual
-            | Primitive::Greater
-            | Primitive::GreaterOrEqual
+        IntrinsicOp::Add
+            | IntrinsicOp::Subtract
+            | IntrinsicOp::Multiply
+            | IntrinsicOp::Divide
+            | IntrinsicOp::Remainder
+            | IntrinsicOp::Equal
+            | IntrinsicOp::Less
+            | IntrinsicOp::LessOrEqual
+            | IntrinsicOp::Greater
+            | IntrinsicOp::GreaterOrEqual
     )
 }
 
-fn scalar_arithmetic(op: Primitive) -> bool {
+fn scalar_arithmetic(op: IntrinsicOp) -> bool {
     matches!(
         op,
-        Primitive::Add
-            | Primitive::Subtract
-            | Primitive::Multiply
-            | Primitive::Divide
-            | Primitive::Remainder
+        IntrinsicOp::Add
+            | IntrinsicOp::Subtract
+            | IntrinsicOp::Multiply
+            | IntrinsicOp::Divide
+            | IntrinsicOp::Remainder
     )
 }
 

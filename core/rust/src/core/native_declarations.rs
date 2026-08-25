@@ -187,7 +187,7 @@ pub(crate) mod declarations {
         name = "Base",
         methods = [
             "list", "vector", "vec", "set", "tuple", "hash-map", "hash-set", "atom", "pointer", "symbol",
-            "keyword", "reduced", "unreduced", "apply", "not", "compare",
+            "keyword", "reduced", "unreduced", "apply",
             "number?", "long?", "satisfies?", "special-symbol?", "type", "instance?"
         ]
     )]

@@ -257,7 +257,7 @@ impl Compiler {
                             .or_else(|| current.resolve(&crate::lang::data::Symbol::parse(name)))
                             .or_else(|| registry.resolve(&crate::lang::data::Symbol::parse(name))))
                         .is_some_and(|var| {
-                            crate::core::Primitive::from_symbol(name).is_none()
+                            crate::core::IntrinsicOp::from_symbol(name).is_none()
                                 || var.symbol().get_namespace() != Some("std.foundation")
                         })
                 })

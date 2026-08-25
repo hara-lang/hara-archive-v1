@@ -3,7 +3,7 @@
 //! in `globals.rs` (issue #223). Split from `compiler.rs` to stay under
 //! the repository's per-file line cap.
 
-use crate::core::Primitive;
+use crate::core::IntrinsicOp;
 use crate::kernel::{Form, Position, Span};
 use crate::vm::error::{CompileError, CompileErrorKind};
 use crate::vm::opcode::Instruction;
@@ -370,7 +370,7 @@ impl Compiler {
                     // Bound in this function or already collected.
                 } else if self.ctx().scopes.resolve(name).is_some()
                     || (!self.visible_global(name)
-                        && Primitive::from_symbol(name).is_none()
+                        && IntrinsicOp::from_symbol(name).is_none()
                         && !self.visible_bytecode_callable(name))
                 {
                     // An enclosing lexical binding always wins over a Var or
@@ -660,7 +660,7 @@ impl Compiler {
                         }
                         // Rejected by the compiler later; nothing to collect.
                         "defn" | "var" => {}
-                        _ if Primitive::from_symbol(head).is_some()
+                        _ if IntrinsicOp::from_symbol(head).is_some()
                             && !self.visible_global(head) =>
                         {
                             for c in &children[1..] {

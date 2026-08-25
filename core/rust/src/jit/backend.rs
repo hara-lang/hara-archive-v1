@@ -1,7 +1,7 @@
 use super::trace_ir::{
     ExitReason, ExitSnapshot, NumericVectorSlice, Trace, TraceOp, TraceOutcome, TraceValue,
 };
-use crate::core::{Primitive, Value};
+use crate::core::{IntrinsicOp, Value};
 
 pub trait TraceBackend {
     type Compiled;
@@ -123,19 +123,19 @@ impl TraceBackend for CheckedBackend {
                             return exit(ExitReason::WrongTag);
                         };
                         let value = match op {
-                            Primitive::Add => left.checked_add(right).map(TraceValue::I64),
-                            Primitive::Subtract => left.checked_sub(right).map(TraceValue::I64),
-                            Primitive::Multiply => left.checked_mul(right).map(TraceValue::I64),
-                            Primitive::Divide | Primitive::Remainder if right == 0 => {
+                            IntrinsicOp::Add => left.checked_add(right).map(TraceValue::I64),
+                            IntrinsicOp::Subtract => left.checked_sub(right).map(TraceValue::I64),
+                            IntrinsicOp::Multiply => left.checked_mul(right).map(TraceValue::I64),
+                            IntrinsicOp::Divide | IntrinsicOp::Remainder if right == 0 => {
                                 return exit(ExitReason::DivisionByZero)
                             }
-                            Primitive::Divide => left.checked_div(right).map(TraceValue::I64),
-                            Primitive::Remainder => left.checked_rem(right).map(TraceValue::I64),
-                            Primitive::Less => Some(TraceValue::Bool(left < right)),
-                            Primitive::LessOrEqual => Some(TraceValue::Bool(left <= right)),
-                            Primitive::Greater => Some(TraceValue::Bool(left > right)),
-                            Primitive::GreaterOrEqual => Some(TraceValue::Bool(left >= right)),
-                            Primitive::Equal => Some(TraceValue::Bool(left == right)),
+                            IntrinsicOp::Divide => left.checked_div(right).map(TraceValue::I64),
+                            IntrinsicOp::Remainder => left.checked_rem(right).map(TraceValue::I64),
+                            IntrinsicOp::Less => Some(TraceValue::Bool(left < right)),
+                            IntrinsicOp::LessOrEqual => Some(TraceValue::Bool(left <= right)),
+                            IntrinsicOp::Greater => Some(TraceValue::Bool(left > right)),
+                            IntrinsicOp::GreaterOrEqual => Some(TraceValue::Bool(left >= right)),
+                            IntrinsicOp::Equal => Some(TraceValue::Bool(left == right)),
                             _ => return exit(ExitReason::Unsupported),
                         };
                         let Some(value) = value else {
@@ -241,7 +241,7 @@ mod tests {
                 TraceOp::GuardLocalI64 { local: 0 },
                 TraceOp::LoadLocal { local: 0 },
                 TraceOp::ConstantI64(1),
-                TraceOp::BinaryI64(Primitive::Add),
+                TraceOp::BinaryI64(IntrinsicOp::Add),
                 TraceOp::StoreLocal { local: 0 },
                 TraceOp::LoopBackedge,
             ],
@@ -313,11 +313,11 @@ mod tests {
             operations: vec![
                 TraceOp::LoadLocal { local: 0 },
                 TraceOp::ConstantI64(1),
-                TraceOp::BinaryI64(Primitive::Add),
+                TraceOp::BinaryI64(IntrinsicOp::Add),
                 TraceOp::StoreLocal { local: 0 },
                 TraceOp::LoadLocal { local: 0 },
                 TraceOp::ConstantI64(0),
-                TraceOp::BinaryI64(Primitive::Divide),
+                TraceOp::BinaryI64(IntrinsicOp::Divide),
                 TraceOp::Pop,
                 TraceOp::LoopBackedge,
             ],

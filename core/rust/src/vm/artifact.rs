@@ -10,7 +10,6 @@ use sha2::{Digest, Sha256};
 use super::opcode::Instruction;
 use super::program::{CatchEntry, FunctionPrototype, Program, TryEntry};
 use super::source_map::SourceMap;
-use crate::core::Primitive;
 #[cfg(test)]
 use crate::core::Value;
 use crate::kernel::{FunctionSchema, Position, SchemaField, SchemaType};
@@ -216,20 +215,10 @@ fn write_instruction(out: &mut Writer, instruction: &Instruction) {
         }
         Pop => out.byte(6),
         Dup => out.byte(28),
-        Primitive { op, argc } => {
-            out.byte(7);
-            out.byte(primitive_id(*op));
+        IntrinsicCall { target, argc } => {
+            out.byte(50);
+            out.u32(*target);
             out.byte(*argc);
-        }
-        PrimitiveLocalConst {
-            op,
-            local,
-            constant,
-        } => {
-            out.byte(25);
-            out.byte(primitive_id(*op));
-            out.u16(*local);
-            out.u32(*constant);
         }
         Jump(value) => {
             out.byte(8);
@@ -339,9 +328,14 @@ fn write_instruction(out: &mut Writer, instruction: &Instruction) {
             out.byte(44);
             out.u32(*index);
         }
-        PrimitiveValue(op) => {
-            out.byte(37);
-            out.byte(primitive_id(*op));
+        IntrinsicValue(target) => {
+            out.byte(51);
+            out.u32(*target);
+        }
+        ProtocolCall { target, argc } => {
+            out.byte(52);
+            out.u32(*target);
+            out.byte(*argc);
         }
         BuiltinValue(index) => {
             out.byte(38);
@@ -382,10 +376,7 @@ fn read_instruction(reader: &mut Reader<'_>) -> Result<Instruction, String> {
         4 => Instruction::LoadLocal(reader.u16()?),
         5 => Instruction::StoreLocal(reader.u16()?),
         6 => Instruction::Pop,
-        7 => Instruction::Primitive {
-            op: primitive(reader.byte()?)?,
-            argc: reader.byte()?,
-        },
+        7 => return Err("bytecode artifact uses retired Primitive opcode 7; rebuild required".into()),
         8 => Instruction::Jump(reader.u32()?),
         9 => Instruction::JumpIfFalse(reader.u32()?),
         10 => Instruction::Closure {
@@ -424,11 +415,7 @@ fn read_instruction(reader: &mut Reader<'_>) -> Result<Instruction, String> {
             count: reader.byte()?,
         },
         24 => Instruction::Return,
-        25 => Instruction::PrimitiveLocalConst {
-            op: primitive(reader.byte()?)?,
-            local: reader.u16()?,
-            constant: reader.u32()?,
-        },
+        25 => return Err("bytecode artifact uses retired PrimitiveLocalConst opcode 25; rebuild required".into()),
         26 => Instruction::Await,
         27 => Instruction::HostCall,
         28 => Instruction::Dup,
@@ -442,7 +429,7 @@ fn read_instruction(reader: &mut Reader<'_>) -> Result<Instruction, String> {
         33 => Instruction::BuildList(reader.u16()?),
         34 => Instruction::ConcatList(reader.u16()?),
         35 => Instruction::ToVector,
-        37 => Instruction::PrimitiveValue(primitive(reader.byte()?)?),
+        37 => return Err("bytecode artifact uses retired PrimitiveValue opcode 37; rebuild required".into()),
         38 => Instruction::BuiltinValue(reader.u32()?),
         39 => Instruction::DynamicBind(reader.u32()?),
         40 => Instruction::DynamicUnbind(reader.u32()?),
@@ -461,72 +448,16 @@ fn read_instruction(reader: &mut Reader<'_>) -> Result<Instruction, String> {
         },
         48 => Instruction::MutableFieldGet(reader.u32()?),
         49 => Instruction::MutableFieldSet(reader.u32()?),
+        50 => Instruction::IntrinsicCall {
+            target: reader.u32()?,
+            argc: reader.byte()?,
+        },
+        51 => Instruction::IntrinsicValue(reader.u32()?),
+        52 => Instruction::ProtocolCall {
+            target: reader.u32()?,
+            argc: reader.byte()?,
+        },
         _ => return Err("bytecode artifact contains an unknown opcode".into()),
-    })
-}
-
-fn primitive_id(value: Primitive) -> u8 {
-    match value {
-        Primitive::Add => 0,
-        Primitive::Subtract => 1,
-        Primitive::Multiply => 2,
-        Primitive::Divide => 3,
-        Primitive::Remainder => 4,
-        Primitive::Equal => 5,
-        Primitive::Less => 6,
-        Primitive::LessOrEqual => 7,
-        Primitive::Greater => 8,
-        Primitive::GreaterOrEqual => 9,
-        Primitive::Count => 10,
-        Primitive::Get => 11,
-        Primitive::Meta => 12,
-        Primitive::Nth => 13,
-        Primitive::Assoc => 14,
-        Primitive::First => 15,
-        Primitive::Rest => 16,
-        Primitive::Second => 17,
-        Primitive::ToMutable => 18,
-        Primitive::ToPersistent => 19,
-        Primitive::NumberPredicate => 20,
-        Primitive::ArrayNew => 21,
-        Primitive::ArrayGet => 22,
-        Primitive::ArraySet => 23,
-        Primitive::ObjectNew => 24,
-        Primitive::ObjectGet => 25,
-        Primitive::ObjectSet => 26,
-    }
-}
-
-fn primitive(value: u8) -> Result<Primitive, String> {
-    Ok(match value {
-        0 => Primitive::Add,
-        1 => Primitive::Subtract,
-        2 => Primitive::Multiply,
-        3 => Primitive::Divide,
-        4 => Primitive::Remainder,
-        5 => Primitive::Equal,
-        6 => Primitive::Less,
-        7 => Primitive::LessOrEqual,
-        8 => Primitive::Greater,
-        9 => Primitive::GreaterOrEqual,
-        10 => Primitive::Count,
-        11 => Primitive::Get,
-        12 => Primitive::Meta,
-        13 => Primitive::Nth,
-        14 => Primitive::Assoc,
-        15 => Primitive::First,
-        16 => Primitive::Rest,
-        17 => Primitive::Second,
-        18 => Primitive::ToMutable,
-        19 => Primitive::ToPersistent,
-        20 => Primitive::NumberPredicate,
-        21 => Primitive::ArrayNew,
-        22 => Primitive::ArrayGet,
-        23 => Primitive::ArraySet,
-        24 => Primitive::ObjectNew,
-        25 => Primitive::ObjectGet,
-        26 => Primitive::ObjectSet,
-        _ => return Err("bytecode artifact contains an unknown primitive".into()),
     })
 }
 

@@ -1667,27 +1667,6 @@ fn collection_assoc(value: &Value, key: &Value, replacement: Value) -> Result<Va
     }
 }
 
-/// Owned fast path used by the VM for the common three-argument `assoc`.
-/// Persistent aliases remain safe because the underlying nodes use Rc COW.
-pub(crate) fn apply_ternary_primitive_owned(
-    primitive: Primitive,
-    value: Value,
-    key: Value,
-    replacement: Value,
-) -> Result<Value, String> {
-    if primitive != Primitive::Assoc {
-        return Err(format!("{} expects values", primitive.operator()));
-    }
-    match value {
-        Value::Map(values) => Ok(Value::Map(values.assoc_value_owned(key, replacement))),
-        Value::OrderedMap(values) => Ok(Value::OrderedMap(Box::new(
-            (*values).assoc_value_owned(key, replacement),
-        ))),
-        Value::Nil => Ok(Value::Map(PMap::new().assoc_value_owned(key, replacement))),
-        value => collection_assoc(&value, &key, replacement),
-    }
-}
-
 fn collection_dissoc(value: &Value, keys: &[Value]) -> Result<Value, String> {
     match value {
         Value::Extension(_) => keys.iter().try_fold(value.clone(), |current, key| {

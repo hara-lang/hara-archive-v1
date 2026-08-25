@@ -53,6 +53,82 @@ public class HaraLanguageTest {
   }
 
   @Test
+  public void collectionCategoryPredicatesClassifyAllPortableFamilies() {
+    try (Context context = context()) {
+      assertEquals(
+          "[true true false true true false true true true true true false false false true false true false true false]",
+          context
+              .eval(
+                  HaraLanguage.ID,
+                  "[(map? {:a 1}) "
+                      + " (map? (std.native.Algo/ordered-map :a 1)) "
+                      + " (map? [1]) "
+                      + " (set? #{1}) "
+                      + " (set? (std.native.Algo/ordered-set 1)) "
+                      + " (set? [1]) "
+                      + " (sequential? '(1 2)) "
+                      + " (sequential? [1 2]) "
+                      + " (sequential? (tuple 1 2)) "
+                      + " (sequential? (std.native.Algo/queue 1 2)) "
+                      + " (sequential? (std.native.Algo/deque 1 2)) "
+                      + " (sequential? (cons 1 [2])) "
+                      + " (sequential? (seq [1 2])) "
+                      + " (sequential? (std.native.Algo/ordered-set 1)) "
+                      + " (coll? (seq [1 2])) "
+                      + " (coll? (iter [1 2])) "
+                      + " (seq? (seq [1 2])) "
+                      + " (seq? [1 2]) "
+                      + " (iter? (iter [1 2])) "
+                      + " (iter? [1 2])]")
+              .toString());
+    }
+  }
+
+  @Test
+  public void notAndCompareAreFoundationOwned() {
+    try (Context context = context()) {
+      assertEquals(
+          "[true false -1 0 1]",
+          context
+              .eval(
+                  HaraLanguage.ID,
+                  "[(std.foundation/not nil) "
+                      + " (std.foundation/not true) "
+                      + " (std.foundation/compare 1 2) "
+                      + " (std.foundation/compare 2 2) "
+                      + " (std.foundation/compare 2 1)]")
+              .toString());
+    }
+  }
+
+  @Test
+  public void foundationProtocolPredicatesUseSatisfies() {
+    try (Context context = context()) {
+      assertEquals(
+          "[true true true true true true true true true true true true true true true]",
+          context
+              .eval(
+                  HaraLanguage.ID,
+                  "[(iterable? [1]) "
+                      + " (iterator? (iter [1])) "
+                      + " (counted? [1]) "
+                      + " (reducible? [1]) "
+                      + " (indexed? [1]) "
+                      + " (associative? {:a 1}) "
+                      + " (findable? {:a 1}) "
+                      + " (lookupable? {:a 1}) "
+                      + " (derefable? (atom 1)) "
+                      + " (resettable? (atom 1)) "
+                      + " (casable? (atom 1)) "
+                      + " (watchable? (atom 1)) "
+                      + " (applicable? (pointer {:context :test})) "
+                      + " (mutable? (to-mutable (vec [1]))) "
+                      + " (persistent? [1])]")
+              .toString());
+    }
+  }
+
+  @Test
   public void pointersAreCanonicalDescriptorsWithContextDispatch() {
     try (Context context = context()) {
       assertEquals(
@@ -319,6 +395,8 @@ public class HaraLanguageTest {
           context.eval(HaraLanguage.ID, "(seq? ((map inc) (seq [1 2 3])))").asBoolean());
       assertTrue(
           context.eval(HaraLanguage.ID, "(iter? ((map inc) (iter [1 2 3])))").asBoolean());
+      assertEquals(1, context.eval(HaraLanguage.ID, "(first (tuple 1 2))").asLong());
+      assertEquals(2, context.eval(HaraLanguage.ID, "(last (tuple 1 2))").asLong());
       assertEquals(2, context.eval(HaraLanguage.ID, "(first (map inc [1 2 3]))").asLong());
       assertEquals(2, context.eval(HaraLanguage.ID, "(first ((map inc) [1 2 3]))").asLong());
       assertEquals(2, context.eval(HaraLanguage.ID, "(first ((map inc) (seq [1 2 3])))").asLong());

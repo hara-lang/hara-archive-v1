@@ -2043,13 +2043,6 @@ pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, Stri
                     }
                     Ok(Value::Bool(n.contains("every?")))
                 }
-                Form::Symbol(n) if named_predicate_protocol(n).is_some() => {
-                    if fs.len() != 2 {
-                        return Err(format!("{n} expects one argument"));
-                    }
-                    let value = eval(&fs[1], env)?;
-                    Ok(Value::Bool(named_protocol_satisfies(n, &value)))
-                }
                 Form::Symbol(n) if n == "to-mutable" || n == "to-persistent" => {
                     if fs.len() != 2 {
                         return Err(format!("{n} expects one argument"));

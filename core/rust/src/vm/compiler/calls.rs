@@ -14,6 +14,9 @@ impl Compiler {
         span: &Span,
     ) -> Result<(), CompileError> {
         if self.ctx().scopes.resolve(name).is_none() {
+            if let Some(target) = crate::core::canonical_intrinsic_callable_symbol(name) {
+                return self.compile_intrinsic_call(&target, children, span);
+            }
             if let Some(target) = self.inline_target(name) {
                 return self.compile_forwarded_call(&target, children, span);
             }
@@ -91,6 +94,9 @@ impl Compiler {
         children: &[Child<'_>],
         span: &Span,
     ) -> Result<(), CompileError> {
+        if let Some(canonical) = crate::core::canonical_intrinsic_callable_symbol(target) {
+            return self.compile_intrinsic_call(&canonical, children, span);
+        }
         let argc = (children.len() - 1) as u8;
         let index = self.global_name_constant(target, span)?;
         self.emit(Instruction::GetGlobal(index), Some(span.start));
@@ -98,6 +104,43 @@ impl Compiler {
         if self.ctx().fallthrough {
             self.emit(Instruction::Call { argc }, Some(span.start));
         }
+        Ok(())
+    }
+
+    fn compile_intrinsic_call(
+        &mut self,
+        target: &str,
+        children: &[Child<'_>],
+        span: &Span,
+    ) -> Result<(), CompileError> {
+        let argc = children.len() - 1;
+        if argc > usize::from(u8::MAX) {
+            return Err(CompileError::new(
+                CompileErrorKind::Limit,
+                "intrinsic calls support at most 255 arguments",
+                Some(span.start),
+            ));
+        }
+        for argument in &children[1..] {
+            self.compile_form(argument.form, argument.span, argument.children, false)?;
+        }
+        if !self.ctx().fallthrough {
+            return Ok(());
+        }
+        let is_protocol = target.starts_with("std.protocol.");
+        let target = self.name_constant(target, span)?;
+        let instruction = if is_protocol {
+            Instruction::ProtocolCall {
+                target,
+                argc: argc as u8,
+            }
+        } else {
+            Instruction::IntrinsicCall {
+                target,
+                argc: argc as u8,
+            }
+        };
+        self.emit(instruction, Some(span.start));
         Ok(())
     }
 

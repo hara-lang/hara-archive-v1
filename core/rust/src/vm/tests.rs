@@ -7,7 +7,7 @@ use super::opcode::Instruction;
 use super::program::{FunctionPrototype, Program, MAX_OPERAND_STACK};
 use super::source_map::SourceMap;
 use super::validate::validate;
-use crate::core::{ExceptionInfo, ExceptionProvenance, Primitive, Value};
+use crate::core::{ExceptionInfo, ExceptionProvenance, IntrinsicOp, Value};
 use crate::kernel::{FunctionSchema, Position, SchemaType};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -56,8 +56,8 @@ fn add_program() -> Program {
         vec![
             Instruction::Constant(0),
             Instruction::Constant(1),
-            Instruction::Primitive {
-                op: Primitive::Add,
+            Instruction::IntrinsicOp {
+                op: IntrinsicOp::Add,
                 argc: 2,
             },
             Instruction::Return,
@@ -150,8 +150,8 @@ fn instruction_display_and_shape() {
     assert_eq!(Instruction::LoadLocal(3).to_string(), "LoadLocal 3");
     assert_eq!(Instruction::StoreLocal(3).to_string(), "StoreLocal 3");
     assert_eq!(
-        Instruction::Primitive {
-            op: Primitive::Remainder,
+        Instruction::IntrinsicOp {
+            op: IntrinsicOp::Remainder,
             argc: 2
         }
         .to_string(),
@@ -159,7 +159,7 @@ fn instruction_display_and_shape() {
     );
     assert_eq!(
         Instruction::PrimitiveLocalConst {
-            op: Primitive::Add,
+            op: IntrinsicOp::Add,
             local: 2,
             constant: 7,
         }
@@ -190,8 +190,8 @@ fn instruction_display_and_shape() {
     assert!(!Instruction::Return.falls_through());
     assert!(Instruction::Pop.falls_through());
     assert_eq!(
-        Instruction::Primitive {
-            op: Primitive::Add,
+        Instruction::IntrinsicOp {
+            op: IntrinsicOp::Add,
             argc: 3
         }
         .stack_effect(),
@@ -199,7 +199,7 @@ fn instruction_display_and_shape() {
     );
     assert_eq!(
         Instruction::PrimitiveLocalConst {
-            op: Primitive::Add,
+            op: IntrinsicOp::Add,
             local: 0,
             constant: 0,
         }
@@ -359,8 +359,8 @@ fn validator_rejects_primitive_underflow() {
     let program = program(
         vec![
             Instruction::True,
-            Instruction::Primitive {
-                op: Primitive::Add,
+            Instruction::IntrinsicOp {
+                op: IntrinsicOp::Add,
                 argc: 3,
             },
             Instruction::Return,

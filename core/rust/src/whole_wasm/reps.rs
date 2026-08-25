@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use crate::core::{Primitive, Value};
+use crate::core::{IntrinsicOp, Value};
 use crate::kernel::{FunctionSchema, SchemaType};
 use crate::vm::{FunctionId, FunctionPrototype, Instruction, Program};
 
@@ -24,8 +24,8 @@ pub(crate) fn analyze_function(
         locals: vec![Rep::Unknown; usize::from(function.local_count)],
         stack: Vec::new(),
     };
-    let native_collection = function_native_collection_parameter(function);
-    let scalar_kernel = function_is_scalar_kernel(function);
+    let native_collection = function_native_collection_parameter(program, function);
+    let scalar_kernel = function_is_scalar_kernel(program, function);
     for parameter in 0..usize::from(function.arity) {
         entry.locals[parameter] =
             if let Some(rep) = declared_parameter_rep(program, function_id, function, parameter) {
@@ -34,7 +34,7 @@ pub(crate) fn analyze_function(
                 native_collection.unwrap_or_else(|| {
                     if scalar_kernel || program.function_has_i64_parameters(function_id) {
                         Rep::I64
-                    } else if function_uses_tagged_collections(function)
+                    } else if function_uses_tagged_collections(program, function)
                         && !program_uses_collection_constants(program)
                     {
                         Rep::TaggedRef
@@ -47,7 +47,7 @@ pub(crate) fn analyze_function(
                 || program.function_has_i64_parameters(function_id)
             {
                 Rep::I64
-            } else if function_uses_tagged_collections(function)
+            } else if function_uses_tagged_collections(program, function)
                 && !program_uses_collection_constants(program)
             {
                 Rep::TaggedRef
@@ -130,30 +130,24 @@ fn schema_rep(schema: &SchemaType) -> Rep {
     }
 }
 
-fn function_is_scalar_kernel(function: &FunctionPrototype) -> bool {
+fn function_is_scalar_kernel(program: &Program, function: &FunctionPrototype) -> bool {
     let mut saw_numeric_operation = false;
     for instruction in &function.code {
-        let Some(op) = (match instruction {
-            Instruction::Primitive { op, .. } | Instruction::PrimitiveLocalConst { op, .. } => {
-                Some(*op)
-            }
-            _ => None,
-        }) else {
+        let Some(op) = instruction_intrinsic_op(program, instruction) else {
             continue;
         };
         if !matches!(
             op,
-            Primitive::Add
-                | Primitive::Subtract
-                | Primitive::Multiply
-                | Primitive::Divide
-                | Primitive::Remainder
-                | Primitive::Equal
-                | Primitive::Less
-                | Primitive::LessOrEqual
-                | Primitive::Greater
-                | Primitive::GreaterOrEqual
-                | Primitive::NumberPredicate
+            IntrinsicOp::Add
+                | IntrinsicOp::Subtract
+                | IntrinsicOp::Multiply
+                | IntrinsicOp::Divide
+                | IntrinsicOp::Remainder
+                | IntrinsicOp::Equal
+                | IntrinsicOp::Less
+                | IntrinsicOp::LessOrEqual
+                | IntrinsicOp::Greater
+                | IntrinsicOp::GreaterOrEqual
         ) {
             return false;
         }
@@ -167,26 +161,15 @@ fn function_is_scalar_kernel(function: &FunctionPrototype) -> bool {
 /// as the first function parameter, including across recursive calls. Treat
 /// those operations as a representation constraint on that parameter so a
 /// linear-memory reference is never mistaken for a boxed runtime handle.
-fn function_native_collection_parameter(function: &FunctionPrototype) -> Option<Rep> {
+fn function_native_collection_parameter(
+    program: &Program,
+    function: &FunctionPrototype,
+) -> Option<Rep> {
     let mut inferred = None;
     for instruction in &function.code {
-        let candidate = match instruction {
-            Instruction::Primitive {
-                op: Primitive::ArrayGet | Primitive::ArraySet,
-                ..
-            }
-            | Instruction::PrimitiveLocalConst {
-                op: Primitive::ArrayGet | Primitive::ArraySet,
-                ..
-            } => Some(Rep::ArrayRef),
-            Instruction::Primitive {
-                op: Primitive::ObjectGet | Primitive::ObjectSet,
-                ..
-            }
-            | Instruction::PrimitiveLocalConst {
-                op: Primitive::ObjectGet | Primitive::ObjectSet,
-                ..
-            } => Some(Rep::ObjectRef),
+        let candidate = match instruction_target(program, instruction) {
+            Some("std.native.Arr/get" | "std.native.Arr/set") => Some(Rep::ArrayRef),
+            Some("std.native.Obj/get" | "std.native.Obj/set") => Some(Rep::ObjectRef),
             _ => None,
         };
         if let Some(candidate) = candidate {
@@ -230,28 +213,18 @@ fn transfer(
         Instruction::Pop | Instruction::JumpIfFalse(_) => {
             pop(state)?;
         }
-        Instruction::Primitive { op, argc } => {
+        Instruction::IntrinsicCall { target, argc }
+        | Instruction::ProtocolCall { target, argc } => {
             let start = state.stack.len() - usize::from(*argc);
             let arguments = state.stack.split_off(start);
-            state.stack.push(
-                if *op == Primitive::Get && next_instruction.is_some_and(is_scalar_numeric_consumer)
-                {
-                    Rep::I64
-                } else {
-                    primitive_rep(*op, &arguments)
-                },
-            );
-        }
-        Instruction::PrimitiveLocalConst {
-            op,
-            local,
-            constant,
-        } => {
-            let arguments = [
-                state.locals[usize::from(*local)],
-                constant_rep(&program.constants[*constant as usize]),
-            ];
-            state.stack.push(primitive_rep(*op, &arguments));
+            let target = target_name(program, *target)?;
+            state.stack.push(if target.ends_with("/lookup")
+                && next_instruction.is_some_and(|next| is_scalar_numeric_consumer(program, next))
+            {
+                Rep::I64
+            } else {
+                target_rep(target, &arguments)
+            });
         }
         Instruction::CallStatic { argc, prototype } => {
             let start = state.stack.len() - usize::from(*argc);
@@ -321,25 +294,19 @@ fn transfer(
     Ok(())
 }
 
-fn is_scalar_numeric_consumer(instruction: &Instruction) -> bool {
-    matches!(
-        instruction,
-        Instruction::Primitive {
-            op: Primitive::Add
-                | Primitive::Subtract
-                | Primitive::Multiply
-                | Primitive::Divide
-                | Primitive::Remainder,
-            ..
-        } | Instruction::PrimitiveLocalConst {
-            op: Primitive::Add
-                | Primitive::Subtract
-                | Primitive::Multiply
-                | Primitive::Divide
-                | Primitive::Remainder,
-            ..
-        }
-    )
+fn is_scalar_numeric_consumer(program: &Program, instruction: &Instruction) -> bool {
+    instruction_target(program, instruction)
+        .and_then(IntrinsicOp::from_symbol)
+        .is_some_and(|op| {
+            matches!(
+                op,
+                IntrinsicOp::Add
+                    | IntrinsicOp::Subtract
+                    | IntrinsicOp::Multiply
+                    | IntrinsicOp::Divide
+                    | IntrinsicOp::Remainder
+            )
+        })
 }
 
 fn constant_rep(value: &Value) -> Rep {
@@ -352,50 +319,80 @@ fn constant_rep(value: &Value) -> Rep {
     }
 }
 
-fn primitive_rep(op: Primitive, arguments: &[Rep]) -> Rep {
-    match op {
-        Primitive::Add
-        | Primitive::Subtract
-        | Primitive::Multiply
-        | Primitive::Divide
-        | Primitive::Remainder => {
+fn target_rep(target: &str, arguments: &[Rep]) -> Rep {
+    if let Some(op) = IntrinsicOp::from_symbol(target) {
+        return match op {
+        IntrinsicOp::Add
+        | IntrinsicOp::Subtract
+        | IntrinsicOp::Multiply
+        | IntrinsicOp::Divide
+        | IntrinsicOp::Remainder => {
             if arguments.iter().all(|rep| *rep == Rep::I64) {
                 Rep::I64
             } else {
                 Rep::Unknown
             }
         }
-        Primitive::Equal
-        | Primitive::Less
-        | Primitive::LessOrEqual
-        | Primitive::Greater
-        | Primitive::GreaterOrEqual
-        | Primitive::NumberPredicate => Rep::Bool,
-        Primitive::ArrayNew | Primitive::ArraySet => Rep::ArrayRef,
-        Primitive::ObjectNew | Primitive::ObjectSet => Rep::ObjectRef,
-        Primitive::ObjectGet | Primitive::Count => Rep::I64,
-        Primitive::Nth => {
+        IntrinsicOp::Equal
+        | IntrinsicOp::Less
+        | IntrinsicOp::LessOrEqual
+        | IntrinsicOp::Greater
+        | IntrinsicOp::GreaterOrEqual => Rep::Bool,
+        };
+    }
+    match target {
+        "std.native.Base/number?" => Rep::Bool,
+        "std.native.Arr/new" | "std.native.Arr/set" => Rep::ArrayRef,
+        "std.native.Arr/get" => Rep::I64,
+        "std.native.Obj/new" | "std.native.Obj/set" => Rep::ObjectRef,
+        "std.native.Obj/get" | "std.protocol.icount.ICount/count" => Rep::I64,
+        "std.protocol.inth.INth/nth" => {
             if arguments.first() == Some(&Rep::TaggedRef) {
                 Rep::TaggedRef
             } else {
                 Rep::TruthyHandle
             }
         }
-        Primitive::Assoc | Primitive::Get => Rep::TruthyHandle,
-        Primitive::ArrayGet => Rep::I64,
+        target if target.ends_with("/assoc") || target.ends_with("/lookup") => {
+            Rep::TruthyHandle
+        }
         _ => Rep::Unknown,
     }
 }
 
-fn function_uses_tagged_collections(function: &FunctionPrototype) -> bool {
+fn function_uses_tagged_collections(program: &Program, function: &FunctionPrototype) -> bool {
     function.arity == 1
-        && [Primitive::NumberPredicate, Primitive::Count, Primitive::Nth]
+        && [
+            "std.native.Base/number?",
+            "std.protocol.icount.ICount/count",
+            "std.protocol.inth.INth/nth",
+        ]
             .into_iter()
             .all(|required| {
                 function.code.iter().any(|instruction| {
-                matches!(instruction, Instruction::Primitive { op, .. } if *op == required)
+                    instruction_target(program, instruction) == Some(required)
             })
             })
+}
+
+fn target_name(program: &Program, target: u32) -> Result<&str, String> {
+    match program.constants.get(target as usize) {
+        Some(Value::String(name)) => Ok(name),
+        _ => Err(format!("intrinsic target constant {target} is not a string")),
+    }
+}
+
+fn instruction_target<'a>(program: &'a Program, instruction: &Instruction) -> Option<&'a str> {
+    match instruction {
+        Instruction::IntrinsicCall { target, .. } | Instruction::ProtocolCall { target, .. } => {
+            target_name(program, *target).ok()
+        }
+        _ => None,
+    }
+}
+
+fn instruction_intrinsic_op(program: &Program, instruction: &Instruction) -> Option<IntrinsicOp> {
+    instruction_target(program, instruction).and_then(IntrinsicOp::from_symbol)
 }
 
 pub(crate) fn function_enables_tagged_vectors(program: &Program, function: FunctionId) -> bool {
@@ -410,7 +407,7 @@ pub(crate) fn function_enables_tagged_vectors(program: &Program, function: Funct
     let Some(current) = program.functions.get(usize::from(function)) else {
         return false;
     };
-    function_uses_tagged_collections(current)
+    function_uses_tagged_collections(program, current)
         || (current
             .code
             .iter()
@@ -418,7 +415,7 @@ pub(crate) fn function_enables_tagged_vectors(program: &Program, function: Funct
             && program
                 .functions
                 .iter()
-                .any(function_uses_tagged_collections))
+                .any(|function| function_uses_tagged_collections(program, function)))
         || current.code.iter().any(|instruction| {
             let Instruction::CallStatic { prototype, .. } = instruction else {
                 return false;
@@ -426,7 +423,7 @@ pub(crate) fn function_enables_tagged_vectors(program: &Program, function: Funct
             program
                 .functions
                 .get(usize::from(*prototype))
-                .is_some_and(function_uses_tagged_collections)
+                .is_some_and(|function| function_uses_tagged_collections(program, function))
         })
 }
 

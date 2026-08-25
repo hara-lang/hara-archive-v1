@@ -1,6 +1,6 @@
 use wasm_bindgen::prelude::*;
 
-use crate::core::{self, Primitive, Value};
+use crate::core::{self, Value};
 
 use super::artifact::decode_artifact;
 use super::handles::{Handle, HandleScope};
@@ -124,8 +124,8 @@ impl WholeWasmHost {
 
     #[wasm_bindgen(js_name = mapAssoc)]
     pub fn map_assoc(&mut self, map: i64, key: i64, value: i64) -> Result<i64, JsValue> {
-        let result = core::apply_primitive(
-            Primitive::Assoc,
+        let result = core::protocol_intrinsic_call(
+            "std.protocol.iassoc.IAssoc/assoc",
             &[self.get(map)?, self.get(key)?, self.get(value)?],
         )
         .map_err(js_error)?;
@@ -134,8 +134,10 @@ impl WholeWasmHost {
 
     #[wasm_bindgen(js_name = getValue)]
     pub fn get_value(&mut self, collection: i64, key: i64) -> Result<i64, JsValue> {
-        let result =
-            core::apply_primitive(Primitive::Get, &[self.get(collection)?, self.get(key)?])
+        let result = core::protocol_intrinsic_call(
+            "std.protocol.ilookup.ILookup/lookup",
+            &[self.get(collection)?, self.get(key)?],
+        )
                 .map_err(js_error)?;
         self.insert(result)
     }
@@ -149,15 +151,19 @@ impl WholeWasmHost {
     }
 
     pub fn count(&self, collection: i64) -> Result<i64, JsValue> {
-        match core::apply_primitive(Primitive::Count, &[self.get(collection)?]).map_err(js_error)? {
+        match core::protocol_intrinsic_call(
+            "std.protocol.icount.ICount/count",
+            &[self.get(collection)?],
+        )
+        .map_err(js_error)? {
             Value::Number(value) => Ok(value),
             _ => Err(js_error("count returned a non-integer".into())),
         }
     }
 
     pub fn nth(&mut self, collection: i64, index: i64) -> Result<i64, JsValue> {
-        let result = core::apply_primitive(
-            Primitive::Nth,
+        let result = core::protocol_intrinsic_call(
+            "std.protocol.inth.INth/nth",
             &[self.get(collection)?, Value::Number(index)],
         )
         .map_err(js_error)?;
@@ -173,7 +179,10 @@ impl WholeWasmHost {
 
     #[wasm_bindgen(js_name = getI64)]
     pub fn get_i64(&self, collection: i64, key: i64) -> Result<i64, JsValue> {
-        match core::apply_primitive(Primitive::Get, &[self.get(collection)?, self.get(key)?])
+        match core::protocol_intrinsic_call(
+            "std.protocol.ilookup.ILookup/lookup",
+            &[self.get(collection)?, self.get(key)?],
+        )
             .map_err(js_error)?
         {
             Value::Number(value) => Ok(value),
@@ -198,12 +207,15 @@ impl WholeWasmHost {
                 .cloned()
                 .ok_or_else(|| js_error("whole-Wasm constant is missing".into()))
         };
-        let first = core::apply_primitive(
-            Primitive::Get,
+        let first = core::protocol_intrinsic_call(
+            "std.protocol.ilookup.ILookup/lookup",
             &[self.get(collection)?, constant(first_key)?],
         )
         .map_err(js_error)?;
-        match core::apply_primitive(Primitive::Get, &[first, constant(second_key)?])
+        match core::protocol_intrinsic_call(
+            "std.protocol.ilookup.ILookup/lookup",
+            &[first, constant(second_key)?],
+        )
             .map_err(js_error)?
         {
             Value::Number(value) => Ok(value),
@@ -224,8 +236,8 @@ impl WholeWasmHost {
     ) -> Result<i64, JsValue> {
         let nested = core::vm_build_map(vec![self.get(inner_key)?, Value::Number(value)])
             .map_err(js_error)?;
-        let result = core::apply_primitive(
-            Primitive::Assoc,
+        let result = core::protocol_intrinsic_call(
+            "std.protocol.iassoc.IAssoc/assoc",
             &[self.get(collection)?, self.get(outer_key)?, nested],
         )
         .map_err(js_error)?;

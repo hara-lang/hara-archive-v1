@@ -122,7 +122,7 @@ impl Compiler {
         &mut self,
         children: &[Child<'_>],
         span: &Span,
-        op: Primitive,
+        op: IntrinsicOp,
     ) -> Result<(), CompileError> {
         let argc = children.len() - 1;
         if argc > MAX_PRIMITIVE_ARGUMENTS {
@@ -132,18 +132,7 @@ impl Compiler {
                 Some(span.start),
             ));
         }
-        // Mutable conversion creates/consumes runtime identity and must run on
-        // every execution. Folding it would place a one-shot transient in the
-        // constant pool, so the second execution would observe a frozen value.
-        if !matches!(
-            op,
-            Primitive::ToMutable
-                | Primitive::ToPersistent
-                | Primitive::ArrayNew
-                | Primitive::ArraySet
-                | Primitive::ObjectNew
-                | Primitive::ObjectSet
-        ) && children[1..]
+        if children[1..]
             .iter()
             .all(|argument| constant_form(argument.form))
         {
@@ -152,54 +141,8 @@ impl Compiler {
                 .map(|argument| crate::core::form_to_value(argument.form))
                 .collect::<Result<Vec<_>, _>>();
             if let Ok(arguments) = arguments {
-                if let Ok(value) = crate::core::apply_primitive(op, &arguments) {
+                if let Ok(value) = crate::core::apply_intrinsic(op, &arguments) {
                     return self.constant(value, span);
-                }
-            }
-        }
-        if op == Primitive::First && argc == 1 {
-            if let Form::List(elements) = children[1].form {
-                if matches!(elements.as_slice(), [Form::Symbol(name), _] if name == "rest") {
-                    let nested =
-                        self.list_children(elements, children[1].span, children[1].children);
-                    if constant_form(nested[1].form) {
-                        if let Ok(argument) = crate::core::form_to_value(nested[1].form) {
-                            if let Ok(value) =
-                                crate::core::apply_primitive(Primitive::Second, &[argument])
-                            {
-                                return self.constant(value, span);
-                            }
-                        }
-                    }
-                    self.compile_form(nested[1].form, nested[1].span, nested[1].children, false)?;
-                    if self.ctx().fallthrough {
-                        self.emit(
-                            Instruction::Primitive {
-                                op: Primitive::Second,
-                                argc: 1,
-                            },
-                            Some(span.start),
-                        );
-                    }
-                    return Ok(());
-                }
-            }
-        }
-        if argc == 2 {
-            if let (Form::Symbol(name), Form::Number(value)) = (children[1].form, children[2].form)
-            {
-                if let Some(local) = self.ctx().scopes.resolve(name) {
-                    let constant =
-                        self.constant_index_of(Value::Number(*value), children[2].span)?;
-                    self.emit(
-                        Instruction::PrimitiveLocalConst {
-                            op,
-                            local,
-                            constant,
-                        },
-                        Some(span.start),
-                    );
-                    return Ok(());
                 }
             }
         }
@@ -209,9 +152,10 @@ impl Compiler {
         if !self.ctx().fallthrough {
             return Ok(());
         }
+        let target = self.name_constant(op.operator(), span)?;
         self.emit(
-            Instruction::Primitive {
-                op,
+            Instruction::IntrinsicCall {
+                target,
                 argc: argc as u8,
             },
             Some(span.start),

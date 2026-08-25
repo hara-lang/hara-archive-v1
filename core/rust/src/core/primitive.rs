@@ -2,7 +2,7 @@
 /// the experimental bytecode VM (issue #195, notes/rust-bytecode-vm.md).
 /// All arithmetic and comparison semantics live here exactly once.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Primitive {
+pub enum IntrinsicOp {
     Add,
     Subtract,
     Multiply,
@@ -13,84 +13,35 @@ pub enum Primitive {
     LessOrEqual,
     Greater,
     GreaterOrEqual,
-    Count,
-    Get,
-    Meta,
-    Nth,
-    Assoc,
-    First,
-    Rest,
-    Second,
-    ToMutable,
-    ToPersistent,
-    NumberPredicate,
-    ArrayNew,
-    ArrayGet,
-    ArraySet,
-    ObjectNew,
-    ObjectGet,
-    ObjectSet,
 }
 
-impl Primitive {
+impl IntrinsicOp {
     #[cfg(test)]
-    pub(crate) const ALL: &[Primitive] = &[
-        Primitive::Add,
-        Primitive::Subtract,
-        Primitive::Multiply,
-        Primitive::Divide,
-        Primitive::Remainder,
-        Primitive::Equal,
-        Primitive::Less,
-        Primitive::LessOrEqual,
-        Primitive::Greater,
-        Primitive::GreaterOrEqual,
-        Primitive::Count,
-        Primitive::Get,
-        Primitive::Meta,
-        Primitive::Nth,
-        Primitive::Assoc,
-        Primitive::First,
-        Primitive::Rest,
-        Primitive::Second,
-        Primitive::ToMutable,
-        Primitive::ToPersistent,
-        Primitive::NumberPredicate,
-        Primitive::ArrayNew,
-        Primitive::ArrayGet,
-        Primitive::ArraySet,
-        Primitive::ObjectNew,
-        Primitive::ObjectGet,
-        Primitive::ObjectSet,
+    pub(crate) const ALL: &[IntrinsicOp] = &[
+        IntrinsicOp::Add,
+        IntrinsicOp::Subtract,
+        IntrinsicOp::Multiply,
+        IntrinsicOp::Divide,
+        IntrinsicOp::Remainder,
+        IntrinsicOp::Equal,
+        IntrinsicOp::Less,
+        IntrinsicOp::LessOrEqual,
+        IntrinsicOp::Greater,
+        IntrinsicOp::GreaterOrEqual,
     ];
 
-    pub fn from_symbol(symbol: &str) -> Option<Primitive> {
+    pub fn from_symbol(symbol: &str) -> Option<IntrinsicOp> {
         Some(match symbol {
-            "+" => Primitive::Add,
-            "-" => Primitive::Subtract,
-            "*" => Primitive::Multiply,
-            "/" => Primitive::Divide,
-            "%" => Primitive::Remainder,
-            "=" => Primitive::Equal,
-            "<" => Primitive::Less,
-            "<=" => Primitive::LessOrEqual,
-            ">" => Primitive::Greater,
-            ">=" => Primitive::GreaterOrEqual,
-            // Collection and metadata names are Foundation wrappers over
-            // protocol dispatch, not public primitive symbols.
-            "nth" => Primitive::Nth,
-            "first" => Primitive::First,
-            "rest" => Primitive::Rest,
-            "second" => Primitive::Second,
-            "to-mutable" => Primitive::ToMutable,
-            "to-persistent" => Primitive::ToPersistent,
-            "number?" => Primitive::NumberPredicate,
-            "std.native.Arr/new" => Primitive::ArrayNew,
-            "std.native.Arr/get" => Primitive::ArrayGet,
-            "std.native.Arr/set" => Primitive::ArraySet,
-            "std.native.Obj/new" => Primitive::ObjectNew,
-            "std.native.Obj/get" => Primitive::ObjectGet,
-            "std.native.Obj/set" => Primitive::ObjectSet,
+            "+" => IntrinsicOp::Add,
+            "-" => IntrinsicOp::Subtract,
+            "*" => IntrinsicOp::Multiply,
+            "/" => IntrinsicOp::Divide,
+            "%" => IntrinsicOp::Remainder,
+            "=" => IntrinsicOp::Equal,
+            "<" => IntrinsicOp::Less,
+            "<=" => IntrinsicOp::LessOrEqual,
+            ">" => IntrinsicOp::Greater,
+            ">=" => IntrinsicOp::GreaterOrEqual,
             _ => return None,
         })
     }
@@ -99,33 +50,16 @@ impl Primitive {
     /// matching the existing evaluator.
     pub fn operator(self) -> &'static str {
         match self {
-            Primitive::Add => "+",
-            Primitive::Subtract => "-",
-            Primitive::Multiply => "*",
-            Primitive::Divide => "/",
-            Primitive::Remainder => "%",
-            Primitive::Equal => "=",
-            Primitive::Less => "<",
-            Primitive::LessOrEqual => "<=",
-            Primitive::Greater => ">",
-            Primitive::GreaterOrEqual => ">=",
-            Primitive::Count => "count",
-            Primitive::Get => "get",
-            Primitive::Meta => "meta",
-            Primitive::Nth => "nth",
-            Primitive::Assoc => "assoc",
-            Primitive::First => "first",
-            Primitive::Rest => "rest",
-            Primitive::Second => "second",
-            Primitive::ToMutable => "to-mutable",
-            Primitive::ToPersistent => "to-persistent",
-            Primitive::NumberPredicate => "number?",
-            Primitive::ArrayNew => "std.native.Arr/new",
-            Primitive::ArrayGet => "std.native.Arr/get",
-            Primitive::ArraySet => "std.native.Arr/set",
-            Primitive::ObjectNew => "std.native.Obj/new",
-            Primitive::ObjectGet => "std.native.Obj/get",
-            Primitive::ObjectSet => "std.native.Obj/set",
+            IntrinsicOp::Add => "+",
+            IntrinsicOp::Subtract => "-",
+            IntrinsicOp::Multiply => "*",
+            IntrinsicOp::Divide => "/",
+            IntrinsicOp::Remainder => "%",
+            IntrinsicOp::Equal => "=",
+            IntrinsicOp::Less => "<",
+            IntrinsicOp::LessOrEqual => "<=",
+            IntrinsicOp::Greater => ">",
+            IntrinsicOp::GreaterOrEqual => ">=",
         }
     }
 }
@@ -133,30 +67,30 @@ impl Primitive {
 /// Applies a primitive to already-evaluated arguments. The evaluator calls
 /// this after evaluating argument forms; the bytecode VM calls it directly
 /// from the operand stack.
-pub(crate) fn apply_primitive(primitive: Primitive, arguments: &[Value]) -> Result<Value, String> {
+pub(crate) fn apply_intrinsic(primitive: IntrinsicOp, arguments: &[Value]) -> Result<Value, String> {
     let op = primitive.operator();
     if let [left, right] = arguments {
-        return apply_binary_primitive(primitive, left, right);
+        return apply_binary_intrinsic(primitive, left, right);
     }
     match primitive {
-        Primitive::Add
-        | Primitive::Subtract
-        | Primitive::Multiply
-        | Primitive::Divide
-        | Primitive::Remainder => {
+        IntrinsicOp::Add
+        | IntrinsicOp::Subtract
+        | IntrinsicOp::Multiply
+        | IntrinsicOp::Divide
+        | IntrinsicOp::Remainder => {
             if arguments.is_empty() {
                 return Err(format!("{op} expects arguments"));
             }
-            if primitive == Primitive::Remainder && arguments.len() != 2 {
+            if primitive == IntrinsicOp::Remainder && arguments.len() != 2 {
                 return Err("% expects two numbers".into());
             }
             if arguments.len() == 1 {
-                if primitive == Primitive::Subtract {
+                if primitive == IntrinsicOp::Subtract {
                     return numeric::numeric_negate(&arguments[0]);
                 }
-                if primitive == Primitive::Divide {
-                    return apply_binary_primitive(
-                        Primitive::Divide,
+                if primitive == IntrinsicOp::Divide {
+                    return apply_binary_intrinsic(
+                        IntrinsicOp::Divide,
                         &Value::Number(1),
                         &arguments[0],
                     );
@@ -168,11 +102,11 @@ pub(crate) fn apply_primitive(primitive: Primitive, arguments: &[Value]) -> Resu
             }
             let mut result = arguments[0].clone();
             for argument in &arguments[1..] {
-                result = apply_binary_primitive(primitive, &result, argument)?;
+                result = apply_binary_intrinsic(primitive, &result, argument)?;
             }
             Ok(result)
         }
-        Primitive::Equal => {
+        IntrinsicOp::Equal => {
             if arguments.len() < 2 {
                 return Err("= expects at least 2 arguments".into());
             }
@@ -181,22 +115,22 @@ pub(crate) fn apply_primitive(primitive: Primitive, arguments: &[Value]) -> Resu
                 arguments[1..].iter().all(|value| value == first),
             ))
         }
-        Primitive::Less
-        | Primitive::LessOrEqual
-        | Primitive::Greater
-        | Primitive::GreaterOrEqual => {
+        IntrinsicOp::Less
+        | IntrinsicOp::LessOrEqual
+        | IntrinsicOp::Greater
+        | IntrinsicOp::GreaterOrEqual => {
             if arguments.len() < 2 {
                 return Err(format!("{op} expects at least two arguments"));
             }
             for pair in arguments.windows(2) {
                 let Some(ordering) = numeric::numeric_compare(&pair[0], &pair[1])? else {
-                    return Err(format!("{} expects numbers", primitive.operator()));
+                    return Err(format!("{op} expects numbers"));
                 };
                 let matches = match primitive {
-                    Primitive::Less => ordering == std::cmp::Ordering::Less,
-                    Primitive::LessOrEqual => ordering != std::cmp::Ordering::Greater,
-                    Primitive::Greater => ordering == std::cmp::Ordering::Greater,
-                    Primitive::GreaterOrEqual => ordering != std::cmp::Ordering::Less,
+                    IntrinsicOp::Less => ordering == std::cmp::Ordering::Less,
+                    IntrinsicOp::LessOrEqual => ordering != std::cmp::Ordering::Greater,
+                    IntrinsicOp::Greater => ordering == std::cmp::Ordering::Greater,
+                    IntrinsicOp::GreaterOrEqual => ordering != std::cmp::Ordering::Less,
                     _ => unreachable!(),
                 };
                 if !matches {
@@ -205,168 +139,28 @@ pub(crate) fn apply_primitive(primitive: Primitive, arguments: &[Value]) -> Resu
             }
             Ok(Value::Bool(true))
         }
-        // The evaluator's structural collection/metadata arms, sharing the
-        // same value-level functions and arity messages.
-        Primitive::Count => {
-            if arguments.len() != 1 {
-                return Err("count expects one argument".into());
-            }
-            protocol_call("std.protocol.icount.ICount", "count", arguments)
-        }
-        Primitive::Get => protocol_call(
-            "std.protocol.ilookup.ILookup",
-            "lookup",
-            arguments,
-        ),
-        Primitive::Meta => {
-            if arguments.len() != 1 {
-                return Err("meta expects one value".into());
-            }
-            protocol_call("std.protocol.iobjtype.IObjType", "meta", arguments)
-        }
-        Primitive::Nth => {
-            if arguments.len() != 2 {
-                return Err("nth expects two arguments".into());
-            }
-            collection_nth(&arguments[0], &arguments[1])
-        }
-        Primitive::Assoc => {
-            if arguments.len() < 3 || arguments.len() % 2 == 0 {
-                return Err("assoc expects a collection and key/value pairs".into());
-            }
-            let mut value = arguments[0].clone();
-            for pair in arguments[1..].chunks(2) {
-                value = collection_assoc(&value, &pair[0], pair[1].clone())?;
-            }
-            Ok(value)
-        }
-        Primitive::First => {
-            if arguments.len() != 1 {
-                return Err("first expects one argument".into());
-            }
-            collection_first(arguments[0].clone())
-        }
-        Primitive::Rest => {
-            if arguments.len() != 1 {
-                return Err("rest expects one argument".into());
-            }
-            collection_rest(arguments[0].clone())
-        }
-        Primitive::Second => {
-            if arguments.len() != 1 {
-                return Err("second expects one argument".into());
-            }
-            collection_second(arguments[0].clone())
-        }
-        Primitive::ToMutable => {
-            if arguments.len() != 1 {
-                return Err("to-mutable expects one argument".into());
-            }
-            collection_to_mutable(&arguments[0])
-        }
-        Primitive::ToPersistent => {
-            if arguments.len() != 1 {
-                return Err("to-persistent expects one argument".into());
-            }
-            collection_to_persistent(&arguments[0])
-        }
-        Primitive::NumberPredicate => {
-            if arguments.len() != 1 {
-                return Err("number? expects one argument".into());
-            }
-            Ok(Value::Bool(matches!(
-                arguments[0],
-                Value::Number(_) | Value::Float(_) | Value::BigInteger(_)
-            )))
-        }
-        Primitive::ArrayNew => Ok(Value::Array(Rc::new(RefCell::new(arguments.to_vec())))),
-        Primitive::ArrayGet => {
-            if arguments.len() != 2 {
-                return Err("std.native.Arr/get expects an array and index".into());
-            }
-            match &arguments[0] {
-                Value::Array(values) => values
-                    .borrow()
-                    .get(value_index(&arguments[1])?)
-                    .cloned()
-                    .ok_or_else(|| "array/get index out of bounds".into()),
-                _ => Err("std.native.Arr/get expects an array".into()),
-            }
-        }
-        Primitive::ArraySet => {
-            if arguments.len() != 3 {
-                return Err("std.native.Arr/set expects an array, index, and value".into());
-            }
-            match &arguments[0] {
-                Value::Array(values) => {
-                    let index = value_index(&arguments[1])?;
-                    let mut values = values.borrow_mut();
-                    if index >= values.len() {
-                        return Err("array/set index out of bounds".into());
-                    }
-                    values[index] = arguments[2].clone();
-                    drop(values);
-                    Ok(arguments[0].clone())
-                }
-                _ => Err("std.native.Arr/set expects an array".into()),
-            }
-        }
-        Primitive::ObjectNew => {
-            if arguments.len() % 2 != 0 {
-                return Err("std.native.Obj/new expects key/value pairs".into());
-            }
-            let mut entries = Vec::with_capacity(arguments.len() / 2);
-            for pair in arguments.chunks(2) {
-                entries.push((marker_key(&pair[0], "object")?, pair[1].clone()));
-            }
-            Ok(Value::Object(Rc::new(RefCell::new(entries))))
-        }
-        Primitive::ObjectGet => {
-            if arguments.len() != 2 {
-                return Err("std.native.Obj/get expects an object and key".into());
-            }
-            match &arguments[0] {
-                Value::Object(entries) => {
-                    let key = marker_key(&arguments[1], "object")?;
-                    Ok(entries
-                        .borrow()
-                        .iter()
-                        .find(|(candidate, _)| candidate == &key)
-                        .map(|(_, value)| value.clone())
-                        .unwrap_or(Value::Nil))
-                }
-                _ => Err("std.native.Obj/get expects an object".into()),
-            }
-        }
-        Primitive::ObjectSet => {
-            if arguments.len() != 3 {
-                return Err("std.native.Obj/set expects an object, key, and value".into());
-            }
-            match &arguments[0] {
-                Value::Object(entries) => {
-                    let key = marker_key(&arguments[1], "object")?;
-                    let mut entries = entries.borrow_mut();
-                    if let Some((_, value)) =
-                        entries.iter_mut().find(|(candidate, _)| candidate == &key)
-                    {
-                        *value = arguments[2].clone();
-                    } else {
-                        entries.push((key, arguments[2].clone()));
-                    }
-                    drop(entries);
-                    Ok(arguments[0].clone())
-                }
-                _ => Err("std.native.Obj/set expects an object".into()),
-            }
-        }
     }
+}
+
+pub(crate) fn apply_intrinsic_name(name: &str, arguments: &[Value]) -> Result<Value, String> {
+    if let Some(primitive) = IntrinsicOp::from_symbol(name) {
+        return apply_intrinsic(primitive, arguments);
+    }
+    let native = name
+        .strip_prefix("std.native.")
+        .ok_or_else(|| format!("unknown runtime intrinsic: {name}"))?;
+    let (native_type, method) = native
+        .split_once('/')
+        .ok_or_else(|| format!("invalid native intrinsic target: {name}"))?;
+    let callable = native_type_function_value(native_type, method)?;
+    call_value(callable, arguments.to_vec())
 }
 
 /// Applies the common fixed-arity primitive case without constructing an
 /// argument slice. The bytecode VM uses this directly on its operand stack;
-/// the general evaluator reaches the same helper through [`apply_primitive`].
-pub(crate) fn apply_binary_primitive(
-    primitive: Primitive,
+/// the general evaluator reaches the same helper through [`apply_intrinsic`].
+pub(crate) fn apply_binary_intrinsic(
+    primitive: IntrinsicOp,
     left: &Value,
     right: &Value,
 ) -> Result<Value, String> {
@@ -375,33 +169,33 @@ pub(crate) fn apply_binary_primitive(
         return apply_binary_numbers(primitive, *left, *right);
     }
     match primitive {
-        Primitive::Equal => return Ok(Value::Bool(left == right)),
-        Primitive::Less
-        | Primitive::LessOrEqual
-        | Primitive::Greater
-        | Primitive::GreaterOrEqual => {
+        IntrinsicOp::Equal => return Ok(Value::Bool(left == right)),
+        IntrinsicOp::Less
+        | IntrinsicOp::LessOrEqual
+        | IntrinsicOp::Greater
+        | IntrinsicOp::GreaterOrEqual => {
             let Some(ordering) = numeric::numeric_compare(left, right)? else {
                 return Err(format!("{op} expects numbers"));
             };
             return Ok(Value::Bool(match primitive {
-                Primitive::Less => ordering == std::cmp::Ordering::Less,
-                Primitive::LessOrEqual => ordering != std::cmp::Ordering::Greater,
-                Primitive::Greater => ordering == std::cmp::Ordering::Greater,
-                Primitive::GreaterOrEqual => ordering != std::cmp::Ordering::Less,
+                IntrinsicOp::Less => ordering == std::cmp::Ordering::Less,
+                IntrinsicOp::LessOrEqual => ordering != std::cmp::Ordering::Greater,
+                IntrinsicOp::Greater => ordering == std::cmp::Ordering::Greater,
+                IntrinsicOp::GreaterOrEqual => ordering != std::cmp::Ordering::Less,
                 _ => unreachable!(),
             }));
         }
-        Primitive::Add
-        | Primitive::Subtract
-        | Primitive::Multiply
-        | Primitive::Divide
-        | Primitive::Remainder => {
+        IntrinsicOp::Add
+        | IntrinsicOp::Subtract
+        | IntrinsicOp::Multiply
+        | IntrinsicOp::Divide
+        | IntrinsicOp::Remainder => {
             let operation = match primitive {
-                Primitive::Add => ArithmeticOp::Add,
-                Primitive::Subtract => ArithmeticOp::Subtract,
-                Primitive::Multiply => ArithmeticOp::Multiply,
-                Primitive::Divide => ArithmeticOp::Divide,
-                Primitive::Remainder => ArithmeticOp::Remainder,
+                IntrinsicOp::Add => ArithmeticOp::Add,
+                IntrinsicOp::Subtract => ArithmeticOp::Subtract,
+                IntrinsicOp::Multiply => ArithmeticOp::Multiply,
+                IntrinsicOp::Divide => ArithmeticOp::Divide,
+                IntrinsicOp::Remainder => ArithmeticOp::Remainder,
                 _ => unreachable!(),
             };
             return numeric::numeric_binary(operation, left, right).map_err(|error| {
@@ -412,68 +206,11 @@ pub(crate) fn apply_binary_primitive(
                 }
             });
         }
-        _ => {}
-    }
-    match primitive {
-        Primitive::Get => protocol_call(
-            "std.protocol.ilookup.ILookup",
-            "lookup",
-            &[left.clone(), right.clone()],
-        ),
-        Primitive::Count => Err("count expects one argument".into()),
-        Primitive::Meta => Err("meta expects one value".into()),
-        Primitive::Nth => collection_nth(left, right),
-        Primitive::Assoc => Err("assoc expects a collection and key/value pairs".into()),
-        Primitive::First => Err("first expects one argument".into()),
-        Primitive::Rest => Err("rest expects one argument".into()),
-        Primitive::Second => Err("second expects one argument".into()),
-        Primitive::ToMutable => Err("to-mutable expects one argument".into()),
-        Primitive::ToPersistent => Err("to-persistent expects one argument".into()),
-        Primitive::NumberPredicate => Err("number? expects one argument".into()),
-        Primitive::ArrayNew => unreachable!("array constructor is variadic"),
-        Primitive::ArrayGet => match left {
-            Value::Array(values) => values
-                .borrow()
-                .get(value_index(right)?)
-                .cloned()
-                .ok_or_else(|| "array/get index out of bounds".into()),
-            _ => Err("std.native.Arr/get expects an array".into()),
-        },
-        Primitive::ArraySet => Err("std.native.Arr/set expects three arguments".into()),
-        Primitive::ObjectNew => Ok(Value::Object(Rc::new(RefCell::new(vec![(
-            marker_key(left, "object")?,
-            right.clone(),
-        )])))),
-        Primitive::ObjectGet => match left {
-            Value::Object(entries) => {
-                let key = marker_key(right, "object")?;
-                Ok(entries
-                    .borrow()
-                    .iter()
-                    .find(|(candidate, _)| candidate == &key)
-                    .map(|(_, value)| value.clone())
-                    .unwrap_or(Value::Nil))
-            }
-            _ => Err("std.native.Obj/get expects an object".into()),
-        },
-        Primitive::ObjectSet => Err("std.native.Obj/set expects three arguments".into()),
-        Primitive::Add
-        | Primitive::Subtract
-        | Primitive::Multiply
-        | Primitive::Divide
-        | Primitive::Remainder
-        | Primitive::Equal
-        | Primitive::Less
-        | Primitive::LessOrEqual
-        | Primitive::Greater
-        | Primitive::GreaterOrEqual => {
-            unreachable!("numeric primitives return before collection dispatch")
-        }
     }
 }
 
 pub(crate) fn apply_binary_numbers(
-    primitive: Primitive,
+    primitive: IntrinsicOp,
     left: i64,
     right: i64,
 ) -> Result<Value, String> {
@@ -481,12 +218,12 @@ pub(crate) fn apply_binary_numbers(
 }
 
 fn apply_binary_numbers_promoting(
-    primitive: Primitive,
+    primitive: IntrinsicOp,
     left: i64,
     right: i64,
 ) -> Result<Value, String> {
     let result = match primitive {
-        Primitive::Add => match left.checked_add(right) {
+        IntrinsicOp::Add => match left.checked_add(right) {
             Some(value) => Value::Number(value),
             None => {
                 return numeric::numeric_binary(
@@ -496,7 +233,7 @@ fn apply_binary_numbers_promoting(
                 )
             }
         },
-        Primitive::Subtract => match left.checked_sub(right) {
+        IntrinsicOp::Subtract => match left.checked_sub(right) {
             Some(value) => Value::Number(value),
             None => {
                 return numeric::numeric_binary(
@@ -506,7 +243,7 @@ fn apply_binary_numbers_promoting(
                 )
             }
         },
-        Primitive::Multiply => match left.checked_mul(right) {
+        IntrinsicOp::Multiply => match left.checked_mul(right) {
             Some(value) => Value::Number(value),
             None => {
                 return numeric::numeric_binary(
@@ -516,10 +253,10 @@ fn apply_binary_numbers_promoting(
                 )
             }
         },
-        Primitive::Divide | Primitive::Remainder if right == 0 => {
+        IntrinsicOp::Divide | IntrinsicOp::Remainder if right == 0 => {
             return Err("division by zero".into())
         }
-        Primitive::Divide => match left.checked_div(right) {
+        IntrinsicOp::Divide => match left.checked_div(right) {
             Some(value) => Value::Number(value),
             None => {
                 return numeric::numeric_binary(
@@ -529,7 +266,7 @@ fn apply_binary_numbers_promoting(
                 )
             }
         },
-        Primitive::Remainder => match left.checked_rem(right) {
+        IntrinsicOp::Remainder => match left.checked_rem(right) {
             Some(value) => Value::Number(value),
             None => {
                 return numeric::numeric_binary(
@@ -539,32 +276,19 @@ fn apply_binary_numbers_promoting(
                 )
             }
         },
-        Primitive::Equal => Value::Bool(left == right),
-        Primitive::Less => Value::Bool(left < right),
-        Primitive::LessOrEqual => Value::Bool(left <= right),
-        Primitive::Greater => Value::Bool(left > right),
-        Primitive::GreaterOrEqual => Value::Bool(left >= right),
-        Primitive::Get => return Err("get expects an associative value".into()),
-        Primitive::Count => return Err("count expects one argument".into()),
-        Primitive::Meta => return Err("meta expects one value".into()),
-        Primitive::Nth => return Err("nth expects a collection and index".into()),
-        Primitive::Assoc => return Err("assoc expects a collection and key/value pairs".into()),
-        Primitive::First => return Err("first expects one argument".into()),
-        Primitive::Rest => return Err("rest expects one argument".into()),
-        Primitive::Second => return Err("second expects one argument".into()),
-        Primitive::ToMutable => return Err("to-mutable expects one argument".into()),
-        Primitive::ToPersistent => return Err("to-persistent expects one argument".into()),
-        Primitive::NumberPredicate => return Err("number? expects one argument".into()),
-        Primitive::ArrayNew => Value::Array(Rc::new(RefCell::new(vec![
-            Value::Number(left),
-            Value::Number(right),
-        ]))),
-        Primitive::ArrayGet
-        | Primitive::ArraySet
-        | Primitive::ObjectNew
-        | Primitive::ObjectGet
-        | Primitive::ObjectSet => {
-            return Err(format!("{} expects native values", primitive.operator()))
+        IntrinsicOp::Equal => Value::Bool(left == right),
+        IntrinsicOp::Less
+        | IntrinsicOp::LessOrEqual
+        | IntrinsicOp::Greater
+        | IntrinsicOp::GreaterOrEqual => {
+            let ordering = left.cmp(&right);
+            Value::Bool(match primitive {
+                IntrinsicOp::Less => ordering == std::cmp::Ordering::Less,
+                IntrinsicOp::LessOrEqual => ordering != std::cmp::Ordering::Greater,
+                IntrinsicOp::Greater => ordering == std::cmp::Ordering::Greater,
+                IntrinsicOp::GreaterOrEqual => ordering != std::cmp::Ordering::Less,
+                _ => unreachable!(),
+            })
         }
     };
     Ok(result)

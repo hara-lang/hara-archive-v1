@@ -5,7 +5,7 @@ use wasm_encoder::{
     MemoryType, Module, TypeSection, ValType,
 };
 
-use crate::core::Primitive;
+use crate::core::IntrinsicOp;
 
 use super::ssa::{
     lower_program, operands, result as operation_result, verify, SsaEdge, SsaFunction,
@@ -1082,7 +1082,7 @@ fn emit_binary<L, R>(
     destination: ValueId,
     left: L,
     right: R,
-    op: Primitive,
+    op: IntrinsicOp,
     a: u32,
     b: u32,
     result: u32,
@@ -1097,20 +1097,20 @@ where
     right(out);
     out.instruction(&Instruction::LocalSet(b));
     match op {
-        Primitive::Add | Primitive::Subtract | Primitive::Multiply => {
+        IntrinsicOp::Add | IntrinsicOp::Subtract | IntrinsicOp::Multiply => {
             out.instruction(&Instruction::LocalGet(a));
             out.instruction(&Instruction::LocalGet(b));
             out.instruction(&match op {
-                Primitive::Add => Instruction::I64Add,
-                Primitive::Subtract => Instruction::I64Sub,
-                Primitive::Multiply => Instruction::I64Mul,
+                IntrinsicOp::Add => Instruction::I64Add,
+                IntrinsicOp::Subtract => Instruction::I64Sub,
+                IntrinsicOp::Multiply => Instruction::I64Mul,
                 _ => unreachable!(),
             });
             out.instruction(&Instruction::LocalSet(result));
             emit_overflow_check(out, op, a, b, result);
             out.instruction(&Instruction::LocalGet(result));
         }
-        Primitive::Divide | Primitive::Remainder => {
+        IntrinsicOp::Divide | IntrinsicOp::Remainder => {
             out.instruction(&Instruction::LocalGet(b));
             out.instruction(&Instruction::I64Eqz);
             out.instruction(&Instruction::If(BlockType::Empty));
@@ -1128,25 +1128,25 @@ where
             out.instruction(&Instruction::End);
             out.instruction(&Instruction::LocalGet(a));
             out.instruction(&Instruction::LocalGet(b));
-            out.instruction(&if op == Primitive::Divide {
+            out.instruction(&if op == IntrinsicOp::Divide {
                 Instruction::I64DivS
             } else {
                 Instruction::I64RemS
             });
         }
-        Primitive::Equal
-        | Primitive::Less
-        | Primitive::LessOrEqual
-        | Primitive::Greater
-        | Primitive::GreaterOrEqual => {
+        IntrinsicOp::Equal
+        | IntrinsicOp::Less
+        | IntrinsicOp::LessOrEqual
+        | IntrinsicOp::Greater
+        | IntrinsicOp::GreaterOrEqual => {
             out.instruction(&Instruction::LocalGet(a));
             out.instruction(&Instruction::LocalGet(b));
             out.instruction(&match op {
-                Primitive::Equal => Instruction::I64Eq,
-                Primitive::Less => Instruction::I64LtS,
-                Primitive::LessOrEqual => Instruction::I64LeS,
-                Primitive::Greater => Instruction::I64GtS,
-                Primitive::GreaterOrEqual => Instruction::I64GeS,
+                IntrinsicOp::Equal => Instruction::I64Eq,
+                IntrinsicOp::Less => Instruction::I64LtS,
+                IntrinsicOp::LessOrEqual => Instruction::I64LeS,
+                IntrinsicOp::Greater => Instruction::I64GtS,
+                IntrinsicOp::GreaterOrEqual => Instruction::I64GeS,
                 _ => unreachable!(),
             });
             out.instruction(&Instruction::I64ExtendI32U);
@@ -1157,9 +1157,9 @@ where
     Ok(())
 }
 
-fn emit_overflow_check(out: &mut Function, op: Primitive, a: u32, b: u32, result: u32) {
+fn emit_overflow_check(out: &mut Function, op: IntrinsicOp, a: u32, b: u32, result: u32) {
     match op {
-        Primitive::Add => {
+        IntrinsicOp::Add => {
             out.instruction(&Instruction::LocalGet(a));
             out.instruction(&Instruction::LocalGet(result));
             out.instruction(&Instruction::I64Xor);
@@ -1170,7 +1170,7 @@ fn emit_overflow_check(out: &mut Function, op: Primitive, a: u32, b: u32, result
             out.instruction(&Instruction::I64Const(0));
             out.instruction(&Instruction::I64LtS);
         }
-        Primitive::Subtract => {
+        IntrinsicOp::Subtract => {
             out.instruction(&Instruction::LocalGet(a));
             out.instruction(&Instruction::LocalGet(b));
             out.instruction(&Instruction::I64Xor);
@@ -1181,7 +1181,7 @@ fn emit_overflow_check(out: &mut Function, op: Primitive, a: u32, b: u32, result
             out.instruction(&Instruction::I64Const(0));
             out.instruction(&Instruction::I64LtS);
         }
-        Primitive::Multiply => {
+        IntrinsicOp::Multiply => {
             out.instruction(&Instruction::LocalGet(b));
             out.instruction(&Instruction::I64Eqz);
             out.instruction(&Instruction::I32Eqz);

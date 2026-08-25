@@ -4,7 +4,7 @@
 //! default builds.
 
 use super::{ExitReason, ExitSnapshot, Trace, TraceBackend, TraceOp, TraceOutcome, TraceValue};
-use crate::core::Primitive;
+use crate::core::IntrinsicOp;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use wasmtime::{Engine, Instance, Memory, Module, Store, TypedFunc};
@@ -477,20 +477,20 @@ fn local_set(body: &mut Vec<u8>, local: usize) -> Result<(), String> {
     Ok(())
 }
 
-fn binary(body: &mut Vec<u8>, op: Primitive) -> Result<(), String> {
+fn binary(body: &mut Vec<u8>, op: IntrinsicOp) -> Result<(), String> {
     body.extend([0x21, 0x03, 0x21, 0x02]);
     match op {
-        Primitive::Add | Primitive::Subtract => {
+        IntrinsicOp::Add | IntrinsicOp::Subtract => {
             body.extend([
                 0x20,
                 0x02,
                 0x20,
                 0x03,
-                if op == Primitive::Add { 0x7c } else { 0x7d },
+                if op == IntrinsicOp::Add { 0x7c } else { 0x7d },
                 0x21,
                 0x04,
             ]);
-            if op == Primitive::Add {
+            if op == IntrinsicOp::Add {
                 body.extend([0x20, 0x02, 0x20, 0x04, 0x85, 0x20, 0x03, 0x20, 0x04, 0x85]);
             } else {
                 body.extend([0x20, 0x02, 0x20, 0x03, 0x85, 0x20, 0x02, 0x20, 0x04, 0x85]);
@@ -501,7 +501,7 @@ fn binary(body: &mut Vec<u8>, op: Primitive) -> Result<(), String> {
             i32_const(body, -1);
             body.extend([0x21, 0x01, 0x0c, 0x02, 0x0b, 0x20, 0x04]);
         }
-        Primitive::Multiply => {
+        IntrinsicOp::Multiply => {
             body.extend([0x20, 0x02, 0x20, 0x03, 0x7e, 0x21, 0x04]);
             // `MIN / -1` traps in wasm, so reject that overflow before using
             // division to prove that the wrapped product is representable.
@@ -519,7 +519,7 @@ fn binary(body: &mut Vec<u8>, op: Primitive) -> Result<(), String> {
             body.extend([0x21, 0x01, 0x0c, 0x03]);
             body.extend([0x0b, 0x0b, 0x20, 0x04]);
         }
-        Primitive::Divide => {
+        IntrinsicOp::Divide => {
             body.extend([0x20, 0x03, 0x50, 0x04, 0x40]);
             native_exit(body, -2);
             body.push(0x0b);
@@ -532,7 +532,7 @@ fn binary(body: &mut Vec<u8>, op: Primitive) -> Result<(), String> {
             body.push(0x0b);
             body.extend([0x20, 0x02, 0x20, 0x03, 0x7f]);
         }
-        Primitive::Remainder => {
+        IntrinsicOp::Remainder => {
             body.extend([0x20, 0x03, 0x50, 0x04, 0x40]);
             native_exit(body, -2);
             body.push(0x0b);
@@ -545,21 +545,21 @@ fn binary(body: &mut Vec<u8>, op: Primitive) -> Result<(), String> {
             body.push(0x0b);
             body.extend([0x20, 0x02, 0x20, 0x03, 0x81]);
         }
-        Primitive::Less
-        | Primitive::LessOrEqual
-        | Primitive::Greater
-        | Primitive::GreaterOrEqual
-        | Primitive::Equal => {
+        IntrinsicOp::Less
+        | IntrinsicOp::LessOrEqual
+        | IntrinsicOp::Greater
+        | IntrinsicOp::GreaterOrEqual
+        | IntrinsicOp::Equal => {
             body.extend([
                 0x20,
                 0x02,
                 0x20,
                 0x03,
                 match op {
-                    Primitive::Less => 0x53,
-                    Primitive::LessOrEqual => 0x57,
-                    Primitive::Greater => 0x55,
-                    Primitive::GreaterOrEqual => 0x59,
+                    IntrinsicOp::Less => 0x53,
+                    IntrinsicOp::LessOrEqual => 0x57,
+                    IntrinsicOp::Greater => 0x55,
+                    IntrinsicOp::GreaterOrEqual => 0x59,
                     _ => 0x51,
                 },
             ]);

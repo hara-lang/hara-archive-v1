@@ -1,8 +1,8 @@
 use hara_wasm::kernel::{parse_forms, Form};
-use hara_wasm::spec_registry;
 use hara_wasm::lang::protocol::{
     find_protocol, protocol_declarations, ProtocolArity, ProtocolAvailability,
 };
+use hara_wasm::spec_registry;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
@@ -11,20 +11,23 @@ fn annotated_protocols_close_the_specs_surface() {
     let expected = read_specs();
     let actual = protocol_declarations();
 
-    assert_eq!(actual.len(), 75);
+    assert_eq!(actual.len(), expected.len());
     assert_eq!(
         actual
             .iter()
             .filter(|protocol| protocol.availability != ProtocolAvailability::InventoryOnly)
             .count(),
-        75
+        expected.len()
     );
     assert_eq!(
         actual
             .iter()
             .map(|protocol| protocol.methods.len())
             .sum::<usize>(),
-        129
+        expected
+            .values()
+            .map(|protocol| protocol.methods.len())
+            .sum::<usize>()
     );
 
     let actual_names = actual

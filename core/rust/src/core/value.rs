@@ -854,7 +854,7 @@ pub(crate) fn direct_function_value(name: &str) -> Option<Value> {
             numeric::numeric_quotient(&arguments[0], &arguments[1])
         })),
         "rem" => Some(native_function("rem", 2, |arguments| {
-            apply_binary_primitive(Primitive::Remainder, &arguments[0], &arguments[1])
+            apply_binary_intrinsic(IntrinsicOp::Remainder, &arguments[0], &arguments[1])
         })),
         "mod" => Some(native_variadic_function("mod", |arguments| {
             if arguments.len() != 2 {
@@ -862,9 +862,9 @@ pub(crate) fn direct_function_value(name: &str) -> Option<Value> {
             }
             numeric::numeric_binary(ArithmeticOp::Remainder, &arguments[0], &arguments[1])
         })),
-        _ => Primitive::from_symbol(name).map(|primitive| {
+        _ => IntrinsicOp::from_symbol(name).map(|primitive| {
             native_variadic_function(name, move |arguments| {
-                apply_primitive(primitive, &arguments)
+                apply_intrinsic(primitive, &arguments)
             })
         }),
     }

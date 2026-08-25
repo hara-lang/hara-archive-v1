@@ -100,7 +100,7 @@ pub(super) fn position_snapshot(position: Position) -> SourcePositionSnapshot {
 }
 
 pub(super) fn instruction_snapshot(instruction: &Instruction) -> InstructionSnapshot {
-    use InstructionOperand::{Text, Unsigned};
+    use InstructionOperand::Unsigned;
 
     let (opcode, operands) = match instruction {
         Instruction::Constant(index) => ("constant", vec![Unsigned(*index as u64)]),
@@ -111,21 +111,9 @@ pub(super) fn instruction_snapshot(instruction: &Instruction) -> InstructionSnap
         Instruction::StoreLocal(slot) => ("store-local", vec![Unsigned(*slot as u64)]),
         Instruction::Pop => ("pop", vec![]),
         Instruction::Dup => ("dup", vec![]),
-        Instruction::Primitive { op, argc } => (
-            "primitive",
-            vec![Text(op.operator().to_string()), Unsigned(*argc as u64)],
-        ),
-        Instruction::PrimitiveLocalConst {
-            op,
-            local,
-            constant,
-        } => (
-            "primitive-local-const",
-            vec![
-                Text(op.operator().to_string()),
-                Unsigned(*local as u64),
-                Unsigned(*constant as u64),
-            ],
+        Instruction::IntrinsicCall { target, argc } => (
+            "intrinsic-call",
+            vec![Unsigned(*target as u64), Unsigned(*argc as u64)],
         ),
         Instruction::Jump(target) => ("jump", vec![Unsigned(*target as u64)]),
         Instruction::JumpIfFalse(target) => ("jump-if-false", vec![Unsigned(*target as u64)]),
@@ -186,8 +174,8 @@ pub(super) fn instruction_snapshot(instruction: &Instruction) -> InstructionSnap
         Instruction::ExtendType(index) => ("extend-type", vec![Unsigned(*index as u64)]),
         Instruction::DefMulti(index) => ("def-multi", vec![Unsigned(*index as u64)]),
         Instruction::DefMethod(index) => ("def-method", vec![Unsigned(*index as u64)]),
-        Instruction::PrimitiveValue(op) => {
-            ("primitive-value", vec![Text(op.operator().to_string())])
+        Instruction::IntrinsicValue(target) => {
+            ("intrinsic-value", vec![Unsigned(*target as u64)])
         }
         Instruction::BuiltinValue(index) => ("builtin-value", vec![Unsigned(*index as u64)]),
         Instruction::DynamicBind(index) => ("dynamic-bind", vec![Unsigned(*index as u64)]),
@@ -197,6 +185,10 @@ pub(super) fn instruction_snapshot(instruction: &Instruction) -> InstructionSnap
         Instruction::DotCall { method, argc } => (
             "dot-call",
             vec![Unsigned(*method as u64), Unsigned(*argc as u64)],
+        ),
+        Instruction::ProtocolCall { target, argc } => (
+            "protocol-call",
+            vec![Unsigned(*target as u64), Unsigned(*argc as u64)],
         ),
         Instruction::Yield => ("yield", vec![]),
         Instruction::Return => ("return", vec![]),

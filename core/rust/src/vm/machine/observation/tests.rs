@@ -236,7 +236,7 @@ fn snapshot_limits_bound_stack_and_preserve_the_top() {
 
 #[test]
 fn declaration_and_runtime_instructions_have_stable_observation_operands() {
-    use crate::core::Primitive;
+    use crate::core::IntrinsicOp;
 
     let cases = [
         (
@@ -260,7 +260,7 @@ fn declaration_and_runtime_instructions_have_stable_observation_operands() {
             vec![InstructionOperand::Unsigned(4)],
         ),
         (
-            Instruction::PrimitiveValue(Primitive::Add),
+            Instruction::PrimitiveValue(IntrinsicOp::Add),
             "primitive-value",
             vec![InstructionOperand::Text("+".into())],
         ),

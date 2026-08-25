@@ -1,6 +1,8 @@
 use hara_abi::Value as PortableValue;
 use hara_wasm::core::Value;
 use hara_wasm::hta;
+use hara_wasm::kernel::{parse_forms, Form};
+use hara_wasm::spec_registry;
 use num_bigint::BigInt;
 use std::collections::BTreeMap;
 
@@ -80,4 +82,68 @@ fn portable_record_order_uses_the_runtime_canonical_key_sort() {
         hta::encode(&runtime).unwrap(),
         hara_hta::encode(&portable).unwrap()
     );
+}
+
+#[test]
+fn registry_golden_vector_matches_rust_encoding() {
+    let source = std::fs::read_to_string(spec_registry::require(
+        "02-platform/000050-transport-hta/draft/conformance/transport-hta.edn",
+    ))
+    .expect("HTA conformance suite is readable");
+    let root = parse_forms(&source)
+        .expect("HTA conformance suite parses")
+        .into_iter()
+        .next()
+        .expect("HTA conformance suite has a root");
+    let Form::Map(root) = root else {
+        panic!("HTA conformance suite root must be a map");
+    };
+    let Form::Vector(cases) = lookup(&root, "suite/cases") else {
+        panic!("HTA conformance suite cases must be a vector");
+    };
+    let case = cases
+        .iter()
+        .find(|case| matches!(lookup_map(case, "case/id"), Form::Keyword(id) if id == "hta.case/golden-vector"))
+        .expect("registry HTA golden-vector case");
+    let Form::Vector(input) = lookup_map(case, "case/input") else {
+        panic!("HTA golden-vector input must be a vector");
+    };
+    let Form::Vector(expected) = lookup_map(case, "case/expect") else {
+        panic!("HTA golden-vector expectation must be a vector");
+    };
+    let values = input.iter().map(runtime_value).collect::<Vec<_>>();
+    let expected = expected
+        .iter()
+        .map(|value| match value {
+            Form::Number(value) => u8::try_from(*value).expect("golden byte fits in u8"),
+            other => panic!("HTA golden byte must be a number: {other:?}"),
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        expected,
+        hta::encode(&Value::Vector(values.into())).unwrap()
+    );
+}
+
+fn runtime_value(form: &Form) -> Value {
+    match form {
+        Form::Nil => Value::Nil,
+        Form::Bool(value) => Value::Bool(*value),
+        Form::Number(value) => Value::Number(*value),
+        Form::String(value) => Value::String(value.clone()),
+        other => panic!("unsupported HTA golden input: {other:?}"),
+    }
+}
+
+fn lookup<'a>(map: &'a [(Form, Form)], key: &str) -> &'a Form {
+    map.iter()
+        .find_map(|(candidate, value)| (candidate == &Form::Keyword(key.into())).then_some(value))
+        .unwrap_or_else(|| panic!("missing registry key :{key}"))
+}
+
+fn lookup_map<'a>(form: &'a Form, key: &str) -> &'a Form {
+    let Form::Map(map) = form else {
+        panic!("registry case must be a map");
+    };
+    lookup(map, key)
 }

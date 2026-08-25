@@ -107,7 +107,13 @@ impl Machine {
                 };
                 self.stack.push(value);
             }
-            Instruction::Primitive { op, argc } => {
+            Instruction::IntrinsicCall { target, argc }
+            | Instruction::ProtocolCall { target, argc } => {
+                let Some(name) = constant_string(program, *target) else {
+                    return Dispatch::Failed(
+                        self.error(function, format!("intrinsic target constant {target} is invalid")),
+                    );
+                };
                 let argc = usize::from(*argc);
                 if self.stack.len() < argc {
                     match self.raise(function, "stack underflow") {
@@ -115,16 +121,11 @@ impl Machine {
                         Err(error) => return Dispatch::Failed(error),
                     }
                 }
-                let result = if argc == 2 {
-                    let right = self.stack.pop().expect("primitive arity checked above");
-                    let left = self.stack.pop().expect("primitive arity checked above");
+                let result = if name == "=" && argc == 2 {
+                    let right = self.stack.pop().expect("intrinsic arity checked above");
+                    let left = self.stack.pop().expect("intrinsic arity checked above");
                     match (left, right) {
-                        (VmSlot::Number(left), VmSlot::Number(right)) => {
-                            apply_binary_numbers(*op, left, right).map(VmSlot::from)
-                        }
-                        (VmSlot::Closure(left), VmSlot::Closure(right))
-                            if matches!(op, crate::core::Primitive::Equal) =>
-                        {
+                        (VmSlot::Closure(left), VmSlot::Closure(right)) => {
                             Ok(VmSlot::Bool(Rc::ptr_eq(&left, &right)))
                         }
                         (
@@ -132,12 +133,10 @@ impl Machine {
                             VmSlot::InlineClosure {
                                 identity: right, ..
                             },
-                        ) if matches!(op, crate::core::Primitive::Equal) => {
+                        ) => {
                             Ok(VmSlot::Bool(left == right))
                         }
-                        (VmSlot::MultiArity(left), VmSlot::MultiArity(right))
-                            if matches!(op, crate::core::Primitive::Equal) =>
-                        {
+                        (VmSlot::MultiArity(left), VmSlot::MultiArity(right)) => {
                             Ok(VmSlot::Bool(Rc::ptr_eq(&left, &right)))
                         }
                         (
@@ -151,44 +150,17 @@ impl Machine {
                             VmSlot::Closure(_)
                             | VmSlot::InlineClosure { .. }
                             | VmSlot::MultiArity(_),
-                        ) if matches!(op, crate::core::Primitive::Equal) => Ok(VmSlot::Bool(false)),
+                        ) => Ok(VmSlot::Bool(false)),
                         (left, right) => {
                             match (left.into_runtime_value(), right.into_runtime_value()) {
                                 (Some(left), Some(right)) => {
-                                    apply_binary_primitive(*op, &left, &right).map(VmSlot::from)
+                                    crate::core::apply_intrinsic_name(name, &[left, right])
+                                        .map(VmSlot::from)
                                 }
-                                _ => Err(format!("{} expects values", op.operator())),
+                                _ => Err("= expects values".into()),
                             }
                         }
                     }
-                } else if argc == 3 && matches!(op, crate::core::Primitive::Assoc) {
-                    let replacement = self.stack.pop().expect("primitive arity checked above");
-                    let key = self.stack.pop().expect("primitive arity checked above");
-                    let mut collection = self.stack.pop().expect("primitive arity checked above");
-                    // Tail-recur map builders compile to
-                    // `LoadLocal ... Primitive assoc; StoreLocal same-slot`.
-                    // The store proves the old local is dead. Move it out so
-                    // Rc::try_unwrap below exposes the uniquely owned map and
-                    // its HAMT can update through the owned COW path.
-                    let infallible_owned_map = matches!(
-                        &collection,
-                        VmSlot::Value(value)
-                            if matches!(value.as_ref(), Value::Map(_) | Value::OrderedMap(_))
-                    );
-                    if infallible_owned_map {
-                        if let Some(Instruction::StoreLocal(slot)) = function.code.get(self.ip + 1)
-                        {
-                            if let Some(local) = self.frame.take_value_alias(*slot, &collection) {
-                                drop(collection);
-                                collection = local;
-                            }
-                        }
-                    }
-                    let collection = Machine::into_value(self.program.clone(), collection);
-                    let key = Machine::into_value(self.program.clone(), key);
-                    let replacement = Machine::into_value(self.program.clone(), replacement);
-                    apply_ternary_primitive_owned(*op, collection, key, replacement)
-                        .map(VmSlot::from)
                 } else {
                     self.scratch.clear();
                     let argument_base = self.stack.len() - argc;
@@ -196,42 +168,10 @@ impl Machine {
                         self.scratch
                             .push(Machine::into_value(self.program.clone(), value));
                     }
-                    apply_primitive(*op, &self.scratch).map(VmSlot::from)
-                };
-                match result {
-                    Ok(value) => self.stack.push(value),
-                    Err(message) => match self.raise(function, message) {
-                        Ok(target) => return Dispatch::Unwound(target),
-                        Err(error) => return Dispatch::Failed(error),
-                    },
-                }
-            }
-            Instruction::PrimitiveLocalConst {
-                op,
-                local,
-                constant,
-            } => {
-                let Some(left) = self.frame.local(*local) else {
-                    return Dispatch::Failed(
-                        self.error(function, format!("local slot {local} out of range")),
-                    );
-                };
-                let Some(right) = program.constants.get(*constant as usize) else {
-                    return Dispatch::Failed(
-                        self.error(function, format!("constant index {constant} out of range")),
-                    );
-                };
-                let result = match (left, right) {
-                    (VmSlot::Number(left), Value::Number(right)) => {
-                        apply_binary_numbers(*op, *left, *right).map(VmSlot::from)
-                    }
-                    _ => {
-                        let Some(left) = left.runtime_value() else {
-                            return Dispatch::Failed(
-                                self.error(function, format!("{} expects values", op.operator())),
-                            );
-                        };
-                        apply_binary_primitive(*op, &left, right).map(VmSlot::from)
+                    if matches!(instruction, Instruction::ProtocolCall { .. }) {
+                        crate::core::protocol_intrinsic_call(name, &self.scratch).map(VmSlot::from)
+                    } else {
+                        crate::core::apply_intrinsic_name(name, &self.scratch).map(VmSlot::from)
                     }
                 };
                 match result {
@@ -278,11 +218,17 @@ impl Machine {
                     },
                 }
             }
-            Instruction::PrimitiveValue(op) => {
-                let Some(value) = crate::core::direct_function_value(op.operator()) else {
+            Instruction::IntrinsicValue(target) => {
+                let Some(name) = constant_string(program, *target) else {
                     return Dispatch::Failed(self.error(
                         function,
-                        format!("missing direct primitive callable: {}", op.operator()),
+                        format!("intrinsic target constant {target} is invalid"),
+                    ));
+                };
+                let Some(value) = crate::core::direct_function_value(name) else {
+                    return Dispatch::Failed(self.error(
+                        function,
+                        format!("missing direct intrinsic callable: {name}"),
                     ));
                 };
                 self.stack.push(value.into());

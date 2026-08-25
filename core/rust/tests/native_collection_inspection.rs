@@ -60,6 +60,19 @@ fn canonical_peek_first_protocol_is_available_without_legacy_aliases() {
 }
 
 #[test]
+fn foundation_first_and_last_use_indexed_collections_before_iteration() {
+    let mut runtime = Runtime::new();
+    assert_eq!(
+        runtime
+            .eval_native(
+                "[(first [40 41 42]) (first (tuple 40 41 42)) (last [40 41 42]) (last (tuple 40 41 42))]"
+            )
+            .unwrap(),
+        "[40 40 42 42]"
+    );
+}
+
+#[test]
 fn portable_collection_categories_classify_by_protocol_parents() {
     let mut runtime = Runtime::new();
     assert_eq!(
@@ -77,5 +90,81 @@ fn portable_collection_categories_classify_by_protocol_parents() {
             )
             .unwrap(),
         "[true false true false true false true false true false true false]"
+    );
+}
+
+#[test]
+fn portable_collection_categories_classify_all_portable_families() {
+    let mut runtime = Runtime::new();
+    assert_eq!(
+        runtime
+            .eval_native(
+                "[(map? {:a 1})\
+                 (map? (std.native.Algo/ordered-map :a 1))\
+                 (map? [1])\
+                 (set? #{1})\
+                 (set? (std.native.Algo/ordered-set 1))\
+                 (set? [1])\
+                 (sequential? '(1 2))\
+                 (sequential? [1 2])\
+                 (sequential? (tuple 1 2))\
+                 (sequential? (std.native.Algo/queue 1 2))\
+                 (sequential? (std.native.Algo/deque 1 2))\
+                 (sequential? (cons 1 [2]))\
+                 (sequential? (seq [1 2]))\
+                 (sequential? (std.native.Algo/ordered-set 1))\
+                 (coll? (seq [1 2]))\
+                 (coll? (iter [1 2]))\
+                 (seq? (seq [1 2]))\
+                 (seq? [1 2])\
+                 (iter? (iter [1 2]))\
+                 (iter? [1 2])]"
+            )
+            .unwrap(),
+        "[true true false true true false true true true true true true false false true false true false true false]"
+    );
+}
+
+#[test]
+fn not_and_compare_are_foundation_owned() {
+    let mut runtime = Runtime::new();
+    assert_eq!(
+        runtime
+            .eval_native(
+                "[(std.foundation/not nil)\
+                 (std.foundation/not true)\
+                 (std.foundation/compare 1 2)\
+                 (std.foundation/compare 2 2)\
+                 (std.foundation/compare 2 1)]"
+            )
+            .unwrap(),
+        "[true false -1 0 1]"
+    );
+}
+
+#[test]
+fn foundation_protocol_predicates_use_satisfies() {
+    let mut runtime = Runtime::new();
+    assert_eq!(
+        runtime
+            .eval_native(
+                "[(iterable? [1])\
+                 (iterator? (iter [1]))\
+                 (counted? [1])\
+                 (reducible? [1])\
+                 (indexed? [1])\
+                 (associative? {:a 1})\
+                 (findable? {:a 1})\
+                 (lookupable? {:a 1})\
+                 (derefable? (atom 1))\
+                 (resettable? (atom 1))\
+                 (casable? (atom 1))\
+                 (watchable? (atom 1))\
+                 (applicable? (pointer {:context :test}))\
+                 (mutable? (to-mutable (vec [1])))\
+                 (persistent? [1])]"
+            )
+            .unwrap(),
+        "[true true true true true true true true true true true true true true true]"
     );
 }

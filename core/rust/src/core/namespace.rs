@@ -736,18 +736,6 @@ fn eval_basic_object_form(
             let value = eval(&forms[1], env)?;
             Ok(Value::Keyword(portable_type_keyword(&value)?))
         }
-        "compare" => {
-            if forms.len() != 3 {
-                return Err("compare expects two values".into());
-            }
-            let left = eval(&forms[1], env)?;
-            let right = eval(&forms[2], env)?;
-            Ok(Value::Number(match left.cmp(&right) {
-                std::cmp::Ordering::Less => -1,
-                std::cmp::Ordering::Equal => 0,
-                std::cmp::Ordering::Greater => 1,
-            }))
-        }
         "hash" => {
             if forms.len() != 2 {
                 return Err("hash expects one value".into());

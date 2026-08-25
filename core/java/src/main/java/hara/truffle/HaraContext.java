@@ -626,11 +626,6 @@ public final class HaraContext {
     namespaceStates.put("std.native.Runtime", NamespaceLoadState.LOADED);
 
     HaraNamespace base = namespace("std.native.Base");
-    defineNativeFunction("std.native.Base", "not", values -> {
-      requireMethodArity("std.native.Base/not", values, 1);
-      return !truthy(values[0]);
-    }, null);
-    defineNativeFunction("std.native.Base", "compare", this::compareValues, null);
     base.define(
         "apply",
         new VariadicBuiltin("std.native.Base/apply", this::applyFunction));
@@ -2473,26 +2468,10 @@ public final class HaraContext {
     target.define("set", new UnaryBuiltin("set", this::toSet));
     target.define("reverse", new UnaryBuiltin("reverse", this::reverseValue));
     // Bootstrap seed only; canonical std.foundation/fn? is defined by HAL.
-    target.define("fn?", new UnaryBuiltin("fn?", value -> protocolSatisfies("IFn", value)));
     target.define(
         "number?", new UnaryBuiltin("number?", HaraNumericConversions::isNumeric));
     target.define(
         "long?", new UnaryBuiltin("long?", HaraNumericConversions::fitsLong));
-    target.define("iterator?", new UnaryBuiltin("iterator?", value -> protocolSatisfies("IIterator", value)));
-    target.define("iterable?", new UnaryBuiltin("iterable?", value -> protocolSatisfies("IIter", value)));
-    target.define("counted?", new UnaryBuiltin("counted?", value -> protocolSatisfies("ICount", value)));
-    target.define("reducible?", new UnaryBuiltin("reducible?", value -> protocolSatisfies("IReduce", value)));
-    target.define("indexed?", new UnaryBuiltin("indexed?", value -> protocolSatisfies("INth", value)));
-    target.define("associative?", new UnaryBuiltin("associative?", value -> protocolSatisfies("IAssoc", value)));
-    target.define("findable?", new UnaryBuiltin("findable?", value -> protocolSatisfies("IFind", value)));
-    target.define("lookupable?", new UnaryBuiltin("lookupable?", value -> protocolSatisfies("ILookup", value)));
-    target.define("derefable?", new UnaryBuiltin("derefable?", value -> protocolSatisfies("IDeref", value)));
-    target.define("resettable?", new UnaryBuiltin("resettable?", value -> protocolSatisfies("IReset", value)));
-    target.define("casable?", new UnaryBuiltin("casable?", value -> protocolSatisfies("ICas", value)));
-    target.define("watchable?", new UnaryBuiltin("watchable?", value -> protocolSatisfies("IWatch", value)));
-    target.define("applicable?", new UnaryBuiltin("applicable?", value -> protocolSatisfies("IApplicable", value)));
-    target.define("mutable?", new UnaryBuiltin("mutable?", value -> protocolSatisfies("IMutable", value)));
-    target.define("persistent?", new UnaryBuiltin("persistent?", value -> protocolSatisfies("IPersistent", value)));
     target.define("satisfies?", new VariadicBuiltin("satisfies?", values -> {
       if (values.length != 2 || !(HaraBox.unwrap(values[0]) instanceof HaraProtocol protocol)) {
         throw new HaraException("satisfies? expects a protocol and value");
@@ -3358,6 +3337,7 @@ public final class HaraContext {
     else if (raw instanceof hara.lang.data.types.ObjMutable) type = "MutableCollection";
     else if (raw instanceof hara.lang.data.List<?>) type = "List";
     else if (raw instanceof hara.lang.data.Cons<?>) type = "Cons";
+    else if (raw instanceof hara.lang.data.Seq<?>) type = "Seq";
     else if (raw instanceof hara.lang.data.Queue<?>) type = "Queue";
     else if (raw instanceof hara.lang.data.Deque<?>) type = "Deque";
     else if (raw instanceof hara.lang.data.Tuple.Tup0
@@ -6423,10 +6403,7 @@ public final class HaraContext {
         if (operator.equals("not=") && !equal) return true;
         matches = equal;
       } else {
-        if (!(previous instanceof Number) || !(current instanceof Number)) {
-          throw new HaraException("comparison expects two numbers");
-        }
-        int comparison = Num.compare((Number) previous, (Number) current);
+        int comparison = compareValue(previous, current);
         if (operator.equals("<")) matches = comparison < 0;
         else if (operator.equals("<=")) matches = comparison <= 0;
         else if (operator.equals(">")) matches = comparison > 0;
@@ -6437,12 +6414,6 @@ public final class HaraContext {
       previous = current;
     }
     return !operator.equals("not=");
-  }
-
-  private Object compareValues(Object[] values) {
-    requireMethodArity("compare", values, 2);
-    return (long)
-        Integer.signum(compareValue(HaraBox.unwrap(values[0]), HaraBox.unwrap(values[1])));
   }
 
   private int compareValue(Object left, Object right) {

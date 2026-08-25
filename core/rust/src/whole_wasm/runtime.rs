@@ -445,7 +445,10 @@ fn define_persistent_imports(linker: &mut Linker<HostState>) -> Result<(), Strin
                             .map_err(host_error)
                     })
                     .collect::<Result<Vec<_>, _>>()?;
-                let value = crate::core::apply_primitive(crate::core::Primitive::Assoc, &arguments)
+                let value = crate::core::protocol_intrinsic_call(
+                    "std.protocol.iassoc.IAssoc/assoc",
+                    &arguments,
+                )
                     .map_err(host_error)?;
                 caller
                     .data_mut()
@@ -471,7 +474,10 @@ fn define_persistent_imports(linker: &mut Linker<HostState>) -> Result<(), Strin
                             .map_err(host_error)
                     })
                     .collect::<Result<Vec<_>, _>>()?;
-                let value = crate::core::apply_primitive(crate::core::Primitive::Get, &arguments)
+                let value = crate::core::protocol_intrinsic_call(
+                    "std.protocol.ilookup.ILookup/lookup",
+                    &arguments,
+                )
                     .map_err(host_error)?;
                 caller
                     .data_mut()
@@ -506,7 +512,10 @@ fn define_persistent_imports(linker: &mut Linker<HostState>) -> Result<(), Strin
                     .handles
                     .get(Handle::from_abi(collection))
                     .map_err(host_error)?;
-                match crate::core::apply_primitive(crate::core::Primitive::Count, &[collection])
+                match crate::core::protocol_intrinsic_call(
+                    "std.protocol.icount.ICount/count",
+                    &[collection],
+                )
                     .map_err(host_error)?
                 {
                     Value::Number(value) => Ok(value),
@@ -525,8 +534,8 @@ fn define_persistent_imports(linker: &mut Linker<HostState>) -> Result<(), Strin
                     .handles
                     .get(Handle::from_abi(collection))
                     .map_err(host_error)?;
-                let value = crate::core::apply_primitive(
-                    crate::core::Primitive::Nth,
+                let value = crate::core::protocol_intrinsic_call(
+                    "std.protocol.inth.INth/nth",
                     &[collection, Value::Number(index)],
                 )
                 .map_err(host_error)?;
@@ -575,7 +584,10 @@ fn define_persistent_imports(linker: &mut Linker<HostState>) -> Result<(), Strin
                     .handles
                     .get(Handle::from_abi(key))
                     .map_err(host_error)?;
-                match crate::core::apply_primitive(crate::core::Primitive::Get, &[collection, key])
+                match crate::core::protocol_intrinsic_call(
+                    "std.protocol.ilookup.ILookup/lookup",
+                    &[collection, key],
+                )
                     .map_err(host_error)?
                 {
                     Value::Number(value) => Ok(value),
@@ -604,13 +616,13 @@ fn define_persistent_imports(linker: &mut Linker<HostState>) -> Result<(), Strin
                         .cloned()
                         .ok_or_else(|| host_error("whole-Wasm constant is missing".into()))
                 };
-                let first = crate::core::apply_primitive(
-                    crate::core::Primitive::Get,
+                let first = crate::core::protocol_intrinsic_call(
+                    "std.protocol.ilookup.ILookup/lookup",
                     &[collection, constant(first_key)?],
                 )
                 .map_err(host_error)?;
-                match crate::core::apply_primitive(
-                    crate::core::Primitive::Get,
+                match crate::core::protocol_intrinsic_call(
+                    "std.protocol.ilookup.ILookup/lookup",
                     &[first, constant(second_key)?],
                 )
                 .map_err(host_error)?
@@ -642,8 +654,8 @@ fn define_persistent_imports(linker: &mut Linker<HostState>) -> Result<(), Strin
                 let inner_key = resolve(inner_key)?;
                 let nested = crate::core::vm_build_map(vec![inner_key, Value::Number(value)])
                     .map_err(host_error)?;
-                let result = crate::core::apply_primitive(
-                    crate::core::Primitive::Assoc,
+                let result = crate::core::protocol_intrinsic_call(
+                    "std.protocol.iassoc.IAssoc/assoc",
                     &[collection, outer_key, nested],
                 )
                 .map_err(host_error)?;

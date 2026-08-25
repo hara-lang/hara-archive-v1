@@ -19,7 +19,7 @@
 //! body, so their slots are reserved (and pre-declared in the function's
 //! base scope) before any body-local slot is allocated.
 
-use crate::core::{Primitive, Value};
+use crate::core::{IntrinsicOp, Value};
 use crate::kernel::{Form, Position, Span, SpannedForm};
 use crate::lang::data::List as PList;
 use std::collections::{HashMap, HashSet};
@@ -863,11 +863,10 @@ impl Compiler {
                     Ok(())
                 }
                 None if self.visible_global(name) => self.emit_get_global(name, span),
-                None if Primitive::from_symbol(name).is_some() => {
+                None if IntrinsicOp::from_symbol(name).is_some() => {
+                    let target = self.name_constant(name, span)?;
                     self.emit(
-                        Instruction::PrimitiveValue(
-                            Primitive::from_symbol(name).expect("primitive was checked"),
-                        ),
+                        Instruction::IntrinsicValue(target),
                         Some(span.start),
                     );
                     Ok(())
@@ -1034,12 +1033,12 @@ impl Compiler {
                     Form::Symbol(name)
                         if (name.starts_with("std.native.Arr/")
                             || name.starts_with("std.native.Obj/"))
-                            && Primitive::from_symbol(name).is_some() =>
+                            && IntrinsicOp::from_symbol(name).is_some() =>
                     {
                         self.compile_primitive(
                             &children,
                             span,
-                            Primitive::from_symbol(name).expect("intrinsic was checked"),
+                            IntrinsicOp::from_symbol(name).expect("intrinsic was checked"),
                         )
                     }
                     // Precedence mirrors the evaluator (core.rs operator
@@ -1047,14 +1046,14 @@ impl Compiler {
                     // builtin arms, so a program-declared or registry
                     // global compiles to GetGlobal+Call even when it names
                     // a primitive; only otherwise-unbound operator names
-                    // lower to Primitive instructions (issue #223).
+                    // lower to intrinsic instructions (issue #223).
                     Form::Symbol(name)
                         if self.ctx().scopes.resolve(name).is_some()
                             || self.visible_global(name) =>
                     {
                         self.compile_named_call(name, &children, span)
                     }
-                    Form::Symbol(name) => match Primitive::from_symbol(name) {
+                    Form::Symbol(name) => match IntrinsicOp::from_symbol(name) {
                         Some(op) => self.compile_primitive(&children, span, op),
                         None => self.compile_named_call(name, &children, span),
                     },

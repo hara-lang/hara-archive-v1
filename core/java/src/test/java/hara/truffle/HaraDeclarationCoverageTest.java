@@ -29,6 +29,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.junit.Test;
 
 /** Checks that the Java declaration surface is closed before runtime publication. */
@@ -47,10 +49,23 @@ public class HaraDeclarationCoverageTest {
       assertNotNull("compatibility snapshot is missing", input);
       json = new String(input.readAllBytes());
     }
-    assertTrue(json, json.contains("\"protocolCount\": 75"));
-    assertTrue(json, json.contains("\"portableProtocolCount\": 60"));
-    assertTrue(json, json.contains("\"declaredMethodCount\": 129"));
-    assertTrue(json, json.contains("\"nativeTypeCount\": 34"));
+    Map<String, ProtocolSpec> protocols =
+        protocolSpecs(readMap(specsRegistry().resolve(PROTOCOLS_SPEC)));
+    Map<String, NativeSpec> nativeTypes =
+        nativeSpecs(readMap(specsRegistry().resolve(NATIVE_SPEC)));
+    int portableProtocols =
+        (int)
+            protocols.values().stream()
+                .filter(spec -> spec.availability == HaraAvailability.PORTABLE)
+                .count();
+    int capabilityProtocols = protocols.size() - portableProtocols;
+    int declaredMethods =
+        protocols.values().stream().mapToInt(spec -> spec.methods.size()).sum();
+    assertEquals(protocols.size(), jsonNumber(json, "protocolCount"));
+    assertEquals(portableProtocols, jsonNumber(json, "portableProtocolCount"));
+    assertEquals(capabilityProtocols, jsonNumber(json, "capabilityProtocolCount"));
+    assertEquals(declaredMethods, jsonNumber(json, "declaredMethodCount"));
+    assertEquals(nativeTypes.size(), jsonNumber(json, "nativeTypeCount"));
     assertTrue(json, json.contains("\"IEncodeVisitor\""));
     assertTrue(json, json.contains("\"IStringLike\""));
   }
@@ -60,7 +75,7 @@ public class HaraDeclarationCoverageTest {
     IMapType contract = readMap(specsRegistry().resolve(PROTOCOLS_SPEC));
     Map<String, ProtocolSpec> expected = protocolSpecs(contract);
 
-    assertEquals("Java protocol closure must equal the specs inventory", 75, expected.size());
+    assertTrue("Java protocol closure must not be empty", !expected.isEmpty());
 
     for (ProtocolSpec spec : expected.values()) {
       Class<?> type = Class.forName(PROTOCOL_PACKAGE + spec.name);
@@ -103,9 +118,11 @@ public class HaraDeclarationCoverageTest {
   }
 
   @Test
-  public void runtimeDiscoveryFindsTheSameClosedProtocolSet() {
+  public void runtimeDiscoveryFindsTheSameClosedProtocolSet() throws Exception {
     Map<String, Class<?>> declarations = HaraProtocolDeclarations.discover();
-    assertEquals(75, declarations.size());
+    Map<String, ProtocolSpec> expected =
+        protocolSpecs(readMap(specsRegistry().resolve(PROTOCOLS_SPEC)));
+    assertEquals(expected.keySet(), declarations.keySet());
     assertNotNull(declarations.get("IColl").getAnnotation(HaraProtocolBinding.class));
     assertNotNull(declarations.get("IMetadata").getAnnotation(HaraProtocolBinding.class));
   }
@@ -126,7 +143,7 @@ public class HaraDeclarationCoverageTest {
     HaraNativeBinding[] bindings =
         HaraBuiltinCatalog.class.getAnnotationsByType(HaraNativeBinding.class);
 
-    assertEquals("Native annotation closure must equal native.edn", 34, expected.size());
+    assertTrue("Native annotation closure must not be empty", !expected.isEmpty());
     assertEquals(expected.size(), bindings.length);
 
     Map<String, HaraNativeBinding> actual = new LinkedHashMap<>();
@@ -239,6 +256,14 @@ public class HaraDeclarationCoverageTest {
 
   private static Keyword keyword(String name) {
     return Keyword.create(name);
+  }
+
+  private static int jsonNumber(String json, String name) {
+    Matcher matcher =
+        Pattern.compile("\\\"" + Pattern.quote(name) + "\\\"\\s*:\\s*(\\d+)")
+            .matcher(json);
+    assertTrue("Missing compatibility count: " + name, matcher.find());
+    return Integer.parseInt(matcher.group(1));
   }
 
   private static Path specsRegistry() {

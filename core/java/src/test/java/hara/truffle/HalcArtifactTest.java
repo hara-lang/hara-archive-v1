@@ -397,6 +397,22 @@ public class HalcArtifactTest {
   }
 
   @Test
+  @org.junit.experimental.categories.Category(hara.spec.RegistryConformance.class)
+  public void registryGoldenMatchesJavaEncoding() throws Exception {
+    Path root = hara.spec.SpecRegistry.resolve("01-lang/009-halc/draft/conformance");
+    Path sourcePath = root.resolve("complete.hal");
+    String source = Files.readString(sourcePath, StandardCharsets.UTF_8);
+    byte[] encoded =
+        HalcArtifact.encode(
+            "halc.conformance.complete",
+            "conformance/complete.hal",
+            source.getBytes(StandardCharsets.UTF_8),
+            HaraLanguage.readAll(source, "conformance/complete.hal"));
+    assertArrayEquals(
+        Files.readAllBytes(root.resolve("golden/complete.halc")), encoded);
+  }
+
+  @Test
   public void embeddedHbxSupersedesLegacyFoundationHalcMode() {
     String previous = System.getProperty("hara.HalcMode");
     try {

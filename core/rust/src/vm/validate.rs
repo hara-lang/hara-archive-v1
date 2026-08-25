@@ -253,21 +253,10 @@ pub(crate) fn stack_heights(
                     at,
                 ));
             }
-            Instruction::PrimitiveLocalConst {
-                local, constant, ..
-            } => {
-                if *local >= function.local_count {
-                    return Err(ValidationError::new(
-                        format!("local slot {local} out of range"),
-                        at,
-                    ));
-                }
-                if *constant as usize >= program.constants.len() {
-                    return Err(ValidationError::new(
-                        format!("constant index {constant} out of range"),
-                        at,
-                    ));
-                }
+            Instruction::IntrinsicCall { target, .. }
+            | Instruction::ProtocolCall { target, .. }
+            | Instruction::IntrinsicValue(target) => {
+                string_constant(program, *target, at)?;
             }
             Instruction::DefProtocol(constant)
             | Instruction::ExtendType(constant)

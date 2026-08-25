@@ -1093,6 +1093,27 @@ mod tests {
         assert_eq!(decode_halc(&legacy).unwrap().origin, HalcOrigin::LegacyHir);
     }
 
+    #[test]
+    fn registry_golden_matches_rust_encoding() {
+        let source_path = crate::spec_registry::require(
+            "01-lang/009-halc/draft/conformance/complete.hal",
+        );
+        let source = std::fs::read_to_string(source_path).expect("HALC source is readable");
+        let forms = crate::kernel::parse_forms(&source).expect("HALC source parses");
+        let encoded = encode_halc_module(
+            "halc.conformance.complete",
+            "conformance/complete.hal",
+            &source,
+            forms,
+        )
+        .expect("HALC source encodes");
+        let expected = std::fs::read(crate::spec_registry::require(
+            "01-lang/009-halc/draft/conformance/golden/complete.halc",
+        ))
+        .expect("HALC golden is readable");
+        assert_eq!(expected, encoded);
+    }
+
     fn hex_bytes(hex: &str) -> Vec<u8> {
         (0..hex.len())
             .step_by(2)

@@ -1,4 +1,4 @@
-use crate::core::{Primitive, Value};
+use crate::core::{IntrinsicOp, Value};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TraceValue {
@@ -27,7 +27,7 @@ pub enum TraceOp {
     ConstantBool(bool),
     ConstantNil,
     ConstantVectorI64 { vector: u16 },
-    BinaryI64(Primitive),
+    BinaryI64(IntrinsicOp),
     VectorCountI64,
     VectorFirstI64,
     VectorRestI64,

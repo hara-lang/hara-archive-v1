@@ -459,6 +459,111 @@
    :test (fn [] (std.foundation/reduced? 42))
    :expected false}])
 
+^{:refer std.foundation/iterable?}
+(Test/run
+ [{:name "recognizes iterable collections"
+   :test (fn [] [(std.foundation/iterable? [1])
+                 (std.foundation/iterable? 1)])
+   :expected [true false]}])
+
+^{:refer std.foundation/iterator?}
+(Test/run
+ [{:name "recognizes iterator values"
+   :test (fn [] [(std.foundation/iterator? (iter [1]))
+                 (std.foundation/iterator? [1])])
+   :expected [true false]}])
+
+^{:refer std.foundation/counted?}
+(Test/run
+ [{:name "recognizes counted values"
+   :test (fn [] [(std.foundation/counted? [1])
+                 (std.foundation/counted? 1)])
+   :expected [true false]}])
+
+^{:refer std.foundation/reducible?}
+(Test/run
+ [{:name "recognizes reducible collections"
+   :test (fn [] [(std.foundation/reducible? [1])
+                 (std.foundation/reducible? 1)])
+   :expected [true false]}])
+
+^{:refer std.foundation/indexed?}
+(Test/run
+ [{:name "recognizes indexed collections"
+   :test (fn [] [(std.foundation/indexed? [1])
+                 (std.foundation/indexed? #{1})])
+   :expected [true false]}])
+
+^{:refer std.foundation/associative?}
+(Test/run
+ [{:name "recognizes associative values"
+   :test (fn [] [(std.foundation/associative? {:a 1})
+                 (std.foundation/associative? [1])])
+   :expected [true false]}])
+
+^{:refer std.foundation/findable?}
+(Test/run
+ [{:name "recognizes findable values"
+   :test (fn [] [(std.foundation/findable? {:a 1})
+                 (std.foundation/findable? 1)])
+   :expected [true false]}])
+
+^{:refer std.foundation/lookupable?}
+(Test/run
+ [{:name "recognizes lookupable values"
+   :test (fn [] [(std.foundation/lookupable? {:a 1})
+                 (std.foundation/lookupable? [1])])
+   :expected [true false]}])
+
+^{:refer std.foundation/derefable?}
+(Test/run
+ [{:name "recognizes dereferenceable values"
+   :test (fn [] [(std.foundation/derefable? (atom 1))
+                 (std.foundation/derefable? 1)])
+   :expected [true false]}])
+
+^{:refer std.foundation/resettable?}
+(Test/run
+ [{:name "recognizes resettable values"
+   :test (fn [] [(std.foundation/resettable? (atom 1))
+                 (std.foundation/resettable? 1)])
+   :expected [true false]}])
+
+^{:refer std.foundation/casable?}
+(Test/run
+ [{:name "recognizes compare-and-set values"
+   :test (fn [] [(std.foundation/casable? (atom 1))
+                 (std.foundation/casable? 1)])
+   :expected [true false]}])
+
+^{:refer std.foundation/watchable?}
+(Test/run
+ [{:name "recognizes watchable values"
+   :test (fn [] [(std.foundation/watchable? (atom 1))
+                 (std.foundation/watchable? 1)])
+   :expected [true false]}])
+
+^{:refer std.foundation/applicable?}
+(Test/run
+ [{:name "recognizes applicable pointers"
+   :test (fn [] [(std.foundation/applicable? (pointer {:context :test}))
+                 (std.foundation/applicable? 1)])
+   :expected [true false]}])
+
+^{:refer std.foundation/mutable?}
+(Test/run
+ [{:name "recognizes mutable collections"
+   :test (fn [] [(std.foundation/mutable? (to-mutable (vec [1])))
+                 (std.foundation/mutable? [1])])
+   :expected [true false]}])
+
+^{:refer std.foundation/persistent?}
+(Test/run
+ [{:name "recognizes persistent collections"
+   :test (fn [] [(std.foundation/persistent? [1])
+                 (std.foundation/persistent? (to-mutable (vec [1])))])
+   :expected [true false]}])
+
 ^{:refer std.foundation/coll?}
 (Test/run
  [{:name "uses IColl satisfaction"
@@ -520,10 +625,11 @@
 (Test/run
  [{:name "peeks without changing collection semantics"
    :test (fn [] [(std.foundation/first [1 2])
+                 (std.foundation/first (tuple 1 2))
                  (std.foundation/first [])
                  (std.foundation/first '())
                  (std.foundation/first (vec []))])
-   :expected [1 nil nil nil]}])
+   :expected [1 1 nil nil nil]}])
 
 ^{:refer std.foundation/second}
 (Test/run [])
@@ -538,10 +644,11 @@
 (Test/run
  [{:name "peeks at the final collection item"
    :test (fn [] [(std.foundation/last [1 2])
+                 (std.foundation/last (tuple 1 2))
                  (std.foundation/last [])
                  (std.foundation/last '())
                  (std.foundation/last (vec []))])
-   :expected [2 nil nil nil]}])
+   :expected [2 2 nil nil nil]}])
 
 ^{:refer std.foundation/reverse}
 (Test/run [])

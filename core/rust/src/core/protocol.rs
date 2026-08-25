@@ -1126,18 +1126,6 @@ fn native_base_values(operation: &str, values: &[Value]) -> Result<Value, String
             arguments.extend(iterator_values(values.last().cloned().unwrap())?);
             call_value(function, arguments)
         }
-        "not" => match values {
-            [value] => Ok(Value::Bool(!value.truthy())),
-            _ => Err("Base/not expects one value".into()),
-        },
-        "compare" => match values {
-            [left, right] => Ok(Value::Number(match left.cmp(right) {
-                std::cmp::Ordering::Less => -1,
-                std::cmp::Ordering::Equal => 0,
-                std::cmp::Ordering::Greater => 1,
-            })),
-            _ => Err("Base/compare expects two values".into()),
-        },
         "satisfies?" => match values {
             [Value::Protocol(protocol), value] => {
                 Ok(Value::Bool(protocol_satisfies(protocol, value)))
@@ -1734,7 +1722,7 @@ fn protocol_conj(arguments: &[Value]) -> Result<Value, String> {
     }
 }
 
-fn protocol_call(protocol: &str, method: &str, arguments: &[Value]) -> Result<Value, String> {
+pub(crate) fn protocol_call(protocol: &str, method: &str, arguments: &[Value]) -> Result<Value, String> {
     ACTIVE_PROTOCOLS.with(|active| {
         active
             .borrow()
@@ -1743,6 +1731,16 @@ fn protocol_call(protocol: &str, method: &str, arguments: &[Value]) -> Result<Va
             .unwrap_or_else(ProtocolRegistry::core)
             .invoke(protocol, method, arguments)
     })
+}
+
+pub(crate) fn protocol_intrinsic_call(
+    target: &str,
+    arguments: &[Value],
+) -> Result<Value, String> {
+    let (protocol, method) = target
+        .rsplit_once('/')
+        .ok_or_else(|| format!("invalid protocol intrinsic target: {target}"))?;
+    protocol_call(protocol, method, arguments)
 }
 
 fn extension_protocol_call(
@@ -2182,53 +2180,6 @@ fn protocol_satisfies(protocol: &GuestProtocol, value: &Value) -> bool {
             .unwrap_or_else(ProtocolRegistry::core)
             .satisfies(protocol, value)
     })
-}
-
-fn named_predicate_protocol(name: &str) -> Option<&'static str> {
-    match name {
-        "iterable?" => Some("IIter"),
-        "iterator?" => Some("IIterator"),
-        "counted?" => Some("ICount"),
-        "reducible?" => Some("IReduce"),
-        "indexed?" => Some("INth"),
-        "associative?" => Some("IAssoc"),
-        "findable?" => Some("IFind"),
-        "lookupable?" => Some("ILookup"),
-        "derefable?" => Some("IDeref"),
-        "resettable?" => Some("IReset"),
-        "casable?" => Some("ICas"),
-        "watchable?" => Some("IWatch"),
-        "fn?" => Some("IFn"),
-        "applicable?" => Some("IApplicable"),
-        "mutable?" => Some("IMutable"),
-        "persistent?" => Some("IPersistent"),
-        _ => None,
-    }
-}
-
-fn named_protocol_satisfies(name: &str, value: &Value) -> bool {
-    let Some(protocol_name) = named_predicate_protocol(name) else {
-        return false;
-    };
-    let Some(declaration) = crate::lang::protocol::find_protocol(protocol_name) else {
-        return false;
-    };
-    protocol_satisfies(
-        &GuestProtocol {
-            name: declaration.runtime_name(),
-            methods: declaration
-                .methods
-                .iter()
-                .map(|method| (method.name.to_owned(), method.arity.guest_arity()))
-                .collect(),
-            parents: declaration
-                .parents
-                .iter()
-                .map(|parent| builtin_protocol_name(parent))
-                .collect(),
-        },
-        value,
-    )
 }
 
 fn promise_value(value: &Value, operation: &str) -> Result<Promise, String> {

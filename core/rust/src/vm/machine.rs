@@ -24,7 +24,6 @@ use super::opcode::Instruction;
 use super::program::{FunctionPrototype, Program};
 use super::slot::{VmClosure, VmMultiArity, VmSlot};
 use crate::core::{
-    apply_binary_numbers, apply_binary_primitive, apply_primitive, apply_ternary_primitive_owned,
     call_value, native_fiber_function, with_namespace_registry, Cont, Promise, PromiseState, Step,
     Value,
 };
