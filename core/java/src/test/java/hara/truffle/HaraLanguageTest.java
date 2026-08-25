@@ -557,6 +557,10 @@ public class HaraLanguageTest {
       assertEquals(15, context.eval(HaraLanguage.ID, "(->> 3 (+ 2) (* 3))").asLong());
       assertEquals(6, context.eval(HaraLanguage.ID, "(-> 1 (+ 2 3))").asLong());
       assertEquals(6, context.eval(HaraLanguage.ID, "(->> 1 (+ 2 3))").asLong());
+      assertEquals(2, context.eval(HaraLanguage.ID, "(let [% 1] (+ % %))").asLong());
+      assertEquals(2, context.eval(HaraLanguage.ID, "(-> 1 (+ % %))").asLong());
+      assertEquals(6, context.eval(HaraLanguage.ID, "(->> 3 (+ % %))").asLong());
+      assertEquals("[1 %]", context.eval(HaraLanguage.ID, "(-> 1 (vector '%))").toString());
     }
   }
 
@@ -676,6 +680,9 @@ public class HaraLanguageTest {
       assertTrue(context.eval(HaraLanguage.ID, "(= 1 1.0)").asBoolean());
       assertTrue(context.eval(HaraLanguage.ID, "(not= 1 2)").asBoolean());
       assertEquals(1, context.eval(HaraLanguage.ID, "(mod 7 3)").asLong());
+      assertEquals(2, context.eval(HaraLanguage.ID, "(mod -7 3)").asLong());
+      assertEquals(-2, context.eval(HaraLanguage.ID, "(mod 7 -3)").asLong());
+      assertThrows(PolyglotException.class, () -> context.eval(HaraLanguage.ID, "(% 7 3)"));
       assertTrue(context.eval(HaraLanguage.ID, "(< 1 2 3)").asBoolean());
       assertTrue(!context.eval(HaraLanguage.ID, "(< 1 3 2)").asBoolean());
       assertTrue(context.eval(HaraLanguage.ID, "(< 1 1.1)").asBoolean());

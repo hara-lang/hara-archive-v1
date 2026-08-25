@@ -2320,7 +2320,7 @@ mod tests {
                     panic!("unexpected protocol availability for {name}: {availability:?}");
                 }
             }
-            let namespace_name = core::builtin_protocol_namespace(name);
+            let namespace_name = declaration.runtime_name();
             let namespace = runtime
                 .namespace_registry
                 .find(&namespace_name)
@@ -2332,7 +2332,7 @@ mod tests {
             let core::Value::Protocol(descriptor) = &protocol else {
                 panic!("{namespace_name}/{name} is not a protocol");
             };
-            assert_eq!(descriptor.name, core::builtin_protocol_name(name));
+            assert_eq!(descriptor.name, declaration.runtime_name());
             assert_eq!(descriptor.methods.len(), declaration.methods.len());
             assert!(descriptor
                 .methods
@@ -2405,7 +2405,9 @@ mod tests {
             "IComponentQuery",
             "IComponentTrack",
         ] {
-            let namespace = core::builtin_protocol_namespace(protocol);
+            let namespace = crate::lang::protocol::find_protocol(protocol)
+                .expect("protocol declaration")
+                .runtime_name();
             assert!(
                 runtime
                     .eval_text(&format!("{namespace}/{protocol}"))
@@ -2480,7 +2482,7 @@ mod tests {
         let mut runtime = Runtime::new();
         for declaration in core::protocol_declarations() {
             let protocol = declaration.name;
-            let namespace = core::builtin_protocol_namespace(protocol);
+            let namespace = declaration.runtime_name();
             runtime
                 .eval_text(&format!("(require [{namespace}])"))
                 .unwrap_or_else(|error| panic!("cannot require {namespace}: {error}"));
@@ -3293,15 +3295,22 @@ mod tests {
                 .eval_text(
                     "(let [random (Base/uuid) \
                            fixed (Base/uuid \"00000000-0000-0000-0000-000000000000\") \
+                           byte-uuid (Base/uuid (std.native.Bytes/new 1 2 -1)) \
+                           keyword (Base/uuid :demo/value) \
                            bits (Base/uuid 0 1)] \
-                       [(uuid? random) (type random) (str fixed) (str bits)])"
+                       [(uuid? random) (type random) \
+                        (std.foundation/uuid? fixed) \
+                        (std.foundation/uuid? byte-uuid) \
+                        (std.foundation/uuid? keyword) \
+                        (std.foundation/uuid? bits) \
+                        (std.foundation/uuid? :demo/value) \
+                        (= fixed (Base/uuid \"00000000-0000-0000-0000-000000000000\")) \
+                        (= byte-uuid (Base/uuid \"4f989b1a-c8e4-3ab1-9569-6571104cfb67\")) \
+                        (= keyword (Base/uuid \"00000000-6d44-1e45-0000-000006ac9171\")) \
+                        (= bits (Base/uuid \"00000000-0000-0000-0000-000000000001\"))])"
                 )
                 .unwrap(),
-            "[true :std.native.UUID \"00000000-0000-0000-0000-000000000000\" \"00000000-0000-0000-0000-000000000001\"]"
-        );
-        assert_eq!(
-            runtime.eval_text("(str (Base/uuid (bytes)))").unwrap(),
-            "\"d41d8cd9-8b00-34e9-9800-0998ecf8427e\""
+            "[true :std.native.UUID true true true true false true true true true]"
         );
     }
 
@@ -4448,7 +4457,7 @@ mod tests {
     fn base_backed_foundation_facades_are_source_owned() {
         let runtime = Runtime::new();
         let foundation = runtime.namespace_registry.find("std.foundation").unwrap();
-        for name in ["list", "boolean", "compare", "long?", "double?"] {
+        for name in ["list", "boolean", "compare", "long?", "double?", "hash"] {
             let var = foundation
                 .resolve(&crate::lang::data::Symbol::parse(name))
                 .unwrap_or_else(|| panic!("missing std.foundation/{name}"));
@@ -4460,7 +4469,7 @@ mod tests {
         }
 
         let base = runtime.namespace_registry.find("std.native.Base").unwrap();
-        for name in ["list", "boolean", "compare", "long?", "double?"] {
+        for name in ["list", "long?", "hash"] {
             let var = base
                 .resolve(&crate::lang::data::Symbol::parse(name))
                 .unwrap_or_else(|| panic!("missing std.native.Base/{name}"));
@@ -6495,7 +6504,8 @@ mod tests {
             |value| matches!(value, core::Value::Number(_)),
             protocol_identity,
         );
-        assert!(core::ProtocolRegistry::core().contains("IAssoc", "assoc"));
+        assert!(core::ProtocolRegistry::core()
+            .contains("std.protocol.iassoc.IAssoc", "assoc"));
         assert!(registry.contains("IIdentity", "identity"));
         assert_eq!(
             registry
@@ -8925,7 +8935,9 @@ mod tests {
         assert!(runtime
             .eval_text("(% 3)")
             .unwrap_err()
-            .contains("two numbers"));
+            .contains("unbound symbol: %"));
+        assert_eq!(runtime.eval_text("(-> 1 (+ % %))").unwrap(), "2");
+        assert_eq!(runtime.eval_text("(->> 3 (+ % %))").unwrap(), "6");
     }
 
     #[test]

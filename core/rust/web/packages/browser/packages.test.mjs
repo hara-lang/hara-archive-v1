@@ -51,19 +51,19 @@ async function htaFixture(capabilities = "[]", namespace = "db.sqlite.wasm.hta")
   const assetDigest = await digest(asset);
   const manifest = encoder.encode(
     `{:files {"src/demo/world.hal" {:size ${source.byteLength} :sha256 "${sourceDigest}"} `
-      + `"provider/browser/worker.mjs" {:size ${worker.byteLength} :sha256 "${workerDigest}"} `
+      + `"provider/browser/provider.mjs" {:size ${worker.byteLength} :sha256 "${workerDigest}"} `
       + `"provider/browser/assets/chunk.js" {:size ${asset.byteLength} :sha256 "${assetDigest}"}} `
       + `:resources {"demo.world" "src/demo/world.hal"} `
       + `:extensions {${namespace} {:root "provider" :provider :hta :abi :hta.v1 `
-      + `:targets {:browser {:module "browser/worker.mjs" :runtime :web-worker} `
-      + `:node {:module "node/worker.mjs" :runtime :process}} `
+      + `:targets {:browser {:provider "browser/provider.mjs" :runtime :web-worker} `
+      + `:node {:provider "node/provider.mjs" :runtime :process}} `
       + `:assets ["browser/assets/chunk.js"] :exports {"version" {:args [] :returns :value} "open" {:args [:value] :returns :value}} `
       + `:capabilities ${capabilities}}}}`
   );
   const archive = zipSync({
     "package.edn": manifest,
     "src/demo/world.hal": source,
-    "provider/browser/worker.mjs": worker,
+    "provider/browser/provider.mjs": worker,
     "provider/browser/assets/chunk.js": asset
   });
   const archiveDigest = await digest(archive);
@@ -262,7 +262,7 @@ test("PostgreSQL :require activates only its generated browser HTA provider", as
   assert.deepEqual(names, ["demo.world", "db.postgres.wasm.hta"]);
   assert.equal(workers.length, 1);
   assert.equal(workers[0].options.type, "module");
-  assert.match(workers[0].url, /^blob:postgres-/);
+  assert.match(String(workers[0].url), /worker\.mjs$/);
   const bridge = registered.find(([namespace]) => namespace === "db.postgres.wasm.hta")[1];
   assert.match(bridge, /\(ns db\.postgres\.wasm\.hta\)/);
   assert.match(bridge, /Host\/call "db\.postgres\.wasm\.hta" "version"/);

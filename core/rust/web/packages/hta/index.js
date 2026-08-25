@@ -4,6 +4,7 @@ const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", { fatal: true });
 export const HTA_MAX_FRAME_BYTES = 64 * 1024 * 1024;
 export const HTA_MAX_NESTING_DEPTH = 256;
+export const HTA_BROWSER_WORKER_URL = new URL("./worker.mjs", import.meta.url);
 
 export class HtaKeyword { constructor(name) { this.name = name; } }
 export class HtaSymbol { constructor(name) { this.name = name; } }
@@ -98,10 +99,10 @@ export function parseHtaManifest(source) {
   for (const [host,spec] of targetsValue ?? []) {
     const hostName = host instanceof HtaKeyword ? host.name : undefined;
     if (!(hostName === "node" || hostName === "browser") || !(spec instanceof Map)) throw new Error("hta/manifest-malformed: invalid target");
-    const targetModule = manifestField(spec,"module"), runtime = manifestField(spec,"runtime");
+    const targetProvider = manifestField(spec,"provider"), runtime = manifestField(spec,"runtime");
     const expectedRuntime = hostName === "node" ? "process" : "web-worker";
-    if (!validPackagePath(targetModule,".mjs") || !(runtime instanceof HtaKeyword) || runtime.name !== expectedRuntime) throw new Error(`hta/manifest-malformed: invalid ${hostName} target`);
-    targets[hostName] = Object.freeze({module:targetModule,runtime:runtime.name});
+    if (!validPackagePath(targetProvider,".mjs") || !(runtime instanceof HtaKeyword) || runtime.name !== expectedRuntime) throw new Error(`hta/manifest-malformed: invalid ${hostName} target`);
+    targets[hostName] = Object.freeze({provider:targetProvider,runtime:runtime.name});
   }
   let browserTarget;
   if (provider === "wasm") {
@@ -223,7 +224,7 @@ function validPackagePath(value,suffix) {
   return typeof value === "string" && value.length>0 && !value.startsWith("/") && !value.includes("\\") && !value.split("/").includes("..") && !value.includes(":") && (!suffix || value.endsWith(suffix));
 }
 
-export async function loadHtaExtension({worker,descriptor,descriptorUrl,packageUrl,moduleBytes,hostCalls={},capabilities=[]}) {
+export async function loadHtaExtension({worker,workerFactory,workerUrl,descriptor,descriptorUrl,packageUrl,moduleBytes,providerUrl,hostCalls={},capabilities=[]}) {
   if (descriptor === undefined) {
     if (!descriptorUrl) throw new Error("hta/manifest-missing: descriptor or descriptorUrl is required");
     const response = await fetch(descriptorUrl);
@@ -245,13 +246,18 @@ export async function loadHtaExtension({worker,descriptor,descriptorUrl,packageU
       libraryUrl = new URL(library,base).toString();
     }
   }
-  if (manifest.provider === "hta" && !worker) {
+  if (manifest.provider === "hta" && providerUrl === undefined) {
     if (!base) throw new Error("hta/manifest-missing: packageUrl is required with inline descriptors");
-    worker = new Worker(new URL(manifest.browserTarget.module,base),{type:"module",name:`hara-${manifest.namespace}`});
+    providerUrl = new URL(manifest.browserTarget.provider,base).toString();
+  }
+  if (manifest.provider === "hta" && !worker) {
+    if (!workerFactory && typeof Worker !== "function") throw new Error("hta/worker-missing: worker factory is required");
+    workerFactory ??= (url, options) => new Worker(url, options);
+    worker = workerFactory(workerUrl ?? HTA_BROWSER_WORKER_URL,{type:"module",name:`hara-${manifest.namespace}`});
   }
   if (!worker) throw new Error("hta/worker-missing: worker is required for WASM providers");
   const context = new HtaContext({
-    worker,moduleUrl,moduleBytes,libraryUrl,hostCalls,capabilities,handleTags:manifest.handleTags,
+    worker,moduleUrl,moduleBytes,libraryUrl,providerUrl,hostCalls,capabilities,handleTags:manifest.handleTags,
     manifest
   });
   return context;
@@ -359,7 +365,7 @@ class Reader {
 }
 
 export class HtaContext {
-  constructor({ worker, moduleUrl, moduleBytes, libraryUrl, libraryBytes, hostCalls = {}, capabilities = [], filesystemHost = hostCalls.filesystemHost ?? null, handleTags = {}, promiseProvider = new BrowserPromiseProvider(), kernelId = null, manifest = null }) {
+  constructor({ worker, moduleUrl, moduleBytes, libraryUrl, libraryBytes, providerUrl, hostCalls = {}, capabilities = [], filesystemHost = hostCalls.filesystemHost ?? null, handleTags = {}, promiseProvider = new BrowserPromiseProvider(), kernelId = null, manifest = null }) {
     this.worker=worker;this.hostCalls=hostCalls;this.filesystemHost=filesystemHost;this.handleTags=handleTags;this.promiseProvider=promiseProvider;this.kernelId=kernelId;this.manifest=manifest;this.allowedExports=manifest ? new Set(manifest.exports) : null;this.operations=manifest?.operations ?? Object.create(null);this.allowedHostCalls=manifest ? new Set(Object.entries(manifest.hostCalls).flatMap(([service,methods])=>methods.map(method=>`${service}/${method}`))) : null;this.hostCallCapabilities=manifest?.hostCallCapabilities ?? Object.create(null);this.capabilities=new Set(capabilities);this.hostCallsInFlight=new Set();this.handles=new Set();this.next=1;this.pending=new Map();this.sessions=new Map();this.mounts=new Set();this.closed=false;
     if (manifest?.capabilities.some(capability=>!capabilities.includes(capability)) ||
         Object.values(this.hostCallCapabilities).flat().some(capability=>!this.capabilities.has(capability))) {
@@ -369,7 +375,7 @@ export class HtaContext {
     this.ready.catch(()=>{});
     worker.addEventListener("message", event=>this.message(event.data));
     worker.addEventListener("error", error=>this.fail(error));
-    worker.postMessage({type:"init",moduleUrl,moduleBytes,libraryUrl,libraryBytes});
+    worker.postMessage({type:"init",backend:providerUrl ? "provider" : "wasm",providerUrl,moduleUrl,moduleBytes,libraryUrl,libraryBytes});
   }
   call(target, args=[]) { let id=null,cancelled=false;
     return this.promiseProvider.create((resolve,reject,onCancel)=>{

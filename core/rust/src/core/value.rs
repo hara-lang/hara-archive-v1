@@ -234,10 +234,6 @@ pub(crate) fn is_uuid_tagged(value: &PTaggedLiteral<Value>) -> bool {
     uuid_text_from_tagged(value).is_some()
 }
 
-pub(crate) fn is_uuid_value(value: &Value) -> bool {
-    matches!(value, Value::Tagged(value) if is_uuid_tagged(value))
-}
-
 #[derive(Debug, Clone)]
 pub enum MutableCollection {
     Map(MutableMap<Value, Value>),
@@ -930,7 +926,7 @@ pub(crate) fn direct_function_value(name: &str) -> Option<Value> {
             if arguments.len() != 2 {
                 return Err("mod expects arguments".into());
             }
-            numeric::numeric_binary(ArithmeticOp::Remainder, &arguments[0], &arguments[1])
+            numeric::numeric_binary(ArithmeticOp::Modulo, &arguments[0], &arguments[1])
         })),
         _ => IntrinsicOp::from_symbol(name).map(|primitive| {
             native_variadic_function(name, move |arguments| {
@@ -1063,18 +1059,30 @@ pub fn native_type_function_value(native_type: &str, method: &str) -> Result<Val
         }
         "Coroutine" => {
             let method = method.to_owned();
-            native_variadic_function(&display_name, move |arguments| {
-                match (method.as_str(), arguments.as_slice()) {
-                    ("create", [value @ Value::Function(_)]) => {
-                        Ok(Value::Coroutine(Rc::new(Coroutine::new(value.clone()))))
-                    }
-                    ("yield" | "await", _) => {
-                        Err(format!("Coroutine/{method} requires the fiber evaluator"))
-                    }
-                    ("create", _) => Err("Coroutine/create expects one function".into()),
-                    _ => Err(format!("unknown std.native.Coroutine operation: {method}")),
-                }
-            })
+            match method.as_str() {
+                "create" => native_fiber_function(
+                    &display_name,
+                    1,
+                    false,
+                    native_coroutine_create,
+                    native_coroutine_create_fiber,
+                ),
+                "yield" => native_fiber_function(
+                    &display_name,
+                    1,
+                    false,
+                    native_coroutine_yield,
+                    native_coroutine_yield_fiber,
+                ),
+                "await" => native_fiber_function(
+                    &display_name,
+                    1,
+                    false,
+                    native_coroutine_await,
+                    native_coroutine_await_fiber,
+                ),
+                _ => return Err(format!("unknown std.native.Coroutine operation: {method}")),
+            }
         }
         "Stream" => {
             let method = method.to_owned();
@@ -1166,6 +1174,60 @@ pub fn native_type_function_value(native_type: &str, method: &str) -> Result<Val
         }
     };
     Ok(value)
+}
+
+fn native_coroutine_create(arguments: Vec<Value>) -> Result<Value, String> {
+    match arguments.as_slice() {
+        [Value::Function(function)] => Ok(Value::Coroutine(Rc::new(Coroutine::new(
+            Value::Function(function.clone()),
+        )))),
+        _ => Err("Coroutine/create expects one function".into()),
+    }
+}
+
+fn native_coroutine_create_fiber(arguments: Vec<Value>, k: Cont) -> Step {
+    match arguments.as_slice() {
+        [Value::Function(function)] => k(Ok(Value::Coroutine(Rc::new(Coroutine::new(
+            Value::Function(function.clone()),
+        ))))),
+        _ => k(Err("Coroutine/create expects one function".into())),
+    }
+}
+
+fn native_coroutine_yield(_arguments: Vec<Value>) -> Result<Value, String> {
+    Err("Coroutine/yield requires the fiber evaluator".into())
+}
+
+fn native_coroutine_yield_fiber(arguments: Vec<Value>, k: Cont) -> Step {
+    match arguments.as_slice() {
+        [value] => Step::Yield(value.clone(), Box::new(move |resumed| k(Ok(resumed)))),
+        _ => k(Err("Coroutine/yield expects one value".into())),
+    }
+}
+
+fn native_coroutine_await(_arguments: Vec<Value>) -> Result<Value, String> {
+    Err("Coroutine/await requires the fiber evaluator".into())
+}
+
+fn native_coroutine_await_fiber(arguments: Vec<Value>, k: Cont) -> Step {
+    match arguments.as_slice() {
+        [Value::Var(reference)] => k(Ok(reference.deref_value())),
+        [Value::Promise(promise)] => match promise.state() {
+            PromiseState::Fulfilled(value) => k(Ok(value)),
+            PromiseState::Rejected(error) => k(Err(crate::core::promise_rejection_error(error))),
+            PromiseState::Pending => Step::Wait(
+                promise.clone(),
+                Box::new(move |state| match state {
+                    PromiseState::Fulfilled(value) => k(Ok(value)),
+                    PromiseState::Rejected(error) => {
+                        k(Err(crate::core::promise_rejection_error(error)))
+                    }
+                    PromiseState::Pending => k(Err("Coroutine/await resumed pending".into())),
+                }),
+            ),
+        },
+        _ => k(Err("Coroutine/await expects a derefable (e.g. a promise)".into())),
+    }
 }
 
 fn native_edn_values(method: &str, arguments: Vec<Value>) -> Result<Value, String> {

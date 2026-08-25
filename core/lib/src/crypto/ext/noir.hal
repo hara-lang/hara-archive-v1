@@ -34,8 +34,8 @@
 
 ^{:public true}
 (def +targets+
-  {:node {:module "node/worker.mjs" :runtime :process}
-   :browser {:module "browser/worker.mjs" :runtime :web-worker}})
+  {:node {:provider "node/provider.mjs" :runtime :process}
+   :browser {:provider "browser/provider.mjs" :runtime :web-worker}})
 
 ^{:public true}
 (def +manifest+

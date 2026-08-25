@@ -93,6 +93,31 @@ public class HaraGeneratedLibrariesTest {
   }
 
   @Test
+  public void uuidInputsAndFoundationPredicateArePortable() {
+    try (Context context = context()) {
+      assertEquals(
+          "[true true true true false true true true true]",
+          context
+              .eval(
+                  HaraLanguage.ID,
+                  "(let [byte-uuid (Base/uuid (std.native.Bytes/new 1 2 -1)) "
+                      + "keyword (Base/uuid :demo/value) "
+                      + "halves (Base/uuid 0 1)] "
+                      + "[(std.foundation/uuid? (Base/uuid \"00000000-0000-0000-0000-000000000000\")) "
+                      + " (std.foundation/uuid? byte-uuid) "
+                      + " (std.foundation/uuid? keyword) "
+                      + " (std.foundation/uuid? halves) "
+                      + " (std.foundation/uuid? :demo/value) "
+                      + " (= (Base/uuid \"00000000-0000-0000-0000-000000000000\") "
+                      + "    (Base/uuid \"00000000-0000-0000-0000-000000000000\")) "
+                      + " (= byte-uuid (Base/uuid \"4f989b1a-c8e4-3ab1-9569-6571104cfb67\")) "
+                      + " (= keyword (Base/uuid \"00000000-6d44-1e45-0000-000006ac9171\")) "
+                      + " (= halves (Base/uuid \"00000000-0000-0000-0000-000000000001\"))])")
+              .toString());
+    }
+  }
+
+  @Test
   public void foundationMembershipAndNumericPredicatesStayCanonical() {
     try (Context context = context()) {
       assertTrue(context.eval(HaraLanguage.ID, "(nil? (resolve 'contains?))").asBoolean());

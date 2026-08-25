@@ -21,13 +21,13 @@ function errorFrom(value) {
 }
 
 /**
- * Serves one HTA provider inside a browser worker.
+ * Creates the provider side of the HTA transport.
  *
  * The provider receives a third argument with a cancellable signal and a
  * manifest-authorized host-call bridge. Ordinary providers that only accept
  * `(operation, args)` remain source compatible.
  */
-export function serveBrowserProvider(call, options = {}) {
+export function createBrowserProvider(call, options = {}) {
   const scope = options.scope ?? self;
   const cancelled = new Set();
   const calls = new Map();
@@ -107,12 +107,9 @@ export function serveBrowserProvider(call, options = {}) {
     scope.close();
   }
 
-  scope.addEventListener("message", async event => {
-    const message = event.data;
+  async function handle(message) {
     try {
-      if (message.type === "init") {
-        scope.postMessage({ type: "ready" });
-      } else if (message.type === "delivery") {
+      if (message.type === "delivery") {
         const pending = hostCalls.get(message.call);
         if (!pending) return;
         hostCalls.delete(message.call);
@@ -172,7 +169,21 @@ export function serveBrowserProvider(call, options = {}) {
     } catch (error) {
       scope.postMessage({ type: "fatal", error: { message: String(error?.message ?? error) } });
     }
-  });
+  }
 
-  return Object.freeze({ close: closeProvider });
+  return Object.freeze({ close: closeProvider, handle });
+}
+
+/** Serves one provider as a complete browser-worker entry point. */
+export function serveBrowserProvider(call, options = {}) {
+  const scope = options.scope ?? self;
+  const provider = createBrowserProvider(call, options);
+  scope.addEventListener("message", event => {
+    if (event.data?.type === "init") {
+      scope.postMessage({ type: "ready" });
+      return;
+    }
+    void provider.handle(event.data);
+  });
+  return provider;
 }

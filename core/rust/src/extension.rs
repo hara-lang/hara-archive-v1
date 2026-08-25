@@ -24,7 +24,7 @@ const MANIFEST_FIELDS: &[&str] = &[
 ];
 const EXPORT_FIELDS: &[&str] = &["args", "returns", "async", "wasm/export", "operation"];
 const HANDLE_FIELDS: &[&str] = &["tag", "release"];
-const TARGET_FIELDS: &[&str] = &["module", "runtime"];
+const TARGET_FIELDS: &[&str] = &["provider", "runtime"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WasmAbi {
@@ -55,7 +55,7 @@ impl ExtensionExport {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExtensionTarget {
-    pub module: String,
+    pub provider: String,
     pub runtime: String,
 }
 
@@ -373,8 +373,8 @@ fn parse_targets(form: &Form, origin: &str) -> Result<HashMap<String, ExtensionT
             }
             let entries = map(specification, origin, "target")?;
             reject_unknown(entries, TARGET_FIELDS, origin, &format!("target {host}"))?;
-            let module = named_string(entries, "module", origin)?;
-            safe_relative(&module, Some(".mjs"), origin, "target module")?;
+            let provider = named_string(entries, "provider", origin)?;
+            safe_relative(&provider, Some(".mjs"), origin, "target provider")?;
             let runtime = named_keyword(entries, "runtime", origin)?;
             let compatible = (host == "node" && runtime == "process")
                 || (host == "browser" && runtime == "web-worker");
@@ -384,7 +384,7 @@ fn parse_targets(form: &Form, origin: &str) -> Result<HashMap<String, ExtensionT
                     format!("target {host} has incompatible runtime :{runtime}"),
                 ));
             }
-            Ok((host, ExtensionTarget { module, runtime }))
+            Ok((host, ExtensionTarget { provider, runtime }))
         })
         .collect()
 }
@@ -810,5 +810,25 @@ mod tests {
                 .unwrap_err()
                 .starts_with("extension/malformed fixture:"));
         }
+    }
+
+    #[test]
+    fn hta_targets_name_provider_implementations() {
+        let source = r#"
+{:namespace "demo.hta"
+ :version "1"
+ :provider :hta
+ :abi :hta.v1
+ :targets {:node {:provider "node/provider.mjs" :runtime :process}
+           :browser {:provider "browser/provider.mjs" :runtime :web-worker}}
+ :exports {"open" {:args [] :returns :value}}
+ :capabilities []}"#;
+        let manifest = ExtensionManifest::parse(source, "fixture").unwrap();
+        assert_eq!(manifest.targets["browser"].provider, "browser/provider.mjs");
+        assert!(ExtensionManifest::parse(
+            &source.replace(":provider \"browser/provider.mjs\"", ":module \"browser/worker.mjs\""),
+            "fixture"
+        )
+        .is_err());
     }
 }

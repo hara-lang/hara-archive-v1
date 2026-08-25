@@ -471,7 +471,7 @@ test("real wasm kernel evals hara source through the broker", { skip: wasmBytes 
     close: () => {}
   };
   globalThis.self = bridge.self;
-  await import("./packages/hta/worker.js");
+  await import("./packages/hta/worker.mjs");
 
   const worker = {
     terminated: false,

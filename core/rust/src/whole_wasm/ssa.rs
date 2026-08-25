@@ -201,7 +201,8 @@ fn operation_rep(operation: &SsaOp, reps: &[Rep]) -> Rep {
             | crate::core::IntrinsicOp::Subtract
             | crate::core::IntrinsicOp::Multiply
             | crate::core::IntrinsicOp::Divide
-            | crate::core::IntrinsicOp::Remainder => Rep::I64,
+            | crate::core::IntrinsicOp::Remainder
+            | crate::core::IntrinsicOp::Modulo => Rep::I64,
             _ => Rep::Bool,
         },
         Op::ArrayNew { .. } | Op::ArraySetI64 { .. } => Rep::ArrayRef,

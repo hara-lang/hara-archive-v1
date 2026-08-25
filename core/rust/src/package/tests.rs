@@ -237,7 +237,7 @@ fn packages_declared_artifacts_under_the_archive_root() {
     .unwrap();
     fs::write(
         root.join("project.edn"),
-        "{:hara/type :project :hara/version \"1.0.0\" :project/id hara/ledger-noir :project/version \"0.1.0\" :project/source-paths [] :project/test-paths [\"test\"] :project/extension-paths [\"target/package\"] :project/capabilities #{} :project/artifact-paths [\"target/package\"] :project/archive-root \"target/package\" :project/extensions {ledger.noir {:provider :hta :abi :hta.v1 :targets {:node {:module \"ledger/noir/assets/worker.mjs\" :runtime :process}}}}}",
+        "{:hara/type :project :hara/version \"1.0.0\" :project/id hara/ledger-noir :project/version \"0.1.0\" :project/source-paths [] :project/test-paths [\"test\"] :project/extension-paths [\"target/package\"] :project/capabilities #{} :project/artifact-paths [\"target/package\"] :project/archive-root \"target/package\" :project/extensions {ledger.noir {:provider :hta :abi :hta.v1 :targets {:node {:provider \"ledger/noir/assets/worker.mjs\" :runtime :process}}}}}",
     )
     .unwrap();
     let project = read_project(&root).unwrap();

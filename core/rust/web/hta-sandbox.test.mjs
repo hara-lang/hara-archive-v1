@@ -61,7 +61,7 @@ function harness({ result = 42, ready = Promise.resolve() } = {}) {
 
 function sandbox(overrides = {}) {
   return new BrowserWasmSandbox({
-    workerUrl: new URL("file:///packages/hta/worker.js"),
+  workerUrl: new URL("file:///packages/hta/worker.mjs"),
     moduleBytes: new Uint8Array([0, 97, 115, 109]),
     ...overrides,
   });
@@ -91,13 +91,13 @@ test("validates the one-operation closed request", () => {
 
 test("rejects ambiguous runtime configuration and source overflow", () => {
   assert.throws(
-    () => new BrowserWasmSandbox({ workerUrl: "worker.js" }),
+    () => new BrowserWasmSandbox({ workerUrl: "worker.mjs" }),
     { code: "sandbox/config-invalid" },
   );
   assert.throws(
     () =>
       new BrowserWasmSandbox({
-        workerUrl: "worker.js",
+    workerUrl: "worker.mjs",
         moduleUrl: "hara.wasm",
         moduleBytes: new Uint8Array([0]),
       }),

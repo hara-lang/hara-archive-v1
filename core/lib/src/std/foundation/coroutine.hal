@@ -52,7 +52,7 @@
   coroutine?
   "Returns true when value is a coroutine."
   [value]
-  (= (type value) :std.native.Coroutine))
+  (Base/instance? Coroutine value))
 
 (defn ^{:inline true :schema [:fn [:any] :keyword]}
   status
@@ -64,7 +64,7 @@
   resume
   "Advances coroutine, supplying optional resume arguments."
   [coroutine & arguments]
-  (apply ICoroutine/resume coroutine arguments))
+  (Base/apply ICoroutine/resume coroutine arguments))
 
 (defn ^{:inline true :schema [:fn [:any] :any]}
   close
@@ -72,11 +72,10 @@
   [coroutine]
   (IClose/close coroutine))
 
-(defn ^{:inline true :schema [:fn [:any] :any]}
+(def ^{:inline true :schema [:fn [:any] :any]
+       :doc "Suspends the current coroutine with value."}
   yield
-  "Suspends the current coroutine with value."
-  [value]
-  (Coroutine/yield value))
+  Coroutine/yield)
 
 (defn ^{:inline true :schema [:fn [:promise] :any]}
   await

@@ -1,4 +1,4 @@
-import { HtaContext, HtaKeyword } from "./packages/hta/index.js";
+import { HtaContext, HtaKeyword, HTA_BROWSER_WORKER_URL } from "./packages/hta/index.js";
 
 const kw = name => new HtaKeyword(name);
 const map = entries => new Map(entries.map(([key, value]) => [kw(key), value]));
@@ -8,8 +8,11 @@ const value = (input, name) => {
 };
 
 function provider() {
-  const worker = new Worker("./dist-sqlite-browser/worker.mjs", { type: "module" });
-  const context = new HtaContext({ worker });
+  const worker = new Worker(HTA_BROWSER_WORKER_URL, { type: "module" });
+  const context = new HtaContext({
+    worker,
+    providerUrl: new URL("./dist-sqlite-browser/provider.mjs", import.meta.url).toString()
+  });
   return {
     call: (operation, args) => context.call(operation, args),
     close: () => context.close()

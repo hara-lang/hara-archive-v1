@@ -619,7 +619,7 @@ public final class HalcSchema {
           output = inferExpression(list.nth(index), nested);
         return output;
       }
-      case "+", "-", "*", "%", "mod": {
+      case "+", "-", "*", "mod": {
         List<Type> operands = new ArrayList<>();
         for (int index = 1; index < list.count(); index++)
           pushJoined(operands, inferExpression(list.nth(index), environment));

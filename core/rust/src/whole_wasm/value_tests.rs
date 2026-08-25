@@ -166,3 +166,9 @@ fn scalar_entry_calls_keep_the_existing_abi() {
     let mut native = module("(+ 19 23)");
     assert_eq!(native.call_entry_i64(), Ok(42));
 }
+
+#[test]
+fn scalar_entry_modulo_uses_true_modulo_semantics() {
+    let mut native = module("(mod -7 3)");
+    assert_eq!(native.call_entry_i64(), Ok(2));
+}

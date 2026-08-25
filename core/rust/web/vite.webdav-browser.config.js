@@ -20,7 +20,7 @@ export default defineConfig({
     lib: {
       entry: resolve(web, "entries/webdav-browser.mjs"),
       formats: ["es"],
-      fileName: () => "worker.mjs"
+      fileName: () => "provider.mjs"
     },
     rollupOptions: {
       output: {

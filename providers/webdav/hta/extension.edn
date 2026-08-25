@@ -1,10 +1,11 @@
 {:namespace "fs.webdav.wasm.hta"
  :identity "hara/filesystem-webdav"
+ :version "0.1.0"
  :provider :hta
  :abi :hta.v1
  :targets
  {:browser
-  {:module "browser/worker.mjs"
+  {:provider "browser/provider.mjs"
    :runtime :web-worker}}
  :capabilities [:filesystem :network]
  :host-calls
@@ -12,15 +13,15 @@
   {:methods ["open" "request" "cancel" "close"]
    :capabilities [:filesystem :network]}}
  :exports
- {"describe" {:args []}
-  "open" {:args [:options]}
-  "descriptor" {:args [:filesystem]}
-  "stat" {:args [:filesystem :path]}
-  "read" {:args [:filesystem :path]}
-  "write" {:args [:filesystem :path :bytes :options :mutation]}
-  "entries-page" {:args [:filesystem :path :request]}
-  "mkdir" {:args [:filesystem :path :options :mutation]}
-  "delete" {:args [:filesystem :path :options :mutation]}
-  "copy" {:args [:filesystem :source :target :options :mutation]}
-  "move" {:args [:filesystem :source :target :options :mutation]}
-  "close" {:args [:filesystem]}}}
+ {"describe" {:args [] :returns :value}
+  "open" {:args [:options] :returns :value}
+  "descriptor" {:args [:filesystem] :returns :value}
+  "stat" {:args [:filesystem :path] :returns :value}
+  "read" {:args [:filesystem :path] :returns :bytes}
+  "write" {:args [:filesystem :path :bytes :options :mutation] :returns :value}
+  "entries-page" {:args [:filesystem :path :request] :returns :value}
+  "mkdir" {:args [:filesystem :path :options :mutation] :returns :value}
+  "delete" {:args [:filesystem :path :options :mutation] :returns :value}
+  "copy" {:args [:filesystem :source :target :options :mutation] :returns :value}
+  "move" {:args [:filesystem :source :target :options :mutation] :returns :value}
+  "close" {:args [:filesystem] :returns :value}}}

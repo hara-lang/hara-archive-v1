@@ -6,6 +6,34 @@ const EMBEDDED_FOUNDATION_BYTECODE: &[u8] = include_bytes!(concat!(
 
 #[cfg_attr(not(feature = "raw-wasm"), wasm_bindgen)]
 impl Runtime {
+    pub(crate) fn standalone_eval_context(
+        mut self,
+    ) -> (
+        kernel::NamespaceRegistry<core::Value>,
+        HashMap<String, core::Value>,
+    ) {
+        // A standalone EvalFiber has no Runtime resource provider around it.
+        // Materialize the same eager Foundation children that the normal
+        // loader exposes before handing the registry to that fiber. This is
+        // still one source/native resolution path; it only supplies the
+        // missing Runtime owner for the convenience constructor.
+        for &name in EAGER_HAL_RESOURCES {
+            self.load_resource(name)
+                .unwrap_or_else(|error| panic!("embedded Foundation resource {name}: {error:?}"));
+            self.loaded_resources.insert(name.into());
+            self.namespace_registry
+                .set_load_state(name, kernel::NamespaceLoadState::Loaded);
+        }
+        self.use_namespace("user");
+        self.namespace_registry
+            .current()
+            .set_foundation_visibility(None, &HashSet::new(), false);
+        (
+            self.namespace_registry.clone(),
+            HashMap::new(),
+        )
+    }
+
     pub(crate) fn instrumentation_handle(
         &self,
     ) -> Rc<RefCell<crate::instrumentation::InstrumentationHub>> {
@@ -319,7 +347,7 @@ impl Runtime {
                             .register_global_alias(alias, &name)?;
                     }
                     for alias in config.declared_global_imports() {
-                        let canonical = core::canonical_intrinsic_symbol(alias)
+                        let canonical = core::canonical_native_symbol(alias)
                             .unwrap_or_else(|| alias.clone());
                         self.namespace_registry
                             .register_global_import(alias, canonical)?;

@@ -24,6 +24,8 @@ The adapter becomes semantic execution evidence only when paired with a raw
 runtime that implements `sandbox/eval` as a transient restricted session. An
 ordinary HTA root session is not `hara.mcp-pure/0-alpha`.
 
-The `@hara-lang/hta/worker` and `@hara-lang/hta/shared-worker` exports provide
-the raw Wasm worker entry points. Repository consumers must use these package
-exports directly.
+The `@hara-lang/hta/worker` export is the runtime-owned generic worker entry
+point. It loads either a Wasm HTA adapter or the provider module named by a
+package target. The `@hara-lang/hta/shared-worker` export remains the shared
+raw-runtime transport used by the browser kernel broker; it is not a package
+provider target.

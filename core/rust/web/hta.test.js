@@ -21,15 +21,16 @@ test("context applies registered public handle tags",async()=>{const worker=new 
 test("manifest parser validates compact public tags",()=>{const manifest=parseHtaManifest(tensorDescriptor);assert.equal(manifest.namespace,"math.tensor");assert.equal(manifest.module,"tensor.wasm");assert.deepEqual(manifest.handleTags,{tensor:"math"});assert.throws(()=>parseHtaManifest(tensorDescriptor.replace(":tag math",":tag Math")),/invalid handle tag/);});
 test("manifest parser preserves export and host-call policy",()=>{const manifest=parseHtaManifest(hostDescriptor);assert.deepEqual(manifest.exports,["open"]);assert.deepEqual(manifest.hostCalls,{store:["get"]});assert.throws(()=>parseHtaManifest(hostDescriptor.replace("[\"get\"]","[\"get/x\"]")),/invalid host-call/);});
 test("manifest parser enforces declared HTA targets and typed exports",()=>{
-  const descriptor='{:namespace "demo.hta" :version "1" :provider :hta :abi :hta.v1 :targets {:node {:module "node/worker.mjs" :runtime :process} :browser {:module "browser/worker.mjs" :runtime :web-worker}} :exports {"open" {:args [:value] :returns :value :async true}} :capabilities []}';
+const descriptor='{:namespace "demo.hta" :version "1" :provider :hta :abi :hta.v1 :targets {:node {:provider "node/provider.mjs" :runtime :process} :browser {:provider "browser/provider.mjs" :runtime :web-worker}} :exports {"open" {:args [:value] :returns :value :async true}} :capabilities []}';
   const manifest=parseHtaManifest(descriptor);
   assert.equal(manifest.version,"1");
-  assert.deepEqual(manifest.targets,{node:{module:"node/worker.mjs",runtime:"process"},browser:{module:"browser/worker.mjs",runtime:"web-worker"}});
+  assert.deepEqual(manifest.targets,{node:{provider:"node/provider.mjs",runtime:"process"},browser:{provider:"browser/provider.mjs",runtime:"web-worker"}});
   assert.deepEqual(manifest.exportSpecs.open.args,[new HtaKeyword("value")]);
   assert.equal(manifest.exportSpecs.open.async,true);
   assert.throws(()=>parseHtaManifest(descriptor.replace(":returns :value",":returns nil")),/invalid export returns/);
-  assert.throws(()=>parseHtaManifest(descriptor.replace(":browser {:module \"browser/worker.mjs\" :runtime :web-worker}","")),/browser web-worker target/);
+  assert.throws(()=>parseHtaManifest(descriptor.replace(":browser {:provider \"browser/provider.mjs\" :runtime :web-worker}","")),/browser web-worker target/);
   assert.throws(()=>parseHtaManifest(descriptor.replace(":version \"1\"",":version nil")),/invalid version/);
+  assert.throws(()=>parseHtaManifest(descriptor.replace(":provider \"browser/provider.mjs\"",":module \"browser/worker.mjs\"")),/invalid browser target/);
 });
 test("descriptor loader resolves wasm and applies handle tags",async()=>{const worker=new FakeWorker();const context=await loadHtaExtension({worker,descriptor:tensorDescriptor,packageUrl:"https://example.test/extensions/math/"});assert.equal(worker.sent[0].moduleUrl,"https://example.test/extensions/math/tensor.wasm");worker.emit({type:"ready"});const result=context.call("open",[]);await Promise.resolve();const call=worker.sent.find(message=>message.type==="call");worker.emit({type:"result",id:call.id,ok:true,frame:encodeHta(new HtaHandle("math.tensor","tensor",42n))});assert.equal(String(await result),"#math[:tensor 42]");context.close();});
 test("descriptor loader resolves the wrapped library for generated adapters",async()=>{const worker=new FakeWorker();const context=await loadHtaExtension({worker,descriptor:adapterDescriptor,packageUrl:"https://example.test/extensions/math/"});assert.equal(worker.sent[0].moduleUrl,"https://example.test/extensions/math/adapter.wasm");assert.equal(worker.sent[0].libraryUrl,"https://example.test/extensions/math/modules/math.wasm");context.close();});
@@ -39,7 +40,7 @@ test("worker composes a generated HTA adapter with its wrapped library",async()=
   const messages=[],listeners=new Map(),previousSelf=globalThis.self;
   globalThis.self={addEventListener:(type,handler)=>listeners.set(type,handler),postMessage:message=>messages.push(message),close:()=>{}};
   try{
-    await import(`./packages/hta/worker.js?hta-composition=${Date.now()}`);
+    await import(`./packages/hta/worker.mjs?hta-composition=${Date.now()}`);
     const message=listeners.get("message");
     await message({data:{type:"init",moduleBytes:adapterBytes,libraryBytes}});
     assert.deepEqual(messages,[{type:"ready"}]);
@@ -64,11 +65,46 @@ test("worker rejects a wrapped library with a missing imported export",async()=>
   const messages=[],listeners=new Map(),previousSelf=globalThis.self;
   globalThis.self={addEventListener:(type,handler)=>listeners.set(type,handler),postMessage:message=>messages.push(message),close:()=>{}};
   try{
-    await import(`./packages/hta/worker.js?hta-malformed=${Date.now()}`);
+    await import(`./packages/hta/worker.mjs?hta-malformed=${Date.now()}`);
     await listeners.get("message")({data:{type:"init",moduleBytes:adapterBytes,libraryBytes}});
     assert.equal(messages[0].type,"fatal");
     assert.match(messages[0].error.message,/hta\/library-export-missing/);
   }finally{
+    if(previousSelf===undefined)delete globalThis.self;else globalThis.self=previousSelf;
+  }
+});
+test("generic worker loads a declared provider implementation",async()=>{
+  const messages=[],listeners=new Map(),previousSelf=globalThis.self;
+  globalThis.self={addEventListener:(type,handler)=>listeners.set(type,handler),postMessage:message=>messages.push(message),close:()=>{}};
+  const providerUrl=`data:text/javascript,${encodeURIComponent("export default async (operation,args)=>operation === 'sum' ? args[0] + args[1] : null")}`;
+  try{
+    await import(`./packages/hta/worker.mjs?hta-provider=${Date.now()}`);
+    const message=listeners.get("message");
+    await message({data:{type:"init",backend:"provider",providerUrl}});
+    assert.deepEqual(messages,[{type:"ready"}]);
+    await message({data:{type:"call",id:7,frame:encodeHta(["sum",[19,23]])}});
+    const result=messages.find(item=>item.type==="result");
+    assert.equal(result.id,7);
+    assert.equal(result.ok,true);
+    assert.equal(decodeHta(result.frame),42);
+  }finally{
+    if(previousSelf===undefined)delete globalThis.self;else globalThis.self=previousSelf;
+  }
+});
+test("generic worker closes a provider through its declared cleanup export",async()=>{
+  const messages=[],listeners=new Map(),previousSelf=globalThis.self;
+  const marker=`__htaProviderClosed${Date.now()}`;
+  globalThis[marker]=false;
+  globalThis.self={addEventListener:(type,handler)=>listeners.set(type,handler),postMessage:message=>messages.push(message),close:()=>{}};
+  const providerUrl=`data:text/javascript,${encodeURIComponent(`export default async () => null; export const close = () => { globalThis.${marker} = true; };`)}`;
+  try{
+    await import(`./packages/hta/worker.mjs?hta-provider-close=${Date.now()}`);
+    const message=listeners.get("message");
+    await message({data:{type:"init",backend:"provider",providerUrl}});
+    await message({data:{type:"close"}});
+    assert.equal(globalThis[marker],true);
+  }finally{
+    delete globalThis[marker];
     if(previousSelf===undefined)delete globalThis.self;else globalThis.self=previousSelf;
   }
 });

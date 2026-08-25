@@ -283,8 +283,9 @@ fn arithmetic() {
     assert_eq!(eval("(/ 2)"), "0");
     assert_eq!(eval("(/ 17 5)"), "3");
     assert_eq!(eval("(/ -17 5)"), "-3");
-    assert_eq!(eval("(% 17 5)"), "2");
     assert_eq!(eval("(mod 17 5)"), "2");
+    assert_eq!(eval("(mod -7 3)"), "2");
+    assert_eq!(eval("(mod 7 -3)"), "-2");
 }
 
 #[test]
@@ -292,7 +293,7 @@ fn arithmetic_errors() {
     assert_eval_error("(-)", "- expects arguments [line 1, column 1]");
     assert_eval_error("(/)", "/ expects arguments [line 1, column 1]");
     assert_eval_error("(/ 1 0)", "division by zero [line 1, column 1]");
-    assert_eval_error("(% 1 0)", "division by zero [line 1, column 1]");
+    assert_eval_error("(% 1 0)", "unbound symbol: % [line 1, column 1]");
     assert_eval_error("(mod 1 0)", "division by zero [line 1, column 1]");
     assert_eq!(eval("(+ 9223372036854775807 1)"), "9223372036854775808");
     assert_eq!(eval("(- -9223372036854775808 1)"), "-9223372036854775809");
@@ -301,7 +302,7 @@ fn arithmetic_errors() {
     assert_eq!(eval("(+ 1 1.5)"), "(double 2.5)");
     assert_eval_error(
         "(mod \"a\" 1)",
-        "expected numeric values [line 1, column 1]",
+        "mod expects numbers [line 1, column 1]",
     );
 }
 

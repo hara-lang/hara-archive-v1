@@ -163,7 +163,8 @@ public record HbcProgram(
     ARRAY_SET(23),
     OBJECT_NEW(24),
     OBJECT_GET(25),
-    OBJECT_SET(26);
+    OBJECT_SET(26),
+    MODULO(27);
 
     private final int id;
 

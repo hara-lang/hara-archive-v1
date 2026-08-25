@@ -1,15 +1,3 @@
-fn os_operation(
-    operation: &str,
-    forms: &[Form],
-    env: &mut HashMap<String, Value>,
-) -> Result<Value, String> {
-    let values = forms
-        .iter()
-        .map(|form| eval(form, env))
-        .collect::<Result<Vec<_>, _>>()?;
-    os_values(operation, values)
-}
-
 fn os_values(operation: &str, values: Vec<Value>) -> Result<Value, String> {
     let operation = operation.strip_prefix("os/").unwrap_or(operation);
     let operation = operation
@@ -1049,22 +1037,6 @@ fn file_move_options(options: &Value) -> Result<MoveOptions, String> {
     })
 }
 
-fn file_operation(
-    operation: &str,
-    forms: &[Form],
-    env: &mut HashMap<String, Value>,
-) -> Result<Value, String> {
-    let values = forms
-        .iter()
-        .map(|form| eval(form, env))
-        .collect::<Result<Vec<_>, _>>()?;
-    let operation = operation
-        .strip_prefix("file/")
-        .map(|method| format!("std.native.File/{method}"))
-        .unwrap_or_else(|| operation.to_owned());
-    file_values(&operation, values)
-}
-
 fn file_values(operation: &str, values: Vec<Value>) -> Result<Value, String> {
     let effect_operation = operation
         .strip_prefix("std.native.File/")
@@ -1246,18 +1218,6 @@ fn file_values(operation: &str, values: Vec<Value>) -> Result<Value, String> {
         }
         _ => Err(format!("unknown std.native.File operation: {operation}")),
     }
-}
-
-fn socket_operation(
-    operation: &str,
-    forms: &[Form],
-    env: &mut HashMap<String, Value>,
-) -> Result<Value, String> {
-    let values = forms
-        .iter()
-        .map(|form| eval(form, env))
-        .collect::<Result<Vec<_>, _>>()?;
-    socket_values(operation, values)
 }
 
 fn socket_values(operation: &str, values: Vec<Value>) -> Result<Value, String> {

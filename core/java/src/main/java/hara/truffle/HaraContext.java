@@ -24,6 +24,7 @@ import hara.lang.data.List;
 import hara.lang.data.Keyword;
 import hara.lang.protocol.IMapType;
 import hara.lang.protocol.ILinearType;
+import hara.lang.protocol.Constant;
 import hara.lang.data.types.ObjFn;
 import hara.lang.protocol.IFn;
 import hara.lang.protocol.IMetadata;
@@ -1599,9 +1600,7 @@ public final class HaraContext {
   private Path resolveProjectSource(String target) {
     if (!environment.isFileIOAllowed()) return null;
     HaraProject currentProject = project();
-    if (currentProject != null
-        && "hara.lang".equals(currentProject.name().display())
-        && bytecodeLibrary.provides(target)) {
+    if (bytecodeLibrary.provides(target)) {
       return null;
     }
     return currentProject == null
@@ -2420,7 +2419,6 @@ public final class HaraContext {
     target.define("quot", new VariadicBuiltin("quot", values -> arithmetic("quot", values)));
     target.define("rem", new VariadicBuiltin("rem", values -> arithmetic("rem", values)));
     target.define("mod", new VariadicBuiltin("mod", values -> arithmetic("mod", values)));
-    target.define("%", new VariadicBuiltin("%", values -> arithmetic("rem", values)));
     target.define("=", new VariadicBuiltin("=", values -> compare("=", values)));
     target.define("<", new VariadicBuiltin("<", values -> compare("<", values)));
     target.define("<=", new VariadicBuiltin("<=", values -> compare("<=", values)));
@@ -3179,6 +3177,11 @@ public final class HaraContext {
               return hara.kernel.builtin.BuiltinStruct.tuple(unwrapped);
             }));
     target.define(
+        "hash",
+        new UnaryBuiltin(
+            "Base/hash",
+            value -> G.hashCalc(Constant.HashType.RAPID, HaraBox.unwrap(value))));
+    target.define(
         "hash-map",
         new VariadicBuiltin(
             "hash-map",
@@ -3355,7 +3358,11 @@ public final class HaraContext {
           if (input instanceof String string) yield java.util.UUID.fromString(string);
           if (input instanceof byte[] bytes) yield java.util.UUID.nameUUIDFromBytes(bytes);
           if (input instanceof Keyword keyword) {
-            yield new java.util.UUID(keyword.hashCode(), keyword.getName().hashCode());
+            String fullName =
+                keyword.getNamespace() == null
+                    ? keyword.getName()
+                    : keyword.getNamespace() + "/" + keyword.getName();
+            yield new java.util.UUID(fullName.hashCode(), keyword.getName().hashCode());
           }
           throw new HaraException("uuid expects a string, bytes, or keyword");
         }

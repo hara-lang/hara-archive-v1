@@ -810,15 +810,29 @@ impl Machine {
         let Some(function) = self.program.functions.get(self.function).cloned() else {
             return VmOutcome::Failed(VmError::new("function index out of range", 0, None));
         };
-        if !matches!(function.code.get(self.ip), Some(Instruction::Await)) {
-            return VmOutcome::Failed(self.error(&function, "VM is not suspended at await"));
+        let protocol_deref = match function.code.get(self.ip) {
+            Some(Instruction::ProtocolCall { target, argc }) if *argc == 1 => {
+                constant_string(&self.program, *target)
+                    .is_some_and(|name| name == "std.protocol.ideref.IDeref/deref")
+            }
+            _ => false,
+        };
+        if !protocol_deref && !matches!(function.code.get(self.ip), Some(Instruction::Await)) {
+            return VmOutcome::Failed(self.error(&function, "VM is not suspended at await or deref"));
         }
         match state {
             PromiseState::Pending => {
                 let promise = match self.stack.last().and_then(VmSlot::runtime_value) {
                     Some(Value::Promise(promise)) => promise,
                     _ => {
-                        return VmOutcome::Failed(self.error(&function, "await expects a promise"))
+                        return VmOutcome::Failed(self.error(
+                            &function,
+                            if protocol_deref {
+                                "deref expects a promise"
+                            } else {
+                                "await expects a promise"
+                            },
+                        ))
                     }
                 };
                 return VmOutcome::Suspended(promise);
@@ -830,7 +844,12 @@ impl Machine {
             }
             PromiseState::Rejected(error) => {
                 self.stack.pop();
-                match self.raise(&function, crate::core::promise_rejection_error(error)) {
+                let message = if protocol_deref {
+                    crate::core::promise_rejection_error(error)
+                } else {
+                    error.message()
+                };
+                match self.raise(&function, message) {
                     Ok(target) => self.ip = target,
                     Err(error) => return VmOutcome::Failed(error),
                 }

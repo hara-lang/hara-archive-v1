@@ -83,11 +83,18 @@ impl GeneratedNamespaceConfig {
     }
 
     fn resolve_symbol(&self, symbol: &str) -> String {
-        if let Some(canonical) = crate::core::canonical_intrinsic_symbol(symbol) {
+        if let Some(canonical) = crate::core::canonical_native_symbol(symbol) {
             return canonical;
         }
         if let Some(canonical) = self.refers.get(symbol) {
             return canonical.clone();
+        }
+        if symbol.contains('/') {
+            if let Ok(registry) = crate::core::namespace_registry() {
+                if let Some(variable) = registry.resolve(&crate::lang::data::Symbol::parse(symbol)) {
+                    return variable.symbol().as_str().to_owned();
+                }
+            }
         }
         let Some((alias, method)) = symbol.split_once('/') else {
             return symbol.into();

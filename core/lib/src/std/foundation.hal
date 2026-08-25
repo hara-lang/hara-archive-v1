@@ -118,6 +118,9 @@
 (defn ^{:inline true :schema [:fn [:any] :set]}
   set "Converts value to a persistent set." [value] (Base/set value))
 
+(defn ^{:inline true :schema [:fn [:any] :int]}
+  hash "Returns the stable hash of value." [value] (Base/hash value))
+
 (defn ^{:inline true
         :schema [:function [:fn [] :any]
                            [:fn [:any] :any]
@@ -128,6 +131,12 @@
   ([value] (Base/uuid value))
   ([most-significant-bits least-significant-bits]
    (Base/uuid most-significant-bits least-significant-bits)))
+
+(defn ^{:inline true :schema [:fn [:any] :bool]}
+  uuid?
+  "Returns true when value has the portable UUID type."
+  [value]
+  (= (type value) :std.native.UUID))
 
 (defn ^{:schema [:fn [:any :any & :any] :any]}
   conj
@@ -189,9 +198,9 @@
 
 (defn ^{:inline true :schema [:fn [:any] :bool]}
   stream?
-  "Returns true when value implements the native stream contract."
+  "Returns true when value is a native stream."
   [value]
-  (satisfies? IStream value))
+  (Base/instance? Stream value))
 
 (defn ^{:inline true :schema [:fn [:map] :any]}
   pointer "Creates a context pointer from descriptor." [descriptor] (Base/pointer descriptor))
@@ -211,6 +220,55 @@
   "Creates a keyword with an optional namespace."
   ([name] (Base/keyword name))
   ([namespace name] (Base/keyword namespace name)))
+
+(defn ^{:inline true :schema [:fn [:any] :str]}
+  name
+  "Returns the local name of a named value."
+  [value]
+  (INamespaced/name value))
+
+(defn ^{:inline true :schema [:fn [:any] :str]}
+  namespace
+  "Returns the namespace of a named value, or nil."
+  [value]
+  (INamespaced/namespace value))
+
+(defn ^{:schema [:function [:fn [] :str]
+                            [:fn [:any & :any] :str]]}
+  str
+  "Concatenates the display text of values, omitting nil values."
+  ([] "")
+  ([value & more]
+   (reduce (fn [output item]
+             (if (nil? item)
+               output
+               (str output (IDisplay/display item))))
+           (if (nil? value) "" (IDisplay/display value))
+           more)))
+
+(defn ^{:inline true :schema [:fn [:any] :str]}
+  pr-str
+  "Returns the display representation of a value."
+  [value]
+  (IDisplay/display value))
+
+(defn ^{:schema [:fn [& :any] :any]}
+  p
+  "Writes values without a trailing newline."
+  [& values]
+  (apply Printer/p values))
+
+(defn ^{:schema [:fn [& :any] :any]}
+  println
+  "Writes values separated by spaces and terminated by a newline."
+  [& values]
+  (apply Printer/println values))
+
+(defn ^{:inline true :schema [:fn [:fn] :str]}
+  capture
+  "Captures printer output produced by a zero-argument function."
+  [function]
+  (Printer/capture function))
 
 (defn ^{:inline true :schema [:fn [:any] :any]}
   reduced "Wraps value as an early reduction result." [value] (Base/reduced value))
@@ -438,6 +496,12 @@
 (defn ^{:inline true :schema [:fn [] :symbol]}
   env-current "Returns the active namespace symbol." [] (Runtime/current))
 
+(defn ^{:inline true :schema [:fn [] :symbol]}
+  current-namespace
+  "Returns the active namespace symbol."
+  []
+  (Runtime/current))
+
 (defn ^{:inline true :schema [:fn [] :map]}
   env-snapshot "Returns a stable descriptor of the current environment." [] (Runtime/snapshot))
 
@@ -529,6 +593,12 @@
   "Reads every top-level form from a capability-gated HAL source file."
   [path]
   (Edn/read-forms path))
+
+(defn ^{:inline true :schema [:fn [:str] :any]}
+  read-string
+  "Reads one EDN/Hara value from text."
+  [text]
+  (Edn/read text))
 
 ;; ---------------------------------------------------------------------------
 ;; Completed outcomes
@@ -2364,7 +2434,7 @@
                      (if last?
                        (thread-last-form '% step)
                        (thread-first-form '% step)))]
-      (list 'let ['% value]
+      (list 'let [(symbol "%") value]
             (thread-forms threaded (vec (rest forms)) last?)))))
 
 (defn- ^{:schema [:fn [:any :any] :any]}

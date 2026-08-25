@@ -61,6 +61,7 @@ pub fn embedded_foundation_bootstrap_sources() -> Vec<ModuleSource<'static>> {
 
 pub fn compile_bytecode_bundle(sources: &[ModuleSource<'_>]) -> Result<Vec<u8>, String> {
     let mut runtime = Runtime::core();
+    core::install_foundation_intrinsics(&runtime.namespace_registry);
     for &(name, _, source) in EMBEDDED_HAL_RESOURCES {
         runtime.register_resource(name, source);
     }

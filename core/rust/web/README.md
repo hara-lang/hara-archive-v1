@@ -12,9 +12,10 @@ assets. The pages deploy copies the runtime-facing pieces under
 - `packages/hta/` — the publishable `@hara-lang/hta` package: HTA0 codecs,
   browser hosts, and reusable Node/browser provider transports. It is the
   only supported HTA browser package entry point.
-- `packages/hta/worker.js` — the raw HTA worker: `HtaContext` drives one
-  browser-release Wasm instance inside a Web Worker over the `HTA0` binary
-  wire format, with handles and the promise-provider contract
+- `packages/hta/worker.mjs` — the runtime-owned generic HTA worker: `HtaContext`
+  drives one browser-release Wasm instance or one declared provider inside a
+  Web Worker over the `HTA0` binary wire format, with handles and the
+  promise-provider contract
   (`specs/01-lang/008-hta/draft/hal-hta-contract.md`).
 - `index.html` / `playground.js` — the wasm-bindgen playground page for the
   in-browser Hara runtime.

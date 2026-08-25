@@ -151,7 +151,7 @@ fn supported_forms_match_the_existing_evaluator() {
         "(- 10 1 2 3)",
         "(* 2 3 4)",
         "(/ 100 4 5)",
-        "(% 100 7)",
+        "(mod 100 7)",
         "(mod -7 3)",
         "(< 1 2 3 4)",
         "(<= 1 1 2)",

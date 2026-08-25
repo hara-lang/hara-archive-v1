@@ -81,4 +81,18 @@ public class HaraExtensionManifestTest {
             HaraExtensionManifest.parse(
                 base.replace(":capabilities []", ":capabilities [] :extra true"), "test"));
   }
+
+  @Test
+  public void htaTargetsNameProviderImplementationsNotWorkers() {
+    String source =
+        "{:namespace \"demo.hta\" :version \"1\" :provider :hta :abi :hta.v1 "
+            + ":targets {:node {:provider \"node/provider.mjs\" :runtime :process} "
+            + ":browser {:provider \"browser/provider.mjs\" :runtime :web-worker}} "
+            + ":exports {\"open\" {:args [] :returns :value}} :capabilities []}";
+    HaraExtensionManifest manifest = HaraExtensionManifest.parse(source, "test");
+    assertEquals("browser/provider.mjs", manifest.target("browser").provider());
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> HaraExtensionManifest.parse(source.replace(":provider \"browser/provider.mjs\"", ":module \"browser/worker.mjs\""), "test"));
+  }
 }

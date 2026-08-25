@@ -2,7 +2,7 @@
 /// source. Ordinary Foundation functions and compatibility aliases are
 /// intentionally absent; they are defined by the source modules themselves.
 const FOUNDATION_INTRINSICS: &[&str] = &[
-    "+", "-", "*", "/", "%", "=", "<", "<=", ">", ">=", "quot", "rem", "mod",
+    "+", "-", "*", "/", "=", "<", "<=", ">", ">=", "quot", "rem", "mod",
 ];
 
 /// Installs the small language-level callable substrate needed while loading
@@ -15,6 +15,13 @@ pub fn install_foundation_intrinsics(namespaces: &NamespaceRegistry<Value>) {
         let qualified = Symbol::parse(&declaration.qualified_name());
         if let Some(descriptor) = namespaces.resolve(&qualified) {
             foundation.map_var(Symbol::parse(declaration.name), descriptor);
+        }
+    }
+    for (name, _) in foundation_protocol_values() {
+        let namespace = builtin_protocol_namespace(&name);
+        let qualified = Symbol::parse(&format!("{namespace}/{name}"));
+        if let Some(protocol) = namespaces.resolve(&qualified) {
+            foundation.map_var(Symbol::parse(&name), protocol);
         }
     }
     for name in FOUNDATION_INTRINSICS {
@@ -71,7 +78,9 @@ pub fn minimal_namespace_registry() -> NamespaceRegistry<Value> {
     }
 
     for (name, protocol) in foundation_protocol_values() {
-        let namespace_name = builtin_protocol_namespace(&name);
+        let declaration = crate::lang::protocol::find_protocol(&name)
+            .unwrap_or_else(|| panic!("annotated protocol declaration missing: {name}"));
+        let namespace_name = declaration.runtime_name();
         let namespace = namespaces.find_or_create(&namespace_name);
         let var = crate::kernel::Var::with_metadata(
             &namespace_name,
@@ -125,7 +134,9 @@ mod tests {
         }
 
         for (protocol, method) in [("IAssoc", "assoc"), ("IPeekFirst", "peek-first")] {
-            let canonical = builtin_protocol_namespace(protocol);
+            let canonical = crate::lang::protocol::find_protocol(protocol)
+                .expect("protocol declaration")
+                .runtime_name();
             let namespace = namespaces.find(&canonical).expect("protocol namespace");
             let var = namespace
                 .resolve(&Symbol::parse(protocol))

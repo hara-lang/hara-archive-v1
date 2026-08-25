@@ -395,54 +395,6 @@ fn literal_value(form: &Form) -> Result<Value, String> {
     }
 }
 
-fn generated_function(
-    params: Vec<String>,
-    body: Vec<Form>,
-    mut captured: HashMap<String, Value>,
-    bindings: Vec<(&str, Value)>,
-) -> Value {
-    for (name, value) in bindings {
-        captured.insert(name.to_string(), value);
-    }
-    Value::Function(Rc::new(Function {
-        patterns: params.iter().cloned().map(Form::Symbol).collect(),
-        params,
-        variadic: None,
-        variadic_pattern: None,
-        body,
-        captured: Rc::new(RefCell::new(captured)),
-        name: None,
-        namespace: function_definition_namespace(),
-        native: None,
-        fiber_native: None,
-        clauses: Vec::new(),
-        metadata: None,
-        is_macro: false,
-    }))
-}
-
-fn generated_unary_operation(
-    operation: &str,
-    parameter: Value,
-    env: HashMap<String, Value>,
-) -> Value {
-    let body = Form::List(vec![
-        Form::Symbol("__iterator-transform".into()),
-        Form::Symbol("__operation".into()),
-        Form::Symbol("__parameter".into()),
-        Form::Symbol("value".into()),
-    ]);
-    generated_function(
-        vec!["value".into()],
-        vec![body],
-        env,
-        vec![
-            ("__operation", Value::String(operation.to_string())),
-            ("__parameter", parameter),
-        ],
-    )
-}
-
 fn function_parts(
     form: &Form,
 ) -> Result<(Vec<String>, Option<String>, Vec<Form>, Option<Form>), String> {
@@ -792,6 +744,17 @@ fn binding_value(env: &HashMap<String, Value>, name: &str) -> Option<Value> {
                 .map(|var| var.deref_value())
         })
         .or_else(|| {
+            let registry = namespace_registry().ok()?;
+            let local = crate::lang::data::Symbol::parse(name);
+            if name.contains('/') || !registry.current().foundation_visible(&local) {
+                return None;
+            }
+            registry
+                .find("std.foundation")
+                .and_then(|foundation| foundation.resolve(&local))
+                .map(|var| var.deref_value())
+        })
+        .or_else(|| {
             let (qualifier, local) = name.rsplit_once('/')?;
             let registry = namespace_registry().ok()?;
             (registry.current().name().as_str() == qualifier)
@@ -857,6 +820,11 @@ pub(crate) fn call_value(callable: Value, arguments: Vec<Value>) -> Result<Value
         |target: &Value, key: &Value, fallback: Value| collection_get(target, key, fallback);
     match callable {
         Value::Function(function) => call_function(&function, arguments),
+        Value::Namespace(namespace) => namespace
+            .resolve(&crate::lang::data::Symbol::parse("run"))
+            .map(|var| var.deref_value())
+            .ok_or_else(|| format!("namespace is not callable: {}", namespace.name().as_str()))
+            .and_then(|function| call_value(function, arguments)),
         Value::StructType(ty) => Ok(Value::Struct(Rc::new(StructValue::from_values(
             ty, arguments, None,
         )?))),

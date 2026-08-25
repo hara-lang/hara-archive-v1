@@ -66,7 +66,7 @@ impl ProtocolRegistry {
             self.register_declared(protocol, method, function);
             return;
         }
-        let protocol = canonical_protocol_name(&protocol);
+        let protocol = protocol;
         let supported_protocol = protocol.clone();
         self.register_when(
             protocol,
@@ -109,7 +109,7 @@ impl ProtocolRegistry {
     {
         self.markers
             .borrow_mut()
-            .entry(canonical_protocol_name(&protocol.into()))
+            .entry(protocol.into())
             .or_default()
             .push(Rc::new(supports));
     }
@@ -134,7 +134,7 @@ impl ProtocolRegistry {
         S: Fn(&Value) -> bool + 'static,
         F: Fn(&[Value]) -> Result<Value, String> + 'static,
     {
-        let protocol = canonical_protocol_name(&protocol.into());
+        let protocol = protocol.into();
         self.methods
             .borrow_mut()
             .entry((protocol, method.into()))
@@ -164,7 +164,7 @@ impl ProtocolRegistry {
             (
                 provider.into(),
                 type_name.into(),
-                canonical_protocol_name(&protocol.into()),
+                protocol.into(),
                 method.into(),
             ),
             Rc::new(function),
@@ -196,7 +196,7 @@ impl ProtocolRegistry {
         let key = (
             receiver.provider.clone(),
             receiver.type_name.clone(),
-            canonical_protocol_name(protocol),
+            protocol.to_owned(),
             method.to_owned(),
         );
         self.extension_methods
@@ -228,7 +228,7 @@ impl ProtocolRegistry {
     ) {
         self.guest_methods.borrow_mut().insert(
             (
-                canonical_protocol_name(&protocol.into()),
+                protocol.into(),
                 type_name.into(),
                 method.into(),
             ),
@@ -239,11 +239,11 @@ impl ProtocolRegistry {
     pub fn declare_guest(&self, protocol: impl Into<String>, method: impl Into<String>) {
         self.guest_declarations
             .borrow_mut()
-            .insert((canonical_protocol_name(&protocol.into()), method.into()));
+            .insert((protocol.into(), method.into()));
     }
 
     pub fn replace_guest_protocol(&self, protocol: impl Into<String>) {
-        let protocol = canonical_protocol_name(&protocol.into());
+        let protocol = protocol.into();
         self.guest_declarations
             .borrow_mut()
             .retain(|(candidate, _)| candidate != &protocol);
@@ -258,24 +258,7 @@ impl ProtocolRegistry {
         method: &str,
         arguments: &[Value],
     ) -> Result<Value, String> {
-        let qualified;
-        let protocol = if protocol.contains('/') {
-            qualified = canonical_protocol_name(protocol);
-            qualified.as_str()
-        } else if self
-            .methods
-            .borrow()
-            .contains_key(&(protocol.to_owned(), method.to_owned()))
-            || self
-                .guest_declarations
-                .borrow()
-                .contains(&(protocol.to_owned(), method.to_owned()))
-        {
-            protocol
-        } else {
-            qualified = canonical_protocol_name(protocol);
-            qualified.as_str()
-        };
+        let protocol = protocol;
         let known_method = self
             .methods
             .borrow()
@@ -286,7 +269,7 @@ impl ProtocolRegistry {
                 .contains(&(protocol.to_owned(), method.to_owned()))
             || protocol_declarations()
                 .iter()
-                .any(|declaration| builtin_protocol_name(declaration.name) == protocol);
+                .any(|declaration| declaration.runtime_name() == protocol);
         if !known_method {
             return Err(format!("missing protocol method: {protocol}/{method}"));
         }
@@ -336,7 +319,7 @@ impl ProtocolRegistry {
             .contains(&(protocol.to_owned(), method.to_owned()))
             || protocol_declarations()
                 .iter()
-                .any(|declaration| builtin_protocol_name(declaration.name) == protocol)
+                .any(|declaration| declaration.runtime_name() == protocol)
         {
             Err(last_error)
         } else {
@@ -345,10 +328,9 @@ impl ProtocolRegistry {
     }
 
     pub fn contains(&self, protocol: &str, method: &str) -> bool {
-        let protocol = canonical_protocol_name(protocol);
         let methods = self.methods.borrow();
         methods
-            .get(&(protocol, method.to_string()))
+            .get(&(protocol.to_owned(), method.to_string()))
             .is_some_and(|implementations| !implementations.is_empty())
     }
 
@@ -359,7 +341,7 @@ impl ProtocolRegistry {
         }) {
             return false;
         }
-        let protocol_name = canonical_protocol_name(&protocol.name);
+        let protocol_name = protocol.name.clone();
         if protocol.methods.is_empty() {
             if let Some(implementations) = self.markers.borrow().get(&protocol_name) {
                 return implementations.iter().rev().any(|supports| supports(value));

@@ -65,7 +65,7 @@ test("HARP inspection verifies every file and activates namespaces atomically", 
   const manifest = encoder.encode(
     `{:harp/format \"0.0.0-alpha\"\n :package {:identity "example/app" :version "1.0.0"}\n`
     + ` :files {\n${declarations}} :resources {"example.main" "src/example/main.hal" "example.fast" "halc/example.fast.halc"}`
-    + ` :extensions {demo.extension {:targets {:browser {:module "src/example/main.hal"}}}}\n`
+    + ` :extensions {demo.extension {:targets {:browser {:provider "src/example/main.hal"}}}}\n`
     + ` :integrity {:tree-sha256 ${JSON.stringify(await sha256(treeBytes))}}}\n`
   );
   const archiveBytes = storedZip(new Map([["package.edn", manifest], ...files]));

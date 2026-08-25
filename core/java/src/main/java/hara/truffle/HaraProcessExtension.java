@@ -115,7 +115,7 @@ final class HaraProcessExtension implements HaraExtensionRuntime {
     if (closed.get()) throw new HaraException("hta/process-closed: " + manifest.namespace());
     if (process != null && process.isAlive()) return;
     HaraExtensionManifest.Target target = manifest.target("node");
-    Path module = extensionPackage.file(target.module());
+    Path module = extensionPackage.file(target.provider());
     String node = System.getProperty("hara.node.command", "");
     if (node.isBlank()) node = System.getenv().getOrDefault("HARA_NODE", "node");
     try {

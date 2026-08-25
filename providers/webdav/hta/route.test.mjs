@@ -18,7 +18,7 @@ test("WebDAV declares one exact HTA browser route and host authority", async () 
   assert.equal(manifest.provider, "hta");
   assert.equal(manifest.abi, "hta.v1");
   assert.deepEqual(manifest.browserTarget, {
-    module: "browser/worker.mjs",
+    provider: "browser/provider.mjs",
     runtime: "web-worker"
   });
   assert.deepEqual(sorted(manifest.capabilities), ["filesystem", "network"]);

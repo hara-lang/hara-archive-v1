@@ -3,6 +3,7 @@ import { unzipSync } from "fflate";
 import {
   HtaKeyword,
   HtaSymbol,
+  HTA_BROWSER_WORKER_URL,
   loadHtaExtension,
   parseEdnData,
   parseHtaManifest
@@ -299,7 +300,7 @@ async function loadLockedPackageArtifacts(
       const descriptor = extensionDescriptor(namespace, declaration, version);
       const parsed = parseHtaManifest(descriptor);
       for (const asset of [
-        parsed.provider === "wasm" ? parsed.module : parsed.browserTarget?.module,
+        parsed.provider === "wasm" ? parsed.module : parsed.browserTarget?.provider,
         ...parsed.assets
       ]) {
         const path = archivePath(root, asset);
@@ -416,11 +417,12 @@ async function activateBrowserHtaExtensions(runtime, extensions, options = {}) {
       }
       const hostCalls = extensionHostCalls(extension.manifest, options.hostCalls);
       const root = manifestField(extension.declaration, "root") ?? "";
-      const modulePath = archivePath(root, extension.manifest.browserTarget.module);
-      const moduleBytes = extension.files.get(modulePath);
-      if (!moduleBytes) throw new Error(`package/extension-asset-missing:${extension.namespace}:${modulePath}`);
+      const providerPath = archivePath(root, extension.manifest.browserTarget.provider);
+      const providerBytes = extension.files.get(providerPath);
+      if (!providerBytes) throw new Error(`package/extension-asset-missing:${extension.namespace}:${providerPath}`);
       const assetBytes = new Map();
       const assetUrls = new Map();
+      assetBytes.set(providerPath, providerBytes);
       for (const asset of extension.manifest.assets) {
         const path = archivePath(root, asset);
         const bytes = extension.files.get(path);
@@ -450,13 +452,8 @@ async function activateBrowserHtaExtensions(runtime, extensions, options = {}) {
         return url;
       };
       for (const path of assetBytes.keys()) assetUrl(path);
-      const moduleSource = rewriteAssetReferences(
-        textDecoder.decode(moduleBytes),
-        modulePath,
-        assetUrls
-      );
-      const workerUrl = createUrl(new TextEncoder().encode(moduleSource), modulePath);
-      const worker = workerFactory(workerUrl, {
+      const providerUrl = assetUrl(providerPath);
+      const worker = workerFactory(options.workerUrl ?? HTA_BROWSER_WORKER_URL, {
         type: "module",
         name: `hara-${extension.namespace}`
       });
@@ -464,6 +461,7 @@ async function activateBrowserHtaExtensions(runtime, extensions, options = {}) {
       records.push(record);
       const context = await loadHtaExtension({
         worker,
+        providerUrl,
         descriptor: extension.descriptor,
         hostCalls
       });

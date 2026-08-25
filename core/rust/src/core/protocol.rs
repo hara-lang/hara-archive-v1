@@ -627,6 +627,28 @@ fn protocol_deref(arguments: &[Value]) -> Result<Value, String> {
     }
 }
 
+pub(crate) fn protocol_deref_fiber(arguments: Vec<Value>, k: Cont) -> Step {
+    match arguments.as_slice() {
+        [Value::Promise(promise)] => match promise.state() {
+            PromiseState::Fulfilled(value) => k(Ok(value)),
+            PromiseState::Rejected(error) => k(Err(promise_rejection_error(error))),
+            PromiseState::Pending => Step::Wait(
+                promise.clone(),
+                Box::new(move |state| match state {
+                    PromiseState::Fulfilled(value) => k(Ok(value)),
+                    PromiseState::Rejected(error) => k(Err(promise_rejection_error(error))),
+                    PromiseState::Pending => k(Err("deref resumed pending promise".into())),
+                }),
+            ),
+        },
+        _ => k(protocol_call(
+            "std.protocol.ideref.IDeref",
+            "deref",
+            &arguments,
+        )),
+    }
+}
+
 fn protocol_deref_timeout(arguments: &[Value]) -> Result<Value, String> {
     let [target, milliseconds, timeout] = arguments else {
         return Err("IDerefTimeout/deref-timeout expects three arguments".into());
@@ -1116,6 +1138,10 @@ fn native_base_values(operation: &str, values: &[Value]) -> Result<Value, String
         "unreduced" => match values {
             [value] => Ok(unreduced_value(value.clone())),
             _ => Err("Base/unreduced expects one value".into()),
+        },
+        "hash" => match values {
+            [value] => Ok(Value::Number(value.stable_hash() as i64)),
+            _ => Err("Base/hash expects one value".into()),
         },
         "apply" => {
             if values.len() < 2 {
@@ -2026,7 +2052,14 @@ impl Value {
     fn supports_native_ilookup(value: &Self) -> bool {
         matches!(value, Self::Nil)
             || Self::supports_native_map(value)
-            || matches!(value, Self::Vector(_) | Self::Tuple(_) | Self::Pointer(_))
+            || matches!(
+                value,
+                Self::Vector(_)
+                    | Self::Tuple(_)
+                    | Self::Pointer(_)
+                    | Self::Struct(_)
+                    | Self::Mutable(_)
+            )
             || mutable_map_satisfies(value)
     }
     fn supports_native_ideref(value: &Self) -> bool {
@@ -2237,13 +2270,6 @@ fn protocol_satisfies(protocol: &GuestProtocol, value: &Value) -> bool {
             .unwrap_or_else(ProtocolRegistry::core)
             .satisfies(protocol, value)
     })
-}
-
-fn promise_value(value: &Value, operation: &str) -> Result<Promise, String> {
-    match value {
-        Value::Promise(promise) => Ok(promise.clone()),
-        _ => Err(format!("{operation} expects a promise")),
-    }
 }
 
 fn promise_state_value(promise: &Promise) -> Value {

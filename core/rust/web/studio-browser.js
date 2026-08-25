@@ -33,7 +33,7 @@ const capabilityRegistry = new CapabilityRegistry({ adapters: {
 } });
 const graphHost = new GraphHost({ workerUrl: "./studio/program-worker.js", sessionRouter, capabilityRegistry });
 const broker = createBrowserBroker({
-  workerUrl: "./packages/hta/worker.js",
+  workerUrl: "./packages/hta/worker.mjs",
   moduleBytes: bytes,
   hostCalls: createHostServices({ canvasRuntime, graphHost, graphHostOptions: { sessionRouter } }),
   resources,

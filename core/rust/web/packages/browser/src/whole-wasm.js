@@ -4,6 +4,8 @@ const ERRORS = new Map([
   [3, "array index out of bounds"],
   [4, "object key not found"]
 ]);
+const HNW0_OPERATION_REGISTRY_DIGEST =
+  "d8b2cd6097d17600d5a534186d27ea2744f4c8057b779b2c6d0b7f9727623e2a";
 
 function readU32(bytes, offset) {
   return new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
@@ -29,7 +31,7 @@ export function decodeHnw0(input) {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const abiVersion = view.getUint16(offset, false);
   offset += 2;
-  if (abiVersion !== 4) throw new Error(`unsupported HNW ABI version ${abiVersion}`);
+  if (abiVersion !== 5) throw new Error(`unsupported HNW ABI version ${abiVersion}`);
   const functionCount = readU16(view, offset);
   offset += 2;
   const functions = [];
@@ -82,6 +84,17 @@ export function decodeHnw0(input) {
       symbol
     });
   }
+  if (offset + 32 > payloadEnd) {
+    throw new Error("native artifact operation registry digest is truncated");
+  }
+  const operationRegistryDigest = bytes.slice(offset, offset + 32);
+  offset += 32;
+  const operationRegistryHex = [...operationRegistryDigest]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+  if (operationRegistryHex !== HNW0_OPERATION_REGISTRY_DIGEST) {
+    throw new Error("native artifact operation registry digest mismatch");
+  }
   if (offset + 4 > payloadEnd) {
     throw new Error("native artifact contains malformed sections");
   }
@@ -104,7 +117,16 @@ export function decodeHnw0(input) {
   if (String.fromCharCode(...wasm.subarray(0, 4)) !== "\0asm") {
     throw new Error("native artifact contains invalid Wasm");
   }
-  return { abiVersion, functionCount, functions, capabilities, targets, hbc, wasm };
+  return {
+    abiVersion,
+    functionCount,
+    functions,
+    capabilities,
+    targets,
+    operationRegistryDigest,
+    hbc,
+    wasm
+  };
 }
 
 function hostImports(host, getMemory) {

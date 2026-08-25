@@ -283,6 +283,7 @@ fn binary_i64(op: IntrinsicOp) -> bool {
             | IntrinsicOp::Multiply
             | IntrinsicOp::Divide
             | IntrinsicOp::Remainder
+            | IntrinsicOp::Modulo
             | IntrinsicOp::Less
             | IntrinsicOp::LessOrEqual
             | IntrinsicOp::Greater

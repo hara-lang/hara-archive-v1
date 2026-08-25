@@ -626,7 +626,7 @@ fn infer_list(items: &[Form], environment: &mut HashMap<String, SchemaType>) -> 
                 .last()
                 .unwrap_or_else(|| SchemaType::Primitive("nil".into()))
         }
-        "+" | "-" | "*" | "%" | "mod" => {
+        "+" | "-" | "*" | "mod" => {
             let operands = join_types(
                 items[1..]
                     .iter()

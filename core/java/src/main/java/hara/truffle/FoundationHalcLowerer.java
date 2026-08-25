@@ -111,7 +111,7 @@ final class FoundationHalcLowerer {
       case "ns+" -> lowerAnonymousNamespace(list);
       case "+" -> lowerAdd(list);
       case "-" -> lowerVariadicNumeric(list, HaraNodes.Numeric.Operator.SUBTRACT, 0L);
-      case "mod" -> lowerNumeric(list, HaraNodes.Numeric.Operator.REMAINDER);
+      case "mod" -> lowerNumeric(list, HaraNodes.Numeric.Operator.MODULO);
       case "=" -> lowerCompare(list, HaraNodes.Compare.Operator.EQUAL);
       case "<" -> lowerCompare(list, HaraNodes.Compare.Operator.LESS);
       case ">" -> lowerCompare(list, HaraNodes.Compare.Operator.GREATER);

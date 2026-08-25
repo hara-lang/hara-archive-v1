@@ -1878,7 +1878,8 @@ public final class HaraNodes {
       SUBTRACT,
       MULTIPLY,
       DIVIDE,
-      REMAINDER;
+      REMAINDER,
+      MODULO;
 
       private String symbol() {
         switch (this) {
@@ -1889,6 +1890,8 @@ public final class HaraNodes {
           case DIVIDE:
             return "/";
           case REMAINDER:
+            return "rem";
+          case MODULO:
             return "mod";
           default:
             throw unsupportedOperator(this);
@@ -1913,6 +1916,8 @@ public final class HaraNodes {
             return divideLongs(left, right);
           case REMAINDER:
             return remainderLongs(left, right);
+          case MODULO:
+            return moduloLongs(left, right);
           default:
             throw unsupportedOperator(this);
         }
@@ -1939,6 +1944,11 @@ public final class HaraNodes {
       }
 
       @TruffleBoundary
+      private Number moduloLongs(long left, long right) {
+        return Num.mod(left, right);
+      }
+
+      @TruffleBoundary
       private Number applyGeneric(Object left, Object right) {
         switch (this) {
           case SUBTRACT:
@@ -1949,6 +1959,8 @@ public final class HaraNodes {
             return Num.divide(left, right);
           case REMAINDER:
             return Num.remainder(left, right);
+          case MODULO:
+            return Num.mod(left, right);
           default:
             throw unsupportedOperator(this);
         }

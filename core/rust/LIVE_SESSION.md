@@ -126,7 +126,10 @@ now uses these names:
 | whole-wasm | standalone Wasm lowered from validated HBC |
 | extension-wasm | extension module loaded through the runtime extension ABI |
 
-Only `hbc-module` and `whole-wasm` are source compiler targets today.
+Only `hbc-module` and `whole-wasm` are source compiler targets today. The
+whole-Wasm product is the versioned HNW0 artifact described in
+[`HNW0_HTA_BOUNDARY.md`](HNW0_HTA_BOUNDARY.md); HTA0 remains an external value
+and lifecycle boundary rather than another source compiler target.
 `hara-compiler` exposes them through `CompileTarget` and the single
 `compile(source, target)` entry point. Target identity and ABI version are
 defined by `CompileTarget::product_identity`, so callers do not need to infer
@@ -154,10 +157,9 @@ must not recreate parsing, namespace reachability, tree shaking, or package
 selection. It consumes the validated HBC product produced by the shared front
 end.
 
-The explicit target API is the source/compiler seam. It does not rename the
-existing HBC or whole-Wasm file formats and does not claim an HNW format
-migration. Format versioning and build-product manifests remain separate,
-reviewable changes.
+The explicit target API is the source/compiler seam. HNW0 format versioning and
+build-product manifests remain separate, reviewable changes from the HTA0
+transport contract.
 
 ## Migration order
 

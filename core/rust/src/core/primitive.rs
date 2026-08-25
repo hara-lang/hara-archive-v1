@@ -8,6 +8,7 @@ pub enum IntrinsicOp {
     Multiply,
     Divide,
     Remainder,
+    Modulo,
     Equal,
     Less,
     LessOrEqual,
@@ -23,6 +24,7 @@ impl IntrinsicOp {
         IntrinsicOp::Multiply,
         IntrinsicOp::Divide,
         IntrinsicOp::Remainder,
+        IntrinsicOp::Modulo,
         IntrinsicOp::Equal,
         IntrinsicOp::Less,
         IntrinsicOp::LessOrEqual,
@@ -36,7 +38,7 @@ impl IntrinsicOp {
             "-" => IntrinsicOp::Subtract,
             "*" => IntrinsicOp::Multiply,
             "/" => IntrinsicOp::Divide,
-            "%" => IntrinsicOp::Remainder,
+            "mod" => IntrinsicOp::Modulo,
             "=" => IntrinsicOp::Equal,
             "<" => IntrinsicOp::Less,
             "<=" => IntrinsicOp::LessOrEqual,
@@ -46,15 +48,15 @@ impl IntrinsicOp {
         })
     }
 
-    /// Operator spelling used in error messages; `mod` reports as `%`,
-    /// matching the existing evaluator.
+    /// Canonical operator spelling used in errors and compiler diagnostics.
     pub fn operator(self) -> &'static str {
         match self {
             IntrinsicOp::Add => "+",
             IntrinsicOp::Subtract => "-",
             IntrinsicOp::Multiply => "*",
             IntrinsicOp::Divide => "/",
-            IntrinsicOp::Remainder => "%",
+            IntrinsicOp::Remainder => "rem",
+            IntrinsicOp::Modulo => "mod",
             IntrinsicOp::Equal => "=",
             IntrinsicOp::Less => "<",
             IntrinsicOp::LessOrEqual => "<=",
@@ -77,12 +79,15 @@ pub(crate) fn apply_intrinsic(primitive: IntrinsicOp, arguments: &[Value]) -> Re
         | IntrinsicOp::Subtract
         | IntrinsicOp::Multiply
         | IntrinsicOp::Divide
-        | IntrinsicOp::Remainder => {
+        | IntrinsicOp::Remainder
+        | IntrinsicOp::Modulo => {
             if arguments.is_empty() {
                 return Err(format!("{op} expects arguments"));
             }
-            if primitive == IntrinsicOp::Remainder && arguments.len() != 2 {
-                return Err("% expects two numbers".into());
+            if matches!(primitive, IntrinsicOp::Remainder | IntrinsicOp::Modulo)
+                && arguments.len() != 2
+            {
+                return Err(format!("{op} expects two numbers"));
             }
             if arguments.len() == 1 {
                 if primitive == IntrinsicOp::Subtract {
@@ -189,13 +194,15 @@ pub(crate) fn apply_binary_intrinsic(
         | IntrinsicOp::Subtract
         | IntrinsicOp::Multiply
         | IntrinsicOp::Divide
-        | IntrinsicOp::Remainder => {
+        | IntrinsicOp::Remainder
+        | IntrinsicOp::Modulo => {
             let operation = match primitive {
                 IntrinsicOp::Add => ArithmeticOp::Add,
                 IntrinsicOp::Subtract => ArithmeticOp::Subtract,
                 IntrinsicOp::Multiply => ArithmeticOp::Multiply,
                 IntrinsicOp::Divide => ArithmeticOp::Divide,
                 IntrinsicOp::Remainder => ArithmeticOp::Remainder,
+                IntrinsicOp::Modulo => ArithmeticOp::Modulo,
                 _ => unreachable!(),
             };
             return numeric::numeric_binary(operation, left, right).map_err(|error| {
@@ -253,7 +260,7 @@ fn apply_binary_numbers_promoting(
                 )
             }
         },
-        IntrinsicOp::Divide | IntrinsicOp::Remainder if right == 0 => {
+        IntrinsicOp::Divide | IntrinsicOp::Remainder | IntrinsicOp::Modulo if right == 0 => {
             return Err("division by zero".into())
         }
         IntrinsicOp::Divide => match left.checked_div(right) {
@@ -276,6 +283,20 @@ fn apply_binary_numbers_promoting(
                 )
             }
         },
+        IntrinsicOp::Modulo => {
+            if left == i64::MIN && right == -1 {
+                Value::Number(0)
+            } else {
+                let remainder = left
+                    .checked_rem(right)
+                    .expect("modulo overflow handled above");
+                if remainder == 0 || (remainder < 0) == (right < 0) {
+                    Value::Number(remainder)
+                } else {
+                    Value::Number(remainder + right)
+                }
+            }
+        }
         IntrinsicOp::Equal => Value::Bool(left == right),
         IntrinsicOp::Less
         | IntrinsicOp::LessOrEqual
@@ -294,25 +315,39 @@ fn apply_binary_numbers_promoting(
     Ok(result)
 }
 
-fn bit_operation(
-    op: &str,
-    args: &[Form],
-    env: &mut HashMap<String, Value>,
-) -> Result<Value, String> {
-    let op = match op.strip_prefix("std.native.Bits/").unwrap_or(op) {
-        "and" => "bit-and",
-        "or" => "bit-or",
-        "xor" => "bit-xor",
-        "not" => "bit-not",
-        "shift-left" => "bit-shift-left",
-        "shift-right" => "bit-shift-right",
-        operation => operation,
-    };
-    let values = args
-        .iter()
-        .map(|form| eval(form, env))
-        .collect::<Result<Vec<_>, _>>()?;
-    bit_values(op, &values)
+#[cfg(test)]
+mod primitive_tests {
+    use super::{apply_binary_intrinsic, apply_intrinsic_name, IntrinsicOp};
+    use crate::core::Value;
+
+    #[test]
+    fn compiler_aliases_keep_modulo_named_and_percent_unbound() {
+        assert_eq!(IntrinsicOp::from_symbol("%"), None);
+        assert_eq!(IntrinsicOp::from_symbol("mod"), Some(IntrinsicOp::Modulo));
+        assert_eq!(IntrinsicOp::from_symbol("+"), Some(IntrinsicOp::Add));
+        assert_eq!(IntrinsicOp::from_symbol("-"), Some(IntrinsicOp::Subtract));
+    }
+
+    #[test]
+    fn modulo_uses_the_divisor_sign_while_remainder_keeps_the_dividend_sign() {
+        assert_eq!(
+            apply_intrinsic_name("mod", &[Value::Number(-7), Value::Number(3)]).unwrap(),
+            Value::Number(2)
+        );
+        assert_eq!(
+            apply_intrinsic_name("mod", &[Value::Number(7), Value::Number(-3)]).unwrap(),
+            Value::Number(-2)
+        );
+        assert_eq!(
+            apply_binary_intrinsic(
+                IntrinsicOp::Remainder,
+                &Value::Number(-7),
+                &Value::Number(3),
+            )
+            .unwrap(),
+            Value::Number(-1)
+        );
+    }
 }
 
 fn bit_values(op: &str, values: &[Value]) -> Result<Value, String> {

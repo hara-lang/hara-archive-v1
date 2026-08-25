@@ -101,7 +101,7 @@ impl Runtime {
                     "extension/target-unsupported: node for {namespace}"
                 ));
             }
-            let module = package.resolve(&target.module)?;
+            let module = package.resolve(&target.provider)?;
             let provider = process_extension::ProcessExtensionProvider::new(module);
             return self.install_wasm_extension(
                 &package.source,

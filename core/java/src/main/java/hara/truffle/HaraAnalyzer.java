@@ -6,10 +6,12 @@ import com.oracle.truffle.api.source.SourceSection;
 import hara.lang.data.Keyword;
 import hara.lang.data.List;
 import hara.lang.data.Symbol;
+import hara.lang.data.TaggedLiteral;
 import hara.lang.protocol.IMapType;
 import hara.lang.protocol.ILinearType;
 import hara.lang.protocol.ISetType;
 import hara.lang.protocol.IObjType;
+import hara.kernel.builtin.BuiltinStruct;
 import hara.truffle.node.HaraExpressionNode;
 import hara.truffle.node.HaraNodes;
 import hara.truffle.node.HaraRootNode;
@@ -1950,6 +1952,15 @@ final class HaraAnalyzer {
     Object result = form.nth(1);
     for (int i = 2; i < form.count(); i++) {
       Object step = form.nth(i);
+      if (containsThreadPlaceholder(step)) {
+        result =
+            List.Standard.from(
+                null,
+                Symbol.create("let"),
+                BuiltinStruct.vector(new Object[] {Symbol.create("%"), result}),
+                step);
+        continue;
+      }
       if (step instanceof List<?>) {
         List<?> stepList = (List<?>) step;
         if (stepList.count() == 0) {
@@ -1970,6 +1981,49 @@ final class HaraAnalyzer {
       }
     }
     return result;
+  }
+
+  private boolean containsThreadPlaceholder(Object form) {
+    if (form instanceof Symbol symbol) {
+      return symbol.getNamespace() == null && "%".equals(symbol.getName());
+    }
+    if (form instanceof List<?> list) {
+      if (list.count() > 0 && list.nth(0) instanceof Symbol operator) {
+        String name = operator.getName();
+        if (operator.getNamespace() == null
+            && ("quote".equals(name) || "syntax-quote".equals(name))) {
+          return false;
+        }
+      }
+      for (Object value : list) {
+        if (containsThreadPlaceholder(value)) return true;
+      }
+      return false;
+    }
+    if (form instanceof IMapType<?, ?> map) {
+      for (Object rawEntry : map) {
+        java.util.Map.Entry<?, ?> entry = (java.util.Map.Entry<?, ?>) rawEntry;
+        if (containsThreadPlaceholder(entry.getKey())
+            || containsThreadPlaceholder(entry.getValue())) return true;
+      }
+      return false;
+    }
+    if (form instanceof ILinearType<?> linear) {
+      for (Object value : linear) {
+        if (containsThreadPlaceholder(value)) return true;
+      }
+      return false;
+    }
+    if (form instanceof ISetType<?> set) {
+      for (Object value : set) {
+        if (containsThreadPlaceholder(value)) return true;
+      }
+      return false;
+    }
+    if (form instanceof TaggedLiteral tagged) {
+      return containsThreadPlaceholder(tagged.form());
+    }
+    return false;
   }
 
   private HaraExpressionNode analyzeInvocation(List<?> form) {

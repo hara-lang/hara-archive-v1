@@ -98,12 +98,12 @@ export async function inspectHarp(input) {
     if (typeof root !== "string") throw new Error("package/extension-invalid");
     const base = root === "" ? "" : `${root.replace(/\/$/, "")}/`;
     const targets = field(declaration, "targets");
-    const targetModules = targets instanceof Map
-      ? [...targets.values()].map(target => target instanceof Map ? field(target, "module") : undefined)
+    const targetProviders = targets instanceof Map
+      ? [...targets.values()].map(target => target instanceof Map ? field(target, "provider") : undefined)
       : [];
     for (const asset of [
       ...([field(declaration, "module")].filter(Boolean)),
-      ...targetModules.filter(Boolean),
+      ...targetProviders.filter(Boolean),
       ...(field(declaration, "assets") ?? [])
     ]) {
       if (typeof asset !== "string" || !entries.has(`${base}${asset}`)) {

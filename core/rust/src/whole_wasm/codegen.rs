@@ -8,8 +8,8 @@ use wasm_encoder::{
 use crate::core::IntrinsicOp;
 
 use super::bridge::{
-    Target, HEAP_BASE, MAX_SLOTS, RESULT_BOOL, RESULT_HANDLE, RESULT_I64, SLOT_BOOL, SLOT_BYTES,
-    SLOT_CONSTANT, SLOT_HANDLE, SLOT_I64, SLOT_NIL,
+    operation_id, HEAP_BASE, MAX_SLOTS, RESULT_BOOL, RESULT_HANDLE, RESULT_I64, SLOT_BOOL,
+    SLOT_BYTES, SLOT_CONSTANT, SLOT_HANDLE, SLOT_I64, SLOT_NIL,
 };
 use super::ssa::{
     lower_program, operands, result as operation_result, verify, SsaEdge, SsaFunction,
@@ -931,7 +931,7 @@ fn emit_operation(
                 .collect::<Vec<_>>();
             emit_value_construct(
                 out,
-                Target::VectorConstruct.id(),
+                operation_id("hara.whole-wasm/vector")?,
                 &arguments,
                 locals.get(*destination),
             )?;
@@ -1030,7 +1030,7 @@ fn emit_operation(
                 .collect::<Vec<_>>();
             emit_value_construct(
                 out,
-                Target::MapConstruct.id(),
+                operation_id("hara.whole-wasm/map")?,
                 &arguments,
                 locals.get(*destination),
             )?;
@@ -1042,7 +1042,7 @@ fn emit_operation(
         } => {
             emit_value_construct(
                 out,
-                Target::MapConstruct.id(),
+                operation_id("hara.whole-wasm/map")?,
                 &[
                     BridgeArg::Local(locals.get(*key), representations[key.0 as usize]),
                     BridgeArg::Local(locals.get(*value), representations[value.0 as usize]),
@@ -1058,7 +1058,7 @@ fn emit_operation(
         } => {
             emit_target_call(
                 out,
-                Target::ProtocolAssoc.id(),
+                operation_id("std.protocol.iassoc.IAssoc/assoc")?,
                 &[
                     BridgeArg::Local(
                         locals.get(*collection),
@@ -1080,7 +1080,7 @@ fn emit_operation(
         } => {
             emit_value_construct(
                 out,
-                Target::MapConstruct.id(),
+                operation_id("hara.whole-wasm/map")?,
                 &[
                     BridgeArg::Local(
                         locals.get(*inner_key),
@@ -1092,7 +1092,7 @@ fn emit_operation(
             )?;
             emit_target_call(
                 out,
-                Target::ProtocolAssoc.id(),
+                operation_id("std.protocol.iassoc.IAssoc/assoc")?,
                 &[
                     BridgeArg::Local(
                         locals.get(*collection),
@@ -1115,7 +1115,7 @@ fn emit_operation(
         } => {
             emit_target_call(
                 out,
-                Target::ProtocolLookup.id(),
+                operation_id("std.protocol.ilookup.ILookup/lookup")?,
                 &[
                     BridgeArg::Local(
                         locals.get(*collection),
@@ -1134,7 +1134,7 @@ fn emit_operation(
         } => {
             emit_target_call(
                 out,
-                Target::ProtocolLookup.id(),
+                operation_id("std.protocol.ilookup.ILookup/lookup")?,
                 &[
                     BridgeArg::Local(
                         locals.get(*collection),
@@ -1154,7 +1154,7 @@ fn emit_operation(
         } => {
             emit_target_call(
                 out,
-                Target::ProtocolLookup.id(),
+                operation_id("std.protocol.ilookup.ILookup/lookup")?,
                 &[
                     BridgeArg::Local(
                         locals.get(*collection),
@@ -1167,7 +1167,7 @@ fn emit_operation(
             )?;
             emit_target_call(
                 out,
-                Target::ProtocolLookup.id(),
+                operation_id("std.protocol.ilookup.ILookup/lookup")?,
                 &[
                     BridgeArg::Local(temp_a, super::ir::Rep::TruthyHandle),
                     BridgeArg::Constant(*second_key),
@@ -1179,7 +1179,7 @@ fn emit_operation(
         MirOp::IsNumber { destination, value } => {
             emit_target_call(
                 out,
-                Target::NativeNumber.id(),
+                operation_id("std.native.Base/number?")?,
                 &[BridgeArg::Local(
                     locals.get(*value),
                     representations[value.0 as usize],
@@ -1202,7 +1202,7 @@ fn emit_operation(
         } => {
             emit_target_call(
                 out,
-                Target::ProtocolCount.id(),
+                operation_id("std.protocol.icount.ICount/count")?,
                 &[BridgeArg::Local(
                     locals.get(*collection),
                     representations[collection.0 as usize],
@@ -1232,7 +1232,7 @@ fn emit_operation(
         } => {
             emit_target_call(
                 out,
-                target_id("std.protocol.inth.INth/nth"),
+                operation_id("std.protocol.inth.INth/nth")?,
                 &[
                     BridgeArg::Local(
                         locals.get(*collection),
@@ -1364,6 +1364,36 @@ where
             } else {
                 Instruction::I64RemS
             });
+        }
+        IntrinsicOp::Modulo => {
+            out.instruction(&Instruction::LocalGet(b));
+            out.instruction(&Instruction::I64Eqz);
+            out.instruction(&Instruction::If(BlockType::Empty));
+            emit_error(out, ERROR_DIVISION_BY_ZERO);
+            out.instruction(&Instruction::End);
+            out.instruction(&Instruction::LocalGet(a));
+            out.instruction(&Instruction::LocalGet(b));
+            out.instruction(&Instruction::I64RemS);
+            out.instruction(&Instruction::LocalSet(result));
+            out.instruction(&Instruction::LocalGet(result));
+            out.instruction(&Instruction::I64Eqz);
+            out.instruction(&Instruction::If(BlockType::Empty));
+            out.instruction(&Instruction::Else);
+            out.instruction(&Instruction::LocalGet(result));
+            out.instruction(&Instruction::I64Const(0));
+            out.instruction(&Instruction::I64LtS);
+            out.instruction(&Instruction::LocalGet(b));
+            out.instruction(&Instruction::I64Const(0));
+            out.instruction(&Instruction::I64LtS);
+            out.instruction(&Instruction::I64Xor);
+            out.instruction(&Instruction::If(BlockType::Empty));
+            out.instruction(&Instruction::LocalGet(result));
+            out.instruction(&Instruction::LocalGet(b));
+            out.instruction(&Instruction::I64Add);
+            out.instruction(&Instruction::LocalSet(result));
+            out.instruction(&Instruction::End);
+            out.instruction(&Instruction::End);
+            out.instruction(&Instruction::LocalGet(result));
         }
         IntrinsicOp::Equal
         | IntrinsicOp::Less

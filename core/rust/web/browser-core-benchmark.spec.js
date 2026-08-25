@@ -11,7 +11,7 @@ test("benchmark the modular browser interpreter core", async ({ page }) => {
     const corpus = await fetch("/lib/bench/lisp-hara/general-workloads.json").then((response) => response.json());
     const { HtaContext } = await import("/rust/web/packages/hta/index.js");
     const moduleBytes = await fetch("/rust/raw/target/wasm32-unknown-unknown/browser-release/hara-wasm-core.wasm").then((response) => response.arrayBuffer());
-    const workerUrl = "/rust/web/packages/hta/worker.js";
+    const workerUrl = "/rust/web/packages/hta/worker.mjs";
     const createContext = async () => {
       const context = new HtaContext({ worker: new Worker(workerUrl, { type: "module" }), moduleBytes });
       await context.ready;

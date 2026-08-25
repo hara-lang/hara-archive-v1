@@ -1120,7 +1120,8 @@ public final class HbcMachine {
       case SUBTRACT -> "-";
       case MULTIPLY -> "*";
       case DIVIDE -> "/";
-      case REMAINDER -> "mod";
+      case REMAINDER -> "rem";
+      case MODULO -> "mod";
       case EQUAL -> "=";
       case LESS -> "<";
       case LESS_OR_EQUAL -> "<=";
@@ -1183,7 +1184,8 @@ public final class HbcMachine {
           arguments);
     } catch (RuntimeException failure) {
       if ((primitive == HbcProgram.Primitive.DIVIDE
-              || primitive == HbcProgram.Primitive.REMAINDER)
+              || primitive == HbcProgram.Primitive.REMAINDER
+              || primitive == HbcProgram.Primitive.MODULO)
           && failure.getMessage() != null
           && failure.getMessage().toLowerCase(java.util.Locale.ROOT).contains("divide by zero")) {
         throw new HaraException("division by zero");
@@ -1199,9 +1201,7 @@ public final class HbcMachine {
     for (HbcProgram.Primitive primitive : HbcProgram.Primitive.values()) {
       String primitiveName = primitiveName(primitive.id());
       if (primitiveName.equals(name)
-          || (foundationQualified && !primitiveName.contains("/") && primitiveName.equals(local))
-          || (primitive == HbcProgram.Primitive.REMAINDER
-              && ("%".equals(name) || (foundationQualified && "%".equals(local))))) {
+          || (foundationQualified && !primitiveName.contains("/") && primitiveName.equals(local))) {
         return primitive.id();
       }
     }

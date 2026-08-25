@@ -295,13 +295,7 @@ pub(crate) fn protocol_declarations() -> &'static [crate::lang::protocol::Protoc
 pub fn builtin_protocol_namespace(protocol: &str) -> String {
     let simple = protocol.strip_prefix("std.foundation/").unwrap_or(protocol);
     crate::lang::protocol::find_protocol(simple)
-        .map(|declaration| {
-            if declaration.namespace.ends_with(&format!(".{}", declaration.name)) {
-                declaration.namespace.to_owned()
-            } else {
-                format!("{}.{}", declaration.namespace, declaration.name)
-            }
-        })
+        .map(|declaration| declaration.runtime_name())
         .unwrap_or_else(|| {
             if simple.starts_with("std.protocol.") {
                 simple.to_owned()
@@ -319,32 +313,35 @@ pub(crate) fn builtin_protocol_name(protocol: &str) -> String {
 }
 
 pub(crate) fn canonical_protocol_name(protocol: &str) -> String {
-    let simple = protocol.strip_prefix("std.foundation/").unwrap_or(protocol);
-    crate::lang::protocol::find_protocol(simple)
-        .map(|declaration| declaration.runtime_name())
-        .unwrap_or_else(|| protocol.to_owned())
+    builtin_protocol_name(protocol)
 }
 
 pub(crate) fn canonical_intrinsic_protocol_symbol(symbol: &str) -> Option<String> {
-    if let Some((protocol, method)) = symbol.rsplit_once('/') {
-        let canonical = canonical_protocol_name(protocol);
-        if canonical != protocol {
-            return Some(format!("{canonical}/{method}"));
-        }
-        return None;
+    let (protocol, method) = symbol.rsplit_once('/')?;
+    let canonical = canonical_protocol_name(protocol);
+    (canonical != protocol).then(|| format!("{canonical}/{method}"))
+}
+
+/// Resolves the short spelling of an annotated native type to its registered
+/// namespace. Protocol names deliberately do not go through this function:
+/// their aliases are installed from the protocol declaration registry and
+/// ordinary namespace resolution must handle them like every other alias.
+pub(crate) fn canonical_native_symbol(symbol: &str) -> Option<String> {
+    if NATIVE_DECLARATIONS
+        .iter()
+        .any(|declaration| declaration.name == symbol)
+    {
+        return Some(format!("std.native.{symbol}"));
     }
-    let canonical = canonical_protocol_name(symbol);
-    (canonical != symbol).then_some(canonical)
+    let (native_type, method) = symbol.rsplit_once('/')?;
+    NATIVE_DECLARATIONS
+        .iter()
+        .any(|declaration| declaration.name == native_type)
+        .then(|| format!("std.native.{native_type}/{method}"))
 }
 
 pub(crate) fn canonical_intrinsic_symbol(symbol: &str) -> Option<String> {
-    canonical_intrinsic_protocol_symbol(symbol).or_else(|| {
-        let (native_type, method) = symbol.rsplit_once('/')?;
-        NATIVE_DECLARATIONS
-            .iter()
-            .any(|declaration| declaration.name == native_type)
-            .then(|| format!("std.native.{native_type}/{method}"))
-    })
+    canonical_intrinsic_protocol_symbol(symbol).or_else(|| canonical_native_symbol(symbol))
 }
 
 /// Returns the canonical identity of a callable owned by the native or
@@ -364,7 +361,7 @@ pub(crate) fn canonical_intrinsic_callable_symbol(symbol: &str) -> Option<String
     let (namespace, method) = canonical.split_once('/')?;
     protocol_declarations()
         .iter()
-        .find(|declaration| builtin_protocol_namespace(declaration.name) == namespace)
+        .find(|declaration| declaration.runtime_name() == namespace)
         .filter(|declaration| declaration.methods.iter().any(|candidate| candidate.name == method))
         .map(|_| canonical)
 }
@@ -401,15 +398,25 @@ pub fn builtin_protocol_method_values() -> Vec<(String, String, Value)> {
         .filter(|declaration| declaration.availability.is_guest_visible())
         .flat_map(|declaration| {
             declaration.methods.iter().map(move |method| {
-                let namespace = builtin_protocol_namespace(declaration.name);
                 let protocol_name = declaration.runtime_name();
+                let namespace = protocol_name.clone();
                 let method_name = method.name.to_owned();
                 let display_name = format!("{namespace}/{}", method.name);
                 let arity_display_name = display_name.clone();
                 let (minimum_arity, maximum_arity) = method.arity.range();
-                (
-                    namespace,
-                    method.name.to_owned(),
+                let value = if protocol_name == "std.protocol.ideref.IDeref" && method.name == "deref" {
+                    native_fiber_function(
+                        &display_name,
+                        minimum_arity,
+                        maximum_arity.is_none(),
+                        {
+                            let protocol_name = protocol_name.clone();
+                            let method_name = method_name.clone();
+                            move |arguments| protocol_call(&protocol_name, &method_name, &arguments)
+                        },
+                        protocol_deref_fiber,
+                    )
+                } else {
                     native_variadic_function(&display_name, move |arguments| {
                         if arguments.len() < minimum_arity
                             || maximum_arity.is_some_and(|maximum| arguments.len() > maximum)
@@ -427,7 +434,12 @@ pub fn builtin_protocol_method_values() -> Vec<(String, String, Value)> {
                             ));
                         }
                         protocol_call(&protocol_name, &method_name, &arguments)
-                    }),
+                    })
+                };
+                (
+                    namespace,
+                    method.name.to_owned(),
+                    value,
                 )
             })
         })
@@ -445,7 +457,11 @@ fn guest_protocol(declaration: crate::lang::protocol::ProtocolDeclaration) -> Gu
         parents: declaration
             .parents
             .iter()
-            .map(|parent| builtin_protocol_name(parent))
+            .map(|parent| {
+                crate::lang::protocol::find_protocol(parent)
+                    .map(|declaration| declaration.runtime_name())
+                    .unwrap_or_else(|| (*parent).to_owned())
+            })
             .collect(),
     }
 }
@@ -480,37 +496,30 @@ mod native_work_protocol_tests {
     }
 
     #[test]
-    fn canonical_protocol_names_preserve_std_protocol_identity() {
-        assert_eq!(canonical_protocol_name("IFn"), "std.protocol.ifn.IFn");
+    fn protocol_aliases_resolve_to_annotation_owned_namespaces() {
+        let namespaces = crate::core::minimal_namespace_registry();
+        let assoc = namespaces
+            .resolve(&crate::lang::data::Symbol::parse("IAssoc/assoc"))
+            .expect("annotated protocol alias");
         assert_eq!(
-            canonical_protocol_name("std.foundation/IFn"),
-            "std.protocol.ifn.IFn"
+            assoc.symbol().as_str(),
+            "std.protocol.iassoc.IAssoc/assoc"
         );
         assert_eq!(
-            canonical_protocol_name("std.protocol.ifn.IFn"),
-            "std.protocol.ifn.IFn"
+            crate::lang::protocol::find_protocol("IAssoc")
+                .expect("annotated protocol")
+                .runtime_name(),
+            "std.protocol.iassoc.IAssoc"
         );
         assert_eq!(
-            canonical_protocol_name("std.protocol.application/Portable"),
-            "std.protocol.application/Portable"
-        );
-        assert_eq!(
-            canonical_intrinsic_protocol_symbol("IFn"),
-            Some("std.protocol.ifn.IFn".into())
-        );
-        assert_eq!(
-            canonical_intrinsic_protocol_symbol("IFn/invoke"),
-            Some("std.protocol.ifn.IFn/invoke".into())
-        );
-        assert_eq!(
-            canonical_intrinsic_protocol_symbol("IAssoc/assoc"),
-            Some("std.protocol.iassoc.IAssoc/assoc".into())
-        );
-        assert_eq!(
-            canonical_intrinsic_symbol("Base/vec"),
+            canonical_native_symbol("Base/vec"),
             Some("std.native.Base/vec".into())
         );
-        assert_eq!(canonical_intrinsic_symbol("std.native/Base"), None);
+        assert_eq!(canonical_native_symbol("std.native/Base"), None);
+        assert_eq!(
+            canonical_native_symbol("Coroutine"),
+            Some("std.native.Coroutine".into())
+        );
     }
 
     #[test]
@@ -543,13 +552,19 @@ mod native_work_protocol_tests {
         assert!(protocol("IWorkStore").parents.is_empty());
         assert_eq!(
             protocol("IWorkHost").parents,
-            vec![builtin_protocol_name("IComponent")]
+            vec![crate::lang::protocol::find_protocol("IComponent")
+                .expect("annotated protocol")
+                .runtime_name()]
         );
         assert_eq!(
             protocol("IWorkRun").parents,
             vec![
-                builtin_protocol_name("IWorkRef"),
-                builtin_protocol_name("IClosed"),
+                crate::lang::protocol::find_protocol("IWorkRef")
+                    .expect("annotated protocol")
+                    .runtime_name(),
+                crate::lang::protocol::find_protocol("IClosed")
+                    .expect("annotated protocol")
+                    .runtime_name(),
             ]
         );
     }

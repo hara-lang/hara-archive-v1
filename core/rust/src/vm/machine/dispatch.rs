@@ -121,6 +121,18 @@ impl Machine {
                         Err(error) => return Dispatch::Failed(error),
                     }
                 }
+                if matches!(instruction, Instruction::ProtocolCall { .. })
+                    && name == "std.protocol.ideref.IDeref/deref"
+                    && argc == 1
+                {
+                    if let Some(Value::Promise(promise)) =
+                        self.stack.last().and_then(VmSlot::runtime_value)
+                    {
+                        if matches!(promise.state(), PromiseState::Pending) {
+                            return Dispatch::Suspended(promise);
+                        }
+                    }
+                }
                 let result = if name == "=" && argc == 2 {
                     let right = self.stack.pop().expect("intrinsic arity checked above");
                     let left = self.stack.pop().expect("intrinsic arity checked above");

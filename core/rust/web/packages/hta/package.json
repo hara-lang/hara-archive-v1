@@ -22,7 +22,7 @@
     "./provider/node": "./provider-node.mjs",
     "./sandbox": "./sandbox.js",
     "./shared-worker": "./shared-worker.js",
-    "./worker": "./worker.js"
+    "./worker": "./worker.mjs"
   },
   "files": [
     "index.js",
@@ -31,7 +31,7 @@
     "provider-node.mjs",
     "sandbox.js",
     "shared-worker.js",
-    "worker.js",
+    "worker.mjs",
     "LICENSE"
   ],
   "publishConfig": {

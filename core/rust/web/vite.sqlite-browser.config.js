@@ -19,7 +19,7 @@ export default defineConfig({
     lib: {
       entry: resolve(web, "entries/sqlite-browser.mjs"),
       formats: ["es"],
-      fileName: () => "worker.mjs"
+      fileName: () => "provider.mjs"
     },
     rollupOptions: {
       output: {

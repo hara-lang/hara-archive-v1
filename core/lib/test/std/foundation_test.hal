@@ -46,6 +46,21 @@
               "00000000-0000-0000-0000-000000000000"
               "00000000-0000-0000-0000-000000000001"]}])
 
+^{:refer std.foundation/hash}
+(Test/run
+ [{:name "dispatches hashing through Base/hash"
+   :test (fn [] [(std.foundation/hash [1 2])
+                 (= (std.foundation/hash [1 2])
+                    (std.foundation/hash (std.foundation/list 1 2)))])
+   :expected [true true]}])
+
+^{:refer std.foundation/uuid?}
+(Test/run
+ [{:name "recognizes UUID values by portable type"
+   :test (fn [] [(std.foundation/uuid? (std.foundation/uuid "00000000-0000-0000-0000-000000000000"))
+                 (std.foundation/uuid? :not-a-uuid)])
+   :expected [true false]}])
+
 ^{:refer std.foundation/apply}
 (Test/run
  [{:name "applies leading arguments and a final sequence"

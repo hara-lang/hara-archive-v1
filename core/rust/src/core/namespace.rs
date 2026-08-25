@@ -168,6 +168,22 @@ fn ensure_namespace(
     Ok(())
 }
 
+fn ensure_foundation_namespace_for_symbol(
+    registry: &NamespaceRegistry<Value>,
+    env: &mut HashMap<String, Value>,
+    symbol: &str,
+) -> Result<(), String> {
+    let Some((namespace, _)) = symbol.split_once('/') else {
+        return Ok(());
+    };
+    if namespace.starts_with("std.foundation.")
+        && registry.load_state(namespace) == Some(NamespaceLoadState::Unloaded)
+    {
+        ensure_namespace(registry, env, namespace, false)?;
+    }
+    Ok(())
+}
+
 fn top_level_namespace_form(form: &Form) -> bool {
     matches!(form, Form::List(values)
         if matches!(values.first(), Some(Form::Symbol(head)) if head == "ns" || head == "ns+"))
@@ -513,7 +529,7 @@ fn eval_namespace_form(fs: &[Form], env: &mut HashMap<String, Value>) -> Result<
         registry.register_global_alias(alias, &name)?;
     }
     for alias in config.declared_global_imports() {
-        let canonical = crate::core::canonical_intrinsic_symbol(alias)
+        let canonical = crate::core::canonical_native_symbol(alias)
             .unwrap_or_else(|| alias.clone());
         registry.register_global_import(alias, canonical)?;
     }
@@ -720,28 +736,5 @@ fn eval_namespace_operation(
             ))
         }
         _ => Err(format!("unsupported namespace operation: {operation}")),
-    }
-}
-
-fn eval_basic_object_form(
-    operation: &str,
-    forms: &[Form],
-    env: &mut HashMap<String, Value>,
-) -> Result<Value, String> {
-    match operation {
-        "type" => {
-            if forms.len() != 2 {
-                return Err("type expects one value".into());
-            }
-            let value = eval(&forms[1], env)?;
-            Ok(Value::Keyword(portable_type_keyword(&value)?))
-        }
-        "hash" => {
-            if forms.len() != 2 {
-                return Err("hash expects one value".into());
-            }
-            Ok(Value::Number(eval(&forms[1], env)?.stable_hash() as i64))
-        }
-        _ => unreachable!("eval_basic_object_form called for an unknown operation"),
     }
 }

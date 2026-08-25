@@ -48,7 +48,7 @@ async function spawnRealKernel(hostCalls) {
     close: () => {}
   };
   globalThis.self = bridge.self;
-  await import(`./packages/hta/worker.js?pong=${kernelCounter}`);
+  await import(`./packages/hta/worker.mjs?pong=${kernelCounter}`);
   const worker = {
     addEventListener: (type, handler) => {
       bridge.listeners[type] = handler;

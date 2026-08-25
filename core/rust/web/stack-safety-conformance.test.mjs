@@ -31,7 +31,7 @@ async function spawnKernel() {
     close: () => {},
   };
   globalThis.self = bridge.self;
-  await import(`./packages/hta/worker.js?stack-safety-conformance=${Date.now()}`);
+  await import(`./packages/hta/worker.mjs?stack-safety-conformance=${Date.now()}`);
   const worker = {
     addEventListener: (type, handler) => {
       bridge.listeners[type] = handler;

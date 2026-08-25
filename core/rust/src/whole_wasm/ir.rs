@@ -3,8 +3,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::core::{IntrinsicOp, Value};
 use crate::vm::{FunctionId, Instruction, Program};
 
-use super::bridge::Target;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Rep {
     I64,
@@ -543,7 +541,7 @@ pub(crate) fn lower_function(
                     });
                 }
                 Instruction::ProtocolCall { target, argc: 3 }
-                    if declared_target_is(program, *target, Target::ProtocolAssoc) => {
+                    if declared_target_is(program, *target, "std.protocol.iassoc.IAssoc/assoc") => {
                     let base = height - 3;
                     if representations[ip].stack[base..height].contains(&Rep::TaggedRef) {
                         return Err(unsupported(id, ip, "tagged value escapes through assoc"));
@@ -565,7 +563,7 @@ pub(crate) fn lower_function(
                     });
                 }
                 Instruction::ProtocolCall { target, argc: 2 }
-                    if declared_target_is(program, *target, Target::ProtocolLookup) => {
+                    if declared_target_is(program, *target, "std.protocol.ilookup.ILookup/lookup") => {
                     let numeric_consumer =
                         function.code.get(ip + 1).is_some_and(|next| match next {
                             Instruction::IntrinsicCall { target, .. } => {
@@ -588,7 +586,7 @@ pub(crate) fn lower_function(
                     }
                 }
                 Instruction::IntrinsicCall { target, argc: 1 }
-                    if declared_target_is(program, *target, Target::NativeNumber) => {
+                    if declared_target_is(program, *target, "std.native.Base/number?") => {
                     let operation = if representations[ip].stack[height - 1] == Rep::TaggedRef {
                         MirOp::TaggedIsNumber {
                             destination: stack(height - 1)?,
@@ -603,7 +601,7 @@ pub(crate) fn lower_function(
                     operations.push(operation);
                 }
                 Instruction::ProtocolCall { target, argc: 1 }
-                    if declared_target_is(program, *target, Target::ProtocolCount) => {
+                    if declared_target_is(program, *target, "std.protocol.icount.ICount/count") => {
                     let operation = if representations[ip].stack[height - 1] == Rep::TaggedRef {
                         MirOp::TaggedCount {
                             destination: stack(height - 1)?,
@@ -618,7 +616,7 @@ pub(crate) fn lower_function(
                     operations.push(operation);
                 }
                 Instruction::ProtocolCall { target, argc: 2 }
-                    if declared_target_is(program, *target, Target::ProtocolNth) => {
+                    if declared_target_is(program, *target, "std.protocol.inth.INth/nth") => {
                     let operation = if representations[ip].stack[height - 2] == Rep::TaggedRef {
                         MirOp::TaggedNth {
                             destination: stack(height - 2)?,
@@ -1160,8 +1158,8 @@ fn target_is(program: &Program, target: u32, expected: &str) -> bool {
     target_name(program, target) == Some(expected)
 }
 
-fn declared_target_is(program: &Program, target: u32, expected: Target) -> bool {
-    target_name(program, target) == Some(expected.symbol())
+fn declared_target_is(program: &Program, target: u32, expected: &str) -> bool {
+    target_name(program, target) == Some(expected)
 }
 
 fn intrinsic_op(program: &Program, target: u32) -> Option<IntrinsicOp> {
@@ -1176,6 +1174,7 @@ fn scalar_binary(op: IntrinsicOp) -> bool {
             | IntrinsicOp::Multiply
             | IntrinsicOp::Divide
             | IntrinsicOp::Remainder
+            | IntrinsicOp::Modulo
             | IntrinsicOp::Equal
             | IntrinsicOp::Less
             | IntrinsicOp::LessOrEqual
@@ -1192,6 +1191,7 @@ fn scalar_arithmetic(op: IntrinsicOp) -> bool {
             | IntrinsicOp::Multiply
             | IntrinsicOp::Divide
             | IntrinsicOp::Remainder
+            | IntrinsicOp::Modulo
     )
 }
 

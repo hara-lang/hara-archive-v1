@@ -31,7 +31,6 @@ const SYNC_SPECIAL_FORMS: &[&str] = &[
     "extend-type",
     "field",
     "fn",
-    "hash",
     "if",
     "intern-var",
     "let",
@@ -377,6 +376,7 @@ pub enum EvalFiberState {
 
 pub struct EvalFiber {
     env: Rc<RefCell<HashMap<String, Value>>>,
+    namespace_registry: NamespaceRegistry<Value>,
     pending: Option<Promise>,
     resume: Option<Resume>,
     state: EvalFiberState,
@@ -391,16 +391,20 @@ impl EvalFiber {
         Self::start_forms(forms, env)
     }
     pub fn start_forms(forms: Vec<Form>, env: HashMap<String, Value>) -> Result<Self, String> {
-        let env = Rc::new(RefCell::new(env));
-        let step = forms_cps(
-            Rc::new(forms),
-            0,
-            Value::Nil,
-            env.clone(),
-            Box::new(Step::Done),
-        );
+        let (namespace_registry, environment) = execution_context(env);
+        let env = Rc::new(RefCell::new(environment));
+        let step = with_namespace_registry(&namespace_registry, || {
+            forms_cps(
+                Rc::new(forms),
+                0,
+                Value::Nil,
+                env.clone(),
+                Box::new(Step::Done),
+            )
+        });
         let mut fiber = Self {
             env,
+            namespace_registry,
             pending: None,
             resume: None,
             state: EvalFiberState::Running,
@@ -427,7 +431,7 @@ impl EvalFiber {
         };
         self.pending = None;
         self.state = EvalFiberState::Running;
-        let step = resume(state);
+        let step = with_namespace_registry(&self.namespace_registry, || resume(state));
         self.accept(step);
         self.state()
     }
@@ -480,7 +484,9 @@ impl EvalFiber {
     fn accept(&mut self, mut step: Step) {
         loop {
             match step {
-                Step::Continue(next) => step = next(),
+                Step::Continue(next) => {
+                    step = with_namespace_registry(&self.namespace_registry, next)
+                }
                 Step::Done(Ok(v)) => {
                     self.state = EvalFiberState::Completed(v);
                     return;
@@ -735,22 +741,10 @@ fn list(v: Vec<Form>, env: Rc<RefCell<HashMap<String, Value>>>, k: Cont) -> Step
                 }),
             )
         }
-        Some("std.foundation.coroutine/create")
-        | Some("std.native.Coroutine/create")
-        | Some("Coroutine/create") => coroutine::create_form(v, env, k),
-        Some("std.foundation.coroutine/coroutine?") => coroutine::predicate_form(v, env, k),
-        Some("std.foundation.coroutine/status") => coroutine::status_form(v, env, k),
-        Some("std.foundation.coroutine/close") => coroutine::close_form(v, env, k),
         Some("std.foundation.coroutine/resume") => coroutine::resume_form(v, env, k),
         Some("std.protocol.icoroutine.ICoroutine/resume") => {
             coroutine::resume_protocol_form(v, env, k)
         }
-        Some("std.foundation.coroutine/yield")
-        | Some("std.native.Coroutine/yield")
-        | Some("Coroutine/yield") => coroutine::yield_form(v, env, k),
-        Some("std.foundation.coroutine/await")
-        | Some("std.native.Coroutine/await")
-        | Some("Coroutine/await") => coroutine::await_form(v, env, k),
         Some("def") | Some("var/set") => bind_form(v, env, k),
         Some("set!") => set_form(v, env, k),
         Some("resolve") if matches!(env.borrow().get("resolve"), Some(value) if !matches!(value, Value::Var(_))) => {
@@ -1289,6 +1283,18 @@ fn application(v: Vec<Form>, env: Rc<RefCell<HashMap<String, Value>>>, k: Cont) 
         Form::Symbol(name) => Some(name.as_str()),
         _ => None,
     };
+    if let Some(name) = head_symbol {
+        if let Ok(registry) = namespace_registry() {
+            let mut environment = env.borrow_mut();
+            if let Err(error) = ensure_foundation_namespace_for_symbol(
+                &registry,
+                &mut environment,
+                name,
+            ) {
+                return k(Err(error));
+            }
+        }
+    }
     let bound = head_symbol.and_then(|name| binding_value(&env.borrow(), name));
     if let Some(Value::Function(function)) = bound {
         let call_form = Form::List(v.clone());
@@ -1380,6 +1386,16 @@ fn application(v: Vec<Form>, env: Rc<RefCell<HashMap<String, Value>>>, k: Cont) 
         }),
     )
 }
+
+fn execution_context(environment: HashMap<String, Value>) -> (NamespaceRegistry<Value>, HashMap<String, Value>) {
+    if let Ok(registry) = namespace_registry() {
+        return (registry, environment);
+    }
+    let (registry, mut runtime_environment) = crate::Runtime::new().standalone_eval_context();
+    runtime_environment.extend(environment);
+    (registry, runtime_environment)
+}
+
 fn eval_special_form(v: Vec<Form>, env: Rc<RefCell<HashMap<String, Value>>>, k: Cont) -> Step {
     let call_form = Form::List(v.clone());
     let op = v[0].clone();
@@ -1519,14 +1535,19 @@ pub(crate) fn invoke_function_sync(
     function: Rc<Function>,
     arguments: Vec<Value>,
 ) -> Result<Value, String> {
-    let env = Rc::new(RefCell::new(HashMap::new()));
+    let (namespace_registry, environment) = execution_context(HashMap::new());
+    let env = Rc::new(RefCell::new(environment));
     let mut fiber = EvalFiber {
         env,
+        namespace_registry,
         pending: None,
         resume: None,
         state: EvalFiberState::Running,
     };
-    fiber.accept(call(function, arguments, Box::new(Step::Done)));
+    let step = with_namespace_registry(&fiber.namespace_registry, || {
+        call(function, arguments, Box::new(Step::Done))
+    });
+    fiber.accept(step);
     fiber.drive_sync()
 }
 
@@ -1593,86 +1614,74 @@ mod tests {
             ),
         ];
         for (source, expected) in cases {
-            let registry = crate::kernel::NamespaceRegistry::new("user");
-            crate::core::with_namespace_registry(&registry, || {
-                let mut fiber = EvalFiber::start(source, HashMap::new()).unwrap();
-                assert_eq!(fiber.drive_sync(), Ok(expected));
-            });
+            let mut fiber = EvalFiber::start(source, HashMap::new()).unwrap();
+            assert_eq!(fiber.drive_sync(), Ok(expected));
         }
     }
 
     #[test]
     fn mutable_field_set_place_updates_and_returns_replacement() {
-        let registry = crate::kernel::NamespaceRegistry::new("user");
-        crate::core::with_namespace_registry(&registry, || {
-            let mut fiber = EvalFiber::start(
-                "(do (defmutable Cursor [x y]) \
-                 (def cursor (Cursor 1 2)) \
-                 (if (= (set! (field cursor :x) 42) 42) \
-                   (field cursor :x) \
-                   -1))",
-                HashMap::new(),
-            )
-            .unwrap();
-            assert_eq!(fiber.drive_sync(), Ok(Value::Number(42)));
-        });
+        let mut fiber = EvalFiber::start(
+            "(do (defmutable Cursor [x y]) \
+             (def cursor (Cursor 1 2)) \
+             (if (= (set! (field cursor :x) 42) 42) \
+               (field cursor :x) \
+               -1))",
+            HashMap::new(),
+        )
+        .unwrap();
+        assert_eq!(fiber.drive_sync(), Ok(Value::Number(42)));
     }
 
     #[test]
     fn mutable_field_set_place_resumes_after_replacement_suspends() {
-        let registry = crate::kernel::NamespaceRegistry::new("user");
-        crate::core::with_namespace_registry(&registry, || {
-            let promise = Promise::new();
-            let mut environment = HashMap::new();
-            environment.insert("replacement".into(), Value::Promise(promise.clone()));
-            let mut fiber = EvalFiber::start(
-                "(do (defmutable Cursor [x]) \
-                 (def cursor (Cursor 1)) \
-                 (set! (field cursor :x) (deref replacement)) \
-                 (field cursor :x))",
-                environment,
-            )
-            .unwrap();
-            assert_eq!(fiber.state(), EvalFiberState::Suspended);
-            promise.resolve(Value::Number(42));
-            assert_eq!(
-                fiber.resume(promise.state()),
-                EvalFiberState::Completed(Value::Number(42))
-            );
-        });
+        let promise = Promise::new();
+        let mut environment = HashMap::new();
+        environment.insert("replacement".into(), Value::Promise(promise.clone()));
+        let mut fiber = EvalFiber::start(
+            "(do (defmutable Cursor [x]) \
+             (def cursor (Cursor 1)) \
+             (set! (field cursor :x) (deref replacement)) \
+             (field cursor :x))",
+            environment,
+        )
+        .unwrap();
+        assert_eq!(fiber.state(), EvalFiberState::Suspended);
+        promise.resolve(Value::Number(42));
+        assert_eq!(
+            fiber.resume(promise.state()),
+            EvalFiberState::Completed(Value::Number(42))
+        );
     }
 
     #[test]
     fn mutable_field_set_place_resumes_receiver_before_evaluating_replacement() {
-        let registry = crate::kernel::NamespaceRegistry::new("user");
-        crate::core::with_namespace_registry(&registry, || {
-            let ready = Promise::new();
-            let mut environment = HashMap::new();
-            environment.insert("ready".into(), Value::Promise(ready.clone()));
-            let mut fiber = EvalFiber::start(
-                "(do (def order []) \
-                 (defmutable Cursor [x]) \
-                 (def cursor (Cursor 1)) \
-                 (set! (field (do (deref ready) cursor) :x) \
-                       (do (set! order (conj order :replacement)) 42)) \
-                 [order (field cursor :x)])",
-                environment,
-            )
-            .unwrap();
-            assert_eq!(fiber.state(), EvalFiberState::Suspended);
-            ready.resolve(Value::Bool(true));
-            assert_eq!(
-                fiber.resume(ready.state()),
-                EvalFiberState::Completed(Value::Vector(
-                    [
-                        Value::Vector([Value::Keyword("replacement".into())].into_iter().collect()),
-                        Value::Number(42),
-                    ]
-                    .into_iter()
-                    .collect(),
-                ))
-            );
-        });
+        let ready = Promise::new();
+        let mut environment = HashMap::new();
+        environment.insert("ready".into(), Value::Promise(ready.clone()));
+        let mut fiber = EvalFiber::start(
+            "(do (def order []) \
+             (defmutable Cursor [x]) \
+             (def cursor (Cursor 1)) \
+             (set! (field (do (deref ready) cursor) :x) \
+                   (do (set! order (conj order :replacement)) 42)) \
+             [order (field cursor :x)])",
+            environment,
+        )
+        .unwrap();
+        assert_eq!(fiber.state(), EvalFiberState::Suspended);
+        ready.resolve(Value::Bool(true));
+        assert_eq!(
+            fiber.resume(ready.state()),
+            EvalFiberState::Completed(Value::Vector(
+                [
+                    Value::Vector([Value::Keyword("replacement".into())].into_iter().collect()),
+                    Value::Number(42),
+                ]
+                .into_iter()
+                .collect(),
+            ))
+        );
     }
 
     #[test]

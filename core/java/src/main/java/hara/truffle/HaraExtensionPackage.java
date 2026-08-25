@@ -67,7 +67,7 @@ final class HaraExtensionPackage {
   void validateDeclaredFiles() {
     LinkedHashSet<String> paths = new LinkedHashSet<>(manifest.assets());
     if (manifest.module() != null) paths.add(manifest.module());
-    manifest.targets().values().forEach(target -> paths.add(target.module()));
+    manifest.targets().values().forEach(target -> paths.add(target.provider()));
     for (String path : paths) {
       URL asset = resolve(path);
       try (InputStream ignored = asset.openStream()) {

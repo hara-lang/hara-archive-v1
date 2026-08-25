@@ -8,7 +8,7 @@ use super::codegen::compile_program;
 use super::ir::lower_function;
 
 const MAGIC: &[u8; 4] = b"HNW0";
-pub const HNW_ABI_VERSION: u16 = 4;
+pub const HNW_ABI_VERSION: u16 = 5;
 
 #[derive(Debug, Clone)]
 pub struct NativeArtifact {
@@ -18,6 +18,7 @@ pub struct NativeArtifact {
     pub functions: Vec<(FunctionId, u16)>,
     pub capabilities: Vec<bool>,
     pub targets: Vec<TargetDescriptor>,
+    pub operation_registry_digest: [u8; 32],
 }
 
 pub fn compile_artifact(program: &Program) -> Result<Vec<u8>, String> {
@@ -60,6 +61,7 @@ pub fn compile_artifact(program: &Program) -> Result<Vec<u8>, String> {
         payload.push(u8::from(*native));
     }
     let targets = bridge::target_table();
+    bridge::validate_target_table(&targets)?;
     put_u16(
         &mut payload,
         u16::try_from(targets.len()).map_err(|_| "too many HNW0 targets")?,
@@ -75,6 +77,7 @@ pub fn compile_artifact(program: &Program) -> Result<Vec<u8>, String> {
         );
         payload.extend_from_slice(symbol);
     }
+    payload.extend_from_slice(&bridge::operation_registry_digest());
     put_bytes(&mut payload, &hbc)?;
     put_bytes(&mut payload, &wasm)?;
     let digest = Sha256::digest(&payload);
@@ -154,6 +157,13 @@ pub fn decode_artifact(bytes: &[u8]) -> Result<NativeArtifact, String> {
         });
     }
     bridge::validate_target_table(&targets)?;
+    let operation_registry_digest: [u8; 32] = reader
+        .take(32)?
+        .try_into()
+        .expect("operation registry digest has fixed size");
+    if operation_registry_digest != bridge::operation_registry_digest() {
+        return Err("native artifact operation registry digest mismatch".into());
+    }
     let program = decode_program(reader.bytes()?)?;
     let wasm = reader.bytes()?.to_vec();
     reader.finish()?;
@@ -176,6 +186,7 @@ pub fn decode_artifact(bytes: &[u8]) -> Result<NativeArtifact, String> {
         functions,
         capabilities,
         targets,
+        operation_registry_digest,
     })
 }
 

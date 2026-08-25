@@ -36,7 +36,8 @@ impl EvalFiber {
         source_forms: Option<Rc<Vec<SpannedForm>>>,
         env: HashMap<String, Value>,
     ) -> Result<Self, String> {
-        let env = Rc::new(RefCell::new(env));
+        let (namespace_registry, environment) = execution_context(env);
+        let env = Rc::new(RefCell::new(environment));
         // The compatibility observer retains its historical full projection.
         // Shared instrumentation changes these flags before every safepoint.
         semantic::register_context(&env, source_forms, true, true);
@@ -46,6 +47,7 @@ impl EvalFiber {
             Box::new(move |_| forms_cps(forms, 0, Value::Nil, execution_env, Box::new(Step::Done)));
         Ok(Self {
             env,
+            namespace_registry,
             pending: None,
             resume: Some(resume),
             state: EvalFiberState::Running,
@@ -283,7 +285,9 @@ impl EvalFiber {
             self.state = EvalFiberState::Failed("observed evaluator continuation missing".into());
             return self.state();
         };
-        let step = semantic::with_active_context(&self.env, || resume(PromiseState::Pending));
+        let step = with_namespace_registry(&self.namespace_registry, || {
+            semantic::with_active_context(&self.env, || resume(PromiseState::Pending))
+        });
         self.accept_observed(step);
         semantic::advance_pending(&self.env);
         self.state()
@@ -313,7 +317,9 @@ impl EvalFiber {
         };
         self.pending = None;
         self.state = EvalFiberState::Running;
-        let step = semantic::with_active_context(&self.env, || resume(state));
+        let step = with_namespace_registry(&self.namespace_registry, || {
+            semantic::with_active_context(&self.env, || resume(state))
+        });
         self.accept_observed(step);
         semantic::advance_pending(&self.env);
         self.state()

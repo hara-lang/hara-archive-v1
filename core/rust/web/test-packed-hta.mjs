@@ -39,7 +39,7 @@ try {
     "provider-common.mjs",
     "provider-node.mjs",
     "shared-worker.js",
-    "worker.js",
+    "worker.mjs",
   ]) {
     assert.ok(packedPaths.has(required), `packed HTA package is missing ${required}`);
   }
@@ -87,7 +87,7 @@ try {
       `export target is missing: ${target}`,
     );
   }
-  for (const worker of ["shared-worker.js", "worker.js"]) {
+  for (const worker of ["shared-worker.js", "worker.mjs"]) {
     execFileSync(process.execPath, ["--check", path.join(packageRoot, worker)]);
   }
 

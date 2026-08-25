@@ -261,15 +261,15 @@ public final class HaraExtensionManifest {
         throw invalid(origin, "unsupported target :" + host);
       }
       IMapType<?, ?> target = (IMapType<?, ?>) entry.getValue();
-      rejectUnknownKeys(target, Set.of("module", "runtime"), origin, "target " + host);
-      String targetModule = requireString(target, "module", origin);
-      requireRelativePath(targetModule, ".mjs", origin, "target module");
+      rejectUnknownKeys(target, Set.of("provider", "runtime"), origin, "target " + host);
+      String targetProvider = requireString(target, "provider", origin);
+      requireRelativePath(targetProvider, ".mjs", origin, "target provider");
       String runtime = requireKeyword(target, "runtime", origin);
       if (("node".equals(host) && !"process".equals(runtime))
           || ("browser".equals(host) && !"web-worker".equals(runtime))) {
         throw invalid(origin, "target " + host + " has incompatible runtime :" + runtime);
       }
-      result.put(host, new Target(targetModule, runtime));
+      result.put(host, new Target(targetProvider, runtime));
     }
     return result;
   }
@@ -519,16 +519,16 @@ public final class HaraExtensionManifest {
   }
 
   public static final class Target {
-    private final String module;
+    private final String provider;
     private final String runtime;
 
-    private Target(String module, String runtime) {
-      this.module = module;
+    private Target(String provider, String runtime) {
+      this.provider = provider;
       this.runtime = runtime;
     }
 
-    public String module() {
-      return module;
+    public String provider() {
+      return provider;
     }
 
     public String runtime() {

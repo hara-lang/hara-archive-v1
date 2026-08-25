@@ -455,7 +455,7 @@ mod tests {
  :version "1"
  :provider :hta
  :abi :hta.v1
- :targets {:node {:module "worker.mjs" :runtime :process}}
+ :targets {:node {:provider "worker.mjs" :runtime :process}}
  :exports {"later" {:args [:integer :integer] :returns :integer :async true}
            "crash" {:args [] :returns :value :async true}}
  :capabilities [:process]}"#;

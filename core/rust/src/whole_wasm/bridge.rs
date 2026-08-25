@@ -4,6 +4,8 @@
 //! carries the descriptor table, so native and browser hosts validate and
 //! dispatch the same target inventory without maintaining numeric switches.
 
+use sha2::{Digest, Sha256};
+
 pub const SLOT_BYTES: u32 = 16;
 pub const MAX_SLOTS: u32 = 64;
 pub const HEAP_BASE: u32 = SLOT_BYTES * MAX_SLOTS;
@@ -46,80 +48,145 @@ impl TargetKind {
     }
 }
 
-/// Declaration of every target understood by generated HNW0 modules.
+/// The bounded operation inventory emitted by the current HNW0 compiler.
 ///
-/// Code generation refers to these declarations directly. The artifact wire
-/// table is derived from the same list, so host dispatch cannot silently
-/// acquire a target that the compiler does not know how to emit.
+/// The inventory describes HNW0 capability, while protocol/native registries
+/// remain authoritative for operation identity and declaration validity. It
+/// is deliberately data-shaped: compiler code asks for an operation by its
+/// canonical key and the artifact carries the resulting local id.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Target {
-    MapConstruct,
-    VectorConstruct,
-    NativeNumber,
-    ProtocolAssoc,
-    ProtocolCount,
-    ProtocolLookup,
-    ProtocolNth,
+pub struct OperationDeclaration {
+    pub key: &'static str,
+    pub kind: TargetKind,
+    pub arity: Option<u16>,
 }
 
-impl Target {
-    pub const ALL: &[Self] = &[
-        Self::MapConstruct,
-        Self::VectorConstruct,
-        Self::NativeNumber,
-        Self::ProtocolAssoc,
-        Self::ProtocolCount,
-        Self::ProtocolLookup,
-        Self::ProtocolNth,
-    ];
+const OPERATIONS: &[OperationDeclaration] = &[
+    OperationDeclaration {
+        key: MAP_CONSTRUCT,
+        kind: TargetKind::MapConstruct,
+        arity: None,
+    },
+    OperationDeclaration {
+        key: VECTOR_CONSTRUCT,
+        kind: TargetKind::VectorConstruct,
+        arity: None,
+    },
+    OperationDeclaration {
+        key: "std.native.Base/number?",
+        kind: TargetKind::Native,
+        arity: Some(1),
+    },
+    OperationDeclaration {
+        key: "std.protocol.iassoc.IAssoc/assoc",
+        kind: TargetKind::Protocol,
+        arity: Some(3),
+    },
+    OperationDeclaration {
+        key: "std.protocol.icount.ICount/count",
+        kind: TargetKind::Protocol,
+        arity: Some(1),
+    },
+    OperationDeclaration {
+        key: "std.protocol.ilookup.ILookup/lookup",
+        kind: TargetKind::Protocol,
+        arity: Some(2),
+    },
+    OperationDeclaration {
+        key: "std.protocol.inth.INth/nth",
+        kind: TargetKind::Protocol,
+        arity: Some(2),
+    },
+];
 
-    pub const fn symbol(self) -> &'static str {
-        match self {
-            Self::MapConstruct => MAP_CONSTRUCT,
-            Self::VectorConstruct => VECTOR_CONSTRUCT,
-            Self::NativeNumber => "std.native.Base/number?",
-            Self::ProtocolAssoc => "std.protocol.iassoc.IAssoc/assoc",
-            Self::ProtocolCount => "std.protocol.icount.ICount/count",
-            Self::ProtocolLookup => "std.protocol.ilookup.ILookup/lookup",
-            Self::ProtocolNth => "std.protocol.inth.INth/nth",
+pub fn operation_declarations() -> &'static [OperationDeclaration] {
+    OPERATIONS
+}
+
+pub fn operation_id(key: &str) -> Result<i64, String> {
+    validate_operation_declarations()?;
+    operation_declarations()
+        .iter()
+        .position(|operation| operation.key == key)
+        .map(|id| i64::try_from(id).expect("HNW0 operation inventory fits i64"))
+        .ok_or_else(|| format!("whole-Wasm operation is not declared: {key}"))
+}
+
+/// Stable identity for the operation inventory and the declarations it
+/// references. HNW0 hosts compare this digest before executing an artifact.
+pub fn operation_registry_digest() -> [u8; 32] {
+    let mut canonical = Vec::new();
+    for operation in operation_declarations() {
+        canonical.extend_from_slice(operation.key.as_bytes());
+        canonical.push(0);
+        canonical.push(operation.kind.wire());
+        canonical.extend_from_slice(&operation.arity.unwrap_or(u16::MAX).to_be_bytes());
+    }
+    let digest = Sha256::digest(canonical);
+    let mut result = [0u8; 32];
+    result.copy_from_slice(&digest);
+    result
+}
+
+fn validate_operation_declarations() -> Result<(), String> {
+    for operation in operation_declarations() {
+        match operation.kind {
+            TargetKind::MapConstruct if operation.key == MAP_CONSTRUCT => {}
+            TargetKind::VectorConstruct if operation.key == VECTOR_CONSTRUCT => {}
+            TargetKind::MapConstruct | TargetKind::VectorConstruct => {
+                return Err(format!(
+                    "whole-Wasm structural operation has invalid key: {}",
+                    operation.key
+                ));
+            }
+            TargetKind::Native => validate_native_operation(operation)?,
+            TargetKind::Protocol => validate_protocol_operation(operation)?,
         }
     }
+    Ok(())
+}
 
-    pub const fn kind(self) -> TargetKind {
-        match self {
-            Self::MapConstruct => TargetKind::MapConstruct,
-            Self::VectorConstruct => TargetKind::VectorConstruct,
-            Self::NativeNumber => TargetKind::Native,
-            Self::ProtocolAssoc
-            | Self::ProtocolCount
-            | Self::ProtocolLookup
-            | Self::ProtocolNth => TargetKind::Protocol,
-        }
+fn validate_native_operation(operation: &OperationDeclaration) -> Result<(), String> {
+    let name = operation
+        .key
+        .strip_prefix("std.native/")
+        .or_else(|| operation.key.strip_prefix("std.native."))
+        .ok_or_else(|| format!("native operation is not canonical: {}", operation.key))?;
+    let (native, method) = name
+        .split_once('/')
+        .ok_or_else(|| format!("native operation has no method: {}", operation.key))?;
+    let declared = crate::core::native_declarations()
+        .iter()
+        .find(|declaration| declaration.name == native)
+        .ok_or_else(|| format!("native operation is not declared: {}", operation.key))?;
+    if !declared.method(method) {
+        return Err(format!("native method is not declared: {}", operation.key));
     }
+    Ok(())
+}
 
-    pub const fn arity(self) -> Option<u16> {
-        match self {
-            Self::MapConstruct | Self::VectorConstruct => None,
-            Self::NativeNumber | Self::ProtocolCount => Some(1),
-            Self::ProtocolLookup | Self::ProtocolNth => Some(2),
-            Self::ProtocolAssoc => Some(3),
-        }
+fn validate_protocol_operation(operation: &OperationDeclaration) -> Result<(), String> {
+    let (namespace, method) = operation
+        .key
+        .split_once('/')
+        .ok_or_else(|| format!("protocol operation has no method: {}", operation.key))?;
+    let protocol = crate::lang::protocol::protocol_declarations()
+        .iter()
+        .find(|declaration| declaration.runtime_name() == namespace)
+        .ok_or_else(|| format!("protocol operation is not declared: {}", operation.key))?;
+    let method_declaration = protocol
+        .method(method)
+        .ok_or_else(|| format!("protocol method is not declared: {}", operation.key))?;
+    let (minimum, _) = method_declaration.arity.range();
+    if operation.arity != Some(u16::try_from(minimum).map_err(|_| {
+        format!("protocol operation arity is too large: {}", operation.key)
+    })?) {
+        return Err(format!(
+            "HNW0 operation arity does not match protocol declaration: {}",
+            operation.key
+        ));
     }
-
-    pub fn id(self) -> i64 {
-        Self::ALL
-            .iter()
-            .position(|candidate| *candidate == self)
-            .map(|id| i64::try_from(id).expect("target inventory fits i64"))
-            .expect("target is present in its declaration table")
-    }
-
-    pub fn from_symbol(symbol: &str) -> Option<Self> {
-        Self::ALL
-            .iter()
-            .copied()
-            .find(|target| target.symbol() == symbol)
-    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -131,27 +198,32 @@ pub struct TargetDescriptor {
 }
 
 pub fn target_table() -> Vec<TargetDescriptor> {
-    Target::ALL
+    operation_declarations()
         .iter()
         .enumerate()
-        .map(|(id, target)| TargetDescriptor {
+        .map(|(id, operation)| TargetDescriptor {
             id: u16::try_from(id).expect("target inventory fits u16"),
-            symbol: target.symbol().to_owned(),
-            kind: target.kind(),
-            arity: target.arity(),
+            symbol: operation.key.to_owned(),
+            kind: operation.kind,
+            arity: operation.arity,
         })
         .collect()
 }
 
 pub fn validate_target_table(targets: &[TargetDescriptor]) -> Result<(), String> {
-    if targets.len() != Target::ALL.len() {
+    validate_operation_declarations()?;
+    if targets.len() != operation_declarations().len() {
         return Err("native artifact target table is incomplete".into());
     }
-    for (expected_id, (actual, expected)) in targets.iter().zip(Target::ALL).enumerate() {
+    for (expected_id, (actual, expected)) in targets
+        .iter()
+        .zip(operation_declarations())
+        .enumerate()
+    {
         if actual.id != u16::try_from(expected_id).expect("target inventory fits u16")
-            || actual.symbol != expected.symbol()
-            || actual.kind != expected.kind()
-            || actual.arity != expected.arity()
+            || actual.symbol != expected.key
+            || actual.kind != expected.kind
+            || actual.arity != expected.arity
         {
             return Err("native artifact target table is not canonical".into());
         }
@@ -239,15 +311,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn target_ids_are_derived_from_the_canonical_table() {
-        assert_eq!(Target::ProtocolCount.id(), 4);
+    fn operation_ids_are_derived_from_runtime_declarations() {
+        assert!(validate_operation_declarations().is_ok());
         assert_eq!(
-            Target::from_symbol("std.protocol.icount.ICount/count"),
-            Some(Target::ProtocolCount)
-        );
-        assert_eq!(
-            Target::ProtocolCount.symbol(),
-            "std.protocol.icount.ICount/count"
+            operation_id("std.protocol.icount.ICount/count"),
+            Ok(4)
         );
         assert_eq!(target_table().len(), 7);
         assert!(validate_target_table(&target_table()).is_ok());

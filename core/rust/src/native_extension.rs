@@ -161,7 +161,7 @@ impl ExtensionPackage {
             self.manifest
                 .targets
                 .values()
-                .map(|target| target.module.clone()),
+                .map(|target| target.provider.clone()),
         );
         paths.extend(self.manifest.assets.clone());
         paths.sort();

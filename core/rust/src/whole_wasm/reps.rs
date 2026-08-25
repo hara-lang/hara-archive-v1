@@ -4,7 +4,6 @@ use crate::core::{IntrinsicOp, Value};
 use crate::kernel::{FunctionSchema, SchemaType};
 use crate::vm::{FunctionId, FunctionPrototype, Instruction, Program};
 
-use super::bridge::Target;
 use super::ir::Rep;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -145,6 +144,7 @@ fn function_is_scalar_kernel(program: &Program, function: &FunctionPrototype) ->
                 | IntrinsicOp::Multiply
                 | IntrinsicOp::Divide
                 | IntrinsicOp::Remainder
+                | IntrinsicOp::Modulo
                 | IntrinsicOp::Equal
                 | IntrinsicOp::Less
                 | IntrinsicOp::LessOrEqual
@@ -307,6 +307,7 @@ fn is_scalar_numeric_consumer(program: &Program, instruction: &Instruction) -> b
                     | IntrinsicOp::Multiply
                     | IntrinsicOp::Divide
                     | IntrinsicOp::Remainder
+                    | IntrinsicOp::Modulo
             )
         })
 }
@@ -328,7 +329,8 @@ fn target_rep(target: &str, arguments: &[Rep]) -> Rep {
         | IntrinsicOp::Subtract
         | IntrinsicOp::Multiply
         | IntrinsicOp::Divide
-        | IntrinsicOp::Remainder => {
+        | IntrinsicOp::Remainder
+        | IntrinsicOp::Modulo => {
             if arguments.iter().all(|rep| *rep == Rep::I64) {
                 Rep::I64
             } else {
@@ -342,19 +344,21 @@ fn target_rep(target: &str, arguments: &[Rep]) -> Rep {
         | IntrinsicOp::GreaterOrEqual => Rep::Bool,
         };
     }
-    match Target::from_symbol(target) {
-        Some(Target::NativeNumber) => Rep::Bool,
-        Some(Target::MapConstruct | Target::VectorConstruct) => Rep::TruthyHandle,
-        Some(Target::ProtocolAssoc | Target::ProtocolLookup) => Rep::TruthyHandle,
-        Some(Target::ProtocolCount) => Rep::I64,
-        Some(Target::ProtocolNth) => {
+    match target {
+        "std.native.Base/number?" => Rep::Bool,
+        "hara.whole-wasm/map" | "hara.whole-wasm/vector" => Rep::TruthyHandle,
+        "std.protocol.iassoc.IAssoc/assoc" | "std.protocol.ilookup.ILookup/lookup" => {
+            Rep::TruthyHandle
+        }
+        "std.protocol.icount.ICount/count" => Rep::I64,
+        "std.protocol.inth.INth/nth" => {
             if arguments.first() == Some(&Rep::TaggedRef) {
                 Rep::TaggedRef
             } else {
                 Rep::TruthyHandle
             }
         }
-        None => match target {
+        _ => match target {
             "std.native.Arr/new" | "std.native.Arr/set" => Rep::ArrayRef,
             "std.native.Arr/get" => Rep::I64,
             "std.native.Obj/new" | "std.native.Obj/set" => Rep::ObjectRef,
@@ -367,16 +371,17 @@ fn target_rep(target: &str, arguments: &[Rep]) -> Rep {
 fn function_uses_tagged_collections(program: &Program, function: &FunctionPrototype) -> bool {
     function.arity == 1
         && [
-            Target::NativeNumber.symbol(),
-            Target::ProtocolCount.symbol(),
-            Target::ProtocolNth.symbol(),
+            "std.native.Base/number?",
+            "std.protocol.icount.ICount/count",
+            "std.protocol.inth.INth/nth",
         ]
-            .into_iter()
-            .all(|required| {
-                function.code.iter().any(|instruction| {
-                    instruction_target(program, instruction) == Some(required)
-            })
-            })
+        .into_iter()
+        .all(|required| {
+            function
+                .code
+                .iter()
+                .any(|instruction| instruction_target(program, instruction) == Some(required))
+        })
 }
 
 fn target_name(program: &Program, target: u32) -> Result<&str, String> {

@@ -906,7 +906,7 @@ fn make_iterator(value: Value) -> Result<Value, String> {
         | Value::Vector(_) => Ok(Value::Iterator(Rc::new(RefCell::new(IteratorState::new(
             iterator_values(value)?,
         ))))),
-        _ => match protocol_call("IIter", "iter", &[value])? {
+        _ => match protocol_call("std.protocol.iiter.IIter", "iter", &[value])? {
             Value::Iterator(iterator) => Ok(Value::Iterator(iterator)),
             _ => Err("IIter/iter must return an iterator".into()),
         },
@@ -930,57 +930,6 @@ fn iterator_seq(value: Value) -> Result<Value, String> {
         None => Ok(Value::Nil),
         Some(Ok(_)) => Ok(Value::Seq(Box::new(sequence))),
         Some(Err(error)) => Err(error),
-    }
-}
-
-fn transform_like(source: &Value, result: Value) -> Result<Value, String> {
-    match source {
-        Value::Seq(template) => match iterator_seq(result)? {
-            Value::Seq(sequence) => Ok(Value::Seq(Box::new(
-                sequence.with_meta(template.meta().cloned()),
-            ))),
-            empty => Ok(empty),
-        },
-        Value::Iterator(_) => Ok(result),
-        _ => {
-            let values = iterator_to_vec(result)?;
-            Ok(match source {
-                Value::List(template) => Value::List(
-                    values
-                        .into_iter()
-                        .collect::<PList<_>>()
-                        .with_meta(template.meta().cloned()),
-                ),
-                Value::Cons(template) => Value::List(
-                    values
-                        .into_iter()
-                        .collect::<PList<_>>()
-                        .with_meta(template.meta().cloned()),
-                ),
-                Value::Queue(template) => Value::Queue(Box::new(
-                    values
-                        .into_iter()
-                        .collect::<PQueue<_>>()
-                        .with_meta(template.meta().cloned()),
-                )),
-                Value::Deque(template) => Value::Deque(Box::new(
-                    values
-                        .into_iter()
-                        .collect::<PDeque<_>>()
-                        .with_meta(template.meta().cloned()),
-                )),
-                Value::Tuple(template) if values.len() <= 8 => Value::Tuple(Box::new(
-                    PTuple::from_values(values)?.with_meta(template.meta().cloned()),
-                )),
-                Value::Vector(template) => Value::Vector(
-                    values
-                        .into_iter()
-                        .collect::<PVector<_>>()
-                        .with_meta(template.meta().cloned()),
-                ),
-                _ => Value::Vector(values.into()),
-            })
-        }
     }
 }
 
@@ -1252,26 +1201,6 @@ fn collection_last(value: Value) -> Result<Value, String> {
         .into_iter()
         .last()
         .unwrap_or(Value::Nil))
-}
-
-fn collection_second(value: Value) -> Result<Value, String> {
-    match value {
-        Value::Vector(values) => return Ok(values.get(1).cloned().unwrap_or(Value::Nil)),
-        Value::Tuple(values) => return Ok(values.get(1).cloned().unwrap_or(Value::Nil)),
-        Value::List(values) => return Ok(values.get(1).cloned().unwrap_or(Value::Nil)),
-        Value::Iterator(iterator) => {
-            let mut state = iterator.borrow_mut();
-            if state.try_next()?.is_none() {
-                return Ok(Value::Nil);
-            }
-            return Ok(state.try_next()?.unwrap_or(Value::Nil));
-        }
-        value => {
-            let mut values = iterator_values(value)?.into_iter();
-            values.next();
-            return Ok(values.next().unwrap_or(Value::Nil));
-        }
-    }
 }
 
 fn collection_empty_value(value: Value) -> Result<Value, String> {
