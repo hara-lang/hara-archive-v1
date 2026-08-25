@@ -71,7 +71,7 @@
            :ex/message "tool.sh :env must be a string-to-string map")))
     (if (and (has? value :stdin)
              (not (or (string? (:stdin value))
-                      (Bytes/instance? (:stdin value)))))
+                      (bytes? (:stdin value)))))
       (throw
        (ex :dependency
            {:tool.sh/error :invalid-stdin
@@ -140,7 +140,7 @@
   (let [bytes (if (string? value)
                 (str/encode-utf8 value)
                 value)]
-    (if (Bytes/instance? bytes)
+    (if (bytes? bytes)
       (Process/write process bytes)
       (throw
        (ex :dependency
@@ -266,7 +266,7 @@
    Process failures retain their command, output, and exit data. Other errors
    are rethrown."
   [value]
-  (if (Result/instance? value)
+  (if (= (type value) :std.native.Result)
     (if (Result/success? value)
       (Result/data value)
       (let [error (Result/error-value value)
@@ -291,7 +291,7 @@
   ([value]
    (require-success "Command failed" value))
   ([message value]
-   (if (Result/instance? value)
+   (if (= (type value) :std.native.Result)
      (if (Result/success? value)
        (require-success message (Result/data value))
        (let [error (Result/error-value value)

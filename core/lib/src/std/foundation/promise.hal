@@ -39,6 +39,10 @@
   (:config {:blank true
             :set-global-alias promise}))
 
+;; ---------------------------------------------------------------------------
+;; Native promise construction
+;; ---------------------------------------------------------------------------
+
 (defn ^{:inline true :schema [:fn [:fn] :promise]}
   run
   "Runs function asynchronously and returns its promise."
@@ -69,38 +73,42 @@
   [milliseconds function]
   (Promise/delay milliseconds function))
 
+;; ---------------------------------------------------------------------------
+;; IPromise state and composition
+;; ---------------------------------------------------------------------------
+
 (defn ^{:inline true :schema [:fn [:promise] :keyword]}
   state
   "Returns promise's scheduler state."
   [promise]
-  (std.protocol.ipromise.IPromise/state promise))
+  (IPromise/state promise))
 
 (defn ^{:inline true :schema [:fn [:promise] :any]}
   value
   "Returns promise's settled value or provider-specific failure."
   [promise]
-  (std.protocol.ipromise.IPromise/value promise))
+  (IPromise/value promise))
 
 (defn ^{:inline true :schema [:fn [:promise :fn] :promise]}
   then
   "Chains function after promise succeeds."
   [promise function]
-  (std.protocol.ipromise.IPromise/then promise function))
+  (IPromise/then promise function))
 
 (defn ^{:inline true :schema [:fn [:promise :fn] :promise]}
   catch
   "Chains function after promise fails."
   [promise function]
-  (std.protocol.ipromise.IPromise/catch promise function))
+  (IPromise/catch promise function))
 
 (defn ^{:inline true :schema [:fn [:promise :fn] :promise]}
   finally
   "Chains cleanup function after promise settles."
   [promise function]
-  (std.protocol.ipromise.IPromise/finally promise function))
+  (IPromise/finally promise function))
 
 (defn ^{:inline true :schema [:fn [:promise] :any]}
   cancel
   "Requests best-effort cancellation of promise."
   [promise]
-  (std.protocol.ipromise.IPromise/cancel promise))
+  (IPromise/cancel promise))

@@ -998,12 +998,10 @@ pub fn native_type_function_value(native_type: &str, method: &str) -> Result<Val
                     ("create", [value @ Value::Function(_)]) => {
                         Ok(Value::Coroutine(Rc::new(Coroutine::new(value.clone()))))
                     }
-                    ("instance?", [value]) => Ok(Value::Bool(matches!(value, Value::Coroutine(_)))),
                     ("yield" | "await", _) => {
                         Err(format!("Coroutine/{method} requires the fiber evaluator"))
                     }
                     ("create", _) => Err("Coroutine/create expects one function".into()),
-                    ("instance?", _) => Err("Coroutine/instance? expects one value".into()),
                     _ => Err(format!("unknown std.native.Coroutine operation: {method}")),
                 }
             })
@@ -1071,16 +1069,6 @@ pub fn native_type_function_value(native_type: &str, method: &str) -> Result<Val
             let method = method.to_owned();
             native_variadic_function(&display_name, move |arguments| {
                 native_regex_values(&method, arguments)
-            })
-        }
-        "UUID" => {
-            let method = method.to_owned();
-            native_variadic_function(&display_name, move |arguments| {
-                match (method.as_str(), arguments.as_slice()) {
-                    ("instance?", [_]) => Ok(Value::Bool(false)),
-                    ("instance?", _) => Err("UUID/instance? expects one value".into()),
-                    _ => Err(format!("unknown std.native.UUID operation: {method}")),
-                }
             })
         }
         "Result" => {
@@ -1198,7 +1186,6 @@ fn native_printer_values(method: &str, arguments: Vec<Value>) -> Result<Value, S
 
 fn native_promise_values(method: &str, arguments: Vec<Value>) -> Result<Value, String> {
     match (method, arguments.as_slice()) {
-        ("instance?", [value]) => Ok(Value::Bool(matches!(value, Value::Promise(_)))),
         ("from", [value]) => Ok(Value::Promise(promise_from(value.clone()))),
         ("all", [values]) => Ok(Value::Promise(promise_all(iterator_values(
             values.clone(),
@@ -1242,7 +1229,6 @@ fn native_promise_values(method: &str, arguments: Vec<Value>) -> Result<Value, S
         ("from", _) => Err("promise/from expects one value".into()),
         ("all", _) => Err("promise/all expects one collection".into()),
         ("delay", _) => Err("promise/delay expects milliseconds and a function".into()),
-        ("instance?", _) => Err("Promise/instance? expects one value".into()),
         _ => Err(format!("unknown std.native.Promise operation: {method}")),
     }
 }
@@ -1370,10 +1356,6 @@ fn native_bytes_operation(method: &str, arguments: Vec<Value>) -> Result<Value, 
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(Value::ByteBuffer(Rc::new(RefCell::new(values))))
         }
-        ("instance?", [value]) => Ok(Value::Bool(matches!(
-            value,
-            Value::Bytes(_) | Value::ByteBuffer(_)
-        ))),
         ("count", [value]) => byte_count(value),
         ("get", [value, index]) => byte_get(value, index, None),
         ("get", [value, index, default]) => byte_get(value, index, Some(default.clone())),

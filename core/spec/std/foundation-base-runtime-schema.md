@@ -53,16 +53,18 @@ formatting, and parsing behavior belongs in portable HAL libraries.
 
 ## Base surface
 
-Base includes representation-level constructors, primitive predicates,
-`apply`, truth coercion, comparison, `satisfies?`, `type`, and `instance?`.
-`tuple` accepts zero through eight values. `vec` and `set` use bulk native
-construction and return an existing vector or persistent set unchanged. Derived
-operations such as `pair`, `pair?`, `unreduced`, `not-nil?`, `false?`, `true?`,
-`fn?`, `pair?`, `reduce`, `reduce-kv`, `merge`, and `select-keys` are
-canonical HAL source. `reduce-in` remains a portable Foundation algorithm
-because its protocol composition is not a primitive runtime operation;
-`reduce-kv` and `select-keys` use it so mutable-capable destinations retain the
-fast construction path.
+Base includes representation-level constructors, reduction boxing/unboxing,
+numeric predicates, `apply`, `satisfies?`, `special-symbol?`, `type`, and
+`instance?`. `tuple` accepts zero through eight values. `vec` and `set` use
+bulk native construction and return an existing vector or persistent set
+unchanged. Truth coercion, comparison, and all derived predicates are
+canonical HAL source. The transparent `unreduced` Foundation Var may still
+inline to `Base/unreduced`, but it remains a Foundation-owned public name.
+`pair`, `pair?`, `not-nil?`, `false?`, `true?`, `fn?`, `reduce`, `reduce-kv`,
+`merge`, and `select-keys` are also source definitions. `reduce-in` remains a
+portable Foundation algorithm because its protocol composition is not a
+primitive runtime operation; `reduce-kv` and `select-keys` use it so
+mutable-capable destinations retain the fast construction path.
 
 ## Runtime type values
 
@@ -170,8 +172,8 @@ compiled or reloaded. Later mutation of `description` does not silently change
 the already compiled contract.
 
 `Schema/kind`, `Schema/form`, `Schema/ast`, and `Schema/origin` inspect schema
-values; `Schema/instance?` recognizes them. `(type (schema value))` is
-`:std.native.SchemaType`. Printing is round-trippable as
+values. `(type (schema value))` is `:std.native.SchemaType`, which is the
+portable schema identity check. Printing is round-trippable as
 `(schema <canonical-short-form>)`. `Schema/ast` returns the portable
 normalized map rather than a host compiler-node shape. For every valid
 surface schema, portable normalization, native AST inspection, and

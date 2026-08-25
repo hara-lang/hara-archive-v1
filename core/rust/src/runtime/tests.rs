@@ -3771,7 +3771,6 @@ mod tests {
             "Host",
             "Test",
             "RegExp",
-            "UUID",
             "Result",
             "Schema",
             "Error",
@@ -6400,7 +6399,7 @@ mod tests {
                            from-value (std.native.Schema/compile description) \
                            direct (std.native.Schema/compile [:int])] \
                        [(type direct) (= from-var from-value direct) \
-                        (std.native.Schema/instance? direct) (std.native.Schema/kind direct) \
+                        (= (type direct) :std.native.SchemaType) (std.native.Schema/kind direct) \
                         (= #'description (std.native.Schema/origin from-var)) \
                         (= from-var (std.native.Schema/of #'customer-name)) \
                         (= direct (std.native.Schema/of #'snapshot-name)) \

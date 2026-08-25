@@ -249,7 +249,7 @@
              :field :artifact/version
              :value version})
       nil)
-    (if (not (Bytes/instance? bytes))
+    (if (not (bytes? bytes))
       (fail ":artifact/bytes must be Bytes"
             {:type :tool.vm/invalid-artifact
              :field :artifact/bytes

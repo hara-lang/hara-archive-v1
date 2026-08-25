@@ -97,7 +97,7 @@
   [value]
   (cond
     (vector? value) value
-    (Result/instance? value) [value]
+    (= (type value) :std.native.Result) [value]
     :else
     [(Result/create
       :success true

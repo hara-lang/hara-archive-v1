@@ -40,6 +40,14 @@
 ;; ============================================================================
 (ns std.foundation)
 
+;; ============================================================================
+;; Protocol boundary
+;;
+;; These are the small, portable names that cross into a protocol or native
+;; type. Java and Rust share this contract; neither runtime should grow a
+;; second public implementation of one of these names.
+;; ============================================================================
+
 ;; Associative access is a protocol operation.  The Foundation name is the
 ;; portable convenience surface; receiver behavior belongs to ILookup.
 (defn ^{:inline true
@@ -73,6 +81,15 @@
   "Returns a reusable sequence view through the native iterator boundary."
   [value]
   (Iter/seq value))
+
+;; ============================================================================
+;; Representation values and constructors
+;;
+;; Base contains only representation-level operations that have no natural
+;; receiver. The public names remain Foundation Vars so they work as values;
+;; `:inline true` lets direct calls use the same native operation without
+;; creating another semantic pathway.
+;; ============================================================================
 
 ;; Base-backed bootstrap shims remain ordinary functions for interpretation and
 ;; first-class use. The compiler validates `:inline true` against their
@@ -125,6 +142,10 @@
 (defn ^{:inline true :schema [:fn [:any] :atom]}
   atom "Creates an atom containing value." [value] (Base/atom value))
 
+;; ---------------------------------------------------------------------------
+;; Runtime clocks and opaque values
+;; ---------------------------------------------------------------------------
+
 (defn ^{:inline true :schema [:fn [] :int]}
   time-ms
   "Returns Unix wall-clock milliseconds; the value may jump when the system clock is corrected."
@@ -143,7 +164,7 @@
   [function & arguments]
   (apply Stream/generate function arguments))
 
-(defn ^{:schema [:fn [:any] :bool]}
+(defn ^{:inline true :schema [:fn [:any] :bool]}
   stream?
   "Returns true when value implements the native stream contract."
   [value]
@@ -170,6 +191,10 @@
 
 (defn ^{:inline true :schema [:fn [:any] :any]}
   reduced "Wraps value as an early reduction result." [value] (Base/reduced value))
+
+;; ---------------------------------------------------------------------------
+;; Foundation truth, identity, and predicate surface
+;; ---------------------------------------------------------------------------
 
 (defn ^{:schema [:fn [:fn & :any] :any]}
   apply "Applies function to leading arguments and a final sequential value."
@@ -201,7 +226,7 @@
   reduced? "Returns true when value is a reduced result." [value]
   (= (type value) :std.native.Reduced))
 
-(defn ^{:schema [:fn [:any] :any]}
+(defn ^{:inline true :schema [:fn [:any] :any]}
   unreduced "Returns the value carried by a reduced result, or value unchanged." [value]
   (Base/unreduced value))
 
@@ -247,8 +272,8 @@
 (defn ^{:inline true :schema [:fn [:any] :bool]}
   atom? "Returns true when value is an atom." [value] (= (type value) :std.native.Atom))
 
-(defn ^{:schema [:fn [:any] :bool]}
-  fn? "Returns true when value satisfies std.protocol.ifn.IFn." [value] (satisfies? std.protocol.ifn.IFn value))
+(defn ^{:inline true :schema [:fn [:any] :bool]}
+  fn? "Returns true when value satisfies IFn." [value] (satisfies? IFn value))
 
 (defn ^{:inline true :schema [:fn [:any] :bool]}
   iterable? "Returns true when value satisfies IIter." [value] (satisfies? IIter value))
@@ -349,7 +374,7 @@
 
 (defn ^{:inline true :schema [:fn [:any] :bool]}
   promise? "Returns true when value is a promise." [value]
-  (Promise/instance? value))
+  (= (type value) :std.native.Promise))
 
 (defn ^{:inline true :schema [:fn [:any :any] :bool]}
   satisfies? "Returns true when value satisfies protocol." [protocol value] (Base/satisfies? protocol value))
@@ -492,7 +517,7 @@
   result?
   "Returns true when value is a native Result."
   [value]
-  (Result/instance? value))
+  (= (type value) :std.native.Result))
 
 ;; ---------------------------------------------------------------------------
 ;; Metadata
@@ -669,7 +694,7 @@
   has?
   "Returns true if collection contains key, including when its value is nil."
   [collection key]
-  (not-nil? (std.protocol.ifind.IFind/find collection key)))
+  (not-nil? (IFind/find collection key)))
 
 ;; ---------------------------------------------------------------------------
 ;; RegExp
@@ -681,7 +706,7 @@
   regexp
   "Compiles a pattern string, returning RegExp values unchanged."
   [pattern]
-  (if (RegExp/instance? pattern)
+  (if (= (type pattern) :std.native.RegExp)
     pattern
     (RegExp/compile pattern)))
 
@@ -729,13 +754,13 @@
   reset!
   "Sets reference to value through IReset and returns value."
   [reference value]
-  (std.protocol.ireset.IReset/reset reference value))
+  (IReset/reset reference value))
 
 (defn ^{:inline true :schema [:fn [:any :any :any] :bool]}
   cas!
   "Atomically replaces old-value with new-value through ICas."
   [reference old-value new-value]
-  (std.protocol.icas.ICas/cas reference old-value new-value))
+  (ICas/cas reference old-value new-value))
 
 (defn ^{:schema [:fn [:any :fn & :any] :any]}
   swap!
@@ -744,7 +769,7 @@
   (loop []
     (let [old-value (IDeref/deref reference)
           new-value (apply function old-value arguments)]
-      (if (std.protocol.icas.ICas/cas reference old-value new-value)
+      (if (ICas/cas reference old-value new-value)
         new-value
         (recur)))))
 
@@ -763,7 +788,7 @@
            result (function old-value)
            output (first result)
            new-value (second result)]
-       (if (std.protocol.icas.ICas/cas reference old-value new-value)
+       (if (ICas/cas reference old-value new-value)
          (if state? [output new-value] output)
          (recur))))))
 
@@ -771,19 +796,19 @@
   watch-add
   "Adds a keyed watch callback through IWatch and returns reference."
   [reference key function]
-  (std.protocol.iwatch.IWatch/watch-add reference key function))
+  (IWatch/watch-add reference key function))
 
 (defn ^{:inline true :schema [:fn [:any :any] :any]}
   watch-remove
   "Removes keyed watch through IWatch and returns reference."
   [reference key]
-  (std.protocol.iwatch.IWatch/watch-remove reference key))
+  (IWatch/watch-remove reference key))
 
 (defn ^{:inline true :schema [:fn [:any] :any]}
   watch-list
   "Returns reference's watch iterator through IWatch."
   [reference]
-  (std.protocol.iwatch.IWatch/watch-list reference))
+  (IWatch/watch-list reference))
 
 ;; ---------------------------------------------------------------------------
 ;; Mutability conversion
@@ -791,15 +816,15 @@
 
 (defn ^{:inline true :schema [:fn [:any] :any]}
   to-mutable
-  "Converts a persistent receiver through std.protocol.itomutable.IToMutable."
+  "Converts a persistent receiver through IToMutable."
   [value]
-  (std.protocol.itomutable.IToMutable/to-mutable value))
+  (IToMutable/to-mutable value))
 
 (defn ^{:inline true :schema [:fn [:any] :any]}
   to-persistent
-  "Converts a mutable receiver through std.protocol.itopersistent.IToPersistent."
+  "Converts a mutable receiver through IToPersistent."
   [value]
-  (std.protocol.itopersistent.IToPersistent/to-persistent value))
+  (IToPersistent/to-persistent value))
 
 ;; ---------------------------------------------------------------------------
 ;; Reduced values and reduction
@@ -809,8 +834,8 @@
                             [:fn [:fn :any :any] :any]]}
   reduce
   "Reduces source with function, optionally beginning with initial."
-  ([function source] (std.protocol.ireduce.IReduce/reduce source function))
-  ([function initial source] (std.protocol.ireduce.IReduce/reduce source function initial)))
+  ([function source] (IReduce/reduce source function))
+  ([function initial source] (IReduce/reduce source function initial)))
 
 (defn ^{:schema [:fn [:fn :any :map] :any]}
   reduce-kv
@@ -818,20 +843,20 @@
   [function initial source]
   (reduce-in initial
              (fn [output entry]
-               (function output (std.protocol.ipair.IPair/key entry) (std.protocol.ipair.IPair/value entry)))
+               (function output (IPair/key entry) (IPair/value entry)))
              source))
 
 (defn ^{:schema [:fn [:any :fn :any] :any]}
   reduce-in
   "Reduces source into initial, using mutable conversion when supported."
   [initial function source]
-  (let [converted (satisfies? std.protocol.itomutable.IToMutable initial)
+  (let [converted (satisfies? IToMutable initial)
         accumulator (if converted
-                      (std.protocol.itomutable.IToMutable/to-mutable initial)
+                      (IToMutable/to-mutable initial)
                       initial)
         output (reduce function accumulator source)]
-    (if (and converted (satisfies? std.protocol.itopersistent.IToPersistent output))
-      (std.protocol.itopersistent.IToPersistent/to-persistent output)
+    (if (and converted (satisfies? IToPersistent output))
+      (IToPersistent/to-persistent output)
       output)))
 
 ;; ---------------------------------------------------------------------------
@@ -842,7 +867,7 @@
   empty?
   "Returns true if value yields no items."
   [value]
-  (if (satisfies? std.protocol.icount.ICount value)
+  (if (satisfies? ICount value)
     (= 0 (ICount/count value))
     (not (iter-next? (iter value)))))
 
@@ -994,21 +1019,21 @@
   [source keys]
   (reduce-in {}
              (fn [output requested]
-               (let [entry (std.protocol.ifind.IFind/find source requested)]
+               (let [entry (IFind/find source requested)]
                  (if entry
-                   (assoc output requested (std.protocol.ipair.IPair/value entry))
+                   (assoc output requested (IPair/value entry))
                    output)))
              keys))
 
 (defn ^{:inline true :schema [:fn [:any] :any]}
   key
   "Returns the key of a map entry."
-  [entry] (std.protocol.ipair.IPair/key entry))
+  [entry] (IPair/key entry))
 
 (defn ^{:inline true :schema [:fn [:any] :any]}
   val
   "Returns the value of a map entry."
-  [entry] (std.protocol.ipair.IPair/value entry))
+  [entry] (IPair/value entry))
 
 (defn ^{:schema [:fn [:any] :any]}
   keys
@@ -1295,7 +1320,7 @@
   (vec (apply map function value values)))
 
 ;; ---------------------------------------------------------------------------
-;; Truth and fixed-point combinators retained from Foundation
+;; Numeric constants, conversions, bits, and math
 ;; ---------------------------------------------------------------------------
 
 (def ^{:schema :num :doc "Euler's number."} E 2.718281828459045)
@@ -1948,7 +1973,7 @@
 
 
 ;; ---------------------------------------------------------------------------
-;; Cycles in Graphs
+;; Graph cycle detection
 ;; ---------------------------------------------------------------------------
 
 (defn- cycle-index [path node]
@@ -1981,7 +2006,7 @@
 
 
 ;; ---------------------------------------------------------------------------
-;; Cycles in Graphs
+;; Graph cycle rendering
 ;; ---------------------------------------------------------------------------
 
 (defn ^{:schema [:fn [:map] :any]}
@@ -2613,15 +2638,15 @@
   apply-in
   "Invokes value in runtime after IApplicable input and output transforms."
   [value runtime args]
-  (let [input (std.protocol.iapplicable.IApplicable/transform-in value runtime args)
-        result (std.protocol.iapplicable.IApplicable/apply-in value runtime input)]
-    (std.protocol.iapplicable.IApplicable/transform-out value runtime args result)))
+  (let [input (IApplicable/transform-in value runtime args)
+        result (IApplicable/apply-in value runtime input)]
+    (IApplicable/transform-out value runtime args result)))
 
 (defn ^{:schema [:fn [:any :any] :any]}
   apply-as
   "Invokes value using its default IApplicable runtime."
   [value args]
-  (apply-in value (std.protocol.iapplicable.IApplicable/apply-default value) args))
+  (apply-in value (IApplicable/apply-default value) args))
 
 (defn ^{:schema [:fn [:any & :any] :any]}
   invoke-as
@@ -2781,7 +2806,7 @@
                   (list 'finally
                         (list 'if
                               resource
-                              (list 'std.protocol.iclose.IClose/close resource)
+                              (list 'IClose/close resource)
                               nil)))))))
 
 ;; ---------------------------------------------------------------------------
@@ -2890,7 +2915,7 @@
      (try
        (let [actual# ~actual]
          (Test/result name# actual# expected# (Test/compare actual# expected#)))
-       (catch Throwable error#
+       (catch error#
          (Test/result
           name# nil expected#
           (Result/create
@@ -2905,10 +2930,10 @@
 
 (defn ^{:schema [:fn [:any :any] :any]}
   dep-get
-  "Returns one dependency entry from a map graph or std.protocol.ideps.IDeps context."
+  "Returns one dependency entry from a map graph or IDeps context."
   [context id]
-  (if (satisfies? std.protocol.ideps.IDeps context)
-    (std.protocol.ideps.IDeps/dep-get context id)
+  (if (satisfies? IDeps context)
+    (IDeps/dep-get context id)
     (let [value (get context id)]
       (if (and (map? value) (has? value :entry))
         (:entry value)
@@ -2918,8 +2943,8 @@
   dep-entries
   "Returns one entry's dependencies as a set."
   [context id]
-  (if (satisfies? std.protocol.ideps.IDeps context)
-    (set (std.protocol.ideps.IDeps/dep-entries context id))
+  (if (satisfies? IDeps context)
+    (set (IDeps/dep-entries context id))
     (let [value (get context id)
           dependencies (if (and (map? value) (has? value :deps))
                          (:deps value)
@@ -2928,10 +2953,10 @@
 
 (defn ^{:schema [:fn [:any] :vector]}
   dep-keys
-  "Lists dependency identifiers from a map graph or std.protocol.ideps.IDeps context."
+  "Lists dependency identifiers from a map graph or IDeps context."
   [context]
-  (if (satisfies? std.protocol.ideps.IDeps context)
-    (vec (std.protocol.ideps.IDeps/dep-keys context))
+  (if (satisfies? IDeps context)
+    (vec (IDeps/dep-keys context))
     (vec (keys context))))
 
 (defn ^{:schema [:fn [:any :any] :map]}

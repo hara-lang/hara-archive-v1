@@ -738,9 +738,7 @@ fn list(v: Vec<Form>, env: Rc<RefCell<HashMap<String, Value>>>, k: Cont) -> Step
         Some("std.foundation.coroutine/create")
         | Some("std.native.Coroutine/create")
         | Some("Coroutine/create") => coroutine::create_form(v, env, k),
-        Some("std.foundation.coroutine/coroutine?")
-        | Some("std.native.Coroutine/instance?")
-        | Some("Coroutine/instance?") => coroutine::predicate_form(v, env, k),
+        Some("std.foundation.coroutine/coroutine?") => coroutine::predicate_form(v, env, k),
         Some("std.foundation.coroutine/status") => coroutine::status_form(v, env, k),
         Some("std.foundation.coroutine/close") => coroutine::close_form(v, env, k),
         Some("std.foundation.coroutine/resume") => coroutine::resume_form(v, env, k),

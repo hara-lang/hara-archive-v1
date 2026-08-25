@@ -57,9 +57,6 @@ fn portable_type_keyword(value: &Value) -> Result<Keyword, String> {
 }
 
 fn native_type_instance(native: &NativeType, value: &Value) -> Result<bool, String> {
-    if !native.methods.iter().any(|method| method == "instance?") {
-        return Err("instance? descriptor does not define instance?".into());
-    }
     Ok(portable_type_keyword(value)?.as_str() == native.name)
 }
 
@@ -369,15 +366,6 @@ fn native_stream_values(operation: &str, values: Vec<Value>) -> Result<Value, St
             }
             let arguments = values[1..].to_vec();
             Ok(Value::Stream(Rc::new(RuntimeStream::new(body, arguments))))
-        }
-        "instance?" => {
-            if values.len() != 1 {
-                return Err("Stream/instance? expects one value".into());
-            }
-            Ok(Value::Bool(matches!(
-                values[0],
-                Value::Stream(_)
-            )))
         }
         "next" => {
             if values.len() != 1 {

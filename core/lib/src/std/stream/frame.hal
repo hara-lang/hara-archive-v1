@@ -48,7 +48,7 @@
                            :max-frame-bytes (:max-frame-bytes codec)} :ex/message "Frame exceeds maximum byte length"))
           (apply bytes (conj (append-bytes [] payload) 10))))))
   (feed-frame [codec state chunk]
-    (if (not (Bytes/instance? chunk))
+    (if (not (bytes? chunk))
       (throw (ex :io {:value chunk} :ex/message "Frame codec expects Bytes")))
     (feed-values codec (append-bytes [] chunk) 0 state []))
   (finish-frame [codec state]
@@ -64,5 +64,4 @@
   ([] (json-line {}))
   ([options]
    (LineCodec Json/write Json/read (or (:max-frame-bytes options) 1048576))))
-
 

@@ -8,20 +8,31 @@
   (:config {:override [repeat reverse insert-at]
             :set-global-alias str}))
 
-(defn string-like?
+;; ---------------------------------------------------------------------------
+;; StringLike protocol adapters
+;; ---------------------------------------------------------------------------
+
+(defn ^{:inline true :schema [:fn [:any] :bool]}
+  string-like?
   "Returns true when value can round-trip through a string representation."
   [value]
   (satisfies? IStringLike value))
 
-(defn to-string
+(defn ^{:inline true :schema [:fn [:any] :str]}
+  to-string
   "Returns the reversible string representation of a string-like value."
   [value]
-  (std.protocol.istringlike.IStringLike/to-string value))
+  (IStringLike/to-string value))
 
-(defn from-string
+(defn ^{:inline true :schema [:fn [:any :str] :any]}
+  from-string
   "Reconstructs the type of sample from text."
   [sample text]
-  (std.protocol.istringlike.IStringLike/from-string sample text))
+  (IStringLike/from-string sample text))
+
+;; ---------------------------------------------------------------------------
+;; Native string primitives
+;; ---------------------------------------------------------------------------
 
 (defn ^{:inline true :schema [:fn [:str] :int]}
   length
@@ -97,7 +108,7 @@
   [separator values]
   (String/join separator values))
 
-(defn ^{:schema [:fn [:str [:or :str :regex]] [:maybe :vector]]}
+(defn ^{:inline true :schema [:fn [:str [:or :str :regex]] [:maybe :vector]]}
   split
   "Splits value around a string or regular-expression separator."
   [value separator]
@@ -235,6 +246,10 @@
   "Decodes UTF-8 bytes into a string."
   [value]
   (String/decode-utf8 value))
+
+;; ---------------------------------------------------------------------------
+;; Portable string representations and identifier transforms
+;; ---------------------------------------------------------------------------
 
 (defn- tag-value
   [value]

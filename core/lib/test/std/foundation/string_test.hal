@@ -146,6 +146,12 @@
       (str/to-string (WrappedName "hello"))
       (:value (str/from-string (WrappedName "") "world"))]
      => [:hello/world (symbol "hello/world") "hello" "world"])
+   (fact "native adapters retain inline metadata across runtimes"
+     [(get (meta (var std.foundation.string/string-like?)) :inline)
+      (get (meta (var std.foundation.string/to-string)) :inline)
+      (get (meta (var std.foundation.string/from-string)) :inline)
+      (get (meta (var std.foundation.string/split)) :inline)]
+     => [true true true true])
    (fact "wrap preserves built-in and custom StringLike types"
      [((str/wrap str/upper-case) :hello)
       ((str/wrap str/split) (symbol "a.b") ".")

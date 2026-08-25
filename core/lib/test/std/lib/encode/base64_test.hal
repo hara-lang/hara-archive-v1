@@ -6,7 +6,7 @@
 
 ^{:refer std.lib.encode.base64/input-bytes}
 (fact "accepts Bytes and rejects other encode inputs"
-  [(Bytes/instance? (base64/input-bytes (bytes 1 2 3)))
+  [(bytes? (base64/input-bytes (bytes 1 2 3)))
    (try (base64/input-bytes "Hara") false
         (catch Throwable error true))]
   => [true true])

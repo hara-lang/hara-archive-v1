@@ -6,7 +6,7 @@
 (def results
   [^{:refer std.lib.encode.hex/input-bytes}
    (test-check "accepts Bytes and rejects other encode inputs"
-               [(Bytes/instance? (hex/input-bytes (bytes 1 2 3)))
+               [(bytes? (hex/input-bytes (bytes 1 2 3)))
                 (try (hex/input-bytes "Hara") false
                      (catch Throwable error true))]
                [true true])

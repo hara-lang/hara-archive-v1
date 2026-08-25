@@ -30,6 +30,10 @@
   (:config {:blank true
             :set-global-alias bytes}))
 
+;; ---------------------------------------------------------------------------
+;; Opaque native byte-buffer boundary
+;; ---------------------------------------------------------------------------
+
 (defn ^{:inline true :schema [:fn [:bytes] :int]}
   count
   "Returns the number of bytes in value."

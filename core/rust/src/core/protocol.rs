@@ -1010,7 +1010,6 @@ fn native_schema_values(method: &str, values: &[Value]) -> Result<Value, String>
             Value::Var(var) => schema_contract(var),
             _ => Err("Schema/of expects a Var".into()),
         },
-        "instance?" => Ok(Value::Bool(matches!(value, Value::Schema(_)))),
         "kind" => match value {
             Value::Schema(schema) => Ok(Value::Keyword(Keyword::from(schema_kind(&schema.ast)))),
             _ => Err("Schema/kind expects a schema".into()),
@@ -1144,13 +1143,8 @@ fn native_base_values(operation: &str, values: &[Value]) -> Result<Value, String
             [Value::StructType(_), value] | [Value::MutableType(_), value] => {
                 named_instance_of(&values[0], value)
             }
-            [Value::NativeType(native), value]
-                if native.methods.iter().any(|method| method == "instance?") =>
-            {
+            [Value::NativeType(native), value] => {
                 Ok(Value::Bool(native_type_instance(native, value)?))
-            }
-            [Value::NativeType(_), _] => {
-                Err("Base/instance? descriptor does not define instance?".into())
             }
             _ => Err("Base/instance? expects a type descriptor and value".into()),
         },

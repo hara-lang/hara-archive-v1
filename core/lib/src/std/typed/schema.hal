@@ -7,7 +7,7 @@
 (defn- normalize-dispatch
   [schema]
   (cond
-    (Schema/instance? schema)
+    (= (type schema) :std.native.SchemaType)
     :schema-value
 
     (and (map? schema) (has? schema :kind))
@@ -844,7 +844,7 @@
     nil))
 
 (defmethod validate-normal :result [schema value path]
-  (if (not (Result/instance? value))
+  (if (not (= (type value) :std.native.Result))
     [(finding path schema value)]
     (let [properties (:properties schema)
           expected-status (:status properties)
@@ -1106,7 +1106,7 @@
       (validate-map-with schema value path registry-value trail)
 
       (= kind :result)
-      (if (not (Result/instance? value))
+      (if (not (= (type value) :std.native.Result))
         [(finding path schema value)]
         (let [base-findings (validate-normal schema value path)]
           (if (Result/success? value)

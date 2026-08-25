@@ -2,7 +2,7 @@
 /// source. Ordinary Foundation functions and compatibility aliases are
 /// intentionally absent; they are defined by the source modules themselves.
 const FOUNDATION_INTRINSICS: &[&str] = &[
-    "+", "-", "*", "/", "%", "=", "<", "<=", ">", ">=", "quot", "rem", "mod", "number?",
+    "+", "-", "*", "/", "%", "=", "<", "<=", ">", ">=", "quot", "rem", "mod",
 ];
 
 /// Installs the small language-level callable substrate needed while loading

@@ -3044,7 +3044,6 @@ mod tests {
             "Json",
             "Host",
             "RegExp",
-            "UUID",
             "Error",
             "Base",
             "Iter",

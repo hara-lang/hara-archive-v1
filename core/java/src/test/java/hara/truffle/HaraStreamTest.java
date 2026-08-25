@@ -20,7 +20,7 @@ public class HaraStreamTest {
                   "(let [s (Stream/generate "
                       + "(fn [n] (loop [i 0] (if (< i n) "
                       + "(do (Coroutine/yield {:index i}) (recur (inc i))) :done))) 2)] "
-                      + "[(Stream/instance? s) (satisfies? IStream s) (type s) "
+                      + "[(= (type s) :std.native.Stream) (satisfies? IStream s) (type s) "
                       + "(deref (Stream/next s)) (deref (IStream/next s)) "
                       + "(deref (Stream/next s))])")
               .toString());

@@ -51,17 +51,47 @@ For example:
 
 The presence of aliases such as `Edn` or identities such as `std.native.Edn` does **not** imply that `std.foundation.edn` or another retired Foundation child is loadable.
 
+## Native boundary across Java and Rust
+
+The Java and Rust native registries intentionally expose the same type and
+method inventory. Java declares that inventory with `HaraNativeBinding`
+annotations in `HaraBuiltinCatalog`; Rust declares the same inventory with the
+`hara_native_registry` declarations in `core/rust/src/core/native_declarations.rs`.
+Those files are registry descriptions, not the portable API. The implementation
+locations differ by runtime:
+
+| Boundary | Java | Rust | Portable owner |
+| --- | --- | --- | --- |
+| protocol dispatch | `HaraProtocol` and protocol implementations | `lang::protocol` and protocol dispatch | `std.protocol.*` |
+| representation values | `HaraContext` bootstrap plus native data types | `core::protocol::native_base_values` and `core::value` | `std.foundation` wrappers |
+| iteration mechanics | `hara.lang.base.Iter` and native iterator nodes | `core::value::native_iter_operation` | Foundation sequence functions |
+| string and bytes substrate | native library providers and `HaraContext` | `core::operation` and `core::value` | `std.foundation.string` / `bytes` |
+| runtime/evaluation services | `HaraContext` runtime bindings | `core::native` and runtime modules | `std.foundation` environment wrappers |
+
+The rule is therefore ownership-based rather than file-based. Java and Rust
+must keep the same observable native contract, but they do not need matching
+class/module layouts. Only representation, scheduling, capability, host
+interop, and protocol dispatch belong in the native boundary. Predicates,
+collection composition, nested access, sequence transforms, regex coercion,
+and formatting policy belong in portable Foundation source.
+
 `Base` owns representation-level constructor identities that otherwise have no
 natural receiver: `list`, `vector`, `vec`, `set`, `tuple`, `hash-map`,
-`hash-set`, `atom`, `pointer`, `symbol`, and `keyword`. `vec` and `set` retain
-native bulk and identity fast paths. Base also owns `reduced`, `reduced?`,
-`apply`, truth coercion, comparison, primitive predicates, and the minimal
-reflection operations. Derived helpers such as `pair`, `unreduced`,
-`reduce-kv`, `merge`, and `select-keys` are canonical HAL. Foundation implements
-`reduce-in` portably through `IReduce`, `IToMutable`, and `IToPersistent`;
-`reduce-kv` and `select-keys` use it to retain mutable construction speed.
-`reduce-in` is not a Base method because its source is reduced through the
-existing source-dispatched protocol.
+`hash-set`, `atom`, `pointer`, `symbol`, and `keyword`. It also owns reduction
+boxing/unboxing, `apply`, numeric predicates, protocol satisfaction, special-form
+recognition, portable type identity, and descriptor `instance?`. `vec` and `set`
+retain native bulk and identity fast paths. The public `std.foundation` names
+remain ordinary Vars with transparent `^{:inline true}` forwarding metadata.
+
+Truth coercion, comparison, non-numeric predicates, pair helpers, sequence
+access, nested access, and collection composition are Foundation source. In
+particular, `not`, `boolean`, `compare`, `not=`, `reduced?`, `unreduced`,
+`reduce-kv`, `merge`, and `select-keys` do not require a second Base pathway.
+Foundation implements `reduce-in` portably through `IReduce`, `IToMutable`, and
+`IToPersistent`; `reduce-kv` and `select-keys` use it to retain mutable
+construction speed. `Iter` remains an implementation boundary for lazy
+iteration, but `first`, `last`, `map`, `filter`, and the other user-facing
+sequence operations are owned by Foundation.
 
 ## Callable ownership
 

@@ -9,7 +9,7 @@
 
 (defn arr?
   [value]
-  (Arr/instance? value))
+  (= (type value) :std.native.Array))
 
 (defn arr-get
   ([array index]
@@ -93,7 +93,7 @@
 
 (defn obj?
   [value]
-  (Obj/instance? value))
+  (= (type value) :std.native.Object))
 
 (defn obj-get
   ([object key]

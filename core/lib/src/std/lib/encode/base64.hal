@@ -7,7 +7,7 @@
 
 (defn input-bytes
   [value]
-  (if (Bytes/instance? value)
+  (if (bytes? value)
     value
     (throw (ex :serialization {:value value} :ex/message "Base64 encode expects Bytes"))))
 

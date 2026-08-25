@@ -26,6 +26,68 @@ Use intrinsic protocol method symbols such as `IAssoc/assoc` when that
 intrinsic is available; do not spell the equivalent full
 `std.protocol.*` path in new Hara source.
 
+## Compact Hara syntax
+
+Prefer the shortest valid Hara form. Use fully qualified symbols only when
+absolutely necessary to resolve ambiguity, cross a namespace boundary, or
+refer to a symbol that is not available through a local alias or intrinsic.
+
+Prefer:
+
+- `(apply ...)` over `(std.foundation/apply ...)` inside `std.foundation`.
+- `(ILookup/lookup value key)` over
+  `(std.protocol.ilookup.ILookup/lookup value key)`.
+- Local symbols over qualified references to the current namespace.
+
+Do not introduce qualification merely for clarity. Preserve the compact local
+style of surrounding code. Before adding a qualified symbol, verify that the
+short form is actually ambiguous or unavailable.
+
+## Hara error handling
+
+Hara uses structured guest exceptions, not Java or Rust exception syntax.
+Construct errors with `ex`, raise them with `throw`, and inspect them with
+`ex-data`, `ex-message`, `ex-cause`, `ex-class`, or `ex-provenance` as needed.
+The `ex` form takes an error code, data, and optional keyword settings:
+
+```hara
+(ex :io
+    {:path path}
+    :ex/message "Unable to read path"
+    :ex/class :ex.class/io
+    :ex/cause cause)
+```
+
+Keep the error code and data meaningful; use keyword options for standard
+exception metadata rather than burying messages or classes in arbitrary data.
+
+Use the catch-only form for a catch-all guest exception handler:
+
+```hara
+(try
+  (operation)
+  (catch error
+    (recover error)))
+```
+
+Do not use host-language selectors such as `Throwable`, or Java-shaped forms
+such as `(catch Throwable error body)`, in portable Hara source. Use a
+namespaced keyword or keyword vector when the handler intentionally selects
+particular structured error codes:
+
+```hara
+(try
+  (read-file path)
+  (catch :file/not-found error
+    (recover-missing path error))
+  (catch [:file/permission-denied :file/closed] error
+    (recover-file-error path error)))
+```
+
+These catch selectors match the error code supplied as the first argument to
+`ex`; they are not host exception classes. Preserve the caught Hara exception
+when wrapping or rethrowing it, and use `finally` for deterministic cleanup.
+
 ## Namespace roles and publication
 
 Do not add top-level `defn-`, `defmacro-`, or private Vars to `.hal` source.

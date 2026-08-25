@@ -29,7 +29,7 @@
 (defn- unknown-keys [value allowed]
   (vec (sort-by str (filter (fn [key] (not (has? allowed key))) (keys value)))))
 (defn- bytes [value operation]
-  (if (Bytes/instance? value)
+  (if (bytes? value)
     (Bytes/copy value)
     (fail (str "tool.package/" (name operation) " expects Bytes")
           {:type :tool.package/invalid-package :operation operation :value value})))

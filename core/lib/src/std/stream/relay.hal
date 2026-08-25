@@ -164,7 +164,7 @@
       nil)))
 
 (defn append-raw [relay chunk]
-  (if (not (Bytes/instance? chunk))
+  (if (not (bytes? chunk))
     (throw (ex :io {:error/type :relay/invalid-chunk
                      :value chunk} :ex/message "Buffered Relay expects byte chunks")))
   (swap! (:state relay)

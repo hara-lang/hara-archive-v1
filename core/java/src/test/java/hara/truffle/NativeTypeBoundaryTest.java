@@ -65,7 +65,7 @@ public class NativeTypeBoundaryTest {
               .eval(
                   HaraLanguage.ID,
                   "(let [value (bytes 1 2)] "
-                      + "[(type value) (Bytes/instance? value) "
+                      + "[(type value) (bytes? value) "
                       + "(do (Bytes/set value 0 9) (Bytes/get value 0))])")
               .toString());
     }

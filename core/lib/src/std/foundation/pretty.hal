@@ -11,6 +11,10 @@
 (ns std.foundation.pretty
   (:config {:set-global-alias pretty}))
 
+;; ---------------------------------------------------------------------------
+;; Visitor configuration and document construction
+;; ---------------------------------------------------------------------------
+
 (def ^{:schema :map
        :doc "Default options for canonical and pretty document visitors."}
   default-options
@@ -30,6 +34,10 @@
   PrettyVisitor
   PrettyVisitor)
 
+;; ---------------------------------------------------------------------------
+;; Portable value visitors
+;; ---------------------------------------------------------------------------
+
 (defn- ^{:inline true :schema [:fn [:keyword :any] :any]}
   annotate
   "Annotates document with its portable rendering kind."
@@ -42,8 +50,8 @@
 
 (defn- value-meta [value]
   (try
-    (std.protocol.iobjtype.IObjType/meta value)
-    (catch Throwable error nil)))
+    (IObjType/meta value)
+    (catch e nil)))
 
 (defn- join-documents [separator documents]
   (if (empty? documents)
@@ -102,7 +110,7 @@
         (fallback visitor value)
         (annotate :pretty/unknown (pr-str value))))))
 
-(extend-type CanonicalVisitor std.protocol.iencodevisitor.IEncodeVisitor
+(extend-type CanonicalVisitor IEncodeVisitor
   (visit-nil [visitor] (handled visitor :nil nil "nil"))
   (visit-boolean [visitor value] (handled visitor :boolean value (pr-str value)))
   (visit-number [visitor value] (handled visitor :number value (pr-str value)))
@@ -125,7 +133,7 @@
              (Document/fragment "#" (str tag) " " (format-doc visitor form))))
   (visit-unknown [visitor value] (unknown-document visitor value)))
 
-(extend-type PrettyVisitor std.protocol.iencodevisitor.IEncodeVisitor
+(extend-type PrettyVisitor IEncodeVisitor
   (visit-nil [visitor] (handled visitor :nil nil (annotate :pretty/nil "nil")))
   (visit-boolean [visitor value] (handled visitor :boolean value (annotate :pretty/boolean (pr-str value))))
   (visit-number [visitor value] (handled visitor :number value (annotate :pretty/number (pr-str value))))
@@ -158,6 +166,10 @@
                (format-doc visitor form))))
   (visit-unknown [visitor value] (unknown-document visitor value)))
 
+;; ---------------------------------------------------------------------------
+;; Rendering and output
+;; ---------------------------------------------------------------------------
+
 (defn ^{:schema [:function [:fn [] :any]
                             [:fn [:map] :any]]}
   canonical-printer
@@ -176,11 +188,11 @@
    (std.foundation.pretty/PrettyVisitor
      (merge default-options options {:mode :pretty}))))
 
-(defn ^{:schema [:fn [:any :any] :any]}
+(defn ^{:inline true :schema [:fn [:any :any] :any]}
   format-doc-edn
   "Encodes value through visitor without adding metadata decoration."
   [visitor value]
-  (std.protocol.iencodable.IEncodable/encode-with value visitor))
+  (IEncodable/encode-with value visitor))
 
 (defn ^{:schema [:function [:fn [:any] :any]
                             [:fn [:any :any] :any]]}
@@ -199,7 +211,8 @@
        (format-doc-edn visitor value))))
   ([value] (format-doc (pretty-printer) value)))
 
-(defn ^{:schema [:function [:fn [:any] :str]
+(defn ^{:inline true
+        :schema [:function [:fn [:any] :str]
                             [:fn [:any :map] :str]]}
   render
   "Renders document to a string with optional Document rendering options."

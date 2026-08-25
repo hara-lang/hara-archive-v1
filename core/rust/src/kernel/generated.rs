@@ -47,7 +47,6 @@ const NATIVE_TYPES: &[&str] = &[
     "Host",
     "Test",
     "RegExp",
-    "UUID",
     "Result",
     "Schema",
     "Error",

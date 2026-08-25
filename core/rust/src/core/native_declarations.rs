@@ -65,7 +65,7 @@ pub(crate) mod declarations {
     )]
     struct String;
 
-    #[hara_native(namespace = "std.native", name = "Bytes", methods = ["new", "instance?", "count", "get", "set", "copy", "slice", "u8", "s8"])]
+    #[hara_native(namespace = "std.native", name = "Bytes", methods = ["new", "count", "get", "set", "copy", "slice", "u8", "s8"])]
     struct Bytes;
 
     #[hara_native(
@@ -88,7 +88,7 @@ pub(crate) mod declarations {
         name = "Process",
         availability = "capability-gated",
         capability = "native-runtime",
-        methods = ["spawn", "instance?", "alive?", "write", "close-input", "stdout", "stderr", "stdout-stream", "stderr-stream", "wait", "kill"]
+        methods = ["spawn", "alive?", "write", "close-input", "stdout", "stderr", "stdout-stream", "stderr-stream", "wait", "kill"]
     )]
     struct Process;
 
@@ -110,19 +110,19 @@ pub(crate) mod declarations {
     )]
     struct Socket;
 
-    #[hara_native(namespace = "std.native", name = "Promise", methods = ["run", "new", "from", "all", "delay", "instance?"])]
+    #[hara_native(namespace = "std.native", name = "Promise", methods = ["run", "new", "from", "all", "delay"])]
     struct Promise;
 
-    #[hara_native(namespace = "std.native", name = "Coroutine", methods = ["create", "yield", "await", "instance?"])]
+    #[hara_native(namespace = "std.native", name = "Coroutine", methods = ["create", "yield", "await"])]
     struct Coroutine;
 
-    #[hara_native(namespace = "std.native", name = "Stream", methods = ["create", "generate", "next", "instance?"])]
+    #[hara_native(namespace = "std.native", name = "Stream", methods = ["create", "generate", "next"])]
     struct Stream;
 
-    #[hara_native(namespace = "std.native", name = "Arr", methods = ["new", "instance?", "get", "set", "push-first", "push-last", "pop-first", "pop-last", "insert", "remove", "clone", "slice", "map", "filter", "fold-left", "fold-right"])]
+    #[hara_native(namespace = "std.native", name = "Arr", methods = ["new", "get", "set", "push-first", "push-last", "pop-first", "pop-last", "insert", "remove", "clone", "slice", "map", "filter", "fold-left", "fold-right"])]
     struct Arr;
 
-    #[hara_native(namespace = "std.native", name = "Obj", methods = ["new", "instance?", "get", "set", "has?", "delete", "clone", "assign", "keys", "vals", "pairs"])]
+    #[hara_native(namespace = "std.native", name = "Obj", methods = ["new", "get", "set", "has?", "delete", "clone", "assign", "keys", "vals", "pairs"])]
     struct Obj;
 
     #[hara_native(
@@ -167,16 +167,13 @@ pub(crate) mod declarations {
     )]
     struct Test;
 
-    #[hara_native(namespace = "std.native", name = "RegExp", methods = ["instance?", "compile", "pattern", "find?", "find", "matches", "replace", "split"])]
+    #[hara_native(namespace = "std.native", name = "RegExp", methods = ["compile", "pattern", "find?", "find", "matches", "replace", "split"])]
     struct RegExp;
 
-    #[hara_native(namespace = "std.native", name = "UUID", methods = ["instance?"])]
-    struct UUID;
-
-    #[hara_native(namespace = "std.native", name = "Result", methods = ["create", "synchronize", "instance?", "success?", "error?", "status", "data", "error-value", "context", "with-context"])]
+    #[hara_native(namespace = "std.native", name = "Result", methods = ["create", "synchronize", "success?", "error?", "status", "data", "error-value", "context", "with-context"])]
     struct Result;
 
-    #[hara_native(namespace = "std.native", name = "Schema", methods = ["compile", "of", "instance?", "kind", "form", "ast", "origin"])]
+    #[hara_native(namespace = "std.native", name = "Schema", methods = ["compile", "of", "kind", "form", "ast", "origin"])]
     struct Schema;
 
     #[hara_native(namespace = "std.native", name = "Error", methods = ["new", "message", "class"])]

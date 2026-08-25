@@ -462,11 +462,9 @@ public final class HaraContext {
               "shift-right", "bit-shift-right"));
       installNativeExportGroup("Crypto", exports, HaraNativeDeclarations.methods("Crypto"), Map.of());
       installNativeExportGroup(
-          "Arr", exports, java.util.List.of("new", "instance?"),
-          Map.of("new", "array", "instance?", "array?"));
+          "Arr", exports, java.util.List.of("new"), Map.of("new", "array"));
       installNativeExportGroup(
-          "Obj", exports, java.util.List.of("new", "instance?"),
-          Map.of("new", "object", "instance?", "object?"));
+          "Obj", exports, java.util.List.of("new"), Map.of("new", "object"));
       installNativeExportGroup(
           "Runtime",
           exports,
@@ -480,15 +478,12 @@ public final class HaraContext {
           exports,
           HaraNativeDeclarations.methods("RegExp"),
           Map.of(
-              "instance?", "regexp?",
               "compile", "regexp",
               "pattern", "re-pattern",
               "find", "re-find",
               "matches", "re-matches",
               "replace", "re-replace",
               "split", "re-split"));
-      installNativeExportGroup(
-          "UUID", exports, HaraNativeDeclarations.methods("UUID"), Map.of("instance?", "uuid?"));
       installNativeExportGroup(
           "Error",
           exports,
@@ -515,9 +510,7 @@ public final class HaraContext {
           default -> null;
         };
     if (type != null) {
-      Map<String, String> sourceNames =
-          "Coroutine".equals(type) ? Map.of("instance?", "coroutine?") : Map.of();
-      installNativeExportGroup(type, exports, HaraNativeDeclarations.methods(type), sourceNames);
+      installNativeExportGroup(type, exports, HaraNativeDeclarations.methods(type), Map.of());
     }
   }
 
@@ -2314,11 +2307,6 @@ public final class HaraContext {
                   : HaraResult.synchronize(HaraBox.unwrap(values[0]), HaraBox.unwrap(values[1]));
             }));
     result.define(
-        "instance?",
-        new UnaryBuiltin(
-            "std.native.Result/instance?",
-            value -> HaraBox.unwrap(value) instanceof HaraResult));
-    result.define(
         "success?",
         new UnaryBuiltin(
             "std.native.Result/success?",
@@ -2414,11 +2402,6 @@ public final class HaraContext {
         "next",
         new UnaryBuiltin(
             "std.native.Stream/next", value -> requireStream(value, "Stream/next").next()));
-    stream.define(
-        "instance?",
-        new UnaryBuiltin(
-            "std.native.Stream/instance?",
-            value -> HaraBox.unwrap(value) instanceof hara.lang.protocol.IStream));
   }
 
   private hara.lang.protocol.IStream requireStream(Object value, String operation) {
@@ -2489,9 +2472,6 @@ public final class HaraContext {
               Object type = HaraBox.unwrap(values[0]);
               Object value = HaraBox.unwrap(values[1]);
               if (type instanceof HaraNativeType nativeType) {
-                if (!nativeType.methods().contains("instance?")) {
-                  throw new HaraException("instance? descriptor does not define instance?");
-                }
                 return portableType(value).equals(Keyword.create("std.native." + nativeType.getName()));
               }
               if (!(type instanceof HaraType)) {
@@ -2529,8 +2509,6 @@ public final class HaraContext {
               }
               return schemaContract(variable);
             }));
-    schemaNative.define(
-        "instance?", new UnaryBuiltin("std.native.Schema/instance?", value -> HaraBox.unwrap(value) instanceof HaraSchemaType));
     schemaNative.define(
         "kind",
         new UnaryBuiltin(
@@ -4064,11 +4042,6 @@ public final class HaraContext {
     algo.define("trie?", typePredicate("std.native.Algo/trie?", hara.lang.data.Trie.class));
     HaraNamespace regex = namespace("std.native.RegExp");
     regex.define(
-        "instance?",
-        new UnaryBuiltin(
-            "std.native.RegExp/instance?",
-            value -> HaraBox.unwrap(value) instanceof java.util.regex.Pattern));
-    regex.define(
         "compile",
         new UnaryBuiltin(
             "std.native.RegExp/compile",
@@ -4691,13 +4664,6 @@ public final class HaraContext {
         HaraVar.Origin.RUNTIME_PRIMITIVE,
         () -> {
           StdFoundationCoroutine.install(this, "std.native.Coroutine");
-          namespace("std.native.Coroutine")
-              .define(
-                  "instance?",
-                  new UnaryBuiltin(
-                      "std.native.Coroutine/instance?",
-                      value ->
-                          HaraBox.unwrap(value) instanceof StdFoundationCoroutine.HaraCoroutine));
         });
   }
 
@@ -4803,10 +4769,6 @@ public final class HaraContext {
     HaraNamespace bytes = namespace("std.native.Bytes");
     bytes.define("new", new VariadicBuiltin("std.native.Bytes/new", this::createBytes));
     bytes.define(
-        "instance?",
-        new UnaryBuiltin(
-            "std.native.Bytes/instance?", value -> HaraBox.unwrap(value) instanceof byte[]));
-    bytes.define(
         "count",
         new UnaryBuiltin("bytes/count", value -> (long) bytesValue(value, "bytes/count").length));
     bytes.define("get", new VariadicBuiltin("bytes/get", this::bytesGet));
@@ -4827,10 +4789,6 @@ public final class HaraContext {
   private void definePromiseLibrary() {
     HaraNamespace promise = namespace("std.native.Promise");
     promise.define("run", new UnaryBuiltin("std.native.Promise/run", this::promiseRun));
-    promise.define(
-        "instance?",
-        new UnaryBuiltin(
-            "std.native.Promise/instance?", value -> HaraBox.unwrap(value) instanceof HaraPromise));
     promise.define("new", new UnaryBuiltin("promise/new", this::promiseNew));
     promise.define("from", new UnaryBuiltin("promise/from", this::promiseFrom));
     promise.define("all", new UnaryBuiltin("promise/all", this::promiseAll));
@@ -4945,7 +4903,6 @@ public final class HaraContext {
     os.define("time-ns", new VariadicBuiltin("std.native.OS/time-ns", this::osTimeNs));
     HaraNamespace process = namespace("std.native.Process");
     process.define("spawn", new VariadicBuiltin("std.native.Process/spawn", this::osSpawn));
-    process.define("instance?", new UnaryBuiltin("std.native.Process/instance?", value -> HaraBox.unwrap(value) instanceof HaraProcess));
     process.define("alive?", new UnaryBuiltin("std.native.Process/alive?", value -> requireProcess(value, "std.native.Process/alive?").process.isAlive()));
     process.define("write", new VariadicBuiltin("std.native.Process/write", this::osProcessWrite));
     process.define("close-input", new UnaryBuiltin("std.native.Process/close-input", this::osProcessCloseInput));

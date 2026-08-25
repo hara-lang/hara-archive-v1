@@ -17,7 +17,6 @@ fn os_values(operation: &str, values: Vec<Value>) -> Result<Value, String> {
         .unwrap_or(operation);
     let process_operation = operation.strip_prefix("std.native.Process/");
     let operation = match process_operation.unwrap_or(operation) {
-        "instance?" if process_operation.is_some() => "process?",
         "alive?" if process_operation.is_some() => "process-alive?",
         "write" if process_operation.is_some() => "process-write",
         "close-input" if process_operation.is_some() => "process-close-input",
@@ -769,15 +768,6 @@ fn native_regex_values(operation: &str, values: Vec<Value>) -> Result<Value, Str
         .strip_prefix("std.native.RegExp/")
         .unwrap_or(operation);
     match operation {
-        "instance?" => {
-            if values.len() != 1 {
-                return Err("std.native.RegExp/instance? expects one value".into());
-            }
-            Ok(Value::Bool(matches!(
-                values[0],
-                Value::Regex(_)
-            )))
-        }
         "compile" => {
             if values.len() != 1 {
                 return Err("std.native.RegExp/compile expects one string".into());

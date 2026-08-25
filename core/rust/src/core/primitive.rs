@@ -911,14 +911,11 @@ fn native_result_values(operation: &str, values: Vec<Value>) -> Result<Value, St
             let (timeout, context) = result_synchronize_options(options)?;
             native_result::synchronize_value(value, timeout, context)
         }
-        "instance?" | "success?" | "error?" | "status" | "data" | "error-value" | "context" => {
+        "success?" | "error?" | "status" | "data" | "error-value" | "context" => {
             if values.len() != 1 {
                 return Err(format!("std.native.Result/{operation} expects one value"));
             }
             let value = values[0].clone();
-            if operation == "instance?" {
-                return Ok(Value::Bool(matches!(value, Value::Result(_))));
-            }
             let Value::Result(result) = value else {
                 if matches!(operation, "success?" | "error?") {
                     return Ok(Value::Bool(false));

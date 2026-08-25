@@ -193,7 +193,7 @@ public class HaraGeneratedLibrariesTest {
                       + "(let [from-var (schema #'description) from-value (schema description) "
                       + "direct (schema [:int])] "
                       + "[(type direct) (= from-var from-value direct) "
-                      + "(Schema/instance? direct) (Schema/kind direct) "
+                      + "(= (type direct) :std.native.SchemaType) (Schema/kind direct) "
                       + "(= #'description (Schema/origin from-var)) "
                       + "(= from-var (schema-of #'customer-name)) "
                       + "(= direct (schema-of #'snapshot-name)) "

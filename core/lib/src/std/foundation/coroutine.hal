@@ -38,6 +38,10 @@
             :set-global-alias co})
   (:require [std.foundation]))
 
+;; ---------------------------------------------------------------------------
+;; Coroutine lifecycle and scheduler boundary
+;; ---------------------------------------------------------------------------
+
 (defn ^{:inline true :schema [:fn [:fn] :any]}
   create
   "Creates a suspended coroutine from function."
@@ -48,25 +52,25 @@
   coroutine?
   "Returns true when value is a coroutine."
   [value]
-  (Coroutine/instance? value))
+  (= (type value) :std.native.Coroutine))
 
 (defn ^{:inline true :schema [:fn [:any] :keyword]}
   status
   "Returns coroutine's scheduler state."
   [coroutine]
-  (std.protocol.icoroutine.ICoroutine/status coroutine))
+  (ICoroutine/status coroutine))
 
 (defn ^{:schema [:fn [:any & :any] :any]}
   resume
   "Advances coroutine, supplying optional resume arguments."
   [coroutine & arguments]
-  (std.foundation/apply std.protocol.icoroutine.ICoroutine/resume coroutine arguments))
+  (apply ICoroutine/resume coroutine arguments))
 
 (defn ^{:inline true :schema [:fn [:any] :any]}
   close
   "Closes coroutine and releases its scheduler state."
   [coroutine]
-  (std.protocol.iclose.IClose/close coroutine))
+  (IClose/close coroutine))
 
 (defn ^{:inline true :schema [:fn [:any] :any]}
   yield

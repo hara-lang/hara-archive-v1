@@ -375,19 +375,6 @@ fn native_mutable_values(operation: &str, values: Vec<Value>) -> Result<Value, S
             Ok(Value::Object(Rc::new(RefCell::new(pairs))))
         };
     }
-    if method == "instance?" {
-        if values.len() != 1 {
-            return Err(format!(
-                "std.native.{type_name}/instance? expects one value"
-            ));
-        }
-        let value = &values[0];
-        return Ok(Value::Bool(match type_name {
-            "Arr" => matches!(value, Value::Array(_)),
-            "Obj" => matches!(value, Value::Object(_)),
-            _ => false,
-        }));
-    }
     if values.is_empty() {
         return Err(format!(
             "std.native.{type_name}/{method} expects a receiver"

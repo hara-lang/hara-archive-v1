@@ -36,7 +36,7 @@
   [value]
   (cond
     (report-edn-safe? value) value
-    (Result/instance? value) (result-record value)
+    (= (type value) :std.native.Result) (result-record value)
     (map? value)
     (reduce (fn [output entry]
               (assoc output

@@ -19,7 +19,6 @@ DEFAULT_ROOTS = (
 
 LEGACY_CALLS = {
     "os/spawn": "Process/spawn",
-    "os/process?": "Process/instance?",
     "os/process-alive?": "Process/alive?",
     "os/process-write": "Process/write",
     "os/process-close-input": "Process/close-input",
