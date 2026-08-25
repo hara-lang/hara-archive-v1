@@ -3536,6 +3536,37 @@ mod tests {
                 })
                 .collect()
         }
+        fn native_capabilities(source: &str) -> std::collections::BTreeMap<String, String> {
+            let Form::Map(contract) = kernel::parse_forms(source).unwrap().remove(0) else {
+                panic!("native runtime spec must be a map")
+            };
+            let Form::Vector(types) = entry(&contract, "native/types") else {
+                panic!(":native/types must be a vector")
+            };
+            let mut capabilities = std::collections::BTreeMap::new();
+            for value in types {
+                let Form::Map(native_type) = value else {
+                    panic!("native runtime type entries must be maps")
+                };
+                let Form::Symbol(name) = entry(native_type, "native/symbol") else {
+                    panic!(":native/symbol must be a symbol")
+                };
+                let capability = native_type.iter().find_map(|(key, value)| {
+                    matches!(key, Form::Keyword(key) if key == "native/capability")
+                        .then(|| match value {
+                            Form::Keyword(capability) => capability.clone(),
+                            _ => panic!(":native/capability must be a keyword"),
+                        })
+                });
+                if let Some(capability) = capability {
+                    assert!(
+                        capabilities.insert(name.clone(), capability).is_none(),
+                        "duplicate native runtime type: {name}"
+                    );
+                }
+            }
+            capabilities
+        }
         fn classified(value: Option<&Form>, all: &[String], label: &str) -> Vec<String> {
             match value {
                 None => Vec::new(),
@@ -3578,6 +3609,10 @@ mod tests {
         else {
             return;
         };
+        let Some(native_spec_source) = repo_text("01-lang/003-native/draft/native-spec.edn") else {
+            return;
+        };
+        let native_capabilities = native_capabilities(&native_spec_source);
         let contract = kernel::parse_forms(&contract_source).unwrap().remove(0);
         let Form::Map(contract) = contract else {
             panic!("native contract must be a map")
@@ -3662,12 +3697,7 @@ mod tests {
             let Form::Keyword(availability) = entry(native_type, "availability") else {
                 panic!("native :availability must be a keyword")
             };
-            let capability = native_type.iter().find_map(|(key, value)| {
-                matches!(key, Form::Keyword(name) if name == "capability").then(|| match value {
-                    Form::Keyword(capability) => capability.clone(),
-                    _ => panic!("native :capability must be a keyword"),
-                })
-            });
+            let capability = native_capabilities.get(name).cloned();
             assert!(
                 ["implemented", "capability-gated"].contains(&availability.as_str()),
                 "unsupported availability: {availability}"

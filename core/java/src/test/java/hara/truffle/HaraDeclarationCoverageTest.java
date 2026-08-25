@@ -269,7 +269,8 @@ public class HaraDeclarationCoverageTest {
     }
   }
 
-  private static Map<String, NativeSpec> nativeSpecs(IMapType contract) {
+  private static Map<String, NativeSpec> nativeSpecs(IMapType contract) throws Exception {
+    Map<String, String> capabilities = nativeCapabilities();
     Map<String, NativeSpec> result = new LinkedHashMap<>();
     ILinearType entries = linear(contract.lookup(keyword("types")), "native :types");
     for (int index = 0; index < entries.count(); index++) {
@@ -277,13 +278,16 @@ public class HaraDeclarationCoverageTest {
       String name = symbol(entry.lookup(keyword("name")));
       List<String> methods = symbols(entry.lookup(keyword("methods")), name + " :methods");
       String availability = ((Keyword) entry.lookup(keyword("availability"))).getName();
-      Object capabilityValue = entry.lookup(keyword("capability"));
-      String capability =
-          capabilityValue instanceof Keyword ? ((Keyword) capabilityValue).getName() : "";
       HaraAvailability mapped =
           availability.equals("capability-gated")
               ? HaraAvailability.CAPABILITY_GATED
               : HaraAvailability.PORTABLE;
+      String capability = capabilities.getOrDefault(name, "");
+      if (mapped == HaraAvailability.CAPABILITY_GATED) {
+        assertFalse("Missing native capability: " + name, capability.isBlank());
+      } else {
+        assertTrue("Portable native type has a capability: " + name, capability.isBlank());
+      }
       assertFalse("Duplicate native type: " + name, result.containsKey(name));
       result.put(
           name,
@@ -293,6 +297,25 @@ public class HaraDeclarationCoverageTest {
               mapped,
               capability));
     }
+    return result;
+  }
+
+  private static Map<String, String> nativeCapabilities() throws Exception {
+    String source = Files.readString(specsRegistry().resolve(NATIVE_RUNTIME_SPEC));
+    Map<String, String> result = new LinkedHashMap<>();
+    Matcher matcher =
+        Pattern.compile(
+                "(?s)\\{\\s*:native/id\\s+[^\\s}]+\\s+:native/symbol\\s+([^\\s}]+).*?"
+                    + ":native/availability\\s+:([^\\s}]+)"
+                    + "(?:\\s+:native/capability\\s+:([^\\s}]+))?.*?\\}")
+            .matcher(source);
+    while (matcher.find()) {
+      String name = matcher.group(1);
+      String capability = matcher.group(3) == null ? "" : matcher.group(3);
+      assertFalse("Duplicate native runtime type: " + name, result.containsKey(name));
+      result.put(name, capability);
+    }
+    assertTrue("Native runtime type capability inventory is empty", !result.isEmpty());
     return result;
   }
 
@@ -359,4 +382,6 @@ public class HaraDeclarationCoverageTest {
       "01-lang/001-language/draft/conformance/protocols.edn";
   private static final String NATIVE_SPEC =
       "01-lang/001-language/draft/conformance/native.edn";
+  private static final String NATIVE_RUNTIME_SPEC =
+      "01-lang/003-native/draft/native-spec.edn";
 }

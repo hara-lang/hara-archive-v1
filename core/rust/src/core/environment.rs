@@ -406,7 +406,16 @@ impl ProtocolRegistry {
                     protocol_name.clone(),
                     receiver.ty.name.clone(),
                     method.clone(),
-                ))
+                )) || self
+                    .methods
+                    .borrow()
+                    .get(&(protocol_name.clone(), method.clone()))
+                    .is_some_and(|implementations| {
+                        implementations
+                            .iter()
+                            .rev()
+                            .any(|implementation| (implementation.supports)(value))
+                    })
             });
         }
         if let Value::Mutable(receiver) = value {
@@ -415,7 +424,16 @@ impl ProtocolRegistry {
                     protocol_name.clone(),
                     receiver.ty.name.clone(),
                     method.clone(),
-                ))
+                )) || self
+                    .methods
+                    .borrow()
+                    .get(&(protocol_name.clone(), method.clone()))
+                    .is_some_and(|implementations| {
+                        implementations
+                            .iter()
+                            .rev()
+                            .any(|implementation| (implementation.supports)(value))
+                    })
             });
         }
         let methods = self.methods.borrow();
