@@ -200,6 +200,8 @@ public final class HbcCodec {
       case MAKE_MULTI_ARITY -> new Instruction(opcode, in.u32(), in.u8(), 0);
       case PRIMITIVE_VALUE -> new Instruction(opcode, Primitive.fromId(in.u8()).id(), 0, 0);
       case DOT_CALL -> new Instruction(opcode, in.u32(), in.u8(), 0);
+      case INTRINSIC_CALL, PROTOCOL_CALL -> new Instruction(opcode, in.u32(), in.u8(), 0);
+      case INTRINSIC_VALUE -> new Instruction(opcode, in.u32(), 0, 0);
       default -> Instruction.of(opcode);
     };
   }
@@ -245,6 +247,11 @@ public final class HbcCodec {
         out.u32(instruction.first());
         out.u8(instruction.second());
       }
+      case INTRINSIC_CALL, PROTOCOL_CALL -> {
+        out.u32(instruction.first());
+        out.u8(instruction.second());
+      }
+      case INTRINSIC_VALUE -> out.u32(instruction.first());
       default -> {}
     }
   }

@@ -1,25 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { decodeHta, encodeHta, HtaKeyword } from "./index.js";
-import { serveBrowserProvider } from "./provider-browser.mjs";
+import { createBrowserProvider } from "./provider-browser.mjs";
 
 class FakeWorkerScope {
   constructor() {
-    this.listeners = [];
     this.messages = [];
     this.closed = false;
   }
 
-  addEventListener(type, listener) {
-    if (type === "message") this.listeners.push(listener);
-  }
-
   postMessage(message) {
     this.messages.push(message);
-  }
-
-  async emit(data) {
-    await Promise.all(this.listeners.map(listener => listener({ data })));
   }
 
   close() {
@@ -35,7 +26,7 @@ function field(map, name) {
 
 test("browser providers can issue manifest-authorized host calls", async () => {
   const scope = new FakeWorkerScope();
-  serveBrowserProvider(
+  const provider = createBrowserProvider(
     async (_operation, _args, context) => {
       const reply = await context.hostCall("filesystem.webdav", "open", ["request-1"]);
       return { answer: field(reply, "answer") };
@@ -43,10 +34,7 @@ test("browser providers can issue manifest-authorized host calls", async () => {
     { scope }
   );
 
-  await scope.emit({ type: "init" });
-  assert.equal(scope.messages.shift().type, "ready");
-
-  const invocation = scope.emit({
+  const invocation = provider.handle({
     type: "call",
     id: 7,
     frame: encodeHta(["open", []])
@@ -58,7 +46,7 @@ test("browser providers can issue manifest-authorized host calls", async () => {
   assert.equal(outbound.method, "open");
   assert.deepEqual(decodeHta(outbound.frame), ["request-1"]);
 
-  await scope.emit({
+  await provider.handle({
     type: "delivery",
     call: outbound.call,
     ok: true,
@@ -76,7 +64,7 @@ test("browser providers can issue manifest-authorized host calls", async () => {
 test("top-level cancellation aborts provider work and suppresses late delivery", async () => {
   const scope = new FakeWorkerScope();
   let aborted = false;
-  serveBrowserProvider(
+  const provider = createBrowserProvider(
     async (_operation, _args, context) => {
       await new Promise((resolve, reject) => {
         context.signal.addEventListener("abort", () => {
@@ -88,39 +76,39 @@ test("top-level cancellation aborts provider work and suppresses late delivery",
     { scope }
   );
 
-  const invocation = scope.emit({
+  const invocation = provider.handle({
     type: "call",
     id: 9,
     frame: encodeHta(["read", []])
   });
   await new Promise(resolve => setTimeout(resolve, 0));
-  await scope.emit({ type: "cancel", id: 9 });
+  await provider.handle({ type: "cancel", id: 9 });
   await invocation;
   assert.equal(aborted, true);
   assert.equal(scope.messages.some(message => message.type === "result" && message.id === 9), false);
 });
 
-test("worker close invokes provider cleanup and closes the scope once", async () => {
+test("provider close invokes cleanup exactly once", async () => {
   const scope = new FakeWorkerScope();
   let closes = 0;
-  serveBrowserProvider(async () => null, {
+  const provider = createBrowserProvider(async () => null, {
     scope,
     close: async () => { closes += 1; }
   });
-  await scope.emit({ type: "close" });
-  await scope.emit({ type: "close" });
+  await provider.handle({ type: "close" });
+  await provider.handle({ type: "close" });
   assert.equal(closes, 1);
-  assert.equal(scope.closed, true);
+  assert.equal(scope.closed, false);
 });
 
-test("worker close still terminates the scope when provider cleanup fails", async () => {
+test("provider cleanup failures are reported to the owning worker", async () => {
   const scope = new FakeWorkerScope();
-  serveBrowserProvider(async () => null, {
+  const provider = createBrowserProvider(async () => null, {
     scope,
     close: async () => { throw new Error("cleanup failed"); }
   });
-  await scope.emit({ type: "close" });
-  assert.equal(scope.closed, true);
+  await provider.handle({ type: "close" });
+  assert.equal(scope.closed, false);
   assert.equal(scope.messages.at(-1).type, "fatal");
   assert.match(scope.messages.at(-1).error.message, /cleanup failed/);
 });

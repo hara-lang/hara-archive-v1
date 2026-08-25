@@ -31,6 +31,8 @@ const descriptor='{:namespace "demo.hta" :version "1" :provider :hta :abi :hta.v
   assert.throws(()=>parseHtaManifest(descriptor.replace(":browser {:provider \"browser/provider.mjs\" :runtime :web-worker}","")),/browser web-worker target/);
   assert.throws(()=>parseHtaManifest(descriptor.replace(":version \"1\"",":version nil")),/invalid version/);
   assert.throws(()=>parseHtaManifest(descriptor.replace(":provider \"browser/provider.mjs\"",":module \"browser/worker.mjs\"")),/invalid browser target/);
+  assert.throws(()=>parseHtaManifest(descriptor.replace(":browser {:provider \"browser/provider.mjs\" :runtime :web-worker}",":browser {:provider \"browser/provider.mjs\" :runtime :web-worker :module \"browser/worker.mjs\"}")),/invalid browser target/);
+  assert.throws(()=>parseHtaManifest(descriptor.replace(":provider :hta",":provider :hta :worker \"browser/worker.mjs\"")),/unknown manifest field/);
 });
 test("descriptor loader resolves wasm and applies handle tags",async()=>{const worker=new FakeWorker();const context=await loadHtaExtension({worker,descriptor:tensorDescriptor,packageUrl:"https://example.test/extensions/math/"});assert.equal(worker.sent[0].moduleUrl,"https://example.test/extensions/math/tensor.wasm");worker.emit({type:"ready"});const result=context.call("open",[]);await Promise.resolve();const call=worker.sent.find(message=>message.type==="call");worker.emit({type:"result",id:call.id,ok:true,frame:encodeHta(new HtaHandle("math.tensor","tensor",42n))});assert.equal(String(await result),"#math[:tensor 42]");context.close();});
 test("descriptor loader resolves the wrapped library for generated adapters",async()=>{const worker=new FakeWorker();const context=await loadHtaExtension({worker,descriptor:adapterDescriptor,packageUrl:"https://example.test/extensions/math/"});assert.equal(worker.sent[0].moduleUrl,"https://example.test/extensions/math/adapter.wasm");assert.equal(worker.sent[0].libraryUrl,"https://example.test/extensions/math/modules/math.wasm");context.close();});
@@ -94,8 +96,9 @@ test("generic worker loads a declared provider implementation",async()=>{
 test("generic worker closes a provider through its declared cleanup export",async()=>{
   const messages=[],listeners=new Map(),previousSelf=globalThis.self;
   const marker=`__htaProviderClosed${Date.now()}`;
+  let closed=false;
   globalThis[marker]=false;
-  globalThis.self={addEventListener:(type,handler)=>listeners.set(type,handler),postMessage:message=>messages.push(message),close:()=>{}};
+  globalThis.self={addEventListener:(type,handler)=>listeners.set(type,handler),postMessage:message=>messages.push(message),close:()=>{closed=true;}};
   const providerUrl=`data:text/javascript,${encodeURIComponent(`export default async () => null; export const close = () => { globalThis.${marker} = true; };`)}`;
   try{
     await import(`./packages/hta/worker.mjs?hta-provider-close=${Date.now()}`);
@@ -103,6 +106,26 @@ test("generic worker closes a provider through its declared cleanup export",asyn
     await message({data:{type:"init",backend:"provider",providerUrl}});
     await message({data:{type:"close"}});
     assert.equal(globalThis[marker],true);
+    assert.equal(closed,true);
+  }finally{
+    delete globalThis[marker];
+    if(previousSelf===undefined)delete globalThis.self;else globalThis.self=previousSelf;
+  }
+});
+test("generic worker releases provider handles through the declared hook",async()=>{
+  const messages=[],listeners=new Map(),previousSelf=globalThis.self;
+  const marker=`__htaProviderReleased${Date.now()}`;
+  globalThis[marker]=null;
+  globalThis.self={addEventListener:(type,handler)=>listeners.set(type,handler),postMessage:message=>messages.push(message),close:()=>{}};
+  const providerUrl=`data:text/javascript,${encodeURIComponent(`export default async () => ({owner: 'demo', type: 'cursor', id: 42n}); export const release = handle => { globalThis.${marker} = handle; };`)}`;
+  try{
+    await import(`./packages/hta/worker.mjs?hta-provider-release=${Date.now()}`);
+    const message=listeners.get("message");
+    await message({data:{type:"init",backend:"provider",providerUrl}});
+    await message({data:{type:"release",frame:encodeHta(new HtaHandle("demo","cursor",42n))}});
+    assert.equal(globalThis[marker].owner,"demo");
+    assert.equal(globalThis[marker].type,"cursor");
+    assert.equal(globalThis[marker].id,42n);
   }finally{
     delete globalThis[marker];
     if(previousSelf===undefined)delete globalThis.self;else globalThis.self=previousSelf;
@@ -174,7 +197,7 @@ test("context registers kernel-issued mounts and sessions attach numeric ids",as
   context.close();
 });
 
-class FakeWorker{constructor(){this.listeners={};this.sent=[];}addEventListener(type,handler){this.listeners[type]=handler;}postMessage(message){this.sent.push(message);}emit(data){this.listeners.message({data});}terminate(){this.terminated=true;}}
+class FakeWorker{constructor(){this.listeners={};this.sent=[];}addEventListener(type,handler){this.listeners[type]=handler;}postMessage(message){this.sent.push(message);if(message.type==="close")queueMicrotask(()=>this.emit({type:"closed"}));}emit(data){this.listeners.message({data});}terminate(){this.terminated=true;}}
 
 function replaceUtf8(bytes,from,to){const source=new TextEncoder().encode(from),replacement=new TextEncoder().encode(to);if(source.length!==replacement.length)throw new Error("fixture lengths differ");const copy=bytes.slice();for(let index=0;index<=copy.length-source.length;index++){let match=true;for(let offset=0;offset<source.length;offset++)if(copy[index+offset]!==source[offset]){match=false;break;}if(match){copy.set(replacement,index);return copy;}}throw new Error(`fixture marker missing: ${from}`);}
 

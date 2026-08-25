@@ -8,7 +8,6 @@ const provider = resolve(web, "../../../providers/webdav/hta");
 export default defineConfig({
   resolve: {
     alias: {
-      "@hara-lang/hta/provider/browser": resolve(web, "packages/hta/provider-browser.mjs"),
       "@hara-lang/fs-webdav": resolve(provider, "index.mjs")
     }
   },

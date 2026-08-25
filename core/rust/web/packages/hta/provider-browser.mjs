@@ -32,6 +32,7 @@ export function createBrowserProvider(call, options = {}) {
   const cancelled = new Set();
   const calls = new Map();
   const hostCalls = new Map();
+  const releases = new Set();
   let nextHostCall = 0;
   let closing = false;
   let closed = false;
@@ -91,9 +92,14 @@ export function createBrowserProvider(call, options = {}) {
     calls.clear();
     let failure = null;
     try {
+      await Promise.all([...releases]);
+    } catch (releaseError) {
+      failure = releaseError;
+    }
+    try {
       await options.close?.();
     } catch (closeError) {
-      failure = closeError;
+      failure ??= closeError;
     } finally {
       rejectHostCalls(error);
       closed = true;
@@ -104,7 +110,6 @@ export function createBrowserProvider(call, options = {}) {
         error: { message: String(failure?.message ?? failure) }
       });
     }
-    scope.close();
   }
 
   async function handle(message) {
@@ -118,6 +123,17 @@ export function createBrowserProvider(call, options = {}) {
           message.ok ? pending.resolve(value) : pending.reject(errorFrom(value));
         } catch (error) {
           pending.reject(error);
+        }
+      } else if (message.type === "release") {
+        if (typeof options.release !== "function") {
+          throw new Error("hta/handle-release-unsupported");
+        }
+        const release = Promise.resolve().then(() => options.release(decodeHta(message.frame)));
+        releases.add(release);
+        try {
+          await release;
+        } finally {
+          releases.delete(release);
         }
       } else if (message.type === "cancel") {
         const controller = calls.get(message.id);
@@ -172,18 +188,4 @@ export function createBrowserProvider(call, options = {}) {
   }
 
   return Object.freeze({ close: closeProvider, handle });
-}
-
-/** Serves one provider as a complete browser-worker entry point. */
-export function serveBrowserProvider(call, options = {}) {
-  const scope = options.scope ?? self;
-  const provider = createBrowserProvider(call, options);
-  scope.addEventListener("message", event => {
-    if (event.data?.type === "init") {
-      scope.postMessage({ type: "ready" });
-      return;
-    }
-    void provider.handle(event.data);
-  });
-  return provider;
 }

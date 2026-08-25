@@ -53,7 +53,9 @@ async function receive(port, message) {
     } else if (message.type === "close") {
       dropClientTasks(port);
       clients.delete(port);
-      port.close();
+      // HtaContext terminates the client port after the acknowledgement. The
+      // acknowledgement must cross the port before the client closes it.
+      port.postMessage({ type: "closed" });
     }
   } catch (error) {
     failPort(port, error);

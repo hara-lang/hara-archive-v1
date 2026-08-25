@@ -268,6 +268,42 @@ public final class HbcMachine {
           int primitive = index(instruction.first());
           stack.add(new HbcNativeCallable(args -> invokePrimitive(context, primitive, args)));
         }
+        case INTRINSIC_VALUE -> {
+          String name = stringConstant(program, instruction.first());
+          Integer primitive = primitiveId(name);
+          if (primitive == null) {
+            throw new HaraException("Unknown intrinsic value: " + name);
+          }
+          stack.add(new HbcNativeCallable(args -> invokePrimitive(context, primitive, args)));
+        }
+        case INTRINSIC_CALL, PROTOCOL_CALL -> {
+          String target = stringConstant(program, instruction.first());
+          int argumentCount = index(instruction.second());
+          if (instruction.opcode() == HbcProgram.Opcode.PROTOCOL_CALL
+              && argumentCount == 1
+              && isPendingDerefTarget(target)
+              && context.hbcPromisePending(peek(stack))) {
+            continuation.pendingAwait = peek(stack);
+            throw suspend(
+                continuation,
+                program,
+                functionIndex,
+                function,
+                locals,
+                stack,
+                calls,
+                ip,
+                false,
+                true);
+          }
+          Object[] callArguments = popArguments(stack, argumentCount);
+          Integer primitive = primitiveId(target);
+          stack.add(
+              primitive == null
+                  ? HbcPrimitiveRuntime.invokeTarget(
+                      context, target, callArguments, HaraTargetRuntime.ResultMode.HANDLE)
+                  : invokePrimitive(context, primitive, callArguments));
+        }
         case BUILTIN_VALUE -> {
           String name = stringConstant(program, instruction.first());
           Integer primitive = primitiveId(name);
@@ -1075,6 +1111,10 @@ public final class HbcMachine {
     Object value = program.constants().get(index(operand));
     if (!(value instanceof String string)) throw new HaraException("HBC0 name constant is not a string");
     return string;
+  }
+
+  private static boolean isPendingDerefTarget(String target) {
+    return "std.protocol.ideref.IDeref/deref".equals(target);
   }
 
   private static Object[] popArguments(ArrayList<Object> stack, int count) {

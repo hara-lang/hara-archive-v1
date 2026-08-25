@@ -240,6 +240,70 @@ public class HbcCodecTest {
   }
 
   @Test
+  public void executesRegistryAndIntrinsicOpcodeTriplet() throws Exception {
+    Function entry =
+        new Function(
+            null,
+            false,
+            0,
+            false,
+            0,
+            0,
+            5,
+            List.of(
+                new Instruction(Opcode.INTRINSIC_VALUE, 0, 0, 0),
+                new Instruction(Opcode.CONSTANT, 1, 0, 0),
+                new Instruction(Opcode.CONSTANT, 2, 0, 0),
+                new Instruction(Opcode.CALL, 2, 0, 0),
+                new Instruction(Opcode.CONSTANT, 3, 0, 0),
+                new Instruction(Opcode.PROTOCOL_CALL, 4, 1, 0),
+                new Instruction(Opcode.CONSTANT, 1, 0, 0),
+                new Instruction(Opcode.INTRINSIC_CALL, 5, 1, 0),
+                new Instruction(Opcode.CONSTANT, 1, 0, 0),
+                new Instruction(Opcode.CONSTANT, 2, 0, 0),
+                new Instruction(Opcode.INTRINSIC_CALL, 0, 2, 0),
+                new Instruction(Opcode.BUILD_VECTOR, 4, 0, 0),
+                Instruction.of(Opcode.RETURN)),
+            Arrays.asList(
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null),
+            List.of());
+    HbcProgram program =
+        new HbcProgram(
+            List.of(
+                "+",
+                1L,
+                2L,
+                hara.lang.data.Vector.Standard.from(null, 1L, 2L, 3L),
+                "std.protocol.icount.ICount/count",
+                "std.native.Base/number?"),
+            List.of(),
+            List.of(entry),
+            0);
+    Source source =
+        Source.newBuilder(
+                HaraLanguage.ID,
+                ByteSequence.create(HbcCodec.encode(program)),
+                "registry-opcodes.hbc")
+            .mimeType(HaraLanguage.BYTECODE_MIME_TYPE)
+            .build();
+    try (Context context = Context.newBuilder(HaraLanguage.ID).build()) {
+      assertEquals("[3 3 true 3]", context.eval(source).toString());
+    }
+  }
+
+  @Test
   public void concatListMaterializesSyntaxQuoteSplices() throws Exception {
     Function entry =
         new Function(

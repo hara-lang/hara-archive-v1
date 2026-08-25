@@ -7,12 +7,13 @@ and the browser-Wasm restricted-sandbox adapter.
 import { decodeHta, encodeHta } from "@hara-lang/hta";
 import { BrowserWasmSandbox } from "@hara-lang/hta/sandbox";
 import { serveNodeProvider } from "@hara-lang/hta/provider/node";
-import { serveBrowserProvider } from "@hara-lang/hta/provider/browser";
+import { createBrowserProvider } from "@hara-lang/hta/provider/browser";
 ```
 
 The provider helpers accept an async `(operation, arguments) => value`
-function and implement HTA framing, cancellation, result encoding, and
-structured errors for their respective runtime.
+function and implement the provider lifecycle for their respective runtime.
+`createBrowserProvider` is the provider-side contract; the runtime-owned
+`@hara-lang/hta/worker` is the only browser worker entry.
 
 `BrowserWasmSandbox` is a one-shot adapter. It creates one Worker and one Wasm
 instance, sends only the closed `sandbox/eval` HTA target, supplies no host-call

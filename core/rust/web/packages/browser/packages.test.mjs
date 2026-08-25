@@ -336,6 +336,7 @@ class FakeWorker {
   }
   postMessage(message) {
     this.sent.push(message);
+    if (message.type === "close") queueMicrotask(() => this.emit({ type: "closed" }));
   }
   emit(data) {
     this.listeners.message({ data });

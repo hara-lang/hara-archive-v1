@@ -75,7 +75,7 @@ try {
 
   assert.equal(typeof hta.encodeHta, "function");
   assert.equal(typeof hta.HtaContext, "function");
-  assert.equal(typeof browser.serveBrowserProvider, "function");
+  assert.equal(typeof browser.createBrowserProvider, "function");
   assert.equal(typeof node.serveNodeProvider, "function");
 
   const manifest = JSON.parse(

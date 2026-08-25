@@ -34,17 +34,31 @@
               {:namespace "codec.echo"
                :abi :memory.v1
                :declared/files ["bindings.edn" "echo.wasm"]})
-  (test-check "HTA manifests declare target modules"
+  (test-check "HTA manifests declare provider targets"
               (:declared/files
                (extension/validate-manifest
                 'demo.hta
                 {:provider :hta
                  :abi :hta.v1
-                 :targets {:node {:module "node/addon.node" :runtime :node}}
+                 :targets {:node {:provider "node/provider.mjs" :runtime :process}}
                  :exports {}
                  :capabilities []}
                 "project.edn"))
-              ["node/addon.node"])
+              ["node/provider.mjs"])
+  (test-check "HTA manifests reject legacy target modules"
+              (try
+                (do
+                  (extension/validate-manifest
+                   'demo.hta
+                   {:provider :hta
+                    :abi :hta.v1
+                    :targets {:node {:module "node/worker.mjs" :runtime :process}}
+                    :exports {}
+                    :capabilities []}
+                   "project.edn")
+                  false)
+                (catch Throwable error true))
+              true)
   (test-check "extension routes select Hara operations"
               [(extension/operation-request
                 {:request/route :tool.cli.route/extension-install

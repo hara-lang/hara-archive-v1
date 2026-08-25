@@ -86,7 +86,9 @@ export function decodeHta(input) {
 export function parseHtaManifest(source) {
   const value = parseEdnData(source, "hta/manifest-malformed");
   if (!(value instanceof Map)) throw new Error("hta/manifest-malformed: expected one EDN map");
-  const namespace = manifestField(value,"namespace"), identity = manifestField(value,"identity"), version = manifestField(value,"version"), providerValue = manifestField(value,"provider"), module = manifestField(value,"module"), abiValue = manifestField(value,"abi");
+  if ([...value.keys()].some(key => !(key instanceof HtaKeyword) || !MANIFEST_FIELDS.has(key.name))) throw new Error("hta/manifest-malformed: unknown manifest field");
+  const root = manifestField(value,"root"), namespace = manifestField(value,"namespace"), identity = manifestField(value,"identity"), version = manifestField(value,"version"), providerValue = manifestField(value,"provider"), module = manifestField(value,"module"), abiValue = manifestField(value,"abi");
+  if (root !== undefined && !validPackagePath(root)) throw new Error("hta/manifest-malformed: invalid root");
   if (typeof namespace !== "string" || !/^[a-z][a-z0-9-]*(\.[a-z0-9][a-z0-9-]*)+$/.test(namespace)) throw new Error("hta/manifest-malformed: invalid namespace");
   if (identity !== undefined && (typeof identity !== "string" || !/^[a-z][a-z0-9-]*\/[a-z][a-z0-9-]*(\.[a-z0-9][a-z0-9-]*)*$/.test(identity))) throw new Error("hta/manifest-malformed: invalid identity");
   if (typeof version !== "string" || !version.length) throw new Error("hta/manifest-malformed: invalid version");
@@ -99,6 +101,9 @@ export function parseHtaManifest(source) {
   for (const [host,spec] of targetsValue ?? []) {
     const hostName = host instanceof HtaKeyword ? host.name : undefined;
     if (!(hostName === "node" || hostName === "browser") || !(spec instanceof Map)) throw new Error("hta/manifest-malformed: invalid target");
+    if ([...spec.keys()].some(key => !(key instanceof HtaKeyword) || !["provider", "runtime"].includes(key.name))) {
+      throw new Error(`hta/manifest-malformed: invalid ${hostName} target`);
+    }
     const targetProvider = manifestField(spec,"provider"), runtime = manifestField(spec,"runtime");
     const expectedRuntime = hostName === "node" ? "process" : "web-worker";
     if (!validPackagePath(targetProvider,".mjs") || !(runtime instanceof HtaKeyword) || runtime.name !== expectedRuntime) throw new Error(`hta/manifest-malformed: invalid ${hostName} target`);
@@ -203,7 +208,7 @@ export function parseHtaManifest(source) {
     capabilities.push(...capabilitiesValue.map(capability => capability.name));
   }
   return Object.freeze({
-    namespace,identity,version,provider,module,abi,targets:Object.freeze(targets),browserTarget,assets:Object.freeze(assets),
+    root,namespace,identity,version,provider,module,abi,targets:Object.freeze(targets),browserTarget,assets:Object.freeze(assets),
     handleTags:Object.freeze(handleTags),handleReleases:Object.freeze(handleReleases),exports:Object.freeze(exports),
     callbacks:Object.freeze(callbacks),
     exportArity:Object.freeze(exportArity),exportSpecs:Object.freeze(exportSpecs),operations:Object.freeze(operations),capabilities:Object.freeze(capabilities),
@@ -221,8 +226,10 @@ export function parseEdnData(source, errorCode = "edn/data-malformed") {
 }
 
 function validPackagePath(value,suffix) {
-  return typeof value === "string" && value.length>0 && !value.startsWith("/") && !value.includes("\\") && !value.split("/").includes("..") && !value.includes(":") && (!suffix || value.endsWith(suffix));
+  return typeof value === "string" && value.length>0 && !value.startsWith("/") && !value.includes("\\") && !value.includes("\0") && !value.includes(":") && !value.split("/").some(part => part === "" || part === "." || part === "..") && (!suffix || value.endsWith(suffix));
 }
+
+const MANIFEST_FIELDS = new Set(["root","namespace","identity","version","provider","module","abi","exports","capabilities","host-calls","callbacks","handles","targets","assets"]);
 
 export async function loadHtaExtension({worker,workerFactory,workerUrl,descriptor,descriptorUrl,packageUrl,moduleBytes,providerUrl,hostCalls={},capabilities=[]}) {
   if (descriptor === undefined) {
@@ -366,7 +373,7 @@ class Reader {
 
 export class HtaContext {
   constructor({ worker, moduleUrl, moduleBytes, libraryUrl, libraryBytes, providerUrl, hostCalls = {}, capabilities = [], filesystemHost = hostCalls.filesystemHost ?? null, handleTags = {}, promiseProvider = new BrowserPromiseProvider(), kernelId = null, manifest = null }) {
-    this.worker=worker;this.hostCalls=hostCalls;this.filesystemHost=filesystemHost;this.handleTags=handleTags;this.promiseProvider=promiseProvider;this.kernelId=kernelId;this.manifest=manifest;this.allowedExports=manifest ? new Set(manifest.exports) : null;this.operations=manifest?.operations ?? Object.create(null);this.allowedHostCalls=manifest ? new Set(Object.entries(manifest.hostCalls).flatMap(([service,methods])=>methods.map(method=>`${service}/${method}`))) : null;this.hostCallCapabilities=manifest?.hostCallCapabilities ?? Object.create(null);this.capabilities=new Set(capabilities);this.hostCallsInFlight=new Set();this.handles=new Set();this.next=1;this.pending=new Map();this.sessions=new Map();this.mounts=new Set();this.closed=false;
+    this.worker=worker;this.hostCalls=hostCalls;this.filesystemHost=filesystemHost;this.handleTags=handleTags;this.promiseProvider=promiseProvider;this.kernelId=kernelId;this.manifest=manifest;this.allowedExports=manifest ? new Set(manifest.exports) : null;this.operations=manifest?.operations ?? Object.create(null);this.allowedHostCalls=manifest ? new Set(Object.entries(manifest.hostCalls).flatMap(([service,methods])=>methods.map(method=>`${service}/${method}`))) : null;this.hostCallCapabilities=manifest?.hostCallCapabilities ?? Object.create(null);this.capabilities=new Set(capabilities);this.hostCallsInFlight=new Set();this.handles=new Set();this.next=1;this.pending=new Map();this.sessions=new Map();this.mounts=new Set();this.closed=false;this.closePromise=null;this.workerClosed=new Promise(resolve=>{this.resolveWorkerClosed=resolve;});
     if (manifest?.capabilities.some(capability=>!capabilities.includes(capability)) ||
         Object.values(this.hostCallCapabilities).flat().some(capability=>!this.capabilities.has(capability))) {
       throw new Error(`hta/capability-denied: ${manifest?.namespace ?? "HTA"}`);
@@ -399,13 +406,13 @@ export class HtaContext {
   listSessions(){return this.call("session/list",[]);}
   async message(message) {
     try {
-    if(message.type==="ready"){this.readyResolve();return;}if(message.type==="fatal"){this.fail(new Error(message.error?.message??"HTA worker failed"));return;}
+    if(message.type==="ready"){this.readyResolve();return;}if(message.type==="closed"){this.resolveWorkerClosed();return;}if(message.type==="fatal"){this.fail(new Error(message.error?.message??"HTA worker failed"));return;}
     if(message.type==="result"){const pending=this.pending.get(message.id);if(!pending)return;this.pending.delete(message.id);try{const value=bindHandles(decodeHta(message.frame),this);message.ok?pending.resolve(value):pending.reject(errorFrom(value));}catch(error){pending.reject(error);}return;}
     if(message.type==="host-call"){const key=`${message.service}/${message.method}`,handler=this.hostCalls[key],sessionId=message.session??"ROOT";if(this.hostCallsInFlight.has(message.call))return;this.hostCallsInFlight.add(message.call);try{if(this.allowedHostCalls && !this.allowedHostCalls.has(key))throw new Error(`hta/host-call-denied: ${key}`);if ((this.hostCallCapabilities[key] ?? []).some(capability=>!this.capabilities.has(capability))) throw new Error(`hta/capability-denied: ${key}`);if(!handler)throw new Error(`hta/host-call-denied: ${key}`);const argumentsValue=bindHandles(decodeHta(message.frame),this);validateHandles(argumentsValue,this);const value=await handler.call({context:this.session(sessionId),kernelContext:this,kernelId:this.kernelId??null,sessionId,mountId:message.mount??null,task:message.task},...argumentsValue);if(!this.closed)this.worker.postMessage({type:"delivery",call:message.call,ok:true,frame:encodeHta(value)});}catch(error){if(!this.closed)this.worker.postMessage({type:"delivery",call:message.call,ok:false,frame:encodeHta(errorValue(error))});}finally{this.hostCallsInFlight.delete(message.call);}}
     } catch(error) { this.fail(error); }
   }
-  fail(error){if(this.closed)return;this.closed=true;this.readyReject(error);for(const pending of this.pending.values())pending.reject(error);this.pending.clear();this.worker.postMessage({type:"close"});this.worker.terminate();}
-  close(){if(!this.closed){this.closed=true;const error=new Error("hta/context-closed");this.readyReject(error);for(const pending of this.pending.values())pending.reject(error);this.pending.clear();}for(const key of this.handles){const [owner,type,id]=key.split("\u0000");this.worker.postMessage({type:"release",frame:encodeHta(new HtaHandle(owner,type,BigInt(id)))});}this.handles.clear();const closes=[...this.mounts].map(mountId=>this.filesystemHost?.close(this,mountId).catch(()=>{}));this.mounts.clear();this.worker.postMessage({type:"close"});this.worker.terminate();return Promise.all(closes);}
+  fail(error){if(this.closed)return;this.closed=true;this.resolveWorkerClosed();this.readyReject(error);for(const pending of this.pending.values())pending.reject(error);this.pending.clear();this.worker.postMessage({type:"close"});this.worker.terminate();}
+  close(){if(this.closePromise)return this.closePromise;if(!this.closed){this.closed=true;const error=new Error("hta/context-closed");this.readyReject(error);for(const pending of this.pending.values())pending.reject(error);this.pending.clear();}for(const key of this.handles){const [owner,type,id]=key.split("\u0000");this.worker.postMessage({type:"release",frame:encodeHta(new HtaHandle(owner,type,BigInt(id)))});}this.handles.clear();const closes=[...this.mounts].map(mountId=>this.filesystemHost?.close(this,mountId).catch(()=>{}));this.mounts.clear();this.worker.postMessage({type:"close"});let timeout;const timeoutPromise=new Promise(resolve=>{timeout=setTimeout(resolve,1000);});const workerClose=Promise.race([this.workerClosed,timeoutPromise]).finally(()=>{clearTimeout(timeout);this.worker.terminate();});this.closePromise=Promise.all([...closes,workerClose]);return this.closePromise;}
 }
 
 export class HtaSession {

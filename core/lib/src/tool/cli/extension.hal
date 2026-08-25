@@ -295,13 +295,36 @@
       (throw (ex :io {} :ex/message "extension :targets must be a map"))
       (vec
        (map (fn [entry]
-              (let [target (val entry)]
+              (let [host (key entry)
+                    target (val entry)]
+                (if (not (or (= host :node) (= host :browser)))
+                  (throw (ex :io {:host host} :ex/message
+                             (str "unsupported extension target: " host)))
+                  nil)
                 (if (not (map? target))
                   (throw (ex :io {} :ex/message "extension target must be a map"))
-                  (asset/safe-path
-                   (non-empty-string
-                    (required target :module "extension target")
-                    "extension target :module")))))
+                  nil)
+                (if (or (has? target :module)
+                        (not (every? (fn [key]
+                                       (or (= key :provider) (= key :runtime)))
+                                     (keys target))))
+                  (throw (ex :io {:host host} :ex/message
+                             "extension targets require :provider and :runtime"))
+                  nil)
+                (let [provider (non-empty-string
+                                (required target :provider "extension target")
+                                "extension target :provider")
+                      runtime (required target :runtime "extension target")
+                      expected-runtime (if (= host :node) :process :web-worker)]
+                  (if (not (str/ends-with? provider ".mjs"))
+                    (throw (ex :io {:provider provider} :ex/message
+                               "extension target :provider must be an .mjs file"))
+                    nil)
+                  (if (not= runtime expected-runtime)
+                    (throw (ex :io {:host host :runtime runtime} :ex/message
+                               (str "extension target runtime must be " expected-runtime)))
+                    nil)
+                  (asset/safe-path provider))))
             (seq targets))))))
 
 (defn declared-path [root path]

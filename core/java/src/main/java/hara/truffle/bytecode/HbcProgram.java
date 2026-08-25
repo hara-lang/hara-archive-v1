@@ -231,7 +231,10 @@ public record HbcProgram(
     YIELD(46),
     DEF_MUTABLE(47),
     MUTABLE_FIELD_GET(48),
-    MUTABLE_FIELD_SET(49);
+    MUTABLE_FIELD_SET(49),
+    INTRINSIC_CALL(50),
+    INTRINSIC_VALUE(51),
+    PROTOCOL_CALL(52);
 
     private final int id;
 

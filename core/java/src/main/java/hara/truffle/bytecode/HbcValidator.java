@@ -180,6 +180,12 @@ public final class HbcValidator {
           stringConstant(program, instruction.first(), ip);
       case PRIMITIVE_VALUE ->
           HbcProgram.Primitive.fromId(Math.toIntExact(instruction.first()));
+      case INTRINSIC_CALL, INTRINSIC_VALUE, PROTOCOL_CALL -> {
+        stringConstant(program, instruction.first(), ip);
+        if (opcode != Opcode.INTRINSIC_VALUE) {
+          unsigned(instruction.second(), 0xff, "intrinsic/protocol call argc", ip);
+        }
+      }
       case DEF_PROTOCOL, EXTEND_TYPE, DEF_MULTI, DEF_METHOD ->
           constant(program, instruction.first(), ip);
       case DOT_CALL -> {
@@ -250,9 +256,11 @@ public final class HbcValidator {
     return switch (instruction.opcode()) {
       case CONSTANT, NIL, TRUE, FALSE, LOAD_LOCAL, DUP, PRIMITIVE_LOCAL_CONST,
           GET_GLOBAL, VAR_GLOBAL, DECLARE_GLOBAL, DEF_STRUCT, DEF_MUTABLE, PRIMITIVE_VALUE,
-          BUILTIN_VALUE, DYNAMIC_UNBIND, DEF_PROTOCOL, EXTEND_TYPE, DEF_MULTI, DEF_METHOD -> 1;
+          BUILTIN_VALUE, DYNAMIC_UNBIND, DEF_PROTOCOL, EXTEND_TYPE, DEF_MULTI, DEF_METHOD,
+          INTRINSIC_VALUE -> 1;
       case STORE_LOCAL, POP, JUMP_IF_FALSE -> -1;
       case PRIMITIVE, CALL_STATIC -> 1 - Math.toIntExact(instruction.second());
+      case INTRINSIC_CALL, PROTOCOL_CALL -> 1 - Math.toIntExact(instruction.second());
       case CLOSURE -> 1 - Math.toIntExact(instruction.second());
       case CALL -> -Math.toIntExact(instruction.first());
       case DEF_GLOBAL, SET_GLOBAL, MUTABLE_FIELD_GET, DEF_MACRO, AWAIT, YIELD, JUMP, TO_VECTOR,

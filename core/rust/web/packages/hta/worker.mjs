@@ -55,6 +55,10 @@ async function receive(message) {
     }
     if (backend?.kind === "provider") {
       await backend.provider.handle(message);
+      if (message.type === "close") {
+        self.postMessage({type:"closed"});
+        self.close();
+      }
       return;
     }
     if (backend?.kind !== "wasm") throw new Error("hta/worker-not-initialized");
@@ -111,12 +115,16 @@ async function initialize(message) {
     if (typeof call !== "function") throw new Error("hta/provider-invalid");
     const close = providerModule.close ?? providerModule.closeAll;
     if (close !== undefined && typeof close !== "function") throw new Error("hta/provider-close-invalid");
+    if (providerModule.release !== undefined && typeof providerModule.release !== "function") {
+      throw new Error("hta/provider-release-invalid");
+    }
     backend = {
       kind: "provider",
       provider: createBrowserProvider(call, {
         scope: self,
         errorCode: message.errorCode,
-        close: close === undefined ? undefined : () => close()
+        close: close === undefined ? undefined : () => close(),
+        release: providerModule.release
       })
     };
     self.postMessage({ type: "ready" });
@@ -246,5 +254,6 @@ function closeWasm() {
   requests.clear();
   tasks.clear();
   hostTasks.clear();
+  self.postMessage({type:"closed"});
   self.close();
 }

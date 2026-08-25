@@ -1,8 +1,8 @@
 ;; crypto.ext.noir — package contract for the Noir HTA extension.
 ;;
-;; The executable provider remains an HTA worker. This namespace owns the
-;; stable Hara packaging surface while preserving the existing ledger.noir
-;; extension identity used by the runtime and registry.
+;; The executable provider is loaded by the runtime-owned generic HTA worker.
+;; This namespace owns the stable Hara packaging surface while preserving the
+;; existing ledger.noir extension identity used by the runtime and registry.
 (ns crypto.ext.noir)
 
 ^{:public true}

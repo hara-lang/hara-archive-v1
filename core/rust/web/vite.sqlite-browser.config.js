@@ -7,7 +7,6 @@ const web = dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
   resolve: {
     alias: {
-      "@hara-lang/hta/provider/browser": resolve(web, "packages/hta/provider-browser.mjs"),
       "@hara-lang/db-sqlite": resolve(web, "packages/db-sqlite/index.mjs")
     }
   },
