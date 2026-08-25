@@ -1,7 +1,7 @@
 (ns tool.migrate.common.clojure
   (:require [code.framework :as framework]
             [std.block :as block]
-            [code.framework.navigation :as nav]
+            [tool.migrate.common.block :as nav]
             [work.base :as work]
             [work.flow.task.command-task :as task]
             [tool.migrate.common.rule :as rule]

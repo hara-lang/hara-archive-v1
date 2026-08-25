@@ -8597,12 +8597,12 @@ mod tests {
         assert_eq!(
             runtime
                 .eval_text(
-                    r#"(let [root (code.framework.navigation/block-input "[std.lib.foundation/T]")
+                    r#"(let [root (tool.migrate.common.block/block-input "[std.lib.foundation/T]")
                               rule {:rewrite {:op :replace-token-prefix :text "std.foundation"}}
                               match {:source "std.lib.foundation/T"
                                      :match/text "std.lib.foundation"
                                      :path [0 0]}]
-                          (code.framework.navigation/render
+                          (tool.migrate.common.block/render
                            (tool.migrate.rule/apply-match root rule match)))"#,
                 )
                 .unwrap(),

@@ -204,9 +204,18 @@ fn uuid_from_value(value: &Value) -> Result<uuid::Uuid, String> {
     }
 }
 
+fn random_uuid() -> uuid::Uuid {
+    let mut bytes = [0u8; 16];
+    getrandom::getrandom(&mut bytes)
+        .unwrap_or_else(|_| panic!("could not retrieve random bytes for uuid"));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    uuid::Uuid::from_bytes(bytes)
+}
+
 pub(crate) fn uuid_value(values: &[Value]) -> Result<Value, String> {
     let value = match values {
-        [] => uuid::Uuid::new_v4(),
+        [] => random_uuid(),
         [value] => uuid_from_value(value)?,
         [Value::Number(most), Value::Number(least)] => uuid_from_parts(*most, *least),
         _ if values.len() == 2 => {

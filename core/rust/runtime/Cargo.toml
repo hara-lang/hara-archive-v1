@@ -21,7 +21,13 @@ crate-type = ["rlib"]
 test = false
 
 [features]
-default = ["bytecode-vm", "bytecode-instrumentation"]
+default = ["bytecode-vm", "bytecode-instrumentation", "browser-wasm"]
+browser-wasm = [
+    "dep:console_error_panic_hook",
+    "dep:js-sys",
+    "dep:wasm-bindgen",
+    "getrandom/js",
+]
 evaluation-journal = []
 dev-trace = ["evaluation-journal"]
 halc-encoder = []
@@ -39,8 +45,8 @@ whole-wasm = ["bytecode-vm"]
 hara-protocol-macros = { path = "../protocol-macros" }
 inventory = "0.3"
 md5 = "0.8"
-uuid = { version = "1.24", features = ["v4"] }
-wasm-bindgen = "0.2"
+uuid = "1.24"
+wasm-bindgen = { version = "0.2", optional = true }
 sha2 = "0.10"
 hmac = "0.12"
 regex = "1.11"
@@ -56,8 +62,8 @@ hara-abi = { version = "0.1.6", path = "../abi" }
 wasm-encoder = "0.41.2"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-console_error_panic_hook = "0.1"
-js-sys = "0.3"
+console_error_panic_hook = { version = "0.1", optional = true }
+js-sys = { version = "0.3", optional = true }
 getrandom = { version = "0.2", default-features = false, features = ["custom"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

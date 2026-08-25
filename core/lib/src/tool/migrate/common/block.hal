@@ -1,5 +1,5 @@
-(ns code.framework.navigation
-  (:config {:blank true})
+(ns tool.migrate.common.block
+  (:config {:role :internal})
   (:require [std.foundation :refer :all :exclude [form?]]
             [std.block :as block]
             [std.block.navigate :as navigate]
@@ -16,7 +16,7 @@
     (location? input) (zip/right-element input)
     (block/block? input) input
     (and (map? input) (block/block? (:block input))) (:block input)
-    (string? input) (block/parse-root input)
+    (string? input) (navigate/block (navigate/parse-root input))
     :else (block/block input)))
 
 (defn location
@@ -29,7 +29,7 @@
 (defn current
   [input]
   (if (location? input)
-    (zip/right-element input)
+    (navigate/block input)
     (block-input input)))
 
 (defn root-block
@@ -58,7 +58,7 @@
          remaining amount]
     (if (= remaining 0)
       current
-      (recur (zip/step-right current) (dec remaining)))))
+      (recur (navigate/right* current) (dec remaining)))))
 
 (defn location-at
   "Resolves a child-index path against a source or block."
@@ -70,7 +70,7 @@
       (if (not (block/container? (current loc)))
         (throw (ex :security {:path indexes
                          :resolved (path loc)} :ex/message "Block location path descends through a token"))
-        (let [inside (zip/step-inside loc)
+        (let [inside (navigate/down loc)
               selected (step-right-n inside (first remaining))]
           (if (nil? (zip/right-element selected))
             (throw (ex :io {:path indexes
@@ -95,18 +95,9 @@
       :source (block/string value)}
      (location-range input))))
 
-(defn finding
-  [input type level message]
-  (merge
-   {:type type
-    :level level
-    :message message
-    :path (path input)}
-   (location-range input)))
-
 (defn code-children
   [input]
-  (vec (filter block/code? (block/children (current input)))))
+  (vec (filter block/code? (navigate/children (location input)))))
 
 (defn anchor-children
   [input]
@@ -144,11 +135,6 @@
          (block/container? value)
          (= :list (block/tag value)))))
 
-(defn form-head?
-  [input expected]
-  (and (form? input)
-       (= expected (form-head input))))
-
 (defn metadata-block?
   [input]
   (let [value (current input)]
@@ -163,18 +149,14 @@
         value (current root)]
     (if (not (= :root (block/tag value)))
       [root]
-      (loop [loc (zip/step-inside root)
+      (loop [loc (navigate/down root)
              output []]
         (if (nil? (zip/right-element loc))
           output
-          (recur (zip/step-right loc)
+          (recur (navigate/right* loc)
                  (if (block/code? (zip/right-element loc))
                    (conj output loc)
                    output)))))))
-
-(defn top-level-forms
-  [input]
-  (vec (map current (top-level-locations input))))
 
 (defn namespace-form?
   [input]
@@ -197,11 +179,11 @@
 
 (defn code-child-locations
   [input]
-  (loop [cursor (zip/step-inside (location input))
+  (loop [cursor (navigate/down (location input))
          output []]
     (if (nil? (zip/right-element cursor))
       output
-      (recur (zip/step-right cursor)
+      (recur (navigate/right* cursor)
              (if (block/code? (zip/right-element cursor))
                (conj output cursor)
                output)))))
@@ -262,11 +244,11 @@
     (if (or (nil? value)
             (not (block/container? value)))
       []
-      (loop [cursor (zip/step-inside loc)
+      (loop [cursor (navigate/down loc)
              output []]
         (if (nil? (zip/right-element cursor))
           output
-          (recur (zip/step-right cursor)
+          (recur (navigate/right* cursor)
                  (conj output cursor)))))))
 
 (declare walk-location)
@@ -296,40 +278,18 @@
   [input]
   (walk-location (location input)))
 
-(defn select-locations
-  [input predicate]
-  (vec
-   (filter
-    (fn [loc] (predicate (current loc)))
-    (walk-locations input))))
-
 (defn coerce-block
   [input]
   (cond
     (location? input) (current input)
     (block/block? input) input
     (string? input)
-    (let [root (block/parse-root input)
-          values (anchor-children root)]
+    (let [values (anchor-children input)]
       (if (= 1 (count values))
         (first values)
         (throw (ex :dependency {:source input
                          :forms (count values)} :ex/message "Structural replacement requires exactly one source block"))))
     :else (block/block input)))
-
-(defn coerce-blocks
-  [input]
-  (if (string? input)
-    (vec (block/children (block/parse-root input)))
-    [(coerce-block input)]))
-
-(defn insert-blocks-before
-  [loc values]
-  (reduce
-   (fn [output value]
-     (zip/insert-left output value))
-   (location loc)
-   values))
 
 (defn replace-current
   [loc replacement]
@@ -339,15 +299,6 @@
   [loc]
   (zip/delete-right (location loc)))
 
-(defn insert-before
-  [loc value]
-  (insert-blocks-before (location loc) (coerce-blocks value)))
-
-(defn insert-after
-  [loc value]
-  (insert-blocks-before (zip/step-right (location loc))
-                        (coerce-blocks value)))
-
 (defn replace-at
   [input indexes replacement]
   (replace-current (location-at input indexes) replacement))
@@ -355,11 +306,3 @@
 (defn delete-at
   [input indexes]
   (delete-current (location-at input indexes)))
-
-(defn insert-before-at
-  [input indexes value]
-  (insert-before (location-at input indexes) value))
-
-(defn insert-after-at
-  [input indexes value]
-  (insert-after (location-at input indexes) value))

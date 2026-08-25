@@ -1,6 +1,6 @@
 (ns tool.migrate.common.transform
   (:require [code.framework :as framework]
-            [code.framework.navigation :as nav]
+            [tool.migrate.common.block :as nav]
             [tool.migrate.common.rule :as rule]
             [tool.migrate.common.rules :as catalog]))
 

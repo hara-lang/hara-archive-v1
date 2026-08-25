@@ -2,7 +2,7 @@
   (:require [std.foundation :refer :all]
             [std.block :as block]
             [std.block.parse :as parse]
-            [std.block.navigate :as navigate]))
+            [tool.migrate.common.block :as nav]))
 
 (def +lib-core-ex-info-codes+
   {"subvec" :foundation/invalid-subvec-bounds
@@ -22,36 +22,9 @@
    "comprehension-error" :ex.class/syntax
    "dotimes" :ex.class/syntax})
 
-(defn code-children
-  [value]
-  (vec
-   (filter block/code?
-           (or (navigate/children (navigate/navigator value)) []))))
-
-(defn form-head
-  [value]
-  (let [head (first (code-children value))]
-    (if head (block/string head) nil)))
-
-(defn definition-name
-  [value]
-  (let [head (form-head value)]
-    (if (and head (str/starts-with? head "def"))
-      (first
-       (keep
-        (fn [child]
-          (if (= :meta (block/tag child))
-            (let [children (code-children child)]
-              (if (empty? children)
-                nil
-                (block/string (last children))))
-            (block/string child)))
-        (vec (drop 1 (code-children value)))))
-      nil)))
-
 (defn ex-info-block?
   [value]
-  (let [head (form-head value)]
+  (let [head (nav/form-head value)]
     (and (= :list (block/tag value))
          (or (= "ex-info" head)
              (= "std.foundation/ex-info" head)))))
@@ -62,7 +35,7 @@
 
 (defn migration-context
   [value definition]
-  (let [children (code-children value)
+  (let [children (nav/code-children value)
         arguments (vec (rest children))]
     {:range (block-range value)
      :source (block/string value)
@@ -92,7 +65,7 @@
 
 (defn legacy-error-code
   [value]
-  (let [arguments (vec (rest (code-children value)))
+  (let [arguments (vec (rest (nav/code-children value)))
         data (if (< 1 (count arguments)) (nth arguments 1) nil)]
     (if data
       (try
@@ -103,9 +76,9 @@
 
 (defn definition-context
   [source value namespace]
-  (let [name (definition-name value)]
+  (let [name (nav/definition-name value)]
     (if name
-      {:kind (form-head value)
+      {:kind (nav/form-head value)
        :name (if namespace
                (symbol (str namespace "/" name))
                (symbol name))
@@ -293,7 +266,7 @@
 
 (defn replacement-source
   [value definition code-or-resolver]
-  (let [children (code-children value)
+  (let [children (nav/code-children value)
         arguments (vec (rest children))
         amount (count arguments)
         contract (resolve-contract value definition code-or-resolver)
@@ -336,7 +309,7 @@
       (rewrite-children
        (block/string value)
        value
-       (or (definition-name value) definition)
+       (or (nav/definition-name value) definition)
        code-or-resolver)
       (block/string value))))
 
@@ -344,7 +317,7 @@
   [source code-or-resolver]
   (let [value (parse/parse-first source)]
     (rewrite-block value
-                   (definition-name value)
+                   (nav/definition-name value)
                    code-or-resolver)))
 
 (defn migrate-ex-info
@@ -365,6 +338,6 @@
              (if (= -1 (str/index-of segment "ex-info"))
                segment
                (rewrite-block value
-                              (definition-name value)
+                              (nav/definition-name value)
                               code-or-resolver))]
          (recur end (conj output replacement)))))))

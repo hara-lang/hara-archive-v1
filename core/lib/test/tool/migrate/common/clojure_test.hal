@@ -2,7 +2,7 @@
   (:use code.test)
   (:require [tool.migrate.common.clojure :as clj]
             [std.block :as block]
-            [code.framework.navigation :as nav]))
+            [tool.migrate.common.block :as nav]))
 
 (def source
   "(ns demo.core

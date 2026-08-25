@@ -2,7 +2,6 @@ code.project.deploy
 code.project.deploy.cli
 code.project.deploy.runtime
 code.framework
-code.framework.navigation
 code.framework.source
 code.manage
 code.manage.automation

@@ -1,6 +1,35 @@
 import { test, expect } from "@playwright/test";
 test("real worker resumes a pending HTA evaluator fiber",async({page})=>{await page.goto("/rust/web/hta-browser.html");await expect.poll(()=>page.evaluate(()=>window.htaSmoke?.then(String))).toBe("42");await page.evaluate(()=>window.htaContext.close());});
 
+test("raw HTA artifacts use only the explicit host import surface", async ({page}) => {
+  await page.goto("/rust/web/hta-browser.html");
+  const imports = await page.evaluate(async () => {
+    const expected = [
+      { module: "env", name: "hara_random_fill", kind: "function" },
+      { module: "env", name: "hara_time_ms", kind: "function" },
+      { module: "env", name: "hara_time_ns", kind: "function" },
+    ];
+    const names = ["core", "vm", "trace"];
+    return Object.fromEntries(await Promise.all(names.map(async name => {
+      const response = await fetch(`/rust/raw/target/wasm32-unknown-unknown/browser-release/hara-wasm-${name}.wasm`);
+      const module = await WebAssembly.compile(await response.arrayBuffer());
+      return [name, WebAssembly.Module.imports(module)
+        .map(({ module: importModule, name: importName, kind }) => ({
+          module: importModule,
+          name: importName,
+          kind,
+        }))
+        .sort((left, right) => `${left.module}/${left.name}`.localeCompare(`${right.module}/${right.name}`))];
+    })));
+  });
+  const expected = [
+    { module: "env", name: "hara_random_fill", kind: "function" },
+    { module: "env", name: "hara_time_ms", kind: "function" },
+    { module: "env", name: "hara_time_ns", kind: "function" },
+  ].sort((left, right) => `${left.module}/${left.name}`.localeCompare(`${right.module}/${right.name}`));
+  expect(imports).toEqual({ core: expected, vm: expected, trace: expected });
+});
+
 test("browser promise provider follows the real Chromium event loop",async({page})=>{
   await page.goto("/rust/web/hta-browser.html");
   const result=await page.evaluate(async()=>{

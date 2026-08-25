@@ -74,6 +74,22 @@ fn whole_wasm_operation_registry_keeps_the_hnw0_contract_digest() {
 }
 
 #[test]
+fn hnw0_rejects_unknown_abi_versions() {
+    let program = compile_source("(+ 19 23)").expect("source must compile to HBC0");
+    let artifact = compile_artifact(&program).expect("source must compile to HNW0");
+    let payload_end = 8 + u32::from_be_bytes(artifact[4..8].try_into().unwrap()) as usize;
+    let mut corrupt = artifact;
+    corrupt[8..10].copy_from_slice(&1u16.to_be_bytes());
+    let digest = Sha256::digest(&corrupt[8..payload_end]);
+    corrupt[payload_end..].copy_from_slice(&digest);
+
+    assert_eq!(
+        decode_artifact(&corrupt).unwrap_err(),
+        "unsupported HNW ABI version 1"
+    );
+}
+
+#[test]
 fn canonical_hbc_artifact_is_the_hnw0_compiler_input() {
     let source = "(+ 19 23)";
     let program = compile_source(source).expect("source must compile to HBC0");
@@ -155,7 +171,7 @@ fn runtime_whole_wasm_product_has_stable_alpha_metadata() {
     assert_eq!(manifest["schema"], "hara.compiled-product.manifest/0-alpha");
     assert_eq!(manifest["product"], "whole-wasm");
     assert_eq!(manifest["format"], "HNW0");
-    assert_eq!(manifest["abi-version"], "hnw0/5");
+    assert_eq!(manifest["abi-version"], "hnw0/0");
     assert_eq!(manifest["artifact-bytes"], first.len());
     assert_eq!(manifest["entrypoint"], "hara_entry");
     assert_eq!(manifest["error-global"], "hara_error");
