@@ -47,6 +47,48 @@ const PRIORITY_MAP: u8 = 37;
 const RESULT_STRUCT_NAME: &str = "std.native/Result";
 const RESULT_STRUCT_FIELDS: [&str; 4] = ["status", "data", "error", "context"];
 
+/// The canonical HTA0 tag inventory. Every host codec must preserve these
+/// numeric assignments; omitted values are reserved for future revisions.
+pub const HTA0_TAG_INVENTORY: &[(u8, &str)] = &[
+    (NIL, "nil"),
+    (FALSE, "false"),
+    (TRUE, "true"),
+    (I64, "i64"),
+    (STRING, "string"),
+    (BYTES, "bytes"),
+    (KEYWORD, "keyword"),
+    (SYMBOL, "symbol"),
+    (LIST, "list"),
+    (VECTOR, "vector"),
+    (SET, "set"),
+    (MAP, "map"),
+    (HANDLE, "handle"),
+    (NAMESPACE, "namespace"),
+    (VAR, "legacy-var"),
+    (F64, "f64"),
+    (ATOM, "atom"),
+    (ARRAY, "array"),
+    (OBJECT, "object"),
+    (CHARACTER, "character"),
+    (BIG_INTEGER, "big-integer"),
+    (REGEX, "regex"),
+    (TUPLE, "tuple"),
+    (CONS, "cons"),
+    (QUEUE, "queue"),
+    (ORDERED_MAP, "ordered-map"),
+    (SORTED_MAP, "sorted-map"),
+    (TRIE, "trie"),
+    (ORDERED_SET, "ordered-set"),
+    (SORTED_SET, "sorted-set"),
+    (TAGGED, "tagged"),
+    (EXCEPTION_INFO, "exception-info"),
+    (STRUCT, "struct"),
+    (POINTER, "pointer"),
+    (VAR_REF, "var-ref"),
+    (DEQUE, "deque"),
+    (PRIORITY_MAP, "priority-map"),
+];
+
 fn decode_exception_provenance(
     value: Value,
 ) -> Result<(Option<crate::core::ExceptionSite>, Vec<crate::core::ExceptionSite>), String> {
@@ -592,14 +634,7 @@ impl Reader<'_> {
                     crate::kernel::Namespace::new(name),
                 )))
             }
-            VAR => {
-                let symbol = match self.value(depth + 1)? {
-                    Value::Symbol(symbol) => symbol,
-                    _ => return Err("hta/value-malformed: invalid var symbol".into()),
-                };
-                let value = self.value(depth + 1)?;
-                Ok(Value::Var(crate::kernel::Var::new(symbol.as_str(), value)))
-            }
+            VAR => Err("hta/value-malformed: legacy var tag is not supported; use var-ref".into()),
             VAR_REF => {
                 let symbol = match self.value(depth + 1)? {
                     Value::Symbol(symbol) if symbol.get_namespace().is_some() => symbol,
@@ -878,6 +913,37 @@ mod tests {
         ] {
             assert_eq!(decode(&encode(&value).unwrap()).unwrap(), value);
         }
+    }
+
+    #[test]
+    fn scalar_regex_and_pointer_tags_match_the_portable_golden_vectors() {
+        assert_eq!(
+            encode(&Value::Character('λ')).unwrap(),
+            b"HTA0\x13\0\0\x03\xbb"
+        );
+        assert_eq!(
+            encode(&Value::Regex("a+".into())).unwrap(),
+            b"HTA0\x16\0\0\0\x02a+"
+        );
+        let fields = vec![(Value::Keyword("id".into()), Value::String("ROOT".into()))]
+            .into_iter()
+            .collect();
+        let pointer = Value::Pointer(crate::lang::data::Pointer::new(
+            crate::lang::data::Keyword::from("kernel"),
+            fields,
+        ));
+        assert_eq!(
+            encode(&pointer).unwrap(),
+            b"HTA0\x22\x06\0\0\0\x06kernel\x0b\0\0\0\x01\x06\0\0\0\x02id\x04\0\0\0\x04ROOT"
+        );
+    }
+
+    #[test]
+    fn tag_inventory_keeps_legacy_var_distinct_from_var_reference() {
+        assert_eq!(HTA0_TAG_INVENTORY.iter().find(|(_, name)| *name == "character"), Some(&(19, "character")));
+        assert_eq!(HTA0_TAG_INVENTORY.iter().find(|(_, name)| *name == "pointer"), Some(&(34, "pointer")));
+        assert_eq!(HTA0_TAG_INVENTORY.iter().find(|(_, name)| *name == "var-ref"), Some(&(35, "var-ref")));
+        assert!(decode(b"HTA0\x0e\x07\0\0\0\x04rank\0").is_err());
     }
 
     #[test]

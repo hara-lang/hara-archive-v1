@@ -27,6 +27,7 @@ import org.graalvm.polyglot.proxy.ProxyObject;
 
 /** Generic Wasm extension instance with the portable Hara host imports. */
 final class HaraWasmExtension implements HaraExtensionRuntime {
+  static final String HTA_PROVIDER_EVENT_SCHEMA = "hara.hta.provider.event/0-alpha";
   private static final long DEFAULT_HTA_TIMEOUT_MILLIS = 120_000L;
   private static final long MAX_WASM_MEMORY_BYTES = 64L * 1024 * 1024;
   private static final long MAX_FRAME_BYTES = 64L * 1024 * 1024;
@@ -60,6 +61,10 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
   private final Set<HtaHandle> handles = new LinkedHashSet<>();
   private final Set<Long> hostCallsSeen = new LinkedHashSet<>();
   private final Map<Long, Long> hostCallTasks = new LinkedHashMap<>();
+  private final Object lifecycleLock = new Object();
+  private final List<HtaProviderEvent> lifecycleEvents = new ArrayList<>();
+  private long lifecycleSequence;
+  private boolean lifecycleShutdown;
   private final Thread owner;
 
   HaraWasmExtension(HaraExtensionPackage extensionPackage) {
@@ -176,6 +181,7 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
       hta = isHta;
       mailbox = isHta ? new LinkedBlockingQueue<>() : null;
       owner = isHta ? startMailboxOwner() : null;
+      if (isHta) emitLifecycle("start", null, null, "ok", null);
     } catch (HaraException error) {
       deadlines.shutdownNow();
       if (opened != null) opened.close(true);
@@ -268,6 +274,78 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
 
   boolean isHta() {
     return hta;
+  }
+
+  List<HtaProviderEvent> drainLifecycleEvents() {
+    synchronized (lifecycleLock) {
+      List<HtaProviderEvent> result = List.copyOf(lifecycleEvents);
+      lifecycleEvents.clear();
+      return result;
+    }
+  }
+
+  private void emitLifecycle(
+      String event, Long request, String operation, String status, String code) {
+    synchronized (lifecycleLock) {
+      if (lifecycleShutdown && !"shutdown".equals(event)) return;
+      lifecycleEvents.add(
+          new HtaProviderEvent(
+              HTA_PROVIDER_EVENT_SCHEMA,
+              ++lifecycleSequence,
+              "graalwasm",
+              event,
+              request,
+              operation,
+              status,
+              code));
+    }
+  }
+
+  private void emitLifecycleShutdown(String status, String code) {
+    synchronized (lifecycleLock) {
+      if (lifecycleShutdown) return;
+      lifecycleShutdown = true;
+      lifecycleEvents.add(
+          new HtaProviderEvent(
+              HTA_PROVIDER_EVENT_SCHEMA,
+              ++lifecycleSequence,
+              "graalwasm",
+              "shutdown",
+              null,
+              null,
+              status,
+              code));
+    }
+  }
+
+  static final class HtaProviderEvent {
+    final String schema;
+    final long sequence;
+    final String origin;
+    final String event;
+    final Long request;
+    final String operation;
+    final String status;
+    final String code;
+
+    HtaProviderEvent(
+        String schema,
+        long sequence,
+        String origin,
+        String event,
+        Long request,
+        String operation,
+        String status,
+        String code) {
+      this.schema = schema;
+      this.sequence = sequence;
+      this.origin = origin;
+      this.event = event;
+      this.request = request;
+      this.operation = operation;
+      this.status = status;
+      this.code = code;
+    }
   }
 
   boolean supportsDirectImport() {
@@ -417,8 +495,10 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
     } catch (InterruptedException error) {
       Thread.currentThread().interrupt();
       rejectAll(new HaraException("hta/mailbox-interrupted"));
+      emitLifecycleShutdown("error", "hta/mailbox-interrupted");
     } catch (RuntimeException error) {
       rejectAll(new HaraException("hta/mailbox-failed: " + error.getMessage()));
+      emitLifecycleShutdown("error", errorCode(error));
     } finally {
       context.close(true);
     }
@@ -441,7 +521,9 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
       throw new HaraException("hta/task-duplicate: " + task);
     }
     command.result.task = task;
+    command.result.operation = command.name;
     tasks.put(task, command.result);
+    emitLifecycle("call-enter", task, command.name, null, null);
     long timeout = htaTimeoutMillis();
     if (timeout > 0) {
       command.result.deadline =
@@ -480,6 +562,12 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
         cancelDeadline(pending);
         int dropStatus = htaDropTask.execute(task).asInt();
         if (dropStatus != 0) throw new HaraException("hta/drop-task-failed: " + dropStatus);
+        emitLifecycle(
+            kind == 0 ? "call-return" : "call-error",
+            task,
+            pending.operation,
+            kind == 0 ? "ok" : "error",
+            null);
         if (kind == 0) pending.future.complete(event.get(2));
         else pending.future.completeExceptionally(rejection(event.get(2)));
       } else if (kind == 2) {
@@ -629,12 +717,25 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
     command.handle.requireOwner(this);
     HtaHandle wireHandle =
         new HtaHandle(command.handle.owner(), command.handle.type(), command.handle.id());
-    int status = executeFrame(htaRelease, wireHandle).asInt();
-    if (status != 0) throw new HaraException("hta/handle-release-failed: " + status);
-    if (!handles.remove(command.handle)) {
-      throw new HaraException(
-          "hta/handle-stale: " + command.handle.type() + ":" + command.handle.id());
+    int status;
+    try {
+      status = executeFrame(htaRelease, wireHandle).asInt();
+    } catch (RuntimeException error) {
+      emitLifecycle("release", null, null, "error", errorCode(error));
+      throw error;
     }
+    if (status != 0) {
+      HaraException error = new HaraException("hta/handle-release-failed: " + status);
+      emitLifecycle("release", null, null, "error", errorCode(error));
+      throw error;
+    }
+    if (!handles.remove(command.handle)) {
+      HaraException error = new HaraException(
+          "hta/handle-stale: " + command.handle.type() + ":" + command.handle.id());
+      emitLifecycle("release", null, null, "error", errorCode(error));
+      throw error;
+    }
+    emitLifecycle("release", null, null, "ok", null);
   }
 
   private static long number(List<Object> values, int index, String field) {
@@ -690,15 +791,26 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
     return new HaraException("HTA task rejected: " + value);
   }
 
+  private static String errorCode(Throwable error) {
+    String message = error == null ? "provider/error" : String.valueOf(error.getMessage());
+    int separator = message.indexOf(':');
+    return separator > 0 ? message.substring(0, separator) : "provider/error";
+  }
+
   private void cancel(Cancel command) {
     if (command.result.task <= 0) return;
     long task = command.result.task;
-    if (tasks.remove(task) == null) return;
+    TaskFuture pending = tasks.remove(task);
+    if (pending == null) return;
     removeHostCalls(task);
     cancelDeadline(command.result);
     try {
       int status = htaCancel.execute(task).asInt();
       if (status != 0) throw new HaraException("hta/cancel-failed: " + status);
+      emitLifecycle("cancel", task, pending.operation, "ok", null);
+    } catch (RuntimeException error) {
+      emitLifecycle("cancel", task, pending.operation, "error", errorCode(error));
+      throw error;
     } finally {
       htaDropTask.execute(task);
     }
@@ -707,7 +819,8 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
   private void timeout(Timeout command) {
     if (command.result.task <= 0) return;
     long task = command.result.task;
-    if (tasks.remove(task) == null) return;
+    TaskFuture pending = tasks.remove(task);
+    if (pending == null) return;
     removeHostCalls(task);
     cancelDeadline(command.result);
     try {
@@ -720,6 +833,7 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
     } catch (RuntimeException ignored) {
       // The task is already removed from the host registry.
     }
+    emitLifecycle("call-error", task, pending.operation, "error", "hta/timeout");
     command.result.future.completeExceptionally(new HaraException("hta/timeout"));
   }
 
@@ -788,6 +902,7 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
   private static final class TaskFuture {
     private final CompletableFuture<Object> future;
     private long task;
+    private String operation;
     private ScheduledFuture<?> deadline;
 
     private TaskFuture(CompletableFuture<Object> future) {
@@ -871,5 +986,6 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
     } catch (InterruptedException error) {
       Thread.currentThread().interrupt();
     }
+    emitLifecycleShutdown("ok", null);
   }
 }

@@ -1,6 +1,6 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::rc::Rc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -93,6 +93,13 @@ impl WasmtimeExtensionProvider {
         Self::compile_hta_with_host_handler(bytes, None)
     }
 
+    pub fn drain_lifecycle_events(&self) -> Vec<HtaProviderEvent> {
+        match &self.mode {
+            ProviderMode::Hta(state) => state.trace.drain(),
+            _ => Vec::new(),
+        }
+    }
+
     pub fn compile_hta_with_host_handler(
         bytes: &[u8],
         host_handler: Option<Rc<dyn Fn(String, String, Vec<Value>) -> Result<Value, String>>>,
@@ -128,6 +135,7 @@ impl WasmtimeExtensionProvider {
                 session: RefCell::new(None),
                 host_handler,
                 timeout: hta_timeout(),
+                trace: HtaProviderTrace::new(),
             })),
         })
     }
@@ -298,6 +306,69 @@ impl WasmExtensionProvider for WasmtimeExtensionProvider {
 const MAX_HTA_FRAME_BYTES: usize = 64 * 1024 * 1024;
 const DEFAULT_HTA_TIMEOUT: Duration = Duration::from_secs(120);
 
+pub const HTA_PROVIDER_EVENT_SCHEMA: &str = "hara.hta.provider.event/0-alpha";
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HtaProviderEvent {
+    pub schema: &'static str,
+    pub sequence: u64,
+    pub origin: &'static str,
+    pub event: &'static str,
+    pub request: Option<u64>,
+    pub operation: Option<String>,
+    pub status: Option<String>,
+    pub code: Option<String>,
+}
+
+struct HtaProviderTrace {
+    sequence: Cell<u64>,
+    shutdown: Cell<bool>,
+    events: RefCell<Vec<HtaProviderEvent>>,
+}
+
+impl HtaProviderTrace {
+    fn new() -> Self {
+        Self {
+            sequence: Cell::new(0),
+            shutdown: Cell::new(false),
+            events: RefCell::new(Vec::new()),
+        }
+    }
+
+    fn emit(
+        &self,
+        event: &'static str,
+        request: Option<u64>,
+        operation: Option<String>,
+        status: Option<&str>,
+        code: Option<String>,
+    ) {
+        let sequence = self.sequence.get() + 1;
+        self.sequence.set(sequence);
+        self.events.borrow_mut().push(HtaProviderEvent {
+            schema: HTA_PROVIDER_EVENT_SCHEMA,
+            sequence,
+            origin: "wasmtime",
+            event,
+            operation,
+            request,
+            status: status.map(str::to_owned),
+            code,
+        });
+    }
+
+    fn emit_shutdown(&self, status: Option<&str>, code: Option<String>) {
+        if self.shutdown.replace(true) {
+            return;
+        }
+        self.emit("shutdown", None, None, status, code);
+    }
+
+    fn drain(&self) -> Vec<HtaProviderEvent> {
+        std::mem::take(&mut *self.events.borrow_mut())
+    }
+}
+
 fn hta_capabilities() -> Vec<String> {
     std::env::var("HARA_HTA_CAPABILITIES")
         .unwrap_or_default()
@@ -310,6 +381,7 @@ fn hta_capabilities() -> Vec<String> {
 struct HtaPending {
     promise: Promise,
     deadline: Option<Instant>,
+    operation: String,
 }
 
 struct HtaSession {
@@ -337,6 +409,7 @@ struct HtaProviderState {
     session: RefCell<Option<HtaSession>>,
     host_handler: Option<Rc<dyn Fn(String, String, Vec<Value>) -> Result<Value, String>>>,
     timeout: Option<Duration>,
+    trace: HtaProviderTrace,
 }
 
 impl HtaProviderState {
@@ -549,6 +622,7 @@ impl HtaProviderState {
             handles: HashSet::new(),
             deliveries: VecDeque::new(),
         });
+        self.trace.emit("start", None, None, Some("ok"), None);
         Ok(())
     }
 
@@ -559,7 +633,7 @@ impl HtaProviderState {
         arguments: &[Value],
     ) -> Result<Value, String> {
         let promise = Promise::new();
-        let task = {
+        let (task, operation) = {
             let mut session_ref = self.session.borrow_mut();
             let session = session_ref
                 .as_mut()
@@ -574,7 +648,7 @@ impl HtaProviderState {
             validate_live_handles(&arguments_value, &session.handles)?;
             let request = hta::encode(&Value::Vector(
                 vec![
-                    Value::String(operation),
+                    Value::String(operation.clone()),
                     Value::Vector(arguments.to_vec().into()),
                 ]
                 .into(),
@@ -593,10 +667,18 @@ impl HtaProviderState {
                 HtaPending {
                     promise: promise.clone(),
                     deadline: self.timeout.map(|timeout| Instant::now() + timeout),
+                    operation: operation.clone(),
                 },
             );
-            task as u64
+            (task as u64, operation)
         };
+        self.trace.emit(
+            "call-enter",
+            Some(task),
+            Some(operation),
+            None,
+            None,
+        );
         let weak = Rc::downgrade(self);
         let manifest_for_poll = manifest.clone();
         promise.set_poller(Rc::new(move || {
@@ -658,6 +740,13 @@ impl HtaProviderState {
             .as_mut()
             .ok_or_else(|| "hta/session-closed".to_owned())?;
         if !session.handles.remove(&key) {
+            self.trace.emit(
+                "release",
+                None,
+                None,
+                Some("error"),
+                Some("hta/handle-stale".into()),
+            );
             return Err(format!(
                 "hta/handle-stale: {}:{}",
                 handle_value.type_name, handle_value.handle
@@ -665,8 +754,16 @@ impl HtaProviderState {
         }
         if let Err(error) = execute_release(session, &frame) {
             session.handles.insert(key);
+            self.trace.emit(
+                "release",
+                None,
+                None,
+                Some("error"),
+                Some(error.clone()),
+            );
             return Err(error);
         }
+        self.trace.emit("release", None, None, Some("ok"), None);
         Ok(())
     }
 
@@ -767,6 +864,13 @@ impl HtaProviderState {
                             collect_handles(&payload, &mut session.handles);
                         }
                     }
+                    self.trace.emit(
+                        if kind == 0 { "call-return" } else { "call-error" },
+                        Some(task),
+                        Some(pending.operation.clone()),
+                        Some(if kind == 0 { "ok" } else { "error" }),
+                        None,
+                    );
                     if kind == 0 {
                         pending.promise.resolve(payload);
                     } else {
@@ -949,13 +1053,27 @@ impl HtaProviderState {
             .ok_or_else(|| "hta/session-closed".to_owned())?
             .pending
             .remove(&task);
-        if pending.is_none() {
+        let Some(pending) = pending else {
             return Ok(());
-        }
+        };
         if let Err(error) = self.cancel_task(task) {
             let _ = self.drop_task(task);
+            self.trace.emit(
+                "cancel",
+                Some(task),
+                Some(pending.operation),
+                Some("error"),
+                Some(error.clone()),
+            );
             return Err(error);
         }
+        self.trace.emit(
+            "cancel",
+            Some(task),
+            Some(pending.operation),
+            Some("ok"),
+            None,
+        );
         Ok(())
     }
 
@@ -1035,6 +1153,13 @@ impl HtaProviderState {
                 .as_mut()
                 .and_then(|session| session.pending.remove(&task));
             if let Some(pending) = pending {
+                self.trace.emit(
+                    "call-error",
+                    Some(task),
+                    Some(pending.operation),
+                    Some("error"),
+                    Some("hta/timeout".into()),
+                );
                 pending.promise.notify_cancel();
                 pending.promise.reject("hta/timeout");
             }
@@ -1069,20 +1194,29 @@ impl HtaProviderState {
 
     fn shutdown(&self, _manifest: &ExtensionManifest) {
         let Some(mut session) = self.session.borrow_mut().take() else {
+            self.trace.emit_shutdown(Some("ok"), None);
             return;
         };
         let pending = session
             .pending
             .drain()
-            .map(|(task, pending)| (task, pending.promise))
+            .map(|(task, pending)| (task, pending.operation, pending.promise))
             .collect::<Vec<_>>();
-        for (task, promise) in pending {
+        for (task, operation, promise) in pending {
             let _ = cancel_task_on_session(&mut session, task);
             let _ = drop_task_on_session(&mut session, task);
+            self.trace.emit(
+                "call-error",
+                Some(task),
+                Some(operation),
+                Some("error"),
+                Some("hta/session-closed".into()),
+            );
             promise.reject("hta/session-closed");
         }
         session.host_promises.clear();
         session.deliveries.clear();
+        self.trace.emit_shutdown(Some("ok"), None);
     }
 }
 
@@ -1616,7 +1750,7 @@ fn result(export: &str, wire_type: &str, value: Option<Val>) -> Result<Value, St
 mod tests {
     use crate::extension::{ExtensionManifest, Value, WasmExtension};
 
-    use super::WasmtimeExtensionProvider;
+    use super::{HtaProviderTrace, WasmtimeExtensionProvider, HTA_PROVIDER_EVENT_SCHEMA};
 
     const ADD: &[u8] = b"\0asm\x01\0\0\0\x01\x07\x01\x60\x02\x7e\x7e\x01\x7e\x03\x02\x01\0\x07\x07\x01\x03add\0\0\x0a\x09\x01\x07\0\x20\0\x20\x01\x7c\x0b";
     const ALIASED_MANIFEST: &str = r#"
@@ -1643,5 +1777,30 @@ mod tests {
                 .unwrap(),
             Value::Number(42)
         );
+    }
+
+    #[test]
+    fn hta_lifecycle_trace_is_stable_and_shutdown_is_idempotent() {
+        let trace = HtaProviderTrace::new();
+        trace.emit("start", None, None, Some("ok"), None);
+        trace.emit(
+            "call-enter",
+            Some(7),
+            Some("demo/echo".into()),
+            None,
+            None,
+        );
+        trace.emit_shutdown(Some("ok"), None);
+        trace.emit_shutdown(Some("error"), Some("late".into()));
+
+        let events = trace.drain();
+        assert_eq!(events.len(), 3);
+        assert_eq!(events[0].schema, HTA_PROVIDER_EVENT_SCHEMA);
+        assert_eq!(events[0].origin, "wasmtime");
+        assert_eq!(events[1].sequence, 2);
+        assert_eq!(events[1].request, Some(7));
+        assert_eq!(events[1].operation.as_deref(), Some("demo/echo"));
+        assert_eq!(events[2].event, "shutdown");
+        assert_eq!(events[2].sequence, 3);
     }
 }

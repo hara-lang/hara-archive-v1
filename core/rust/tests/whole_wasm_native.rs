@@ -58,6 +58,22 @@ fn whole_wasm_artifact_is_deterministic_and_preserves_hbc_parity() {
 }
 
 #[test]
+fn whole_wasm_operation_registry_keeps_the_hnw0_contract_digest() {
+    let program = compile_source("(+ 1 2)").expect("source must compile to HBC0");
+    let artifact = compile_artifact(&program).expect("source must compile to HNW0");
+    assert_eq!(
+        decode_artifact(&artifact)
+            .expect("HNW0 must decode")
+            .operation_registry_digest,
+        [
+            0xd8, 0xb2, 0xcd, 0x60, 0x97, 0xd1, 0x76, 0x00, 0xd5, 0xa5, 0x34, 0x18, 0x6d, 0x27,
+            0xea, 0x27, 0x44, 0xf4, 0xc8, 0x05, 0x7b, 0x77, 0x9b, 0x2c, 0x6d, 0x0b, 0x7f, 0x97,
+            0x27, 0x62, 0x3e, 0x2a,
+        ]
+    );
+}
+
+#[test]
 fn canonical_hbc_artifact_is_the_hnw0_compiler_input() {
     let source = "(+ 19 23)";
     let program = compile_source(source).expect("source must compile to HBC0");

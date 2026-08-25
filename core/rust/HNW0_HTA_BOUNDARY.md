@@ -34,13 +34,17 @@ value_construct(target, slots, arity) -> handle
 target_call(target, slots, arity, result-mode) -> value
 ```
 
-`Target::ALL` in `whole_wasm/bridge.rs` is the declaration inventory. It owns
-the target symbol, kind, arity, and artifact-local ID. `target_table()` writes
-that declaration into HNW0; artifact decoding validates the table before Wasm
-instantiation; both the Wasmtime and browser hosts dispatch from the decoded
-descriptor. Code generation and representation inference refer to the same
-declarations instead of maintaining independent numeric or suffix-based
-registries.
+`operation_declarations()` in `whole_wasm/bridge.rs` is the declaration
+inventory. It is built from the native declaration metadata and the protocol
+methods explicitly marked as HNW0-supported; it owns the target symbol, kind,
+arity, and artifact-local ID. The current HNW0 ABI is 5 and its seven-entry
+operation registry has the fixed digest
+`d8b2cd6097d17600d5a534186d27ea2744f4c8057b779b2c6d0b7f9727623e2a`.
+`target_table()` writes that declaration into HNW0; artifact decoding validates
+the table before Wasm instantiation; both the Wasmtime and browser hosts
+dispatch from the decoded descriptor. Code generation and representation
+inference refer to the same declarations instead of maintaining independent
+numeric or suffix-based registries.
 
 The target-call sequence is:
 
@@ -91,6 +95,25 @@ be treated as HNW0 linear-memory addresses. The browser package owns the
 worker/transport implementation, while the Rust extension parser and provider
 own native validation and execution. Both reject undeclared exports, invalid
 arities, unsupported target runtimes, malformed assets, and capability drift.
+HTA targets name provider implementations with `:provider`; the runtime-owned
+generic browser worker is not package code. Direct `:import` bindings remain
+core/memory bindings, while generated/package HTA bindings use `:require` and
+must not silently downgrade their ABI.
+
+Provider runners expose the same lifecycle event schema,
+`hara.hta.provider.event/0-alpha`, regardless of host framing:
+
+| Event | Required identity | Terminal data |
+| --- | --- | --- |
+| `start` | provider origin | `ok`/`error` status |
+| `call-enter` | request and operation | — |
+| `call-return` / `call-error` | request and operation | status and optional code |
+| `cancel` | request and operation when known | status and optional code |
+| `release` | provider session | status and optional code |
+| `shutdown` | provider origin | exactly once, status and optional code |
+
+The trace is observational: it never carries returned values or opaque handle
+identity and cannot alter provider execution.
 
 ## Instrumentation ownership
 
@@ -102,7 +125,7 @@ dispatch mechanism.
 | HNW0 target bridge | `semantic/protocol-call` | target symbol, arity, result mode, `enter`/`return`/`error` status |
 | HNW0/live session | `execution/terminal` | terminal status |
 | HBC/interpreter/live session | same normalized event kinds | backend target and terminal status |
-| HTA provider | lifecycle/request events | provider identity, request, cancellation, release, and structured result/error |
+| HTA provider | `hara.hta.provider.event/0-alpha` | provider identity, request, cancellation, release, and structured result/error |
 
 The HNW0 host emits bridge events around the generic call after declaration
 validation. A failed validation or dispatch emits an error status when an
@@ -119,10 +142,13 @@ The following invariants are required for every host:
 3. Native and browser hosts accept the same generic imports and declaration
    table, with the same slot, handle, arity, result-mode, and error rules.
 4. HTA manifests have the same typed export and target contract in Rust and
-   browser loaders.
+   browser loaders, and every host names a provider implementation rather than
+   a package-specific worker.
 5. Package verification precedes provider startup, and shutdown is idempotent.
 6. Instrumentation records the same normalized event kinds at HBC and HNW0
    execution boundaries without adding protocol-keyed imports.
+7. Provider lifecycle traces use the shared schema and have one terminal
+   `shutdown` event even after partial initialization or repeated cleanup.
 
 Rust conformance lives in the HNW0 artifact/bridge tests, extension/provider
 tests, package-loader tests, and whole-Wasm corpus. Browser conformance lives

@@ -17,6 +17,7 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 import org.junit.Test;
 
 public class HtaValueCodecTest {
@@ -46,6 +47,30 @@ public class HtaValueCodecTest {
         },
         encoded);
     assertEquals(List.of("x", 42L, true), HtaValueCodec.decode(encoded));
+  }
+
+  @Test
+  public void scalarRegexAndPointerTagsMatchThePortableGoldenVectors() {
+    assertArrayEquals(
+        new byte[] {'H', 'T', 'A', '0', 19, 0, 0, 3, (byte) 0xbb},
+        HtaValueCodec.encode('λ'));
+    assertEquals(Character.valueOf('λ'), HtaValueCodec.decode(HtaValueCodec.encode('λ')));
+
+    assertArrayEquals(
+        new byte[] {'H', 'T', 'A', '0', 22, 0, 0, 0, 2, 'a', '+'},
+        HtaValueCodec.encode(Pattern.compile("a+")));
+    assertEquals("a+", ((Pattern) HtaValueCodec.decode(HtaValueCodec.encode(Pattern.compile("a+")))).pattern());
+
+    Object pointer =
+        new hara.lang.data.Pointer(
+            Keyword.create("kernel"), Map.of(Keyword.create("id"), "ROOT"));
+    assertArrayEquals(
+        new byte[] {
+          'H', 'T', 'A', '0', 34, 6, 0, 0, 0, 6, 'k', 'e', 'r', 'n', 'e', 'l',
+          11, 0, 0, 0, 1, 6, 0, 0, 0, 2, 'i', 'd', 4, 0, 0, 0, 4, 'R', 'O', 'O', 'T'
+        },
+        HtaValueCodec.encode(pointer));
+    assertEquals(pointer, HtaValueCodec.decodeCanonical(HtaValueCodec.encode(pointer)));
   }
 
   @Test

@@ -186,7 +186,8 @@ pub(crate) mod declarations {
             "list", "vector", "vec", "set", "tuple", "hash-map", "hash-set", "atom", "pointer", "symbol",
             "keyword", "uuid", "reduced", "unreduced", "hash", "apply",
             "number?", "long?", "satisfies?", "special-symbol?", "type", "instance?"
-        ]
+        ],
+        whole_wasm_methods = [("number?", 1)]
     )]
     struct Base;
 
