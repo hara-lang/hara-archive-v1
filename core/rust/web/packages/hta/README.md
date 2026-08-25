@@ -25,5 +25,5 @@ runtime that implements `sandbox/eval` as a transient restricted session. An
 ordinary HTA root session is not `hara.mcp-pure/0-alpha`.
 
 The `@hara-lang/hta/worker` and `@hara-lang/hta/shared-worker` exports provide
-the raw Wasm worker entry points. The repository-level `hta*.js` files are
-compatibility shims for existing static URLs.
+the raw Wasm worker entry points. Repository consumers must use these package
+exports directly.

@@ -168,6 +168,76 @@ pub enum Value {
     Nil,
 }
 
+const UUID_TAG: &str = "uuid";
+
+fn uuid_value_from_uuid(value: uuid::Uuid) -> Value {
+    Value::Tagged(Box::new(PTaggedLiteral::new(
+        Symbol::parse(UUID_TAG),
+        Value::String(value.hyphenated().to_string()),
+    )))
+}
+
+fn uuid_from_bytes(bytes: &[u8]) -> uuid::Uuid {
+    let digest = md5::compute(bytes);
+    let mut value = digest.0;
+    value[6] = (value[6] & 0x0f) | 0x30;
+    value[8] = (value[8] & 0x3f) | 0x80;
+    uuid::Uuid::from_bytes(value)
+}
+
+fn uuid_from_parts(most: i64, least: i64) -> uuid::Uuid {
+    let value = ((most as u64 as u128) << 64) | least as u64 as u128;
+    uuid::Uuid::from_u128(value)
+}
+
+fn uuid_from_value(value: &Value) -> Result<uuid::Uuid, String> {
+    match value {
+        Value::String(value) => uuid::Uuid::parse_str(value)
+            .map_err(|_| "Base/uuid expects a valid UUID string".into()),
+        Value::Bytes(value) => Ok(uuid_from_bytes(value)),
+        Value::ByteBuffer(value) => Ok(uuid_from_bytes(&value.borrow())),
+        Value::Keyword(value) => Ok(uuid_from_parts(
+            crate::lang::hash::java_string_hash(value.as_str()) as i64,
+            crate::lang::hash::java_string_hash(value.get_name()) as i64,
+        )),
+        _ => Err("Base/uuid expects a string, bytes, or keyword".into()),
+    }
+}
+
+pub(crate) fn uuid_value(values: &[Value]) -> Result<Value, String> {
+    let value = match values {
+        [] => uuid::Uuid::new_v4(),
+        [value] => uuid_from_value(value)?,
+        [Value::Number(most), Value::Number(least)] => uuid_from_parts(*most, *least),
+        _ if values.len() == 2 => {
+            return Err("Base/uuid expects two integer arguments".into())
+        }
+        _ => return Err("Base/uuid expects zero, one, or two arguments".into()),
+    };
+    Ok(uuid_value_from_uuid(value))
+}
+
+pub(crate) fn uuid_text_from_tagged(value: &PTaggedLiteral<Value>) -> Option<&str> {
+    if value.tag().as_str() != UUID_TAG {
+        return None;
+    }
+    let Value::String(text) = value.form() else {
+        return None;
+    };
+    uuid::Uuid::parse_str(text)
+        .ok()
+        .filter(|uuid| uuid.hyphenated().to_string() == *text)
+        .map(|_| text.as_str())
+}
+
+pub(crate) fn is_uuid_tagged(value: &PTaggedLiteral<Value>) -> bool {
+    uuid_text_from_tagged(value).is_some()
+}
+
+pub(crate) fn is_uuid_value(value: &Value) -> bool {
+    matches!(value, Value::Tagged(value) if is_uuid_tagged(value))
+}
+
 #[derive(Debug, Clone)]
 pub enum MutableCollection {
     Map(MutableMap<Value, Value>),
@@ -1077,10 +1147,10 @@ pub fn native_type_function_value(native_type: &str, method: &str) -> Result<Val
                 native_result_values(&method, arguments)
             })
         }
-        "Error" => {
+        "Exception" => {
             let method = method.to_owned();
             native_variadic_function(&display_name, move |arguments| {
-                native_error_values(&method, arguments)
+                native_exception_values(&method, arguments)
             })
         }
         "Algo" => {
@@ -3019,7 +3089,10 @@ impl Value {
             Self::Character(v) if v.is_control() => format!("\\u{:04X}", *v as u32),
             Self::Character(v) => format!("\\{v}"),
             Self::Regex(v) => crate::kernel::form::display_regex(v),
-            Self::Tagged(value) => format!("#{}{}", value.tag().as_str(), value.form().display()),
+            Self::Tagged(value) => uuid_text_from_tagged(value).map_or_else(
+                || format!("#{}{}", value.tag().as_str(), value.form().display()),
+                str::to_owned,
+            ),
             Self::Bool(v) => v.to_string(),
             Self::String(v) => crate::kernel::form::display_string(v),
             Self::Keyword(v) => format!(":{}", v.as_str()),

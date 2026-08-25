@@ -176,15 +176,15 @@ pub(crate) mod declarations {
     #[hara_native(namespace = "std.native", name = "Schema", methods = ["compile", "of", "kind", "form", "ast", "origin"])]
     struct Schema;
 
-    #[hara_native(namespace = "std.native", name = "Error", methods = ["new", "message", "class"])]
-    struct Error;
+    #[hara_native(namespace = "std.native", name = "Exception", methods = ["new", "message", "class"])]
+    struct Exception;
 
     #[hara_native(
         namespace = "std.native",
         name = "Base",
         methods = [
             "list", "vector", "vec", "set", "tuple", "hash-map", "hash-set", "atom", "pointer", "symbol",
-            "keyword", "reduced", "unreduced", "apply",
+            "keyword", "uuid", "reduced", "unreduced", "apply",
             "number?", "long?", "satisfies?", "special-symbol?", "type", "instance?"
         ]
     )]

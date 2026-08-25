@@ -100,6 +100,18 @@
 (defn ^{:inline true :schema [:fn [& :any] :vector]}
   vector "Creates a persistent vector from values." [& values] (apply Base/vector values))
 
+(defn ^{:inline true :schema [:fn [& :any] :any]}
+  array
+  "Creates a mutable array from values."
+  [& values]
+  (apply std.native.Arr/new values))
+
+(defn ^{:inline true :schema [:fn [& :any] :any]}
+  object
+  "Creates a mutable object from alternating keys and values."
+  [& entries]
+  (apply std.native.Obj/new entries))
+
 (defn ^{:inline true :schema [:fn [:any] :vector]}
   vec "Converts value to a persistent vector." [value] (Base/vec value))
 
@@ -285,6 +297,12 @@
 
 (defn ^{:inline true :schema [:fn [:any] :bool]}
   fn? "Returns true when value satisfies IFn." [value] (satisfies? IFn value))
+
+(defn ^{:inline true :schema [:fn [:any] :bool]}
+  ex?
+  "Returns true when value has the portable Exception type."
+  [value]
+  (= (type value) :std.native.Exception))
 
 (defn ^{:inline true :schema [:fn [:any] :bool]}
   iterable? "Returns true when value satisfies IIter." [value] (satisfies? IIter value))

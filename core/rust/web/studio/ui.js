@@ -1,4 +1,4 @@
-import { HtaKeyword, HtaSymbol } from "../hta.js";
+import { HtaKeyword, HtaSymbol } from "../packages/hta/index.js";
 import { defaultBootstrap } from "./boot.js";
 import { editorFormAt, editorSourceComplete, editorTopLevelForms, isAnonymousDocument, studioDocumentId } from "./editor-state.js";
 import { activateStudioDocument } from "./document-runtime.js";

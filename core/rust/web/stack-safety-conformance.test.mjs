@@ -3,7 +3,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-import { HtaContext, HtaKeyword } from "./hta.js";
+import { HtaContext, HtaKeyword } from "./packages/hta/index.js";
 
 const wasmUrl = new URL(
   "../raw/target/wasm32-unknown-unknown/browser-release/hara-wasm-core.wasm",

@@ -37,6 +37,9 @@ whole-wasm = ["bytecode-vm"]
 
 [dependencies]
 hara-protocol-macros = { path = "../protocol-macros" }
+inventory = "0.3"
+md5 = "0.8"
+uuid = { version = "1.24", features = ["v4"] }
 wasm-bindgen = "0.2"
 sha2 = "0.10"
 hmac = "0.12"

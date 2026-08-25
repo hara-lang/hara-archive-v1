@@ -12,7 +12,9 @@ const MANIFEST: &str = r#"{:namespace "bench.wasm"
 fn main() -> Result<(), String> {
     let args = std::env::args().skip(1).collect::<Vec<_>>();
     let path = args.first().map_or_else(
-        || PathBuf::from("core/rust/raw/target/wasm32-unknown-unknown/release/hara_wasm_raw.wasm"),
+        || PathBuf::from(
+            "core/rust/raw/target/wasm32-unknown-unknown/browser-release/hara-wasm-vm.wasm",
+        ),
         PathBuf::from,
     );
     let iterations = args

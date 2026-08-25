@@ -478,10 +478,9 @@ make -C core wasm-test-node
 make -C core wasm-test-browser
 ```
 
-`rust-raw-test`, `hta-test`, and `studio-test` remain compatibility aliases for
-`wasm-test-raw`, `wasm-test-hta`, and `wasm-test-studio`. Every top-level Node
-test under `core/rust/web` is assigned to an npm test script, while Playwright's
-configuration owns the browser `*.spec.js` inventory.
+Every top-level Node test under `core/rust/web` is assigned to an npm test
+script, while Playwright's configuration owns the browser `*.spec.js`
+inventory.
 
 ### Bytecode conformance and benchmarks
 

@@ -3,7 +3,7 @@ import test from "node:test";
 import { readFile } from "node:fs/promises";
 import "fake-indexeddb/auto";
 
-import { HtaContext, HtaKeyword } from "./hta.js";
+import { HtaContext, HtaKeyword } from "./packages/hta/index.js";
 import { KernelBroker } from "./studio/broker.js";
 import { defaultBootstrap } from "./studio/boot.js";
 import { createHostServices } from "./studio/host-services.js";
@@ -15,7 +15,7 @@ import { normalizeCreative } from "../../../../../website/hara-www/creative.js";
 // (rust/web/studio/hal/*.hal): store/boot and canonical file behaviour is asserted by
 // evaluating hara source in actual HTA kernels. Skipped when the raw wasm
 // artifact has not been built.
-const wasmUrl = new URL("../raw/target/wasm32-unknown-unknown/release/hara_wasm_raw.wasm", import.meta.url);
+const wasmUrl = new URL("../raw/target/wasm32-unknown-unknown/browser-release/hara-wasm-vm.wasm", import.meta.url);
 const wasmBytes = await readFile(wasmUrl).catch(() => null);
 const hal = (name) => readFile(new URL(`./studio/hal/${name}.hal`, import.meta.url), "utf8");
 const supersonicHal = () => readFile(

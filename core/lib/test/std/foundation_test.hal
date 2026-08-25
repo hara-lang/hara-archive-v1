@@ -12,6 +12,25 @@
    :test (fn [] (std.foundation/vector 1 2 3))
    :expected [1 2 3]}])
 
+^{:refer std.foundation/array}
+(Test/run
+ [{:name "constructs a mutable array from all values"
+   :test (fn []
+           (let [value (std.foundation/array 1 2 3)]
+             [(std.foundation/array? value)
+              (std.foundation/count value)
+              (std.foundation/nth value 1)]))
+   :expected [true 3 2]}])
+
+^{:refer std.foundation/object}
+(Test/run
+ [{:name "constructs a mutable object from alternating entries"
+   :test (fn []
+           (let [value (std.foundation/object "answer" 42)]
+             [(std.foundation/object? value)
+              (std.foundation/get value "answer")]))
+   :expected [true 42]}])
+
 ^{:refer std.foundation/uuid}
 (Test/run
  [{:name "constructs UUID values with portable type identity"
@@ -32,6 +51,13 @@
  [{:name "applies leading arguments and a final sequence"
    :test (fn [] (std.foundation/apply + 1 [2 3]))
    :expected 6}])
+
+^{:refer std.foundation/ex?}
+(Test/run
+ [{:name "recognizes portable Exception values"
+   :test (fn [] [(std.foundation/ex? (Exception/new "fixture" {:kind :fixture}))
+                 (std.foundation/ex? :not-an-exception)])
+   :expected [true false]}])
 
 ^{:refer std.foundation/get}
 (Test/run

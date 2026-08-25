@@ -4,7 +4,7 @@ test("real worker resumes a pending HTA evaluator fiber",async({page})=>{await p
 test("browser promise provider follows the real Chromium event loop",async({page})=>{
   await page.goto("/rust/web/hta-browser.html");
   const result=await page.evaluate(async()=>{
-    const {BrowserPromiseProvider}=await import("/rust/web/hta.js");
+    const {BrowserPromiseProvider}=await import("/rust/web/packages/hta/index.js");
     const provider=new BrowserPromiseProvider(),events=[];
     const source=provider.run(()=>{events.push("run");return 21;});
     const chained=provider.then(source,value=>{events.push("then");return value*2;});
@@ -20,7 +20,7 @@ test("fresh browser sandbox evaluates without native authority",async({page})=>{
     const bytes=new Uint8Array(await (await fetch("/rust/raw/target/wasm32-unknown-unknown/browser-release/hara-wasm-core.wasm")).arrayBuffer());
     const {BrowserWasmSandbox}=await import("/rust/web/packages/hta/sandbox.js");
     const create=()=>new BrowserWasmSandbox({
-      workerUrl:new URL("/rust/web/hta-worker.js",location.href),
+      workerUrl:new URL("/rust/web/packages/hta/worker.js",location.href),
       moduleBytes:bytes,
     });
     const sandbox=create();

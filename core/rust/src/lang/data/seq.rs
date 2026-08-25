@@ -1,11 +1,10 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use crate::lang::data::Tuple;
 use crate::lang::hash::JavaHash;
 use crate::lang::protocol::{
-    HashType, IColl, IConj, ICons, ICount, IDisplay, IEmpty, IEquality, IHash, IMetadata, IObjType,
-    IPeekFirst, IPersistent, IPopFirst, IPushFirst, ObjType,
+    HashType, ICons, ICount, IDisplay, IEmpty, IEquality, IHash, IMetadata, IObjType, IPeekFirst,
+    IPersistent, IPopFirst, IPushFirst, ObjType,
 };
 
 #[derive(Clone)]
@@ -92,12 +91,6 @@ impl<E: Clone + 'static> ICons<E> for Seq<E> {
         crate::lang::data::Cons::new(value, self.clone())
     }
 }
-impl<E: Clone + 'static> IConj<E> for Seq<E> {
-    type Output = crate::lang::data::Cons<E, Self>;
-    fn conj(&self, value: E) -> Self::Output {
-        self.push_first(value)
-    }
-}
 impl<E: Clone + 'static> IPopFirst for Seq<E> {
     type Output = Self;
     fn pop_first(&self) -> Self::Output {
@@ -105,9 +98,9 @@ impl<E: Clone + 'static> IPopFirst for Seq<E> {
     }
 }
 impl<E: Clone + 'static> IEmpty for Seq<E> {
-    type Output = Tuple<E>;
+    type Output = crate::lang::data::Tuple<E>;
     fn empty(&self) -> Self::Output {
-        Tuple::Tup0.with_meta(self.metadata.clone())
+        crate::lang::data::Tuple::Tup0.with_meta(self.metadata.clone())
     }
 }
 impl<E: Clone + 'static> IMetadata for Seq<E> {
@@ -157,18 +150,6 @@ impl<E: Clone + std::fmt::Debug + 'static> IObjType for Seq<E> {
         ObjType::Sequential
     }
 }
-impl<E> IColl<E> for Seq<E>
-where
-    E: Clone + PartialEq + std::fmt::Debug + std::hash::Hash + JavaHash + 'static,
-{
-    fn start_string(&self) -> &'static str {
-        "("
-    }
-    fn end_string(&self) -> &'static str {
-        ")"
-    }
-}
-
 impl<E: Clone + 'static> IntoIterator for Seq<E> {
     type Item = E;
     type IntoIter = SeqIter<E>;

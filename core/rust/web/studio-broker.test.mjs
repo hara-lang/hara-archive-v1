@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
 
-import { HtaContext, HtaKeyword } from "./hta.js";
+import { HtaContext, HtaKeyword } from "./packages/hta/index.js";
 import { compileAnonymousDocument, createBrowserBroker, KernelBroker } from "./studio/broker.js";
 
 // Mock HtaContext-shaped kernel: records calls, echoes evals with the kernel name.
@@ -455,10 +455,10 @@ test("createBrowserBroker wires Worker and HtaContext", async () => {
   }
 });
 
-// Optional integration: drive rust/web/hta-worker.js (browser worker script) in
+// Optional integration: drive the canonical HTA worker package in
 // node via a `self` shim, against the real raw wasm. Skipped when the artifact
 // has not been built.
-const wasmUrl = new URL("../raw/target/wasm32-unknown-unknown/release/hara_wasm_raw.wasm", import.meta.url);
+const wasmUrl = new URL("../raw/target/wasm32-unknown-unknown/browser-release/hara-wasm-vm.wasm", import.meta.url);
 const wasmBytes = await readFile(wasmUrl).catch(() => null);
 
 test("real wasm kernel evals hara source through the broker", { skip: wasmBytes === null }, async () => {
@@ -471,7 +471,7 @@ test("real wasm kernel evals hara source through the broker", { skip: wasmBytes 
     close: () => {}
   };
   globalThis.self = bridge.self;
-  await import("./hta-worker.js");
+  await import("./packages/hta/worker.js");
 
   const worker = {
     terminated: false,

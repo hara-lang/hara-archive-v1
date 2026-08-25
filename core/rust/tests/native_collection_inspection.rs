@@ -137,8 +137,7 @@ fn seq_does_not_satisfy_conj_or_support_conj_invocation() {
     let error = runtime
         .eval_native("(IConj/conj (seq [1 2]) 3)")
         .unwrap_err();
-    eprintln!("Seq IConj/conj error: {error}");
-    assert!(error.contains("IConj/conj does not support Seq"));
+    assert!(error.contains("missing protocol implementation: std.protocol.iconj.IConj/conj"));
 }
 
 #[test]

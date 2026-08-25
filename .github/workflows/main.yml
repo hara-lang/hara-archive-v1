@@ -69,7 +69,7 @@ jobs:
         {
           stat -c "browser_wasm_bytes=%s" core/rust/target/wasm32-unknown-unknown/release/hara_wasm.wasm
           stat -c "wasi_wasm_bytes=%s" core/rust/target/wasm32-wasip1/release/hara_wasm.wasm
-          stat -c "raw_extension_wasm_bytes=%s" core/rust/raw/target/wasm32-unknown-unknown/release/hara_wasm_raw.wasm
+          stat -c "raw_extension_wasm_bytes=%s" core/rust/raw/target/wasm32-unknown-unknown/browser-release/hara-wasm-vm.wasm
         } | tee core/target/rust-wasm-artifact-sizes.txt
     - name: Upload Rust runtime artifact sizes
       uses: actions/upload-artifact@v4
@@ -256,12 +256,12 @@ jobs:
     - name: Run a Native Image smoke test
       run: |
         mkdir -p core/target/native-extensions/demo/000-answer-42
-        cp core/rust/raw/target/wasm32-unknown-unknown/release/hara_wasm_raw.wasm \
+        cp core/rust/raw/target/wasm32-unknown-unknown/browser-release/hara-wasm-vm.wasm \
           core/target/native-extensions/demo/000-answer-42/answer-42.wasm
         cp core/lib/examples/extensions/demo/000-answer-42/hara.extension.edn \
           core/target/native-extensions/demo/000-answer-42/hara.extension.edn
         mkdir -p core/target/native-extensions/hara/runtime/wasm
-        cp core/rust/raw/target/wasm32-unknown-unknown/release/hara_wasm_raw.wasm \
+        cp core/rust/raw/target/wasm32-unknown-unknown/browser-release/hara-wasm-vm.wasm \
           core/target/native-extensions/hara/runtime/wasm/hara.wasm
         cp core/lib/examples/extensions/hara/runtime/wasm/hara.extension.edn \
           core/target/native-extensions/hara/runtime/wasm/hara.extension.edn

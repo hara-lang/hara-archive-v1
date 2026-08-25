@@ -693,9 +693,6 @@ final class HaraProtocolExtensions {
 
   @SuppressWarnings("unchecked")
   private static Object conjValue(IConj<?> conj, Object value) {
-    if (conj instanceof hara.lang.data.Seq<?>) {
-      throw new HaraException("protocol/unsupported-receiver: IConj/conj does not support Seq");
-    }
     if (conj instanceof ISetType<?> && value == null) {
       value = HaraNull.SINGLETON;
     }

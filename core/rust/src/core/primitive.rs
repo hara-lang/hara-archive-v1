@@ -953,22 +953,22 @@ fn native_result_values(operation: &str, values: Vec<Value>) -> Result<Value, St
     }
 }
 
-fn native_error_values(operation: &str, values: Vec<Value>) -> Result<Value, String> {
+fn native_exception_values(operation: &str, values: Vec<Value>) -> Result<Value, String> {
     let operation = operation
-        .strip_prefix("std.native.Error/")
+        .strip_prefix("std.native.Exception/")
         .unwrap_or(operation);
     match operation {
         "new" => {
             if !(2..=3).contains(&values.len()) {
                 return Err(
-                    "std.native.Error/new expects a message, data map, and optional cause".into(),
+                    "std.native.Exception/new expects a message, data map, and optional cause".into(),
                 );
             }
             let Value::String(message) = &values[0] else {
-                return Err("std.native.Error/new expects a string message".into());
+                return Err("std.native.Exception/new expects a string message".into());
             };
             if map_entries(&values[1]).is_none() {
-                return Err("std.native.Error/new expects a data map".into());
+                return Err("std.native.Exception/new expects a data map".into());
             }
             Ok(Value::ExceptionInfo(Rc::new(ExceptionInfo {
                 message: message.clone(),
@@ -979,7 +979,7 @@ fn native_error_values(operation: &str, values: Vec<Value>) -> Result<Value, Str
         }
         "message" => {
             if values.len() != 1 {
-                return Err("std.native.Error/message expects one value".into());
+                return Err("std.native.Exception/message expects one value".into());
             }
             Ok(match &values[0] {
                 Value::ExceptionInfo(value) => Value::String(value.message.clone()),
@@ -989,11 +989,11 @@ fn native_error_values(operation: &str, values: Vec<Value>) -> Result<Value, Str
         }
         "class" => {
             if values.len() != 1 {
-                return Err("std.native.Error/class expects one value".into());
+                return Err("std.native.Exception/class expects one value".into());
             }
             Ok(Value::String(portable_type_name(&values[0]).into()))
         }
-        _ => Err(format!("unknown native error operation: {operation}")),
+        _ => Err(format!("unknown native exception operation: {operation}")),
     }
 }
 

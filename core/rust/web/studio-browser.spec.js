@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 
 // Studio smoke: boots the shared UI against the real raw wasm and evals in
 // the ROOT kernel. Skipped when the raw wasm artifact has not been built.
-const wasmPath = new URL("../raw/target/wasm32-unknown-unknown/release/hara_wasm_raw.wasm", import.meta.url);
+const wasmPath = new URL("../raw/target/wasm32-unknown-unknown/browser-release/hara-wasm-vm.wasm", import.meta.url);
 test.skip(!existsSync(wasmPath), "raw wasm artifact not built");
 
 test("studio boots live and evals (+ 1 2) in the ROOT kernel", async ({ page }) => {

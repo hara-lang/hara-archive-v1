@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { decodeHta, encodeHta, HtaArray, HtaAtom, HtaKeyword, HtaObject, HtaSymbol, HtaVar } from "./hta.js";
+import { decodeHta, encodeHta, HtaArray, HtaAtom, HtaKeyword, HtaObject, HtaSymbol, HtaVar } from "./packages/hta/index.js";
 
 test("HTA transports Vars without confusing them with their function values", () => {
   const decoded = decodeHta(encodeHta(new HtaVar(new HtaSymbol("rank"))));

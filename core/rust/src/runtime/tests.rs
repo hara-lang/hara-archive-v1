@@ -3286,6 +3286,26 @@ mod tests {
     }
 
     #[test]
+    fn base_uuid_has_portable_identity_and_string_construction() {
+        let mut runtime = Runtime::new();
+        assert_eq!(
+            runtime
+                .eval_text(
+                    "(let [random (Base/uuid) \
+                           fixed (Base/uuid \"00000000-0000-0000-0000-000000000000\") \
+                           bits (Base/uuid 0 1)] \
+                       [(uuid? random) (type random) (str fixed) (str bits)])"
+                )
+                .unwrap(),
+            "[true :std.native.UUID \"00000000-0000-0000-0000-000000000000\" \"00000000-0000-0000-0000-000000000001\"]"
+        );
+        assert_eq!(
+            runtime.eval_text("(str (Base/uuid (bytes)))").unwrap(),
+            "\"d41d8cd9-8b00-34e9-9800-0998ecf8427e\""
+        );
+    }
+
+    #[test]
     fn closed_native_method_inventory_is_classified_and_callable() {
         fn entry<'a>(entries: &'a [(Form, Form)], key: &str) -> &'a Form {
             entries
@@ -3766,7 +3786,7 @@ mod tests {
             "RegExp",
             "Result",
             "Schema",
-            "Error",
+            "Exception",
             "Base",
             "Algo",
             "Iter",

@@ -11,7 +11,7 @@ import { mountStudio } from "./studio/ui.js";
 // Smoke-page bootstrap: same wiring as the website's studio.js, with paths
 // resolved against the repo-root server used by playwright.config.js.
 const bytes = new Uint8Array(
-  await (await fetch("/rust/raw/target/wasm32-unknown-unknown/release/hara_wasm_raw.wasm")).arrayBuffer()
+  await (await fetch("/rust/raw/target/wasm32-unknown-unknown/browser-release/hara-wasm-vm.wasm")).arrayBuffer()
 );
 const resources = {};
 for (const name of ["store", "boot", "node", "draw", "program", "graph", "session"]) {
@@ -33,7 +33,7 @@ const capabilityRegistry = new CapabilityRegistry({ adapters: {
 } });
 const graphHost = new GraphHost({ workerUrl: "./studio/program-worker.js", sessionRouter, capabilityRegistry });
 const broker = createBrowserBroker({
-  workerUrl: "./hta-worker.js",
+  workerUrl: "./packages/hta/worker.js",
   moduleBytes: bytes,
   hostCalls: createHostServices({ canvasRuntime, graphHost, graphHostOptions: { sessionRouter } }),
   resources,

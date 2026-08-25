@@ -1,4 +1,4 @@
-import { HtaContext } from "../hta.js";
+import { HtaContext } from "../packages/hta/index.js";
 
 const ROOT = "ROOT";
 const NAME_PATTERN = /^[A-Za-z0-9_.-]+$/;

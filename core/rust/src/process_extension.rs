@@ -522,7 +522,7 @@ mod tests {
         let module =
             std::env::temp_dir().join(format!("hara-hta-fake-{}-{id}.mjs", std::process::id()));
         let hta = std::path::Path::new(env!("HARA_SOURCE_ROOT"))
-            .join("web/hta.js")
+            .join("web/packages/hta/index.js")
             .canonicalize()
             .unwrap();
         let source = format!(

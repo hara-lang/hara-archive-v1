@@ -1308,7 +1308,9 @@ dependencies = [
  "hara-protocol-macros",
  "hmac 0.12.1",
  "home",
+ "inventory",
  "js-sys",
+ "md5",
  "num-bigint",
  "num-integer",
  "num-traits",
@@ -1322,6 +1324,7 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "tokio",
+ "uuid",
  "wasm-bindgen",
  "wasm-encoder",
  "wasmtime",
@@ -1536,6 +1539,15 @@ dependencies = [
  "num-traits",
  "rand",
  "rand_core 0.10.1",
+]
+
+[[package]]
+name = "inventory"
+version = "0.3.24"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a4f0c30c76f2f4ccee3fe55a2435f691ca00c0e4bd87abe4f4a851b1d4dac39b"
+dependencies = [
+ "rustversion",
 ]
 
 [[package]]
@@ -3249,6 +3261,7 @@ version = "1.24.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bf3923a6f5c4c6382e0b653c4117f48d631ea17f38ed86e2a828e6f7412f5239"
 dependencies = [
+ "getrandom 0.4.3",
  "js-sys",
  "wasm-bindgen",
 ]

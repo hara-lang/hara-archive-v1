@@ -2,13 +2,13 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-import { HtaContext } from "./hta.js";
+import { HtaContext } from "./packages/hta/index.js";
 import { KernelBroker } from "./host/broker.js";
 import { createHostServices } from "./host/services.js";
 import { CanvasRuntime } from "./studio/canvas-runtime.js";
 
 const wasmUrl = new URL(
-  "../raw/target/wasm32-unknown-unknown/release/hara_wasm_raw.wasm",
+  "../raw/target/wasm32-unknown-unknown/browser-release/hara-wasm-vm.wasm",
   import.meta.url
 );
 const wasmBytes = await readFile(wasmUrl).catch(() => null);

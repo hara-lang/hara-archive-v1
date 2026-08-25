@@ -49,7 +49,7 @@ const NATIVE_TYPES: &[&str] = &[
     "RegExp",
     "Result",
     "Schema",
-    "Error",
+    "Exception",
     "Base",
     "Algo",
     "Iter",

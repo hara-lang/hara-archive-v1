@@ -19,7 +19,7 @@ public final class HaraWasmTruffleParityBenchmark {
       SpecRegistry.resolve(
           "01-lang/001-language/draft/conformance/parity/wasm-truffle.edn");
   private static final Path ARTIFACT =
-      Path.of("rust/raw/target/wasm32-unknown-unknown/release/hara_wasm_raw.wasm");
+      Path.of("rust/raw/target/wasm32-unknown-unknown/browser-release/hara-wasm-vm.wasm");
   private static final String NAMESPACE = "test.rust.parity";
   private static final String REQUIRE = "(ns app (:require [test.rust.parity :as rust]))";
 

@@ -1,12 +1,12 @@
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
+use std::collections::HashSet;
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
 use syn::{
     parse_macro_input, Error, Ident, ItemMod, ItemTrait, LitBool, LitInt, LitStr, Result, Token,
     TraitItem,
 };
-use std::collections::HashSet;
 
 struct NativeArgs {
     namespace: Option<LitStr>,
@@ -78,10 +78,12 @@ pub fn hara_native_registry(_attr: TokenStream, item: TokenStream) -> TokenStrea
 }
 
 fn expand_native_registry(mut input: ItemMod) -> Result<proc_macro2::TokenStream> {
-    let (_, items) = input
-        .content
-        .as_mut()
-        .ok_or_else(|| Error::new_spanned(&input.ident, "hara_native_registry requires an inline module"))?;
+    let (_, items) = input.content.as_mut().ok_or_else(|| {
+        Error::new_spanned(
+            &input.ident,
+            "hara_native_registry requires an inline module",
+        )
+    })?;
 
     let mut declarations = Vec::new();
     let original_items = std::mem::take(items);
@@ -102,9 +104,9 @@ fn expand_native_registry(mut input: ItemMod) -> Result<proc_macro2::TokenStream
         };
         let attribute = &native_type.attrs[attribute_index];
         let args = attribute.parse_args::<NativeArgs>()?;
-        let namespace = args
-            .namespace
-            .ok_or_else(|| Error::new_spanned(&native_type.ident, "hara_native requires namespace"))?;
+        let namespace = args.namespace.ok_or_else(|| {
+            Error::new_spanned(&native_type.ident, "hara_native requires namespace")
+        })?;
         let name = args
             .name
             .ok_or_else(|| Error::new_spanned(&native_type.ident, "hara_native requires name"))?;
@@ -121,10 +123,7 @@ fn expand_native_registry(mut input: ItemMod) -> Result<proc_macro2::TokenStream
             ));
         }
         if !type_names.insert(name.value()) {
-            return Err(Error::new_spanned(
-                &name,
-                "duplicate hara_native type name",
-            ));
+            return Err(Error::new_spanned(&name, "duplicate hara_native type name"));
         }
         if args.methods.is_empty() {
             return Err(Error::new_spanned(
@@ -199,11 +198,12 @@ fn expand_native_registry(mut input: ItemMod) -> Result<proc_macro2::TokenStream
         ));
     }
 
-    let declaration_table = format_ident!("{}_DECLARATIONS", input.ident.to_string().to_uppercase());
+    let declaration_table =
+        format_ident!("{}_DECLARATIONS", input.ident.to_string().to_uppercase());
     let type_table = format_ident!("{}_TYPES", input.ident.to_string().to_uppercase());
-    let declaration_methods = declarations.iter().map(|declaration| {
-        quote!(((#declaration).name, (#declaration).methods))
-    });
+    let declaration_methods = declarations
+        .iter()
+        .map(|declaration| quote!(((#declaration).name, (#declaration).methods)));
 
     Ok(quote! {
         #input
@@ -472,11 +472,6 @@ fn expand_protocol(args: ProtocolArgs, input: &mut ItemTrait) -> Result<proc_mac
     };
     let parents = args.parents;
     let inherited_methods = args.inherited_methods;
-    let declaration_ident = format_ident!(
-        "{}_PROTOCOL_DECLARATION",
-        input.ident.to_string().to_uppercase()
-    );
-
     let mut methods = Vec::new();
     let mut method_names = std::collections::HashSet::new();
     for item in &mut input.items {
@@ -525,8 +520,7 @@ fn expand_protocol(args: ProtocolArgs, input: &mut ItemTrait) -> Result<proc_mac
     Ok(quote! {
         #input
 
-        #[doc(hidden)]
-        pub(crate) const #declaration_ident: crate::lang::protocol::ProtocolDeclaration =
+        inventory::submit! {
             crate::lang::protocol::ProtocolDeclaration {
                 namespace: #namespace,
                 name: #name,
@@ -534,7 +528,8 @@ fn expand_protocol(args: ProtocolArgs, input: &mut ItemTrait) -> Result<proc_mac
                 availability: #availability,
                 capability: #capability,
                 methods: &[#(#methods),*],
-            };
+            }
+        }
     })
 }
 

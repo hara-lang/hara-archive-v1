@@ -61,7 +61,7 @@ function harness({ result = 42, ready = Promise.resolve() } = {}) {
 
 function sandbox(overrides = {}) {
   return new BrowserWasmSandbox({
-    workerUrl: new URL("file:///hta-worker.js"),
+    workerUrl: new URL("file:///packages/hta/worker.js"),
     moduleBytes: new Uint8Array([0, 97, 115, 109]),
     ...overrides,
   });

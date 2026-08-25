@@ -2838,6 +2838,16 @@ public class HaraLanguageTest {
                   "(nil? (ex-native-type (ex-info \"legacy\" {:phase :test})))")
               .asBoolean());
       assertEquals(
+          ":std.native.Exception",
+          context.eval(HaraLanguage.ID, "(type (ex-info \"legacy\" {:phase :test}))").toString());
+      assertEquals(
+          "legacy",
+          context
+              .eval(
+                  HaraLanguage.ID,
+                  "(std.native.Exception/message (ex-info \"legacy\" {:phase :test}))")
+              .asString());
+      assertEquals(
           "[:file/read \"missing\" :ex.class/io]",
           context
               .eval(

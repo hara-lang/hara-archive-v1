@@ -10,9 +10,9 @@ assets. The pages deploy copies the runtime-facing pieces under
   wasm-bindgen runtime, exposes `Hara.start()` for ESM and CDN script embeds,
   and carries the generated HAL catalog in its release bundle.
 - `packages/hta/` — the publishable `@hara-lang/hta` package: HTA0 codecs,
-  browser hosts, and reusable Node/browser provider transports. `hta.js`
-  remains a compatibility re-export for static browser consumers.
-- `hta-worker.js` — the raw HTA worker: `HtaContext` drives one
+  browser hosts, and reusable Node/browser provider transports. It is the
+  only supported HTA browser package entry point.
+- `packages/hta/worker.js` — the raw HTA worker: `HtaContext` drives one
   raw wasm instance (`rust/raw`) inside a Web Worker over the `HTA0` binary
   wire format, with handles and the promise-provider contract
   (`specs/01-lang/008-hta/draft/hal-hta-contract.md`).

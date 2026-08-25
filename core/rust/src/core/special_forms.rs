@@ -1174,8 +1174,7 @@ pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, Stri
                     let value = eval(&fs[1], env)?;
                     Ok(Value::Bool(match n.as_str() {
                         "regexp?" => matches!(value, Value::Regex(_)),
-                        // UUID values are not yet represented by the Rust value model.
-                        "uuid?" => false,
+                        "uuid?" => is_uuid_value(&value),
                         _ => unreachable!(),
                     }))
                 }

@@ -485,17 +485,17 @@ public final class HaraContext {
               "replace", "re-replace",
               "split", "re-split"));
       installNativeExportGroup(
-          "Error",
+          "Exception",
           exports,
-          HaraNativeDeclarations.methods("Error"),
+          HaraNativeDeclarations.methods("Exception"),
           Map.of(
               "new", "ex-info",
               "message", "ex-message"));
-      namespace("std.native.Error")
+      namespace("std.native.Exception")
           .define(
               "class",
               new UnaryBuiltin(
-                  "std.native.Error/class", value -> portableType(value).getName()));
+                  "std.native.Exception/class", value -> portableType(value).getName()));
       installNativeExportGroup(
           "Base", exports, HaraNativeDeclarations.methods("Base"), Map.of("tuple", "tup"));
       installNativeExportGroup("Iter", exports, HaraNativeDeclarations.methods("Iter"), Map.of());
@@ -3306,7 +3306,7 @@ public final class HaraContext {
     else if (raw instanceof HaraNativeType) type = "NativeType";
     else if (raw instanceof HaraSchemaType) type = "SchemaType";
     else if (raw instanceof HaraResult) type = "Result";
-    else if (raw instanceof hara.lang.protocol.IExInfo || raw instanceof HaraException) type = "Error";
+    else if (raw instanceof hara.lang.protocol.IExInfo || raw instanceof HaraException) type = "Exception";
     else if (raw instanceof hara.lang.protocol.IStream) type = "Stream";
     else if (raw instanceof hara.lang.protocol.ICoroutine) type = "Coroutine";
     else if (raw instanceof IPromise) type = "Promise";

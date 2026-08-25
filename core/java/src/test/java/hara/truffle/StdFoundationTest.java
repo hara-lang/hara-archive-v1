@@ -50,7 +50,7 @@ public class StdFoundationTest {
                       + "  (Iter/iter-any? (fn [x] (= x \"Maths\")) (current-symbols))"
                       + "  (every? (fn [type] (not (nil? (resolve type))))"
                       + "    '[Maths Num Bits String Bytes File Socket Promise Coroutine"
-                      + "      Arr Obj Runtime Printer Edn Json Regex Error])]")
+                      + "      Arr Obj Runtime Printer Edn Json Regex Exception])]")
               .toString());
     }
   }

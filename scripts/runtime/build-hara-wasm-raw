@@ -24,11 +24,6 @@ build_variant() {
   output="$ROOT/core/rust/raw/target/wasm32-unknown-unknown/browser-release/$name.wasm"
   mkdir -p "$(dirname "$output")"
   cp "$source" "$output"
-  if [[ "$name" == "hara-wasm-vm" ]]; then
-    legacy="$ROOT/core/rust/raw/target/wasm32-unknown-unknown/release/hara_wasm_raw.wasm"
-    mkdir -p "$(dirname "$legacy")"
-    cp "$source" "$legacy"
-  fi
   echo "Built $output"
 }
 

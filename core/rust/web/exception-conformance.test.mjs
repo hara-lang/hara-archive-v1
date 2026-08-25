@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-import { HtaContext } from "./hta.js";
+import { HtaContext } from "./packages/hta/index.js";
 
 const wasmUrl = new URL(
   "../raw/target/wasm32-unknown-unknown/browser-release/hara-wasm-core.wasm",

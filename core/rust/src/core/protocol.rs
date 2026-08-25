@@ -1108,6 +1108,7 @@ fn native_base_values(operation: &str, values: &[Value]) -> Result<Value, String
             }
             _ => Err("Base/keyword expects a name or namespace and name".into()),
         },
+        "uuid" => uuid_value(values),
         "reduced" => match values {
             [value] => Ok(reduced_value(value.clone())),
             _ => Err("Base/reduced expects one value".into()),
@@ -1685,7 +1686,6 @@ fn protocol_conj(arguments: &[Value]) -> Result<Value, String> {
             drop(output);
             Ok(Value::Object(values.clone()))
         }
-        Value::Seq(_) => Err("protocol/unsupported-receiver: IConj/conj does not support Seq".into()),
         Value::Tuple(values) => tuple_push_last(values, item.clone()),
         Value::Vector(values) => {
             let output = values.push_last(item.clone());
@@ -1878,7 +1878,7 @@ impl Value {
         Self::supports_native_icoll(value)
             || matches!(
                 value,
-                Self::Nil | Self::Array(_) | Self::Object(_) | Self::Struct(_)
+                Self::Nil | Self::Array(_) | Self::Object(_) | Self::Struct(_) | Self::Seq(_)
             )
     }
     fn supports_native_itomutable(value: &Self) -> bool {

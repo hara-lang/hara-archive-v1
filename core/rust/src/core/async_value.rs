@@ -6,6 +6,7 @@ fn portable_type_keyword(value: &Value) -> Result<Keyword, String> {
         Value::BigInteger(_) => "Integer",
         Value::Character(_) => "Character",
         Value::Regex(_) => "RegExp",
+        Value::Tagged(value) if is_uuid_tagged(value) => "UUID",
         Value::Tagged(value) if is_reduced_value(&Value::Tagged(value.clone())) => "Reduced",
         Value::Tagged(_) => "TaggedLiteral",
         Value::Bool(_) => "Boolean",
@@ -51,7 +52,7 @@ fn portable_type_keyword(value: &Value) -> Result<Keyword, String> {
         Value::Coroutine(_) => "Coroutine",
         Value::Stream(_) => "Stream",
         Value::Result(_) => "Result",
-        Value::ExceptionInfo(_) => "Error",
+        Value::ExceptionInfo(_) => "Exception",
     };
     Ok(Keyword::from(format!("std.native.{builtin}")))
 }
@@ -107,7 +108,7 @@ pub fn receiver_category(value: &Value) -> &'static str {
         Value::Coroutine(_) => "coroutine",
         Value::Stream(_) => "stream",
         Value::Result(_) => "result",
-        Value::ExceptionInfo(_) => "error",
+        Value::ExceptionInfo(_) => "exception",
     }
 }
 

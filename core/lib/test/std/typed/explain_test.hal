@@ -53,6 +53,6 @@
   (let [failed (typed/check :int 42 42)]
     [(Result/error? failed)
      (type (Result/error-value failed))])
-  => [true :std.native.Error])
+  => [true :std.native.Exception])
 
 (pr-str (run '[std.typed.explain-test]))

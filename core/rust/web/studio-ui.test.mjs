@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { HtaKeyword, HtaSymbol } from "./hta.js";
+import { HtaKeyword, HtaSymbol } from "./packages/hta/index.js";
 import { editorFormAt, editorSourceComplete, editorTopLevelForms, isAnonymousDocument, studioDocumentId } from "./studio/editor-state.js";
 import {
   buildTraceTree,

@@ -10,12 +10,6 @@ const adapterDescriptor='{:namespace "math.async" :version "1" :provider :wasm :
 const adapterFixtureDigest="6742ab577c2f6852103effd650d97d88c7427fd0e7520466126f892fb4fb0dab";
 const libraryFixtureDigest="cf96c3351ea2afd66dd2cee4480ea44fd2e76f8009ca1df96edb9dc149749edc";
 
-test("repository compatibility shim re-exports the package API",async()=>{
-  const shim=await import("./hta.js");
-  assert.equal(shim.encodeHta,encodeHta);
-  assert.equal(shim.HtaContext,HtaContext);
-});
-
 test("HTA0 browser codec matches the Java/Rust golden vector",()=>{assert.deepEqual([...encodeHta(["x",42,true])],[72,84,65,48,9,0,0,0,3,4,0,0,0,1,120,3,0,0,0,0,0,0,0,42,2]);assert.deepEqual(decodeHta(encodeHta(["x",42,true])),["x",42,true]);});
 test("HTA0 preserves arbitrary-size integers as BigInt",()=>{const value=123456789012345678901234567890n;assert.equal(decodeHta(encodeHta(value)),value);assert.equal(decodeHta(encodeHta(-value)),-value);});
 test("HTA0 rejects excessive nesting and impossible lengths",()=>{let value=null;for(let i=0;i<257;i++)value=[value];assert.throws(()=>encodeHta(value),/value-too-deep/);const deep=[72,84,65,48];for(let i=0;i<257;i++)deep.push(9,0,0,0,1);deep.push(0);assert.throws(()=>decodeHta(Uint8Array.from(deep)),/value-too-deep/);assert.throws(()=>decodeHta(Uint8Array.from([72,84,65,48,9,255,255,255,255])),/impossible sequence length/);});

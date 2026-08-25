@@ -15,7 +15,7 @@ import org.junit.Test;
 
 public class HaraHtaExtensionTest {
   private static final Path ARTIFACT =
-      Path.of("rust/raw/target/wasm32-unknown-unknown/release/hara_wasm_raw.wasm");
+      Path.of("rust/raw/target/wasm32-unknown-unknown/browser-release/hara-wasm-vm.wasm");
   private static final String ADAPTER_FIXTURE_DIGEST =
       "6742ab577c2f6852103effd650d97d88c7427fd0e7520466126f892fb4fb0dab";
   private static final String LIBRARY_FIXTURE_DIGEST =

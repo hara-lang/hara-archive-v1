@@ -2,7 +2,7 @@
  * Host-side verified package cache. The WASM evaluator is intentionally never
  * given fetch authority; callers register returned bytes before evaluation.
  */
-import { HtaKeyword, HtaSymbol, parseEdnData } from "./hta.js";
+import { HtaKeyword, HtaSymbol, parseEdnData } from "./packages/hta/index.js";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", { fatal: true });

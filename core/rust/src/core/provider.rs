@@ -925,6 +925,6 @@ pub fn portable_type_name(value: &Value) -> &str {
         Value::Coroutine(_) => "coroutine",
         Value::Stream(_) => "stream",
         Value::Result(_) => "result",
-        Value::ExceptionInfo(_) => "error",
+        Value::ExceptionInfo(_) => "exception",
     }
 }

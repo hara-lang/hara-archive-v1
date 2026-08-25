@@ -2,7 +2,7 @@
   (:require [demo.000-answer-42 :as answer]))
 
 ;; Pair the example descriptor with the raw WASM fixture:
-;; cp rust/raw/target/wasm32-unknown-unknown/release/hara_wasm_raw.wasm \
+;; cp rust/raw/target/wasm32-unknown-unknown/browser-release/hara-wasm-vm.wasm \
 ;;   <extension-root>/demo/000-answer-42/answer-42.wasm
 {:version (answer/version)
  :answer (answer/add 20 22)}

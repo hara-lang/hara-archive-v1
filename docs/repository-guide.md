@@ -153,12 +153,12 @@ The Makefile also mirrors the main repository and CI workflows:
 
 ```shell
 make -C core java-test java-specs java-conformance
-make -C core rust-test rust-raw-test rust-layout
+make -C core rust-test wasm-test-raw rust-layout
 make -C core lib-test
 
 make -C core wasm-web
-make -C core hta-test
-make -C core studio-test
+make -C core wasm-test-hta
+make -C core wasm-test-studio
 
 make -C core chrome-build chrome-test
 make -C core docs-build

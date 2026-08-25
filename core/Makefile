@@ -20,7 +20,6 @@ RUST_MANIFEST := rust/Cargo.toml
 RUST_RAW_MANIFEST := rust/raw/Cargo.toml
 RUST_DEBUG := rust/target/debug/hara
 RUST_RELEASE := rust/target/release/hara
-WASM_RAW := rust/raw/target/wasm32-unknown-unknown/release/hara_wasm_raw.wasm
 WEB_DIR := rust/web
 CHROME_DIR := ../../application/greenways-os/extension/hara-chrome
 HARA_WWW_DIR := ../website/hara-www
@@ -32,13 +31,13 @@ HARA_BENCH_SCRIPTS := ../../../website/hara-benchmarks/scripts/hara-runtime
         rust-test rust-test-main rust-test-library rust-test-cli \
         rust-test-integration rust-test-examples rust-test-doc rust-test-ignored rust-test-crates \
         rust-test-abi rust-test-hta rust-test-vm rust-test-compiler rust-test-conformance-groups \
-        rust-raw-test rust-layout lib-test \
+        rust-layout lib-test \
         native-image native-image-run native-image-offline \
         wasm wasm-build wasm-build-all wasm-web wasm-web-build wasm-browser-build \
         wasm-test wasm-test-raw wasm-test-raw-unit wasm-test-raw-integration \
         wasm-test-node wasm-test-hta wasm-test-exceptions wasm-test-runtime \
         wasm-test-studio wasm-test-browser-sdk wasm-test-browser \
-        web-install hta-test studio-build studio-test \
+        web-install \
         chrome-install chrome-build chrome-test \
         docs-build www-build \
         runtime-benchmark vm-bb-benchmark truffle-benchmark parity-benchmark
@@ -75,11 +74,8 @@ help: ## Show the available runtime targets
 	@echo '  make wasm-test-raw              Run raw WASM unit and integration slices'
 	@echo '  make wasm-test-node             Run HTA, exception, runtime, and Studio Node slices'
 	@echo '  make wasm-test-<slice>          Run one WASM slice (see README for names)'
-	@echo '  make rust-raw-test              Compatibility alias for wasm-test-raw'
 	@echo '  make rust-layout                Check Rust module layout'
 	@echo '  make lib-test                   Run portable .hal library tests'
-	@echo '  make hta-test                   Run HTA browser-loader Node tests'
-	@echo '  make studio-test                Build raw WASM and run Studio tests'
 	@echo '  make chrome-build               Build the Chrome extension'
 	@echo '  make chrome-test                Test the Chrome extension'
 	@echo '  make docs-build                 Build documentation strictly'
@@ -180,8 +176,6 @@ rust-test-compiler: ## Run the compiler facade crate tests
 rust-test-conformance-groups: ## Run issue #1047 Rust failure groups
 	../scripts/runtime/run-rust-conformance-groups $(if $(strip $(ARGS)),$(ARGS),all)
 
-rust-raw-test: wasm-test-raw ## Compatibility alias for raw WASM crate tests
-
 rust-layout: ## Check the Rust module layout
 	bash rust/scripts/check-layout.sh
 
@@ -248,10 +242,6 @@ wasm-test-browser: wasm-build-all wasm-test-browser-sdk wasm-web-build ## Run th
 web-install: ## Install browser-loader and Studio dependencies
 	$(NPM) --prefix $(WEB_DIR) ci
 
-hta-test: wasm-test-hta ## Compatibility alias for HTA browser-loader Node tests
-
-studio-test: wasm-test-studio ## Compatibility alias for Studio Node tests
-
 chrome-install: ## Install Chrome extension dependencies
 	$(NPM) --prefix $(CHROME_DIR) ci
 
@@ -280,7 +270,7 @@ build-all: java-build rust-build-release wasm-build ## Build all portable runtim
 
 test-all: java-test rust-test ## Run Java and Rust test suites
 
-check-all: rust-layout java-test rust-test rust-raw-test lib-test hta-test studio-test ## Run core repository checks
+check-all: rust-layout java-test rust-test wasm-test-raw lib-test wasm-test-hta wasm-test-studio ## Run core repository checks
 
 clean: ## Remove generated build output
 	$(MAVEN) -f java/pom.xml clean
