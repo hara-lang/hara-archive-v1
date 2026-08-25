@@ -30,11 +30,96 @@ pub enum TargetKind {
     MapConstruct = 3,
 }
 
+impl TargetKind {
+    pub const fn wire(self) -> u8 {
+        self as u8
+    }
+
+    pub fn from_wire(value: u8) -> Option<Self> {
+        match value {
+            0 => Some(Self::Protocol),
+            1 => Some(Self::Native),
+            2 => Some(Self::VectorConstruct),
+            3 => Some(Self::MapConstruct),
+            _ => None,
+        }
+    }
+}
+
+/// Declaration of every target understood by generated HNW0 modules.
+///
+/// Code generation refers to these declarations directly. The artifact wire
+/// table is derived from the same list, so host dispatch cannot silently
+/// acquire a target that the compiler does not know how to emit.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct TargetSpec {
-    pub symbol: &'static str,
-    pub kind: TargetKind,
-    pub arity: Option<u16>,
+pub enum Target {
+    MapConstruct,
+    VectorConstruct,
+    NativeNumber,
+    ProtocolAssoc,
+    ProtocolCount,
+    ProtocolLookup,
+    ProtocolNth,
+}
+
+impl Target {
+    pub const ALL: &[Self] = &[
+        Self::MapConstruct,
+        Self::VectorConstruct,
+        Self::NativeNumber,
+        Self::ProtocolAssoc,
+        Self::ProtocolCount,
+        Self::ProtocolLookup,
+        Self::ProtocolNth,
+    ];
+
+    pub const fn symbol(self) -> &'static str {
+        match self {
+            Self::MapConstruct => MAP_CONSTRUCT,
+            Self::VectorConstruct => VECTOR_CONSTRUCT,
+            Self::NativeNumber => "std.native.Base/number?",
+            Self::ProtocolAssoc => "std.protocol.iassoc.IAssoc/assoc",
+            Self::ProtocolCount => "std.protocol.icount.ICount/count",
+            Self::ProtocolLookup => "std.protocol.ilookup.ILookup/lookup",
+            Self::ProtocolNth => "std.protocol.inth.INth/nth",
+        }
+    }
+
+    pub const fn kind(self) -> TargetKind {
+        match self {
+            Self::MapConstruct => TargetKind::MapConstruct,
+            Self::VectorConstruct => TargetKind::VectorConstruct,
+            Self::NativeNumber => TargetKind::Native,
+            Self::ProtocolAssoc
+            | Self::ProtocolCount
+            | Self::ProtocolLookup
+            | Self::ProtocolNth => TargetKind::Protocol,
+        }
+    }
+
+    pub const fn arity(self) -> Option<u16> {
+        match self {
+            Self::MapConstruct | Self::VectorConstruct => None,
+            Self::NativeNumber | Self::ProtocolCount => Some(1),
+            Self::ProtocolLookup | Self::ProtocolNth => Some(2),
+            Self::ProtocolAssoc => Some(3),
+        }
+    }
+
+    pub fn id(self) -> i64 {
+        Self::ALL
+            .iter()
+            .position(|candidate| *candidate == self)
+            .map(|id| i64::try_from(id).expect("target inventory fits i64"))
+            .expect("target is present in its declaration table")
+    }
+
+    pub fn from_symbol(symbol: &str) -> Option<Self> {
+        Self::ALL
+            .iter()
+            .copied()
+            .find(|target| target.symbol() == symbol)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -45,83 +130,28 @@ pub struct TargetDescriptor {
     pub arity: Option<u16>,
 }
 
-// Keep the inventory sorted by canonical symbol. IDs are artifact-local and
-// derived from this order; the artifact table remains the wire-level source
-// consumed by both host implementations.
-const TARGETS: &[TargetSpec] = &[
-    TargetSpec {
-        symbol: MAP_CONSTRUCT,
-        kind: TargetKind::MapConstruct,
-        arity: None,
-    },
-    TargetSpec {
-        symbol: VECTOR_CONSTRUCT,
-        kind: TargetKind::VectorConstruct,
-        arity: None,
-    },
-    TargetSpec {
-        symbol: "std.native.Base/number?",
-        kind: TargetKind::Native,
-        arity: Some(1),
-    },
-    TargetSpec {
-        symbol: "std.protocol.iassoc.IAssoc/assoc",
-        kind: TargetKind::Protocol,
-        arity: Some(3),
-    },
-    TargetSpec {
-        symbol: "std.protocol.icount.ICount/count",
-        kind: TargetKind::Protocol,
-        arity: Some(1),
-    },
-    TargetSpec {
-        symbol: "std.protocol.ilookup.ILookup/lookup",
-        kind: TargetKind::Protocol,
-        arity: Some(2),
-    },
-    TargetSpec {
-        symbol: "std.protocol.inth.INth/nth",
-        kind: TargetKind::Protocol,
-        arity: Some(2),
-    },
-];
-
-pub fn target_id(symbol: &str) -> i64 {
-    TARGETS
-        .iter()
-        .position(|target| target.symbol == symbol)
-        .map(|id| i64::try_from(id).expect("target inventory fits i64"))
-        .unwrap_or_else(|| panic!("unknown Whole-Wasm target {symbol}"))
-}
-
-pub fn target_spec(target: i64) -> Option<TargetSpec> {
-    usize::try_from(target)
-        .ok()
-        .and_then(|index| TARGETS.get(index).copied())
-}
-
 pub fn target_table() -> Vec<TargetDescriptor> {
-    TARGETS
+    Target::ALL
         .iter()
         .enumerate()
         .map(|(id, target)| TargetDescriptor {
             id: u16::try_from(id).expect("target inventory fits u16"),
-            symbol: target.symbol.to_owned(),
-            kind: target.kind,
-            arity: target.arity,
+            symbol: target.symbol().to_owned(),
+            kind: target.kind(),
+            arity: target.arity(),
         })
         .collect()
 }
 
 pub fn validate_target_table(targets: &[TargetDescriptor]) -> Result<(), String> {
-    if targets.len() != TARGETS.len() {
+    if targets.len() != Target::ALL.len() {
         return Err("native artifact target table is incomplete".into());
     }
-    for (expected_id, (actual, expected)) in targets.iter().zip(TARGETS).enumerate() {
+    for (expected_id, (actual, expected)) in targets.iter().zip(Target::ALL).enumerate() {
         if actual.id != u16::try_from(expected_id).expect("target inventory fits u16")
-            || actual.symbol != expected.symbol
-            || actual.kind != expected.kind
-            || actual.arity != expected.arity
+            || actual.symbol != expected.symbol()
+            || actual.kind != expected.kind()
+            || actual.arity != expected.arity()
         {
             return Err("native artifact target table is not canonical".into());
         }
@@ -210,8 +240,15 @@ mod tests {
 
     #[test]
     fn target_ids_are_derived_from_the_canonical_table() {
-        assert_eq!(target_id("std.protocol.icount.ICount/count"), 4);
-        assert_eq!(target_spec(4).unwrap().arity, Some(1));
+        assert_eq!(Target::ProtocolCount.id(), 4);
+        assert_eq!(
+            Target::from_symbol("std.protocol.icount.ICount/count"),
+            Some(Target::ProtocolCount)
+        );
+        assert_eq!(
+            Target::ProtocolCount.symbol(),
+            "std.protocol.icount.ICount/count"
+        );
         assert_eq!(target_table().len(), 7);
         assert!(validate_target_table(&target_table()).is_ok());
     }

@@ -8,7 +8,7 @@ use wasm_encoder::{
 use crate::core::IntrinsicOp;
 
 use super::bridge::{
-    target_id, HEAP_BASE, MAX_SLOTS, RESULT_BOOL, RESULT_HANDLE, RESULT_I64, SLOT_BOOL, SLOT_BYTES,
+    Target, HEAP_BASE, MAX_SLOTS, RESULT_BOOL, RESULT_HANDLE, RESULT_I64, SLOT_BOOL, SLOT_BYTES,
     SLOT_CONSTANT, SLOT_HANDLE, SLOT_I64, SLOT_NIL,
 };
 use super::ssa::{
@@ -931,7 +931,7 @@ fn emit_operation(
                 .collect::<Vec<_>>();
             emit_value_construct(
                 out,
-                target_id("hara.whole-wasm/vector"),
+                Target::VectorConstruct.id(),
                 &arguments,
                 locals.get(*destination),
             )?;
@@ -1030,7 +1030,7 @@ fn emit_operation(
                 .collect::<Vec<_>>();
             emit_value_construct(
                 out,
-                target_id("hara.whole-wasm/map"),
+                Target::MapConstruct.id(),
                 &arguments,
                 locals.get(*destination),
             )?;
@@ -1042,7 +1042,7 @@ fn emit_operation(
         } => {
             emit_value_construct(
                 out,
-                target_id("hara.whole-wasm/map"),
+                Target::MapConstruct.id(),
                 &[
                     BridgeArg::Local(locals.get(*key), representations[key.0 as usize]),
                     BridgeArg::Local(locals.get(*value), representations[value.0 as usize]),
@@ -1058,7 +1058,7 @@ fn emit_operation(
         } => {
             emit_target_call(
                 out,
-                target_id("std.protocol.iassoc.IAssoc/assoc"),
+                Target::ProtocolAssoc.id(),
                 &[
                     BridgeArg::Local(
                         locals.get(*collection),
@@ -1080,7 +1080,7 @@ fn emit_operation(
         } => {
             emit_value_construct(
                 out,
-                target_id("hara.whole-wasm/map"),
+                Target::MapConstruct.id(),
                 &[
                     BridgeArg::Local(
                         locals.get(*inner_key),
@@ -1092,7 +1092,7 @@ fn emit_operation(
             )?;
             emit_target_call(
                 out,
-                target_id("std.protocol.iassoc.IAssoc/assoc"),
+                Target::ProtocolAssoc.id(),
                 &[
                     BridgeArg::Local(
                         locals.get(*collection),
@@ -1115,7 +1115,7 @@ fn emit_operation(
         } => {
             emit_target_call(
                 out,
-                target_id("std.protocol.ilookup.ILookup/lookup"),
+                Target::ProtocolLookup.id(),
                 &[
                     BridgeArg::Local(
                         locals.get(*collection),
@@ -1134,7 +1134,7 @@ fn emit_operation(
         } => {
             emit_target_call(
                 out,
-                target_id("std.protocol.ilookup.ILookup/lookup"),
+                Target::ProtocolLookup.id(),
                 &[
                     BridgeArg::Local(
                         locals.get(*collection),
@@ -1154,7 +1154,7 @@ fn emit_operation(
         } => {
             emit_target_call(
                 out,
-                target_id("std.protocol.ilookup.ILookup/lookup"),
+                Target::ProtocolLookup.id(),
                 &[
                     BridgeArg::Local(
                         locals.get(*collection),
@@ -1167,7 +1167,7 @@ fn emit_operation(
             )?;
             emit_target_call(
                 out,
-                target_id("std.protocol.ilookup.ILookup/lookup"),
+                Target::ProtocolLookup.id(),
                 &[
                     BridgeArg::Local(temp_a, super::ir::Rep::TruthyHandle),
                     BridgeArg::Constant(*second_key),
@@ -1179,7 +1179,7 @@ fn emit_operation(
         MirOp::IsNumber { destination, value } => {
             emit_target_call(
                 out,
-                target_id("std.native.Base/number?"),
+                Target::NativeNumber.id(),
                 &[BridgeArg::Local(
                     locals.get(*value),
                     representations[value.0 as usize],
@@ -1202,7 +1202,7 @@ fn emit_operation(
         } => {
             emit_target_call(
                 out,
-                target_id("std.protocol.icount.ICount/count"),
+                Target::ProtocolCount.id(),
                 &[BridgeArg::Local(
                     locals.get(*collection),
                     representations[collection.0 as usize],

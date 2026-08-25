@@ -66,7 +66,7 @@ pub fn compile_artifact(program: &Program) -> Result<Vec<u8>, String> {
     );
     for target in &targets {
         put_u16(&mut payload, target.id);
-        payload.push(target.kind as u8);
+        payload.push(target.kind.wire());
         put_u16(&mut payload, target.arity.unwrap_or(u16::MAX));
         let symbol = target.symbol.as_bytes();
         put_u16(
@@ -137,13 +137,8 @@ pub fn decode_artifact(bytes: &[u8]) -> Result<NativeArtifact, String> {
     let mut targets = Vec::with_capacity(target_count);
     for _ in 0..target_count {
         let id = reader.u16()?;
-        let kind = match reader.take(1)?[0] {
-            0 => TargetKind::Protocol,
-            1 => TargetKind::Native,
-            2 => TargetKind::VectorConstruct,
-            3 => TargetKind::MapConstruct,
-            _ => return Err("native artifact target kind is invalid".into()),
-        };
+        let kind = TargetKind::from_wire(reader.take(1)?[0])
+            .ok_or("native artifact target kind is invalid")?;
         let arity = match reader.u16()? {
             u16::MAX => None,
             value => Some(value),

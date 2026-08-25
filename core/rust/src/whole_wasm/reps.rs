@@ -4,6 +4,7 @@ use crate::core::{IntrinsicOp, Value};
 use crate::kernel::{FunctionSchema, SchemaType};
 use crate::vm::{FunctionId, FunctionPrototype, Instruction, Program};
 
+use super::bridge::Target;
 use super::ir::Rep;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -341,32 +342,34 @@ fn target_rep(target: &str, arguments: &[Rep]) -> Rep {
         | IntrinsicOp::GreaterOrEqual => Rep::Bool,
         };
     }
-    match target {
-        "std.native.Base/number?" => Rep::Bool,
-        "std.native.Arr/new" | "std.native.Arr/set" => Rep::ArrayRef,
-        "std.native.Arr/get" => Rep::I64,
-        "std.native.Obj/new" | "std.native.Obj/set" => Rep::ObjectRef,
-        "std.native.Obj/get" | "std.protocol.icount.ICount/count" => Rep::I64,
-        "std.protocol.inth.INth/nth" => {
+    match Target::from_symbol(target) {
+        Some(Target::NativeNumber) => Rep::Bool,
+        Some(Target::MapConstruct | Target::VectorConstruct) => Rep::TruthyHandle,
+        Some(Target::ProtocolAssoc | Target::ProtocolLookup) => Rep::TruthyHandle,
+        Some(Target::ProtocolCount) => Rep::I64,
+        Some(Target::ProtocolNth) => {
             if arguments.first() == Some(&Rep::TaggedRef) {
                 Rep::TaggedRef
             } else {
                 Rep::TruthyHandle
             }
         }
-        target if target.ends_with("/assoc") || target.ends_with("/lookup") => {
-            Rep::TruthyHandle
-        }
-        _ => Rep::Unknown,
+        None => match target {
+            "std.native.Arr/new" | "std.native.Arr/set" => Rep::ArrayRef,
+            "std.native.Arr/get" => Rep::I64,
+            "std.native.Obj/new" | "std.native.Obj/set" => Rep::ObjectRef,
+            "std.native.Obj/get" => Rep::I64,
+            _ => Rep::Unknown,
+        },
     }
 }
 
 fn function_uses_tagged_collections(program: &Program, function: &FunctionPrototype) -> bool {
     function.arity == 1
         && [
-            "std.native.Base/number?",
-            "std.protocol.icount.ICount/count",
-            "std.protocol.inth.INth/nth",
+            Target::NativeNumber.symbol(),
+            Target::ProtocolCount.symbol(),
+            Target::ProtocolNth.symbol(),
         ]
             .into_iter()
             .all(|required| {

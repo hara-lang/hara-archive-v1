@@ -57,7 +57,7 @@ async function htaFixture(capabilities = "[]", namespace = "db.sqlite.wasm.hta")
       + `:extensions {${namespace} {:root "provider" :provider :hta :abi :hta.v1 `
       + `:targets {:browser {:module "browser/worker.mjs" :runtime :web-worker} `
       + `:node {:module "node/worker.mjs" :runtime :process}} `
-      + `:assets ["browser/assets/chunk.js"] :exports {"version" {:args []} "open" {:args [:value]}} `
+      + `:assets ["browser/assets/chunk.js"] :exports {"version" {:args [] :returns :value} "open" {:args [:value] :returns :value}} `
       + `:capabilities ${capabilities}}}}`
   );
   const archive = zipSync({

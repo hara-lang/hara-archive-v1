@@ -46,10 +46,13 @@ function archivePath(root, path) {
   return result;
 }
 
-function extensionDescriptor(namespace, declaration) {
+function extensionDescriptor(namespace, declaration, version) {
   const fields = [...declaration];
   if (!manifestField(declaration, "namespace")) {
     fields.push([new HtaKeyword("namespace"), namespace]);
+  }
+  if (!manifestField(declaration, "version")) {
+    fields.push([new HtaKeyword("version"), version]);
   }
   return `{${fields.map(([key, value]) => `${ednValue(key)} ${ednValue(value)}`).join(" ")}}`;
 }
@@ -293,7 +296,7 @@ async function loadLockedPackageArtifacts(
       }
       const root = manifestField(declaration, "root") ?? "";
       if (typeof root !== "string") throw new Error(`Locked package ${coordinate} has an invalid extension root`);
-      const descriptor = extensionDescriptor(namespace, declaration);
+      const descriptor = extensionDescriptor(namespace, declaration, version);
       const parsed = parseHtaManifest(descriptor);
       for (const asset of [
         parsed.provider === "wasm" ? parsed.module : parsed.browserTarget?.module,

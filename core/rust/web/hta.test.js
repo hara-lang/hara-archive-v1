@@ -5,7 +5,7 @@ import test from "node:test";
 import { BrowserPromiseProvider, decodeHta, encodeHta, HtaContext, HtaDeque, HtaHandle, HtaKeyword, HtaPriorityMap, HtaQueue, HtaSortedMap, HtaTagged, HtaSymbol, loadHtaExtension, parseHtaManifest } from "./packages/hta/index.js";
 
 const tensorDescriptor='{:namespace "math.tensor" :version "1" :provider :wasm :module "tensor.wasm" :abi :hta.v1 :exports {"open" {:args [] :returns :value :async true}} :handles {"tensor" {:tag math}} :capabilities []}';
-const hostDescriptor='{:namespace "host.demo" :version "1" :provider :wasm :module "demo.wasm" :abi :hta.v1 :exports {"open" {}} :host-calls {"store" ["get"]} :capabilities []}';
+const hostDescriptor='{:namespace "host.demo" :version "1" :provider :wasm :module "demo.wasm" :abi :hta.v1 :exports {"open" {:args [] :returns :value}} :host-calls {"store" ["get"]} :capabilities []}';
 const adapterDescriptor='{:namespace "math.async" :version "1" :provider :wasm :module "adapter.wasm" :abi :hta.v1 :exports {"sum" {:args [:i64 :i64] :returns :i64 :async true}} :assets ["adapter.wasm" "modules/math.wasm"] :capabilities []}';
 const adapterFixtureDigest="6742ab577c2f6852103effd650d97d88c7427fd0e7520466126f892fb4fb0dab";
 const libraryFixtureDigest="cf96c3351ea2afd66dd2cee4480ea44fd2e76f8009ca1df96edb9dc149749edc";
@@ -20,6 +20,17 @@ test("HTA v3 preserves immutable Hara collection and tagged identities",()=>{con
 test("context applies registered public handle tags",async()=>{const worker=new FakeWorker();const context=new HtaContext({worker,moduleUrl:"runtime.wasm",handleTags:{tensor:"math"}});worker.emit({type:"ready"});const result=context.call("open",[]);await Promise.resolve();const call=worker.sent.find(message=>message.type==="call");worker.emit({type:"result",id:call.id,ok:true,frame:encodeHta(new HtaHandle("math.tensor","tensor",42n))});assert.equal(String(await result),"#math[:tensor 42]");context.close();});
 test("manifest parser validates compact public tags",()=>{const manifest=parseHtaManifest(tensorDescriptor);assert.equal(manifest.namespace,"math.tensor");assert.equal(manifest.module,"tensor.wasm");assert.deepEqual(manifest.handleTags,{tensor:"math"});assert.throws(()=>parseHtaManifest(tensorDescriptor.replace(":tag math",":tag Math")),/invalid handle tag/);});
 test("manifest parser preserves export and host-call policy",()=>{const manifest=parseHtaManifest(hostDescriptor);assert.deepEqual(manifest.exports,["open"]);assert.deepEqual(manifest.hostCalls,{store:["get"]});assert.throws(()=>parseHtaManifest(hostDescriptor.replace("[\"get\"]","[\"get/x\"]")),/invalid host-call/);});
+test("manifest parser enforces declared HTA targets and typed exports",()=>{
+  const descriptor='{:namespace "demo.hta" :version "1" :provider :hta :abi :hta.v1 :targets {:node {:module "node/worker.mjs" :runtime :process} :browser {:module "browser/worker.mjs" :runtime :web-worker}} :exports {"open" {:args [:value] :returns :value :async true}} :capabilities []}';
+  const manifest=parseHtaManifest(descriptor);
+  assert.equal(manifest.version,"1");
+  assert.deepEqual(manifest.targets,{node:{module:"node/worker.mjs",runtime:"process"},browser:{module:"browser/worker.mjs",runtime:"web-worker"}});
+  assert.deepEqual(manifest.exportSpecs.open.args,[new HtaKeyword("value")]);
+  assert.equal(manifest.exportSpecs.open.async,true);
+  assert.throws(()=>parseHtaManifest(descriptor.replace(":returns :value",":returns nil")),/invalid export returns/);
+  assert.throws(()=>parseHtaManifest(descriptor.replace(":browser {:module \"browser/worker.mjs\" :runtime :web-worker}","")),/browser web-worker target/);
+  assert.throws(()=>parseHtaManifest(descriptor.replace(":version \"1\"",":version nil")),/invalid version/);
+});
 test("descriptor loader resolves wasm and applies handle tags",async()=>{const worker=new FakeWorker();const context=await loadHtaExtension({worker,descriptor:tensorDescriptor,packageUrl:"https://example.test/extensions/math/"});assert.equal(worker.sent[0].moduleUrl,"https://example.test/extensions/math/tensor.wasm");worker.emit({type:"ready"});const result=context.call("open",[]);await Promise.resolve();const call=worker.sent.find(message=>message.type==="call");worker.emit({type:"result",id:call.id,ok:true,frame:encodeHta(new HtaHandle("math.tensor","tensor",42n))});assert.equal(String(await result),"#math[:tensor 42]");context.close();});
 test("descriptor loader resolves the wrapped library for generated adapters",async()=>{const worker=new FakeWorker();const context=await loadHtaExtension({worker,descriptor:adapterDescriptor,packageUrl:"https://example.test/extensions/math/"});assert.equal(worker.sent[0].moduleUrl,"https://example.test/extensions/math/adapter.wasm");assert.equal(worker.sent[0].libraryUrl,"https://example.test/extensions/math/modules/math.wasm");context.close();});
 test("worker composes a generated HTA adapter with its wrapped library",async()=>{

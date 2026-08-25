@@ -3,6 +3,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::core::{IntrinsicOp, Value};
 use crate::vm::{FunctionId, Instruction, Program};
 
+use super::bridge::Target;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Rep {
     I64,
@@ -541,7 +543,7 @@ pub(crate) fn lower_function(
                     });
                 }
                 Instruction::ProtocolCall { target, argc: 3 }
-                    if target_is(program, *target, "std.protocol.iassoc.IAssoc/assoc") => {
+                    if declared_target_is(program, *target, Target::ProtocolAssoc) => {
                     let base = height - 3;
                     if representations[ip].stack[base..height].contains(&Rep::TaggedRef) {
                         return Err(unsupported(id, ip, "tagged value escapes through assoc"));
@@ -563,7 +565,7 @@ pub(crate) fn lower_function(
                     });
                 }
                 Instruction::ProtocolCall { target, argc: 2 }
-                    if target_is(program, *target, "std.protocol.ilookup.ILookup/lookup") => {
+                    if declared_target_is(program, *target, Target::ProtocolLookup) => {
                     let numeric_consumer =
                         function.code.get(ip + 1).is_some_and(|next| match next {
                             Instruction::IntrinsicCall { target, .. } => {
@@ -586,7 +588,7 @@ pub(crate) fn lower_function(
                     }
                 }
                 Instruction::IntrinsicCall { target, argc: 1 }
-                    if target_is(program, *target, "std.native.Base/number?") => {
+                    if declared_target_is(program, *target, Target::NativeNumber) => {
                     let operation = if representations[ip].stack[height - 1] == Rep::TaggedRef {
                         MirOp::TaggedIsNumber {
                             destination: stack(height - 1)?,
@@ -601,7 +603,7 @@ pub(crate) fn lower_function(
                     operations.push(operation);
                 }
                 Instruction::ProtocolCall { target, argc: 1 }
-                    if target_is(program, *target, "std.protocol.icount.ICount/count") => {
+                    if declared_target_is(program, *target, Target::ProtocolCount) => {
                     let operation = if representations[ip].stack[height - 1] == Rep::TaggedRef {
                         MirOp::TaggedCount {
                             destination: stack(height - 1)?,
@@ -616,7 +618,7 @@ pub(crate) fn lower_function(
                     operations.push(operation);
                 }
                 Instruction::ProtocolCall { target, argc: 2 }
-                    if target_is(program, *target, "std.protocol.inth.INth/nth") => {
+                    if declared_target_is(program, *target, Target::ProtocolNth) => {
                     let operation = if representations[ip].stack[height - 2] == Rep::TaggedRef {
                         MirOp::TaggedNth {
                             destination: stack(height - 2)?,
@@ -1156,6 +1158,10 @@ fn target_name(program: &Program, target: u32) -> Option<&str> {
 
 fn target_is(program: &Program, target: u32, expected: &str) -> bool {
     target_name(program, target) == Some(expected)
+}
+
+fn declared_target_is(program: &Program, target: u32, expected: Target) -> bool {
+    target_name(program, target) == Some(expected.symbol())
 }
 
 fn intrinsic_op(program: &Program, target: u32) -> Option<IntrinsicOp> {

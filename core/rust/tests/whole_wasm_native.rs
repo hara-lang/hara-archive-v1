@@ -32,6 +32,22 @@ fn whole_wasm_artifact_is_deterministic_and_preserves_hbc_parity() {
     assert_eq!(decoded.program.entry, program.entry);
     assert_eq!(decoded.program.functions.len(), program.functions.len());
     assert!(decoded.wasm.starts_with(b"\0asm"));
+    assert_eq!(
+        decoded
+            .targets
+            .iter()
+            .map(|target| (target.id, target.symbol.as_str(), target.arity))
+            .collect::<Vec<_>>(),
+        vec![
+            (0, "hara.whole-wasm/map", None),
+            (1, "hara.whole-wasm/vector", None),
+            (2, "std.native.Base/number?", Some(1)),
+            (3, "std.protocol.iassoc.IAssoc/assoc", Some(3)),
+            (4, "std.protocol.icount.ICount/count", Some(1)),
+            (5, "std.protocol.ilookup.ILookup/lookup", Some(2)),
+            (6, "std.protocol.inth.INth/nth", Some(2)),
+        ]
+    );
 
     let expected = execute_program(Rc::new(program)).expect("HBC0 must execute");
     let Value::Number(expected) = expected else {

@@ -85,27 +85,40 @@ export function decodeHta(input) {
 export function parseHtaManifest(source) {
   const value = parseEdnData(source, "hta/manifest-malformed");
   if (!(value instanceof Map)) throw new Error("hta/manifest-malformed: expected one EDN map");
-  const namespace = manifestField(value,"namespace"), identity = manifestField(value,"identity"), providerValue = manifestField(value,"provider"), module = manifestField(value,"module"), abiValue = manifestField(value,"abi");
+  const namespace = manifestField(value,"namespace"), identity = manifestField(value,"identity"), version = manifestField(value,"version"), providerValue = manifestField(value,"provider"), module = manifestField(value,"module"), abiValue = manifestField(value,"abi");
   if (typeof namespace !== "string" || !/^[a-z][a-z0-9-]*(\.[a-z0-9][a-z0-9-]*)+$/.test(namespace)) throw new Error("hta/manifest-malformed: invalid namespace");
   if (identity !== undefined && (typeof identity !== "string" || !/^[a-z][a-z0-9-]*\/[a-z][a-z0-9-]*(\.[a-z0-9][a-z0-9-]*)*$/.test(identity))) throw new Error("hta/manifest-malformed: invalid identity");
+  if (typeof version !== "string" || !version.length) throw new Error("hta/manifest-malformed: invalid version");
   if (!(providerValue instanceof HtaKeyword) || !["wasm","hta"].includes(providerValue.name)) throw new Error("hta/manifest-malformed: provider must be :wasm or :hta");
   if (!(abiValue instanceof HtaKeyword)) throw new Error("hta/manifest-malformed: abi must be a keyword");
   const provider=providerValue.name,abi=abiValue.name;
+  const targetsValue = manifestField(value,"targets");
+  const targets = {};
+  if (targetsValue !== undefined && !(targetsValue instanceof Map)) throw new Error("hta/manifest-malformed: targets must be a map");
+  for (const [host,spec] of targetsValue ?? []) {
+    const hostName = host instanceof HtaKeyword ? host.name : undefined;
+    if (!(hostName === "node" || hostName === "browser") || !(spec instanceof Map)) throw new Error("hta/manifest-malformed: invalid target");
+    const targetModule = manifestField(spec,"module"), runtime = manifestField(spec,"runtime");
+    const expectedRuntime = hostName === "node" ? "process" : "web-worker";
+    if (!validPackagePath(targetModule,".mjs") || !(runtime instanceof HtaKeyword) || runtime.name !== expectedRuntime) throw new Error(`hta/manifest-malformed: invalid ${hostName} target`);
+    targets[hostName] = Object.freeze({module:targetModule,runtime:runtime.name});
+  }
   let browserTarget;
   if (provider === "wasm") {
+    if (targetsValue !== undefined) throw new Error("hta/manifest-malformed: WASM providers cannot declare :targets");
     if (!validPackagePath(module,".wasm")) throw new Error("hta/manifest-malformed: invalid module");
   } else {
-    if (module !== undefined || abi !== "hta.v1") throw new Error("hta/manifest-malformed: HTA targets require :abi :hta.v1 without :module");
-    const targets=manifestField(value,"targets"),browser=targets instanceof Map?manifestField(targets,"browser"):undefined;
-    const browserModule=browser instanceof Map?manifestField(browser,"module"):undefined;
-    const runtime=browser instanceof Map?manifestField(browser,"runtime"):undefined;
-    if (!validPackagePath(browserModule,".mjs") || !(runtime instanceof HtaKeyword) || runtime.name !== "web-worker") throw new Error("hta/manifest-malformed: missing :browser web-worker target");
-    browserTarget=Object.freeze({module:browserModule,runtime:runtime.name});
+    if (module !== undefined || abi !== "hta.v1" || !targets.browser) throw new Error("hta/manifest-malformed: HTA targets require :abi :hta.v1 without :module and a browser web-worker target");
+    browserTarget=targets.browser;
   }
-  const assetsValue=manifestField(value,"assets"),assets=[];
+  const assetsValue=manifestField(value,"assets"),assets=[],seenAssets=new Set();
   if (assetsValue !== undefined) {
     if (!Array.isArray(assetsValue) || assetsValue.some(asset=>!validPackagePath(asset))) throw new Error("hta/manifest-malformed: invalid assets");
-    assets.push(...assetsValue);
+    for (const asset of assetsValue) {
+      if (seenAssets.has(asset)) throw new Error(`hta/manifest-malformed: duplicate asset ${asset}`);
+      seenAssets.add(asset);
+      assets.push(asset);
+    }
   }
   const handleTags = {}, handleReleases = {}, handles = manifestField(value,"handles");
   if (handles !== undefined) {
@@ -121,24 +134,25 @@ export function parseHtaManifest(source) {
       if (release !== undefined) handleReleases[type] = release;
     }
   }
-  const exportsValue = manifestField(value,"exports"), exports = [], operations = {};
+  const exportsValue = manifestField(value,"exports"), exports = [], exportSpecs = {}, operations = {};
   const exportArity = {};
-  if (exportsValue !== undefined) {
-    if (!(exportsValue instanceof Map)) throw new Error("hta/manifest-malformed: exports must be a map");
-    for (const [name,spec] of exportsValue) {
+  if (!(exportsValue instanceof Map) || exportsValue.size === 0) throw new Error("hta/manifest-malformed: exports must be a non-empty map");
+  for (const [name,spec] of exportsValue) {
       if (typeof name !== "string" || !name.length || !(spec instanceof Map)) throw new Error("hta/manifest-malformed: invalid export");
-      const args = manifestField(spec,"args");
-      if (args !== undefined && (!Array.isArray(args) || args.some(arg => !(arg instanceof HtaKeyword)))) {
-        throw new Error("hta/manifest-malformed: invalid export args");
-      }
+      const args = manifestField(spec,"args"), returns = manifestField(spec,"returns"), asynchronous = manifestField(spec,"async");
+      if (!Array.isArray(args) || args.some(arg => !(arg instanceof HtaKeyword))) throw new Error("hta/manifest-malformed: invalid export args");
+      if (!(returns instanceof HtaKeyword) && !(Array.isArray(returns) && returns.every(item => item instanceof HtaKeyword))) throw new Error("hta/manifest-malformed: invalid export returns");
+      if (asynchronous !== undefined && typeof asynchronous !== "boolean") throw new Error("hta/manifest-malformed: export async must be boolean");
       exports.push(name);
-      exportArity[name] = args?.length ?? 0;
+      exportArity[name] = args.length;
+      exportSpecs[name] = Object.freeze({args:Object.freeze([...args]),returns,async:asynchronous ?? false});
+      const rawExport = manifestField(spec,"wasm/export");
+      if (rawExport !== undefined && (typeof rawExport !== "string" || !rawExport.length)) throw new Error("hta/manifest-malformed: invalid export wasm/export");
       const operation = manifestField(spec,"operation");
       if (operation !== undefined) {
         if (typeof operation !== "string" || !operation.length) throw new Error("hta/manifest-malformed: invalid export operation");
         operations[name] = operation;
       }
-    }
   }
   const callbacksValue = manifestField(value,"callbacks"), callbacks = {};
   if (callbacksValue !== undefined) {
@@ -188,10 +202,10 @@ export function parseHtaManifest(source) {
     capabilities.push(...capabilitiesValue.map(capability => capability.name));
   }
   return Object.freeze({
-    namespace,identity,provider,module,abi,browserTarget,assets:Object.freeze(assets),
+    namespace,identity,version,provider,module,abi,targets:Object.freeze(targets),browserTarget,assets:Object.freeze(assets),
     handleTags:Object.freeze(handleTags),handleReleases:Object.freeze(handleReleases),exports:Object.freeze(exports),
     callbacks:Object.freeze(callbacks),
-    exportArity:Object.freeze(exportArity),operations:Object.freeze(operations),capabilities:Object.freeze(capabilities),
+    exportArity:Object.freeze(exportArity),exportSpecs:Object.freeze(exportSpecs),operations:Object.freeze(operations),capabilities:Object.freeze(capabilities),
     hostCalls:Object.freeze(hostCalls),hostCallCapabilities:Object.freeze(hostCallCapabilities)
   });
 }
