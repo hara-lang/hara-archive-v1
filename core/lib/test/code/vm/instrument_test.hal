@@ -1,4 +1,5 @@
 (ns code.vm.instrument-test
+  (:use code.test)
   (:require [code.vm.instrument :as instrument]))
 
 (defn fails?
@@ -9,6 +10,324 @@
       false)
     (catch Throwable error
       true)))
+
+(def +registration+
+  (instrument/registration
+   {:instrument/id "trace"
+    :session-id "debug-1"
+    :instrument/capabilities #{:event/call}
+    :instrument/events #{:call/enter}}))
+
+(def +target+
+  (instrument/target
+   {:target-id "execution-17"
+    :target-kind :interpreter
+    :runtime :rust
+    :session-id "debug-1"
+    :capabilities #{:event/call}}))
+
+^{:refer code.vm.instrument/+protocol+}
+(fact "declares the instrumentation protocol"
+  instrument/+protocol+
+  => "hara.instrumentation/0-alpha")
+
+^{:refer code.vm.instrument/+event-schema+}
+(fact "declares the instrumentation event schema"
+  instrument/+event-schema+
+  => "hara.instrumentation.event/0-alpha")
+
+^{:refer code.vm.instrument/+instrument-modes+}
+(fact "declares supported instrumentation modes"
+  instrument/+instrument-modes+
+  => #{:passive :control :transform})
+
+^{:refer code.vm.instrument/+target-kinds+}
+(fact "declares supported instrumentation targets"
+  instrument/+target-kinds+
+  => #{:interpreter :hbc})
+
+^{:refer code.vm.instrument/+runtimes+}
+(fact "declares supported instrumentation runtimes"
+  instrument/+runtimes+
+  => #{:rust :truffle})
+
+^{:refer code.vm.instrument/+event-phases+}
+(fact "declares live and replay event phases"
+  instrument/+event-phases+
+  => #{:live :replay})
+
+^{:refer code.vm.instrument/+delivery-kinds+}
+(fact "declares supported event delivery modes"
+  instrument/+delivery-kinds+
+  => #{:callback :queue})
+
+^{:refer code.vm.instrument/+capabilities+}
+(fact "contains the complete capability vocabulary"
+  [(has? instrument/+capabilities+ :event/call)
+   (has? instrument/+capabilities+ :inspect/frames)
+   (has? instrument/+capabilities+ :control/pause)
+   (has? instrument/+capabilities+ :transform/hbc)]
+  => [true true true true])
+
+^{:refer code.vm.instrument/+control-capabilities+}
+(fact "separates control capabilities"
+  instrument/+control-capabilities+
+  => #{:control/pause :control/single-step :control/resume
+       :control/settle :control/terminate})
+
+^{:refer code.vm.instrument/+transform-capabilities+}
+(fact "separates transform capabilities"
+  instrument/+transform-capabilities+
+  => #{:transform/halc :transform/hbc :retransform/halc :retransform/hbc})
+
+^{:refer code.vm.instrument/+interpreter-events+}
+(fact "declares interpreter event kinds"
+  (has? instrument/+interpreter-events+ :call/enter)
+  => true)
+
+^{:refer code.vm.instrument/+hbc-events+}
+(fact "declares HBC event kinds"
+  (has? instrument/+hbc-events+ :instruction/execute)
+  => true)
+
+^{:refer code.vm.instrument/+events+}
+(fact "combines interpreter and HBC event kinds"
+  [(has? instrument/+events+ :call/enter)
+   (has? instrument/+events+ :instruction/execute)]
+  => [true true])
+
+^{:refer code.vm.instrument/+default-projection-limits+}
+(fact "provides bounded projection defaults"
+  instrument/+default-projection-limits+
+  => {:items 256 :depth 16 :bytes 65536})
+
+^{:refer code.vm.instrument/invalid}
+(fact "raises a structured instrumentation error"
+  (fails? (fn [] (instrument/invalid "bad event" {:value nil})))
+  => true)
+
+^{:refer code.vm.instrument/map-value}
+(fact "accepts maps and rejects non-maps"
+  [(instrument/map-value "options" {:x 1})
+   (fails? (fn [] (instrument/map-value "options" [])))]
+  => [{:x 1} true])
+
+^{:refer code.vm.instrument/non-empty-string}
+(fact "requires non-empty session and target strings"
+  [(instrument/non-empty-string "id" "execution-17")
+   (fails? (fn [] (instrument/non-empty-string "id" "")))]
+  => ["execution-17" true])
+
+^{:refer code.vm.instrument/instrument-id}
+(fact "accepts keyword and string instrument ids"
+  [(instrument/instrument-id :trace)
+   (instrument/instrument-id "trace")
+   (fails? (fn [] (instrument/instrument-id nil)))]
+  => [:trace "trace" true])
+
+^{:refer code.vm.instrument/non-negative-integer}
+(fact "accepts zero-based event sequences"
+  [(instrument/non-negative-integer "sequence" 0)
+   (fails? (fn [] (instrument/non-negative-integer "sequence" -1)))]
+  => [0 true])
+
+^{:refer code.vm.instrument/positive-integer}
+(fact "requires positive queue capacities"
+  [(instrument/positive-integer "capacity" 1)
+   (fails? (fn [] (instrument/positive-integer "capacity" 0)))]
+  => [1 true])
+
+^{:refer code.vm.instrument/member}
+(fact "accepts members from a controlled vocabulary"
+  [(instrument/member "mode" instrument/+instrument-modes+ :passive)
+   (fails? (fn [] (instrument/member "mode" instrument/+instrument-modes+ :other)))]
+  => [:passive true])
+
+^{:refer code.vm.instrument/member-set}
+(fact "normalizes vectors and sets against an allowed vocabulary"
+  [(instrument/member-set "kind" instrument/+target-kinds+ [:interpreter])
+   (instrument/member-set "kind" instrument/+target-kinds+ #{:hbc})
+   (fails? (fn [] (instrument/member-set "kind" instrument/+target-kinds+ [:other])))]
+  => [#{:interpreter} #{:hbc} true])
+
+^{:refer code.vm.instrument/contains-member?}
+(fact "detects whether any capability belongs to a group"
+  [(instrument/contains-member? [:event/call] instrument/+capabilities+)
+   (instrument/contains-member? [:unknown] instrument/+control-capabilities+)]
+  => [true false])
+
+^{:refer code.vm.instrument/event-capability}
+(fact "maps event kinds to required capabilities"
+  [(instrument/event-capability :call/enter)
+   (instrument/event-capability :instruction/execute)
+   (instrument/event-capability :unknown)]
+  => [:event/call :event/instruction nil])
+
+^{:refer code.vm.instrument/event-supported?}
+(fact "checks event support by target kind"
+  [(instrument/event-supported? :interpreter :call/enter)
+   (instrument/event-supported? :interpreter :instruction/execute)
+   (instrument/event-supported? :hbc :instruction/execute)
+   (instrument/event-supported? :unknown :call/enter)]
+  => [true false true false])
+
+^{:refer code.vm.instrument/projection-limit}
+(fact "merges and validates projection limits"
+  [(instrument/projection-limit nil nil)
+   (instrument/projection-limit "frames" {:items 2 :depth 3 :bytes 4})
+   (fails? (fn [] (instrument/projection-limit "frames" {:items 0})))]
+  => [nil {:items 2 :depth 3 :bytes 4} true])
+
+^{:refer code.vm.instrument/projection-capabilities}
+(fact "derives inspection capabilities from projection fields"
+  (instrument/projection-capabilities
+   {:source-location true
+    :frames {:items 1 :depth 1 :bytes 1}})
+  => #{:inspect/source-location :inspect/frames})
+
+^{:refer code.vm.instrument/normalize-projection}
+(fact "normalizes projection fields and their limits"
+  (select-keys
+   (instrument/normalize-projection
+    {:source-location true
+     :frames {:items 2 :depth 3 :bytes 4}})
+   [:source-location :frames :locals :stack])
+  => {:source-location true
+      :frames {:items 2 :depth 3 :bytes 4}
+      :locals nil
+      :stack nil})
+
+^{:refer code.vm.instrument/normalize-filter}
+(fact "normalizes filters to sets and optional session identity"
+  (instrument/normalize-filter
+   {:session-id "debug-1"
+    :target-ids ["execution-17"]
+    :target-kinds [:interpreter]
+    :runtimes [:rust]})
+  => {:session-id "debug-1"
+      :target-ids #{"execution-17"}
+      :target-kinds #{:interpreter}
+      :runtimes #{:rust}})
+
+^{:refer code.vm.instrument/registration}
+(fact "builds a validated passive registration"
+  (select-keys +registration+
+               [:protocol :instrument/id :session-id :instrument/mode
+                :instrument/capabilities :instrument/events
+                :instrument/delivery :instrument/queue-capacity])
+  => {:protocol "hara.instrumentation/0-alpha"
+      :instrument/id "trace"
+      :session-id "debug-1"
+      :instrument/mode :passive
+      :instrument/capabilities #{:event/call}
+      :instrument/events #{:call/enter}
+      :instrument/delivery :queue
+      :instrument/queue-capacity 256})
+
+^{:refer code.vm.instrument/registration?}
+(fact "recognizes validated registrations"
+  [(instrument/registration? +registration+)
+   (instrument/registration? {})]
+  => [true false])
+
+^{:refer code.vm.instrument/target}
+(fact "builds a validated runtime target"
+  (select-keys +target+
+               [:protocol :target-id :target-kind :runtime :session-id
+                :generation :capabilities])
+  => {:protocol "hara.instrumentation/0-alpha"
+      :target-id "execution-17"
+      :target-kind :interpreter
+      :runtime :rust
+      :session-id "debug-1"
+      :generation 0
+      :capabilities #{:event/call}})
+
+^{:refer code.vm.instrument/target?}
+(fact "recognizes validated runtime targets"
+  [(instrument/target? +target+)
+   (instrument/target? {})]
+  => [true false])
+
+^{:refer code.vm.instrument/normalize-span}
+(fact "normalizes optional source spans"
+  [(instrument/normalize-span nil)
+   (instrument/normalize-span {:start 2 :end 5})
+   (fails? (fn [] (instrument/normalize-span {:start 5 :end 2})))]
+  => [nil {:start 2 :end 5} true])
+
+^{:refer code.vm.instrument/normalize-location}
+(fact "normalizes locations and enforces target-specific fields"
+  [(instrument/normalize-location
+    :interpreter
+    :call/enter
+    {:source-id "editor/main"
+     :form/path [0]
+     :span {:start 1 :end 2}})
+   (fails? (fn []
+             (instrument/normalize-location
+              :interpreter
+              :call/enter
+              {:ip 7})))]
+  => [{:source-id "editor/main"
+       :form/path [0]
+       :span {:start 1 :end 2}
+       :function nil
+       :ip nil}
+      true])
+
+^{:refer code.vm.instrument/event}
+(fact "builds a subscribed live instrumentation event"
+  (let [event
+        (instrument/event
+         +registration+
+         +target+
+         1
+         :call/enter
+         {:location {:source-id "editor/main"
+                     :form/path [0]
+                     :function "calculate"}
+          :data {:arguments/count 2}})]
+    (select-keys event
+                 [:schema :protocol :instrument/id :target-id :target-kind
+                  :generation :sequence :phase :event :location :data]))
+  => {:schema "hara.instrumentation.event/0-alpha"
+      :protocol "hara.instrumentation/0-alpha"
+      :instrument/id "trace"
+      :target-id "execution-17"
+      :target-kind :interpreter
+      :generation 0
+      :sequence 1
+      :phase :live
+      :event :call/enter
+      :location {:source-id "editor/main"
+                 :form/path [0]
+                 :span nil
+                 :function "calculate"
+                 :ip nil}
+      :data {:arguments/count 2}})
+
+^{:refer code.vm.instrument/event?}
+(fact "recognizes valid events and rejects unsupported claims"
+  (let [event
+        (instrument/event
+         +registration+ +target+ 1 :call/enter
+         {:data {:arguments/count 2}})]
+    [(instrument/event? event)
+     (instrument/event? (assoc event :event :instruction/execute))])
+  => [true false])
+
+^{:refer code.vm.instrument/trace-provenance}
+(fact "records live and replay trace provenance"
+  [(instrument/trace-provenance
+    :live
+    {:backend :interpreter :provider :rust :target-id "execution-17"})
+   (instrument/trace-provenance :replay {:backend :hbc})]
+  => [{:vm/mode :live
+       :vm/backend :interpreter
+       :vm/provider :rust
+       :vm/target-id "execution-17"}
+      {:vm/mode :replay :vm/backend :hbc}])
 
 (def results
   [(test-check

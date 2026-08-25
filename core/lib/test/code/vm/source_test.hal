@@ -1,12 +1,147 @@
 (ns code.vm.source-test
+  (:use code.test)
   (:require [code.vm :as vm]
-            [code.vm.source :as source]))
+            [code.vm.source :as source]
+            [std.block :as block]))
 
 (def +nested-source+
   "(+ 1\n   (* 2 3))")
 
 (def +comment-source+
   "(+ 1 ; comment\n   (* 2 3))")
+
+(defn fails?
+  [f]
+  (try
+    (do (f) false)
+    (catch Throwable error
+      true)))
+
+^{:refer code.vm.source/invalid}
+(fact "raises a structured source argument error"
+  (fails? (fn [] (source/invalid "bad source" {:value nil})))
+  => true)
+
+^{:refer code.vm.source/map-value}
+(fact "accepts option maps and rejects non-maps"
+  [(source/map-value "options" {:id "source"})
+   (fails? (fn [] (source/map-value "options" [])))]
+  => [{:id "source"} true])
+
+^{:refer code.vm.source/source-version}
+(fact "accepts non-negative source versions"
+  [(source/source-version 0)
+   (source/source-version 3)
+   (fails? (fn [] (source/source-version -1)))]
+  => [0 3 true])
+
+^{:refer code.vm.source/source-root}
+(fact "normalizes strings, blocks, and values to a root block"
+  [(block/tag (source/source-root "(+ 1 2)"))
+   (block/tag
+    (source/source-root (block/parse-first "(+ 1 2)")))
+   (block/tag (source/source-root 42))]
+  => [:root :root :root])
+
+^{:refer code.vm.source/source-string}
+(fact "normalizes block whitespace while preserving source structure"
+  [(source/source-string (block/parse-first "(+ 1 2)"))
+   (source/source-string
+    (block/parse-root "(+ 1 ; comment\n   (* 2 3))"))]
+  => ["(+ 1 2)" "(+ 1 ; comment\n   (* 2 3))"])
+
+^{:refer code.vm.source/form-entry}
+(fact "records form identity, value, and source span"
+  (select-keys
+   (source/form-entry
+    "lesson/main"
+    2
+    (block/parse-first "(+ 1 2)")
+    [0]
+    []
+    0)
+   [:source/id :source/version :form/path :form/parent
+    :form/type :form/tag :form/source :form/value :form/span])
+  => {:source/id "lesson/main"
+      :source/version 2
+      :form/path [0]
+      :form/parent []
+      :form/type :container
+      :form/tag :list
+      :form/source "(+ 1 2)"
+      :form/value '(+ 1 2)
+      :form/span {:start 0 :end 7}})
+
+^{:refer code.vm.source/walk-container}
+(fact "walks code children in semantic path order"
+  (let [root (source/source-root "(+ 1 (* 2 3))")]
+    (vec
+     (map
+      (fn [entry] (:form/path entry))
+      (source/walk-container
+       "source"
+       0
+       root
+       []
+       (block/prefixed root)))))
+  => [[0] [0 0] [0 1] [0 2] [0 2 0] [0 2 1] [0 2 2]])
+
+^{:refer code.vm.source/form?}
+(fact "recognizes indexed form entries"
+  [(source/form? (first (source/forms (source/index "(+ 1 2)"))))
+   (source/form? {})]
+  => [true false])
+
+^{:refer code.vm.source/source?}
+(fact "recognizes complete source indexes"
+  [(source/source? (source/index "(+ 1 2)"))
+   (source/source? {})]
+  => [true false])
+
+^{:refer code.vm.source/forms}
+(fact "returns every indexed code form"
+  (count (source/forms (source/index "(+ 1 (* 2 3))")))
+  => 7)
+
+^{:refer code.vm.source/index}
+(fact "preserves source identity and builds a path index"
+  (let [indexed (source/index "(+ 1 2)" {:id "demo" :version 3})]
+    [(:source/id indexed)
+     (:source/version indexed)
+     (:source/text indexed)
+     (:form/path (source/form-at indexed [0 1]))])
+  => ["demo" 3 "(+ 1 2)" [0 1]])
+
+^{:refer code.vm.source/form-at}
+(fact "looks up a form by semantic path"
+  (:form/source
+   (source/form-at (source/index "(+ 1 2)") [0 2]))
+  => "2")
+
+^{:refer code.vm.source/form-by-span}
+(fact "looks up a form by exact source span"
+  (:form/path
+   (source/form-by-span
+    (source/index "(+ 1 2)")
+    {:start 5 :end 6}))
+  => [0 2])
+
+^{:refer code.vm.source/entry-form}
+(fact "returns the one top-level expression when present"
+  [(source/entry-form (source/index "(+ 1 2)") )
+   (source/entry-form (source/index "(+ 1 2) (+ 3 4)"))]
+  => [(first (source/forms (source/index "(+ 1 2)"))) nil])
+
+^{:refer code.vm.source/resolve}
+(fact "resolves paths, spans, entries, and nil references"
+  (let [indexed (source/index "(+ 1 2)")
+        entry (source/form-at indexed [0])]
+    [(= entry (source/resolve indexed [0]))
+     (= entry (source/resolve indexed {:form/path [0]}))
+     (= entry (source/resolve indexed entry))
+     (nil? (source/resolve indexed nil))
+     (fails? (fn [] (source/resolve indexed {:unknown true})))] )
+  => [true true true true true])
 
 (def results
   [(test-check

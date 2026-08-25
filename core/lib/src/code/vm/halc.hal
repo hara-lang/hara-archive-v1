@@ -3,8 +3,7 @@
   (:require [code.vm.model :as model]
             [code.vm.source :as source]))
 
-^{:public true}
-(def +trace-schema+
+(def ^{:public true} +trace-schema+
   "hal.halc-trace/0-alpha")
 
 (def +trace-statuses+
@@ -13,8 +12,7 @@
 (def +event-statuses+
   #{:ok :error})
 
-^{:public true}
-(def +stages+
+(def ^{:public true} +stages+
   #{:source/read
     :module/identity
     :forms/canonicalize
@@ -93,8 +91,7 @@
        (or (nil? (:event/error value))
            (string? (:event/error value)))))
 
-^{:public true}
-(defn trace?
+(defn ^{:public true} trace?
   [value]
   (and (map? value)
        (= +trace-schema+ (:trace/schema value))
@@ -146,8 +143,7 @@
       nil)
     trace))
 
-^{:public true}
-(defn halc-machine?
+(defn ^{:public true} halc-machine?
   [value]
   (and (model/machine? value)
        (= :halc (:vm/kind value))
@@ -162,8 +158,7 @@
      "code.vm.halc requires a HALC machine"
      {:value machine})))
 
-^{:public true}
-(defn source-index
+(defn ^{:public true} source-index
   [machine]
   (if (halc-machine? machine)
     (get-in machine [:vm/options :source/index])
@@ -203,8 +198,7 @@
    :result nil
    :error nil})
 
-^{:public true}
-(defn create
+(defn ^{:public true} create
   ([input trace]
    (create input trace {}))
   ([input trace options]
@@ -298,8 +292,7 @@
       :result (if failed nil result)
       :error (if failed error nil)})))
 
-^{:public true}
-(defn step
+(defn ^{:public true} step
   [machine]
   (if (model/terminal? machine)
     machine
@@ -325,8 +318,7 @@
              :suspension/reason :step-limit)
       {:status :suspended}))))
 
-^{:public true}
-(defn run
+(defn ^{:public true} run
   ([machine]
    (run machine {}))
   ([machine options]
@@ -344,8 +336,7 @@
            (suspend-at-limit current)
            (recur (step current) (dec remaining))))))))
 
-^{:public true}
-(defn from-trace
+(defn ^{:public true} from-trace
   ([input trace]
    (from-trace input trace {}))
   ([input trace options]

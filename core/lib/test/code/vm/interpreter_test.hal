@@ -1,4 +1,5 @@
 (ns code.vm.interpreter-test
+  (:use code.test)
   (:require [code.vm :as vm]
             [code.vm.interpreter :as interpreter]))
 
@@ -100,6 +101,289 @@
      :event/kind :journal/truncated
      :truncation/reason "journal limit reached; evaluation continued"}]
    :journal/result (value-preview "integer" "42")})
+
+(defn fails?
+  [f]
+  (try
+    (do (f) false)
+    (catch Throwable error
+      true)))
+
+(def +machine+
+  (interpreter/create +nested-source+ +nested-journal+))
+
+(def +event+
+  (first (:journal/events +nested-journal+)))
+
+(def +form+
+  (vm/source-form-at (interpreter/source-index +machine+) [0]))
+
+^{:refer code.vm.interpreter/+journal-schema+}
+(fact "declares the portable evaluation journal schema"
+  interpreter/+journal-schema+
+  => "hal.evaluation-journal/0-alpha")
+
+^{:refer code.vm.interpreter/+journal-statuses+}
+(fact "declares accepted journal statuses"
+  interpreter/+journal-statuses+
+  => #{:ok :error :truncated})
+
+^{:refer code.vm.interpreter/+event-kinds+}
+(fact "declares accepted journal event kinds"
+  interpreter/+event-kinds+
+  => #{:evaluation/start :macro/expand :operation/enter
+       :operation/return :evaluation/error :journal/truncated})
+
+^{:refer code.vm.interpreter/invalid}
+(fact "raises a structured interpreter argument error"
+  (fails? (fn [] (interpreter/invalid "bad journal" {:value nil})))
+  => true)
+
+^{:refer code.vm.interpreter/map-value}
+(fact "accepts maps and rejects non-maps"
+  [(interpreter/map-value "options" {:x 1})
+   (fails? (fn [] (interpreter/map-value "options" [])))]
+  => [{:x 1} true])
+
+^{:refer code.vm.interpreter/vector-value}
+(fact "accepts vectors and rejects non-vectors"
+  [(interpreter/vector-value "events" [1])
+   (fails? (fn [] (interpreter/vector-value "events" {})))]
+  => [[1] true])
+
+^{:refer code.vm.interpreter/non-empty-string}
+(fact "requires non-empty journal strings"
+  [(interpreter/non-empty-string "id" "journal-1")
+   (fails? (fn [] (interpreter/non-empty-string "id" "")))]
+  => ["journal-1" true])
+
+^{:refer code.vm.interpreter/non-negative-integer}
+(fact "accepts non-negative event indexes"
+  [(interpreter/non-negative-integer "index" 0)
+   (fails? (fn [] (interpreter/non-negative-integer "index" -1)))]
+  => [0 true])
+
+^{:refer code.vm.interpreter/positive-integer}
+(fact "requires positive replay limits"
+  [(interpreter/positive-integer "steps" 1)
+   (fails? (fn [] (interpreter/positive-integer "steps" 0)))]
+  => [1 true])
+
+^{:refer code.vm.interpreter/member}
+(fact "accepts supported event statuses"
+  [(interpreter/member "status" interpreter/+journal-statuses+ :ok)
+   (fails? (fn [] (interpreter/member "status" interpreter/+journal-statuses+ :unknown)))]
+  => [:ok true])
+
+^{:refer code.vm.interpreter/preview?}
+(fact "recognizes value previews with explicit truncation"
+  [(interpreter/preview? (value-preview "integer" "7"))
+   (interpreter/preview? {:value/type "integer" :value/display "7"})]
+  => [true false])
+
+^{:refer code.vm.interpreter/event?}
+(fact "recognizes well-formed journal events"
+  [(interpreter/event? +event+)
+   (interpreter/event? (assoc +event+ :event/kind :unknown))]
+  => [true false])
+
+^{:refer code.vm.interpreter/journal?}
+(fact "recognizes complete journals and rejects bad schemas"
+  [(interpreter/journal? +nested-journal+)
+   (interpreter/journal?
+    (assoc +nested-journal+ :journal/schema "unknown"))]
+  => [true false])
+
+^{:refer code.vm.interpreter/normalize-journal}
+(fact "validates and returns the original journal document"
+  [(= +nested-journal+ (interpreter/normalize-journal +nested-journal+))
+   (fails? (fn []
+             (interpreter/normalize-journal
+              (assoc +nested-journal+ :journal/schema "unknown"))))]
+  => [true true])
+
+^{:refer code.vm.interpreter/interpreter-machine?}
+(fact "recognizes machines carrying journal and source adapters"
+  [(interpreter/interpreter-machine? +machine+)
+   (interpreter/interpreter-machine? {})]
+  => [true false])
+
+^{:refer code.vm.interpreter/journal}
+(fact "returns the journal attached to an interpreter machine"
+  (interpreter/journal +machine+)
+  => +nested-journal+)
+
+^{:refer code.vm.interpreter/source-index}
+(fact "returns the source index attached to an interpreter machine"
+  (vm/source? (interpreter/source-index +machine+))
+  => true)
+
+^{:refer code.vm.interpreter/validate-event-sources}
+(fact "validates all explicit event source references"
+  [(= +nested-journal+
+      (interpreter/validate-event-sources
+       (interpreter/source-index +machine+)
+       +nested-journal+))
+   (fails? (fn []
+             (interpreter/validate-event-sources
+              (interpreter/source-index +machine+)
+              (assoc-in +nested-journal+
+                        [:journal/events 0 :event/source]
+                        {:form/path [99]}))))]
+  => [true true])
+
+^{:refer code.vm.interpreter/initial-state}
+(fact "initializes replay state before consuming an event"
+  (select-keys
+   (interpreter/initial-state +nested-journal+ {})
+   [:event/index :event/count :event/kind :operation/stack
+    :namespace :truncated])
+  => {:event/index 0
+      :event/count 5
+      :event/kind nil
+      :operation/stack []
+      :namespace "user"
+      :truncated false})
+
+^{:refer code.vm.interpreter/create}
+(fact "creates an interpreter machine with stable identity"
+  (select-keys +machine+ [:vm/id :vm/kind :vm/status])
+  => {:vm/id "vm/interpreter/journal-17"
+      :vm/kind :interpreter
+      :vm/status :ready})
+
+^{:refer code.vm.interpreter/explicit-event-source}
+(fact "resolves an event's explicit source reference"
+  (:form/path (interpreter/explicit-event-source +machine+ +event+))
+  => [0])
+
+^{:refer code.vm.interpreter/retained-operation-source}
+(fact "retrieves a source retained for an operation id"
+  (let [machine (assoc-in +machine+
+                          [:vm/state :operation/sources 7]
+                          +form+)]
+    (= +form+
+       (interpreter/retained-operation-source
+        machine
+        {:operation/id 7})))
+  => true)
+
+^{:refer code.vm.interpreter/current-operation-source}
+(fact "retrieves the source for the active operation stack entry"
+  (let [machine (assoc-in
+                 (assoc-in +machine+
+                           [:vm/state :operation/sources 7]
+                           +form+)
+                 [:vm/state :operation/stack]
+                 [7])]
+    (= +form+ (interpreter/current-operation-source machine)))
+  => true)
+
+^{:refer code.vm.interpreter/resolved-event-source}
+(fact "prefers an explicit event source when resolving provenance"
+  (= +form+
+     (interpreter/resolved-event-source +machine+ +event+))
+  => true)
+
+^{:refer code.vm.interpreter/event-source}
+(fact "combines journal event identity with resolved form data"
+  (select-keys
+   (interpreter/event-source +nested-journal+ +event+ +form+)
+   [:journal/id :event/id :event/sequence :form/path :form/source])
+  => {:journal/id "journal-17"
+      :event/id 1
+      :event/sequence 1
+      :form/path [0]
+      :form/source "(+ 1 (* 2 3))"})
+
+^{:refer code.vm.interpreter/event-stage-rule}
+(fact "maps journal event kinds to VM stages and rules"
+  [(interpreter/event-stage-rule {:event/kind :evaluation/start})
+   (interpreter/event-stage-rule {:event/kind :operation/return})
+   (fails? (fn []
+             (interpreter/event-stage-rule {:event/kind :unknown})))]
+  => [[:evaluate :evaluation/start]
+      [:return :operation/return]
+      true])
+
+^{:refer code.vm.interpreter/retain-operation-source}
+(fact "retains a form only for identified operations"
+  [(interpreter/retain-operation-source
+    {:operation/sources {}}
+    {:operation/id 7}
+    +form+)
+   (interpreter/retain-operation-source
+    {:operation/sources {}}
+    {}
+    +form+)]
+  => [{7 +form+} {}])
+
+^{:refer code.vm.interpreter/without-operation}
+(fact "removes all occurrences of a completed operation id"
+  (interpreter/without-operation [1 7 2 7] 7)
+  => [1 2])
+
+^{:refer code.vm.interpreter/event-state}
+(fact "advances event state and records source provenance"
+  (select-keys
+   (interpreter/event-state +machine+ +event+ +form+)
+   [:event/index :event/kind :event/current :source/current :result :error])
+  => {:event/index 1
+      :event/kind :evaluation/start
+      :event/current +event+
+      :source/current +form+
+      :result nil
+      :error nil})
+
+^{:refer code.vm.interpreter/event-transition}
+(fact "turns a journal event into a running VM transition"
+  (select-keys
+   (interpreter/event-transition +machine+ +nested-journal+ +event+)
+   [:step/stage :step/rule :step/status :step/events])
+  => {:step/stage :evaluate
+      :step/rule :evaluation/start
+      :step/status :running
+      :step/events [+event+]})
+
+^{:refer code.vm.interpreter/final-transition}
+(fact "creates a terminal transition from the journal result"
+  (select-keys
+   (interpreter/final-transition +machine+ +nested-journal+)
+   [:step/rule :step/status :step/result :step/error])
+  => {:step/rule :evaluation/complete
+      :step/status :returned
+      :step/result (value-preview "integer" "7")
+      :step/error nil})
+
+^{:refer code.vm.interpreter/step}
+(fact "consumes exactly one event per step"
+  (let [next (interpreter/step +machine+)]
+    [(:vm/status next)
+     (:vm/step next)
+     (get-in next [:vm/state :event/index])])
+  => [:running 1 1])
+
+^{:refer code.vm.interpreter/suspend-at-limit}
+(fact "adds an explicit suspension transition"
+  (let [suspended (interpreter/suspend-at-limit +machine+)]
+    [(:vm/status suspended)
+     (:step/rule (last (vm/trace suspended)))])
+  => [:suspended :run/step-limit])
+
+^{:refer code.vm.interpreter/run}
+(fact "replays up to a step limit and suspends when work remains"
+  (let [suspended (interpreter/run +machine+ {:steps 1})]
+    [(:vm/status suspended)
+     (:vm/step suspended)
+     (:step/rule (last (vm/trace suspended)))])
+  => [:suspended 2 :run/step-limit])
+
+^{:refer code.vm.interpreter/from-journal}
+(fact "constructs and fully replays a journal"
+  (let [machine (interpreter/from-journal +nested-source+ +nested-journal+)]
+    [(:vm/status machine)
+     (get-in machine [:vm/result :value/display])])
+  => [:returned "7"])
 
 (def results
   [(test-check

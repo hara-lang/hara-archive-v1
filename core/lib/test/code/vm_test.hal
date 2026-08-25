@@ -1,4 +1,5 @@
 (ns code.vm-test
+  (:use code.test)
   (:require [code.vm :as vm]
             [std.block :as block]))
 
@@ -10,6 +11,22 @@
 
 (def results
   [(test-check
+    "code.vm is a facade over internal VM implementations"
+    [(get (Runtime/namespace 'code.vm) :namespace/role)
+     (get (Runtime/namespace 'code.vm.model) :namespace/role)
+     (get (Runtime/namespace 'code.vm.source) :namespace/role)
+     (get (Runtime/namespace 'code.vm.interpreter) :namespace/role)
+     (get (Runtime/namespace 'code.vm.halc) :namespace/role)
+     (get (Runtime/namespace 'code.vm.bytecode) :namespace/role)
+     (get (Runtime/namespace 'code.vm.instrument) :namespace/role)
+     (get (Runtime/namespace 'code.vm.instrument.trace) :namespace/role)
+     (get (Runtime/namespace 'code.vm.conformance) :namespace/role)
+     (not (nil? (get (ns-publics 'code.vm) 'machine)))
+     (nil? (get (ns-publics 'code.vm) 'map-value))]
+    [:facade :internal :internal :internal :internal :internal
+     :internal :internal :internal true true])
+
+   (test-check
     "machine snapshots use one portable contract"
     (let [machine
           (vm/machine
@@ -95,8 +112,12 @@
     "code.vm consumes the canonical std.block implementation"
     (let [parsed (block/parse-string "(+ 1 2)")]
       [(block/string parsed)
+       (block/value-string parsed)
        (block/value parsed)
        (block/tag (block/parse-first "(+ 1 2)"))])
-    ["(+ 1 2)" '(+ 1 2) :list])])
+    ["(+\\space1\\space2)"
+     "(+ 1 2)"
+     '(+ 1 2)
+     :list])])
 
 results
