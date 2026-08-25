@@ -17,13 +17,13 @@ import java.util.Set;
 @HaraNativeBinding(namespace = "std.native", name = "Bits", methods = {"and", "or", "xor", "not", "shift-left", "shift-right"})
 @HaraNativeBinding(
     namespace = "std.native", name = "Kernel", availability = HaraAvailability.CAPABILITY_GATED,
-    capability = "native-runtime", methods = {"session-create", "session-close", "session-list", "session-info", "session-eval", "session-namespace", "session-complete", "resource-register", "resource-remove", "resource-list", "filesystem-create", "filesystem-attach", "filesystem-detach", "filesystem-info", "filesystem-close", "capabilities", "package-build", "package-inspect", "package-install", "package-publish", "package-registry-verify", "tap-config-root", "tap-add", "tap-bootstrap", "tap-remove", "tap-list", "tap-mirror-add", "tap-initialize", "tap-verify", "snapshot-build", "snapshot-verify", "snapshot-inspect", "snapshot-diff"})
+    capability = "kernel", methods = {"session-create", "session-close", "session-list", "session-info", "session-eval", "session-namespace", "session-complete", "resource-register", "resource-remove", "resource-list", "filesystem-create", "filesystem-attach", "filesystem-detach", "filesystem-info", "filesystem-close", "capabilities", "package-build", "package-inspect", "package-install", "package-publish", "package-registry-verify", "tap-config-root", "tap-add", "tap-bootstrap", "tap-remove", "tap-list", "tap-mirror-add", "tap-initialize", "tap-verify", "snapshot-build", "snapshot-verify", "snapshot-inspect", "snapshot-diff"})
 @HaraNativeBinding(
     namespace = "std.native", name = "Sandbox", availability = HaraAvailability.CAPABILITY_GATED,
-    capability = "native-runtime", methods = {"open", "eval", "call", "cancel", "status", "close"})
+    capability = "sandbox", methods = {"open", "eval", "call", "cancel", "status", "close"})
 @HaraNativeBinding(
     namespace = "std.native", name = "Package", availability = HaraAvailability.CAPABILITY_GATED,
-    capability = "native-runtime", methods = {"catalog", "find", "ensure", "load", "unload", "state"})
+    capability = "kernel", methods = {"catalog", "find", "ensure", "load", "unload", "state"})
 @HaraNativeBinding(namespace = "std.native", name = "String", methods = {"length", "blank?", "includes?", "starts-with?", "ends-with?", "char-at", "slice", "index-of", "last-index-of", "join", "split", "split-lines", "repeat", "replace", "replace-first", "trim", "trim-left", "trim-right", "upper", "lower", "capitalize", "decapitalize", "pad-left", "pad-right", "reverse", "encode-utf8", "decode-utf8", "to-fixed"})
 @HaraNativeBinding(namespace = "std.native", name = "Bytes", methods = {"new", "count", "get", "set", "copy", "slice", "u8", "s8"})
 @HaraNativeBinding(namespace = "std.native", name = "Crypto", methods = {"sha256", "sha512", "hmac-sha256", "hmac-sha512", "random-bytes", "secure-equal?", "ed25519-keypair", "ed25519-public", "ed25519-sign", "ed25519-verify", "x25519-keypair", "x25519-public", "x25519-shared", "p256-keypair", "p256-public", "p256-sign", "p256-verify", "p256-shared"})
@@ -33,10 +33,10 @@ import java.util.Set;
     capability = "native-runtime", methods = {"spawn", "alive?", "write", "close-input", "stdout", "stderr", "stdout-stream", "stderr-stream", "wait", "kill"})
 @HaraNativeBinding(
     namespace = "std.native", name = "File", availability = HaraAvailability.CAPABILITY_GATED,
-    capability = "native-runtime", methods = {"parent", "join", "resolve", "read", "write", "exists?", "stat", "entries", "list", "walk", "mkdir", "delete", "copy", "move", "temp-file", "temp-directory"})
+    capability = "file", methods = {"parent", "join", "resolve", "read", "write", "exists?", "stat", "entries", "list", "walk", "mkdir", "delete", "copy", "move", "temp-file", "temp-directory"})
 @HaraNativeBinding(
     namespace = "std.native", name = "Socket", availability = HaraAvailability.CAPABILITY_GATED,
-    capability = "native-runtime", methods = {"connect", "listen", "endpoint", "events", "next", "send", "close", "receive-stream"})
+    capability = "network", methods = {"connect", "listen", "endpoint", "events", "next", "send", "close", "receive-stream"})
 @HaraNativeBinding(namespace = "std.native", name = "Promise", methods = {"run", "new", "from", "all", "delay"})
 @HaraNativeBinding(namespace = "std.native", name = "Coroutine", methods = {"create", "yield", "await"})
 @HaraNativeBinding(namespace = "std.native", name = "Stream", methods = {"create", "generate", "next"})
@@ -49,7 +49,7 @@ import java.util.Set;
 @HaraNativeBinding(namespace = "std.native", name = "Json", methods = {"read", "write", "pretty"})
 @HaraNativeBinding(
     namespace = "std.native", name = "Host", availability = HaraAvailability.CAPABILITY_GATED,
-    capability = "native-runtime", methods = {"call", "describe", "capabilities", "capability?"})
+    capability = "host-call", methods = {"call", "describe", "capabilities", "capability?"})
 @HaraNativeBinding(namespace = "std.native", name = "Test", methods = {"catalog", "config", "context", "events", "compare", "run", "result", "passed?", "actual", "expected", "failures", "failure-seq", "failure-count", "failure", "failure?"})
 @HaraNativeBinding(namespace = "std.native", name = "RegExp", methods = {"compile", "pattern", "find?", "find", "matches", "replace", "split"})
 @HaraNativeBinding(namespace = "std.native", name = "Result", methods = {"create", "synchronize", "success?", "error?", "status", "data", "error-value", "context", "with-context"})

@@ -123,6 +123,7 @@ public final class HaraContext {
   private final SessionKernel sessionKernel;
   private final HaraInstrumentationRuntime instrumentationRuntime;
   private final FilesystemRuntimeBinding filesystemRuntime;
+  private final HaraNativeCapabilityBoundary nativeCapabilityBoundary;
   private final IFilesystem ownedFilesystem;
   private final java.util.List<Object> nativeTestResults = new ArrayList<>();
   private final Map<String, HaraNamespace> namespaces = new ConcurrentHashMap<>();
@@ -199,6 +200,14 @@ public final class HaraContext {
       this.filesystemRuntime = null;
       this.ownedFilesystem = null;
     }
+    this.nativeCapabilityBoundary =
+        new HaraNativeCapabilityBoundary(
+            sessionKernel != null,
+            sessionKernel != null && !sandboxRestricted,
+            filesystemRuntime != null,
+            environment.isSocketIOAllowed(),
+            environment.isCreateProcessAllowed(),
+            false);
 
     currentNamespace = namespace(INTRINSIC_NAMESPACE);
     withDefinitionOrigin(
@@ -485,7 +494,11 @@ public final class HaraContext {
     HaraVar descriptor =
         intrinsic.define(
             canonicalName,
-            new HaraNativeType(name, HaraNativeDeclarations.methods(name)),
+            new HaraNativeType(
+                name,
+                HaraNativeDeclarations.methods(name),
+                binding.availability(),
+                binding.capability()),
             null,
             HaraVar.Origin.RUNTIME_PRIMITIVE);
     intrinsic.refer(name, descriptor);
@@ -695,7 +708,22 @@ public final class HaraContext {
     if (values.length != arity) {
       throw new HaraException("std.native.Package/" + operation + " expects " + arity + " arguments");
     }
+    if (!nativeCapabilityBoundary.granted("kernel")) {
+      throw HaraNativeCapabilityBoundary.denied("Package", operation, "kernel");
+    }
     throw new HaraException("package/unsupported: Package capability provider is unavailable");
+  }
+
+  private void requireNativeCapability(String nativeType, String method, String capability) {
+    nativeCapabilityBoundary.require(nativeType, method, capability);
+  }
+
+  private Object rejectedNativeCapabilityPromise(
+      String nativeType, String method, String capability) {
+    CompletableFuture<Object> future = new CompletableFuture<>();
+    future.completeExceptionally(
+        HaraNativeCapabilityBoundary.denied(nativeType, method, capability));
+    return new HaraPromise(future);
   }
 
   private Object environmentSnapshot(Object[] values) {
@@ -2043,8 +2071,9 @@ public final class HaraContext {
     Symbol typedSymbol = symbol.withMeta(metadata);
     HaraType type =
         mutable
-            ? new HaraMutableType(qualifiedName, declaredFields)
-            : new HaraType(qualifiedName, declaredFields);
+            ? new HaraMutableType(
+                qualifiedName, declaredFields, declaredSpecifications, schema)
+            : new HaraType(qualifiedName, declaredFields, declaredSpecifications, schema);
     define(typedSymbol, type);
     define(Symbol.create("->" + symbol.getName()), type);
     define(
@@ -3730,6 +3759,7 @@ public final class HaraContext {
   }
 
   private Object hostCall(Object[] values) {
+    requireNativeCapability("Host", "call", "host-call");
     if (values.length != 3
         || !(HaraBox.unwrap(values[0]) instanceof String service)
         || !(HaraBox.unwrap(values[1]) instanceof String method)
@@ -3756,6 +3786,7 @@ public final class HaraContext {
   }
 
   private Object hostDescribe(Object[] values) {
+    requireNativeCapability("Host", "describe", "host-call");
     if (values.length != 0) throw new HaraException("std.native.Host/describe expects no arguments");
     Object capabilities = hostCapabilityVector();
     Object descriptor =
@@ -3773,6 +3804,7 @@ public final class HaraContext {
   }
 
   private Object hostCapabilities(Object[] values) {
+    requireNativeCapability("Host", "capabilities", "host-call");
     if (values.length != 0) {
       throw new HaraException("std.native.Host/capabilities expects no arguments");
     }
@@ -3780,6 +3812,7 @@ public final class HaraContext {
   }
 
   private Object hostCapability(Object[] values) {
+    requireNativeCapability("Host", "capability?", "host-call");
     if (values.length != 1) {
       throw new HaraException("std.native.Host/capability? expects one capability");
     }
@@ -4314,6 +4347,9 @@ public final class HaraContext {
           new VariadicBuiltin(
               "std.native.Kernel/" + method,
               values -> {
+                if (!nativeCapabilityBoundary.granted("kernel")) {
+                  throw HaraNativeCapabilityBoundary.denied("Kernel", method, "kernel");
+                }
                 throw new HaraException(
                     "std.native.Kernel/" + method + " requires a kernel embedding");
               }));
@@ -4394,6 +4430,9 @@ public final class HaraContext {
             new VariadicBuiltin(
                 "std.native.Sandbox/" + method,
                 values -> {
+                  if (!nativeCapabilityBoundary.granted("sandbox")) {
+                    throw HaraNativeCapabilityBoundary.denied("Sandbox", method, "sandbox");
+                  }
                   throw new HaraException(
                       "std.native.Sandbox/" + method + " requires a kernel embedding");
                 }));
@@ -5075,7 +5114,10 @@ public final class HaraContext {
   }
 
   private void requireProcessIO(String operation) {
-    if (!environment.isCreateProcessAllowed()) throw new HaraException(operation + " is unsupported or process access is denied");
+    if (!environment.isCreateProcessAllowed()) {
+      throw HaraNativeCapabilityBoundary.denied(
+          "Process", HaraNativeCapabilityBoundary.method(operation), "native-runtime");
+    }
   }
 
   private Object osPlatform(Object[] values) {
@@ -5730,7 +5772,8 @@ public final class HaraContext {
 
   private void requireSocketIO(String operation) {
     if (!environment.isSocketIOAllowed()) {
-      throw new HaraException(operation + " is unsupported or network access is denied");
+      throw HaraNativeCapabilityBoundary.denied(
+          "Socket", HaraNativeCapabilityBoundary.method(operation), "network");
     }
   }
 
@@ -5855,6 +5898,7 @@ public final class HaraContext {
   }
 
   private Object fileResolve(Object[] values) {
+    requireNativeCapability("File", "resolve", "file");
     if (values.length != 2) throw new HaraException("file/resolve expects a base and path");
     String base = stringValue(values[0], "file/resolve");
     String path = stringValue(values[1], "file/resolve");
@@ -5866,6 +5910,7 @@ public final class HaraContext {
   }
 
   private Object fileParent(Object value) {
+    requireNativeCapability("File", "parent", "file");
     String path = stringValue(value, "file/parent");
     try {
       return HaraLogicalPath.parent(path);
@@ -5875,6 +5920,7 @@ public final class HaraContext {
   }
 
   private Object fileJoin(Object[] values) {
+    requireNativeCapability("File", "join", "file");
     if (values.length != 2) throw new HaraException("file/join expects a base and path");
     String base = stringValue(values[0], "file/join");
     String path = stringValue(values[1], "file/join");
@@ -6077,20 +6123,7 @@ public final class HaraContext {
       Function<FilesystemRuntimeBinding, FilesystemRuntimeBinding.Pending<T>> effect,
       Function<? super T, ?> transform) {
     if (filesystemRuntime == null) {
-      return rejectedFilePromise(
-          operation,
-          path,
-          target,
-          new FilesystemException(
-              "denied",
-              "filesystem capability is not attached",
-              null,
-              operation,
-              path,
-              target,
-              "capability-unavailable",
-              false,
-              null));
+      return rejectedNativeCapabilityPromise("File", operation, "file");
     }
     try {
       return FilesystemPromiseBridge.bind(

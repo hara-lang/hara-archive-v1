@@ -691,8 +691,8 @@ mod authority_tests {
                     &format!("(deref (Host/capability? \"{capability}\"))"),
                 )
                 .unwrap_err();
-            assert!(error.contains("Host capability provider is unavailable"));
-            assert!(error.contains(":host/unavailable"));
+            assert!(error.contains("std.native.Host/capability? requires capability :host-call"));
+            assert!(error.contains(":native/capability-denied"));
         }
     }
 

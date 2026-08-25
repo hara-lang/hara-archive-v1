@@ -1,11 +1,14 @@
 (ns code.vm.bytecode
+  (:config {:role :internal})
   (:require [code.vm.model :as model]
             [code.vm.source :as source]))
 
+^{:public true}
 (def +trace-schema+ "hal.bytecode-trace/0-alpha")
 
 (def +trace-statuses+ #{:ok :error :suspended})
 (def +event-statuses+ #{:ok :error :suspended})
+^{:public true}
 (def +event-kinds+
   #{:program/validated
     :instruction/execute
@@ -17,34 +20,34 @@
     :machine/return
     :machine/fail})
 
-(defn- invalid [message data]
+(defn invalid [message data]
   (throw (ex :argument data :ex/message message)))
 
-(defn- map-value [label value]
+(defn map-value [label value]
   (if (map? value)
     value
     (invalid (str "code.vm.bytecode " label " must be a map")
              {:field label :value value})))
 
-(defn- vector-value [label value]
+(defn vector-value [label value]
   (if (vector? value)
     value
     (invalid (str "code.vm.bytecode " label " must be a vector")
              {:field label :value value})))
 
-(defn- non-empty-string [label value]
+(defn non-empty-string [label value]
   (if (and (string? value) (> (count value) 0))
     value
     (invalid (str "code.vm.bytecode " label " must be a non-empty string")
              {:field label :value value})))
 
-(defn- positive-integer [label value]
+(defn positive-integer [label value]
   (if (and (long? value) (> value 0))
     value
     (invalid (str "code.vm.bytecode " label " must be a positive integer")
              {:field label :value value})))
 
-(defn- member [label allowed value]
+(defn member [label allowed value]
   (if (has? allowed value)
     value
     (invalid (str "Unsupported code.vm.bytecode " label ": " value)
@@ -68,6 +71,7 @@
        (or (nil? (:event/error value))
            (string? (:event/error value)))))
 
+^{:public true}
 (defn trace?
   [value]
   (and (map? value)
@@ -106,6 +110,7 @@
      events)
     trace))
 
+^{:public true}
 (defn bytecode-machine?
   [value]
   (and (model/machine? value)
@@ -119,13 +124,14 @@
     (get-in machine [:vm/options :trace])
     (invalid "code.vm.bytecode requires a bytecode machine" {:value machine})))
 
+^{:public true}
 (defn source-index
   [machine]
   (if (bytecode-machine? machine)
     (get-in machine [:vm/options :source/index])
     (invalid "code.vm.bytecode requires a bytecode machine" {:value machine})))
 
-(defn- validate-event-sources
+(defn validate-event-sources
   [source-index trace]
   (reduce
    (fn [_ event]
@@ -140,7 +146,7 @@
    (:trace/events trace))
   trace)
 
-(defn- initial-state
+(defn initial-state
   [trace]
   {:trace/schema (:trace/schema trace)
    :trace/id (:trace/id trace)
@@ -155,6 +161,7 @@
    :result nil
    :error nil})
 
+^{:public true}
 (defn create
   ([input trace] (create input trace {}))
   ([input trace options]
@@ -174,7 +181,7 @@
        :options adapter-options
        :limits (:limits options)}))))
 
-(defn- event-source
+(defn event-source
   [machine trace event]
   (merge
    {:trace/id (:trace/id trace)
@@ -182,7 +189,7 @@
     :event/sequence (:event/sequence event)}
    (or (source/resolve (source-index machine) (:event/source event)) {})))
 
-(defn- event-vm-status
+(defn event-vm-status
   [event]
   (let [kind (:event/kind event)]
     (cond
@@ -191,7 +198,7 @@
       (= kind :machine/suspend) :suspended
       :else :running)))
 
-(defn- event-state
+(defn event-state
   [machine event form]
   (assoc (:vm/state machine)
          :event/index (inc (get-in machine [:vm/state :event/index]))
@@ -202,7 +209,7 @@
          :result (:event/result event)
          :error (:event/error event)))
 
-(defn- event-transition
+(defn event-transition
   [machine trace event]
   (let [form (source/resolve (source-index machine) (:event/source event))
         status (event-vm-status event)]
@@ -217,7 +224,7 @@
       :result (if (= status :returned) (:event/result event) nil)
       :error (if (= status :failed) (:event/error event) nil)})))
 
-(defn- final-transition
+(defn final-transition
   [machine trace]
   (let [failed (= :error (:trace/status trace))
         suspended (= :suspended (:trace/status trace))
@@ -237,6 +244,7 @@
       :result (if (= status :returned) (:trace/result trace) nil)
       :error (if (= status :failed) (:trace/error trace) nil)})))
 
+^{:public true}
 (defn step
   [machine]
   (if (model/terminal? machine)
@@ -248,13 +256,14 @@
         (model/advance machine (event-transition machine trace event))
         (model/advance machine (final-transition machine trace))))))
 
+^{:public true}
 (defn resume
   [machine]
   (if (= :suspended (:vm/status machine))
     (step machine)
     machine))
 
-(defn- suspend-at-limit
+(defn suspend-at-limit
   [machine]
   (if (or (model/terminal? machine) (= :suspended (:vm/status machine)))
     machine
@@ -267,6 +276,7 @@
       (assoc (:vm/state machine) :suspension/reason :step-limit)
       {:status :suspended}))))
 
+^{:public true}
 (defn run
   ([machine] (run machine {}))
   ([machine options]
@@ -281,6 +291,7 @@
            (suspend-at-limit current)
            (recur (step current) (dec remaining))))))))
 
+^{:public true}
 (defn from-trace
   ([input trace] (from-trace input trace {}))
   ([input trace options]

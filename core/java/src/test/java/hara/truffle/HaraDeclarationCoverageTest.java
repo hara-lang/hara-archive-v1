@@ -277,6 +277,9 @@ public class HaraDeclarationCoverageTest {
       String name = symbol(entry.lookup(keyword("name")));
       List<String> methods = symbols(entry.lookup(keyword("methods")), name + " :methods");
       String availability = ((Keyword) entry.lookup(keyword("availability"))).getName();
+      Object capabilityValue = entry.lookup(keyword("capability"));
+      String capability =
+          capabilityValue instanceof Keyword ? ((Keyword) capabilityValue).getName() : "";
       HaraAvailability mapped =
           availability.equals("capability-gated")
               ? HaraAvailability.CAPABILITY_GATED
@@ -288,7 +291,7 @@ public class HaraDeclarationCoverageTest {
               name,
               methods,
               mapped,
-              mapped == HaraAvailability.CAPABILITY_GATED ? "native-runtime" : ""));
+              capability));
     }
     return result;
   }

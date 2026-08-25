@@ -182,9 +182,18 @@ export async function instantiateWholeWasm(product, Host, fallback) {
   });
   instance = instantiated.instance;
   const { module } = instantiated;
-  const heapBase = instance.exports[names.heapGlobal].value;
-  if (typeof instance.exports[names.entrypoint] !== "function") {
-    throw new Error(`whole-Wasm module has no ${names.entrypoint} function`);
+  const entryFunction = host.entryFunction();
+  const nativeEntry = capabilities[entryFunction] === true;
+  let heapBase = 0;
+  if (nativeEntry) {
+    if (typeof instance.exports[names.entrypoint] !== "function") {
+      throw new Error(`whole-Wasm module has no ${names.entrypoint} function`);
+    }
+    if (!instance.exports[names.heapGlobal] ||
+        typeof instance.exports[names.heapGlobal].value !== "number") {
+      throw new Error(`whole-Wasm module has no ${names.heapGlobal} global`);
+    }
+    heapBase = instance.exports[names.heapGlobal].value;
   }
   return Object.freeze({
     host,
@@ -198,8 +207,7 @@ export async function instantiateWholeWasm(product, Host, fallback) {
     },
     call(...arguments_) {
       host.beginCall();
-      const entryFunction = this.entryFunction();
-      if (!capabilities[entryFunction]) {
+      if (!capabilities[this.entryFunction()]) {
         if (typeof fallback !== "function") {
           throw new Error("whole-Wasm entry requires its validated HBC fallback");
         }

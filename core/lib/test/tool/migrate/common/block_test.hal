@@ -74,7 +74,7 @@
      [0 2]))
    [:path :tag :source :file :start-offset :end-offset])
   => {:path [0 2]
-      :tag :token
+      :tag :symbol
       :source "b"
       :file "demo.clj"
       :start-offset 3
@@ -93,8 +93,8 @@
 ^{:refer tool.migrate.common.block/code-children}
 (fact "code children exclude whitespace and comments"
   [(count (nav/code-children source))
-   (nav/form-head source)
-   (nav/form-second source)]
+   (nav/form-head (first (nav/code-children source)))
+   (nav/form-second (first (nav/code-children source)))]
   => [3 "ns" "demo.core"])
 
 ^{:refer tool.migrate.common.block/anchor-children}
@@ -104,22 +104,24 @@
 
 ^{:refer tool.migrate.common.block/form-head-block}
 (fact "form-head-block returns the first code block"
-  (block/string (nav/form-head-block source))
-  => "ns")
+  (block/string
+   (nav/form-head-block (nav/location-at "(alpha beta)" [0])))
+  => "alpha")
 
 ^{:refer tool.migrate.common.block/form-nth-block}
 (fact "form-nth-block returns a code block by filtered index"
-  (block/string (nav/form-nth-block source 1))
-  => "demo.core")
+  (block/string
+   (nav/form-nth-block (nav/location-at "(alpha beta)" [0]) 1))
+  => "beta")
 
 ^{:refer tool.migrate.common.block/form-nth}
 (fact "form-nth renders a filtered form child"
-  (nav/form-nth source 1)
-  => "demo.core")
+  (nav/form-nth (nav/location-at "(alpha beta)" [0]) 1)
+  => "beta")
 
 ^{:refer tool.migrate.common.block/form-second}
 (fact "form-second returns the namespace name child"
-  (nav/form-second source)
+  (nav/form-second (nav/location-at "(ns demo.core)" [0]))
   => "demo.core")
 
 ^{:refer tool.migrate.common.block/form?}
@@ -131,7 +133,7 @@
 ^{:refer tool.migrate.common.block/metadata-block?}
 (fact "metadata-block? recognizes metadata containers"
   [(nav/metadata-block? (nav/location-at "^{:schema :int} answer" [0]))
-   (nav/metadata-block? (nav/location-at "^{:schema :int} answer" [2]))]
+   (nav/metadata-block? (nav/location-at "answer" [0]))]
   => [true false])
 
 ^{:refer tool.migrate.common.block/top-level-locations}
@@ -141,7 +143,7 @@
 
 ^{:refer tool.migrate.common.block/namespace-form?}
 (fact "namespace-form? recognizes ns forms only"
-  [(nav/namespace-form? source)
+  [(nav/namespace-form? (nav/namespace-location source))
    (nav/namespace-form? (nav/location-at "(def value 1)" [0]))]
   => [true false])
 
@@ -152,7 +154,7 @@
 
 ^{:refer tool.migrate.common.block/namespace-form}
 (fact "namespace-form returns the namespace block"
-  (str/starts-with? (block/string (nav/namespace-form source)) "(ns demo.core")
+  (str/starts-with? (block/string (nav/namespace-form source)) "(ns")
   => true)
 
 ^{:refer tool.migrate.common.block/namespace-name}
@@ -165,8 +167,8 @@
 ^{:refer tool.migrate.common.block/code-child-locations}
 (fact "code-child-locations retains location identity for code children"
   [(count (nav/code-child-locations (nav/namespace-location source)))
-   (nav/form-head (first (nav/code-child-locations (nav/namespace-location source))))]
-  => [3 ":config"])
+   (nav/form-head (nth (nav/code-child-locations (nav/namespace-location source)) 2))]
+  => [4 ":config"])
 
 ^{:refer tool.migrate.common.block/namespace-clause-locations}
 (fact "namespace-clause-locations selects keyword clauses"

@@ -1,12 +1,13 @@
 (ns code.vm.instrument.trace
+  (:config {:role :internal})
   (:require [code.vm.instrument :as instrument]
             [code.vm.model :as model]))
 
-(defn- invalid
+(defn invalid
   [message data]
   (throw (ex :argument data :ex/message message)))
 
-(defn- map-value
+(defn map-value
   [label value]
   (if (map? value)
     value
@@ -15,7 +16,7 @@
      {:field label
       :value value})))
 
-(defn- vector-value
+(defn vector-value
   [label value]
   (if (vector? value)
     value
@@ -24,7 +25,7 @@
      {:field label
       :value value})))
 
-(defn- target-kind
+(defn target-kind
   [target]
   (let [kind (:target-kind target)]
     (cond
@@ -36,6 +37,7 @@
        {:target target
         :target-kind kind}))))
 
+^{:public true}
 (defn live-machine?
   [value]
   (and (model/machine? value)
@@ -47,6 +49,7 @@
                    :instrument/provenance
                    :vm/mode]))))
 
+^{:public true}
 (defn target
   [machine]
   (if (live-machine? machine)
@@ -55,6 +58,7 @@
      "code.vm.instrument.trace requires a live trace machine"
      {:value machine})))
 
+^{:public true}
 (defn provenance
   [machine]
   (if (live-machine? machine)
@@ -63,6 +67,7 @@
      "code.vm.instrument.trace requires a live trace machine"
      {:value machine})))
 
+^{:public true}
 (defn create
   ([target]
    (create target {}))
@@ -104,7 +109,7 @@
          :options adapter-options
          :limits (:limits options)})))))
 
-(defn- same-target?
+(defn same-target?
   [target event]
   (and (= (:runtime target) (:runtime event))
        (= (:session-id target) (:session-id event))
@@ -112,7 +117,7 @@
        (= (:target-kind target) (:target-kind event))
        (= (:generation target) (:generation event))))
 
-(defn- validate-event
+(defn validate-event
   [machine event]
   (if (not (live-machine? machine))
     (invalid
@@ -164,7 +169,7 @@
         :actual actual
         :event event}))))
 
-(defn- event-stage-rule
+(defn event-stage-rule
   [event]
   (let [kind (:event event)]
     (cond
@@ -213,7 +218,7 @@
        {:event event
         :event/kind kind}))))
 
-(defn- data-value
+(defn data-value
   [event keyword-key string-key]
   (let [data (:data event)
         value (get data keyword-key)]
@@ -221,7 +226,7 @@
       (get data string-key)
       value)))
 
-(defn- terminal-status
+(defn terminal-status
   [event]
   (let [status (data-value event :status "status")]
     (cond
@@ -237,7 +242,7 @@
        {:status status
         :event event}))))
 
-(defn- event-status
+(defn event-status
   [event]
   (let [kind (:event event)]
     (cond
@@ -246,7 +251,7 @@
       (= kind :execution/terminal) (terminal-status event)
       :else :running)))
 
-(defn- without-last
+(defn without-last
   [values]
   (let [limit (dec (count values))]
     (loop [index 0
@@ -256,12 +261,12 @@
         (recur (inc index)
                (conj output (nth values index)))))))
 
-(defn- event-function
+(defn event-function
   [event]
   (or (get-in event [:location :function])
       (data-value event :function "function")))
 
-(defn- call-entry
+(defn call-entry
   [event]
   {:instrument/id (:instrument/id event)
    :target-id (:target-id event)
@@ -269,7 +274,7 @@
    :sequence (:sequence event)
    :function (event-function event)})
 
-(defn- next-calls
+(defn next-calls
   [state event]
   (let [calls (:instrument/calls state)
         kind (:event event)]
@@ -286,7 +291,7 @@
 
       :else calls)))
 
-(defn- next-suspension
+(defn next-suspension
   [state event]
   (let [kind (:event event)]
     (cond
@@ -297,7 +302,7 @@
           (= kind :execution/terminal)) nil
       :else (:suspension/event state))))
 
-(defn- event-state
+(defn event-state
   [machine event]
   (let [state (:vm/state machine)
         status (event-status event)
@@ -320,7 +325,7 @@
            :error error
            :status status)))
 
-(defn- event-source
+(defn event-source
   [event]
   (merge
    {:instrument/id (:instrument/id event)
@@ -333,7 +338,7 @@
     :event (:event event)}
    (or (:location event) {})))
 
-(defn- event-transition
+(defn event-transition
   [machine event]
   (let [[stage rule] (event-stage-rule event)
         status (event-status event)
@@ -353,6 +358,7 @@
                (data-value event :error "error")
                nil)})))
 
+^{:public true}
 (defn consume
   [machine event]
   (let [event (validate-event machine event)]
@@ -360,12 +366,14 @@
      machine
      (event-transition machine event))))
 
+^{:public true}
 (defn consume-all
   [machine events]
   (reduce consume
           machine
           (vector-value "events" events)))
 
+^{:public true}
 (defn from-events
   ([target events]
    (from-events target events {}))

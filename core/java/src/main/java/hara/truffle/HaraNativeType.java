@@ -7,6 +7,7 @@ import com.oracle.truffle.api.interop.UnsupportedMessageException;
 import com.oracle.truffle.api.library.ExportLibrary;
 import com.oracle.truffle.api.library.ExportMessage;
 import hara.lang.data.Map;
+import hara.lang.declaration.HaraAvailability;
 import hara.lang.protocol.IDisplay;
 import hara.lang.protocol.IMetadata;
 import hara.lang.protocol.INamespaced;
@@ -21,20 +22,45 @@ public final class HaraNativeType
     implements TruffleObject, IDisplay, INamespaced, IObjType {
   private final String name;
   private final List<String> methods;
+  private final HaraAvailability availability;
+  private final String capability;
   private final IMetadata metadata;
 
   HaraNativeType(String name, List<String> methods) {
-    this(name, methods, Map.Standard.EMPTY);
+    this(name, methods, HaraAvailability.PORTABLE, "", Map.Standard.EMPTY);
   }
 
-  private HaraNativeType(String name, List<String> methods, IMetadata metadata) {
+  HaraNativeType(
+      String name,
+      List<String> methods,
+      HaraAvailability availability,
+      String capability) {
+    this(name, methods, availability, capability, Map.Standard.EMPTY);
+  }
+
+  private HaraNativeType(
+      String name,
+      List<String> methods,
+      HaraAvailability availability,
+      String capability,
+      IMetadata metadata) {
     this.name = Objects.requireNonNull(name);
     this.methods = List.copyOf(methods);
+    this.availability = Objects.requireNonNull(availability);
+    this.capability = Objects.requireNonNull(capability);
     this.metadata = metadata == null ? Map.Standard.EMPTY : metadata;
   }
 
   public List<String> methods() {
     return methods;
+  }
+
+  public HaraAvailability availability() {
+    return availability;
+  }
+
+  public String capability() {
+    return capability;
   }
 
   @Override
@@ -54,7 +80,7 @@ public final class HaraNativeType
 
   @Override
   public HaraNativeType withMeta(IMetadata metadata) {
-    return new HaraNativeType(name, methods, metadata);
+    return new HaraNativeType(name, methods, availability, capability, metadata);
   }
 
   @Override

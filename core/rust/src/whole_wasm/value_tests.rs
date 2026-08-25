@@ -82,10 +82,10 @@ fn typed_module(schema_name: &str, schema: SchemaType) -> NativeModule {
 }
 
 fn struct_value(name: &str, fields: &[(&str, Value)]) -> Value {
-    let ty = Rc::new(StructType {
-        name: name.into(),
-        fields: fields.iter().map(|(field, _)| (*field).into()).collect(),
-    });
+    let ty = Rc::new(StructType::detached(
+        name.into(),
+        fields.iter().map(|(field, _)| (*field).into()).collect(),
+    ));
     Value::Struct(Rc::new(
         StructValue::from_values(
             ty,

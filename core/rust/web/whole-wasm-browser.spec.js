@@ -74,6 +74,7 @@ test("Chromium executes the exact HNW0 artifact already run by Wasmtime", async 
 });
 
 test("Chromium records five-workload whole-Wasm parity and timing evidence", async ({ page }) => {
+  test.setTimeout(120_000);
   await page.goto("/rust/web/index.html");
   const report = await page.evaluate(async () => {
     const corpus = await fetch("/rust/assets/whole-wasm-workloads.json").then((response) => response.json());

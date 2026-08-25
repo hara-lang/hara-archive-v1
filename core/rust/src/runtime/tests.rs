@@ -1387,10 +1387,17 @@ mod tests {
             "\"/a\""
         );
         assert_eq!(
-            runtime.eval_text("(File/parent \"/a/b\")").unwrap(),
-            "\"/a\""
+            runtime
+                .eval_text(
+                    "(try (File/parent \"/a/b\")\n                           (catch error (get (ex-data error) :ex/code)))",
+                )
+                .unwrap(),
+            ":native/capability-denied"
         );
-        assert_eq!(runtime.eval_text("(File/parent \"/\")").unwrap(), "nil");
+        assert_eq!(
+            runtime.eval_text("(path/parent \"/\")").unwrap(),
+            "\"/\""
+        );
         assert_eq!(
             runtime.eval_text("(path/join \"/a\" \"b\")").unwrap(),
             "\"/a/b\""
@@ -1403,7 +1410,7 @@ mod tests {
                        (catch error (get (ex-data error) :ex/code)))",
                 )
                 .unwrap(),
-            ":file/denied"
+            ":native/capability-denied"
         );
 
         runtime.install_memory_file_provider("/");
@@ -1515,10 +1522,13 @@ mod tests {
     #[test]
     fn hara_socket_operations_use_callback_providers() {
         let mut runtime = Runtime::new();
-        assert!(runtime
+        let error = runtime
             .eval_text("(socket/connect \"localhost\" 8080 {} (fn [error socket] socket))")
-            .unwrap_err()
-            .contains("unsupported or network access is denied"));
+            .unwrap_err();
+        assert!(
+            error.contains("native/capability-denied"),
+            "unexpected error: {error}"
+        );
 
         runtime.install_loopback_socket_provider();
         assert_eq!(
@@ -1682,7 +1692,7 @@ mod tests {
             )
             .unwrap_err();
         assert!(
-            error.contains("host/unavailable"),
+            error.contains("native/capability-denied"),
             "unexpected error: {error}"
         );
     }
@@ -1700,7 +1710,7 @@ mod tests {
             )
             .unwrap_err();
         assert!(
-            error.contains("host/unavailable"),
+            error.contains("native/capability-denied"),
             "unexpected error: {error}"
         );
     }
@@ -2140,10 +2150,14 @@ mod tests {
                             person (Person \"Ada\" 37)] \
                         [(std.native.Schema/kind schema) \
                          (= schema (std.native.Schema/of (var Person))) \
+                         (std.native.Schema/form schema) \
                          (:name person) (:age (map->Person {:name \"Ada\" :age 37})) \
                          (nil? (get (meta (var ->Person)) :schema))]))";
         let mut runtime = Runtime::new();
-        assert_eq!(runtime.eval_text(source).unwrap(), "[:struct true \"Ada\" 37 true]");
+        assert_eq!(
+            runtime.eval_text(source).unwrap(),
+            "[:struct true [:struct (var user/Person) [:name :str] [:age {:optional true} :int]] \"Ada\" 37 true]"
+        );
 
         assert!(runtime
             .eval_text("(defstruct Broken [[value :int] [value :str]])")
@@ -3648,6 +3662,12 @@ mod tests {
             let Form::Keyword(availability) = entry(native_type, "availability") else {
                 panic!("native :availability must be a keyword")
             };
+            let capability = native_type.iter().find_map(|(key, value)| {
+                matches!(key, Form::Keyword(name) if name == "capability").then(|| match value {
+                    Form::Keyword(capability) => capability.clone(),
+                    _ => panic!("native :capability must be a keyword"),
+                })
+            });
             assert!(
                 ["implemented", "capability-gated"].contains(&availability.as_str()),
                 "unsupported availability: {availability}"
@@ -3710,7 +3730,7 @@ mod tests {
                 name.clone(),
                 specified.last().unwrap().1.clone(),
                 availability.clone(),
-                (availability == "capability-gated").then(|| "native-runtime".to_owned()),
+                capability,
             ));
         }
 
@@ -7999,7 +8019,7 @@ mod tests {
                           (get (ex-data error) :ex/code)]))"
                 )
                 .unwrap(),
-            "[\"Host capability provider is unavailable\" :host/unavailable]"
+            "[\"std.native.Host/call requires capability :host-call\" :native/capability-denied]"
         );
         assert_eq!(
             first
@@ -8011,7 +8031,7 @@ mod tests {
                            (get (ex-data error) :ex/code))))"
                 )
                 .unwrap(),
-            ":host/unavailable"
+            ":native/capability-denied"
         );
         assert_eq!(
             kernel
@@ -8023,7 +8043,7 @@ mod tests {
                          (get (ex-data error) :ex/code)))"
                 )
                 .unwrap(),
-            ":host/unavailable"
+            ":native/capability-denied"
         );
     }
 

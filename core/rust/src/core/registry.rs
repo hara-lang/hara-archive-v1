@@ -126,6 +126,33 @@ impl NamedField {
     }
 }
 
+/// Canonical declaration data shared by a named type, its constructors, and
+/// the schema exposed through the type Var.  The runtime keeps this beside
+/// the type object rather than registering a second schema-owned identity.
+#[derive(Debug, Clone, PartialEq)]
+pub struct NamedDeclaration {
+    pub name: String,
+    pub mutable: bool,
+    pub fields: Vec<NamedField>,
+    pub schema: Form,
+    pub positional_constructor: String,
+    pub map_constructor: String,
+}
+
+impl NamedDeclaration {
+    pub(crate) fn new(name: String, mutable: bool, fields: Vec<NamedField>, schema: Form) -> Self {
+        let local_name = name.rsplit('/').next().unwrap_or(&name).to_owned();
+        Self {
+            name,
+            mutable,
+            fields,
+            schema,
+            positional_constructor: format!("->{local_name}"),
+            map_constructor: format!("map->{local_name}"),
+        }
+    }
+}
+
 pub(crate) fn named_value_schema_form(
     type_name: &str,
     mutable: bool,
@@ -150,12 +177,34 @@ pub(crate) fn named_value_schema_form(
 pub struct StructType {
     pub name: String,
     pub fields: Vec<String>,
+    pub declaration: Option<Rc<NamedDeclaration>>,
+}
+
+impl StructType {
+    pub(crate) fn detached(name: String, fields: Vec<String>) -> Self {
+        Self {
+            name,
+            fields,
+            declaration: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct MutableType {
     pub name: String,
     pub fields: Vec<String>,
+    pub declaration: Option<Rc<NamedDeclaration>>,
+}
+
+impl MutableType {
+    pub(crate) fn detached(name: String, fields: Vec<String>) -> Self {
+        Self {
+            name,
+            fields,
+            declaration: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -183,6 +232,8 @@ pub struct GuestProtocol {
 pub struct NativeType {
     pub name: String,
     pub methods: Vec<String>,
+    pub availability: NativeAvailability,
+    pub capability: Option<String>,
     pub metadata: Option<Rc<Metadata>>,
 }
 
@@ -381,6 +432,8 @@ pub(crate) fn native_descriptor_value(declaration: NativeDeclaration) -> Value {
             .iter()
             .map(|method| (*method).to_owned())
             .collect(),
+        availability: declaration.availability,
+        capability: declaration.capability.map(str::to_owned),
         metadata: None,
     }))
 }

@@ -1826,6 +1826,25 @@ public class HaraLanguageTest {
   }
 
   @Test
+  public void namedStructsExposeOneCanonicalSchemaForm() {
+    try (Context context = context()) {
+      assertEquals(
+          "[[:struct (var user/Person) [:name :str] [:age {:optional true} :int]] "
+              + "[:struct {:mutable? true} (var user/Cursor) "
+              + "[:position :int] [:limit {:optional true} :int]]]",
+          context
+              .eval(
+                  HaraLanguage.ID,
+                  "(do (defstruct Person [[name :str] [age {:optional true} :int]]) "
+                      + "    (defmutable Cursor [[position :int] "
+                      + "                         [limit {:optional true} :int]]) "
+                      + "    [(std.native.Schema/form (std.native.Schema/of (var Person))) "
+                      + "     (std.native.Schema/form (std.native.Schema/of (var Cursor)))])")
+              .toString());
+    }
+  }
+
+  @Test
   public void extendsStructsWithLanguageProtocolsIncludingIFn() {
     try (Context context = context()) {
       assertEquals(

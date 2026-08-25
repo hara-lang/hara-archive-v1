@@ -293,11 +293,32 @@
 
 (defn replace-current
   [loc replacement]
-  (zip/replace-right (location loc) (coerce-block replacement)))
+  (let [loc (location loc)
+        root (root-block loc)
+        range (location-range loc)
+        source (block/string root)
+        replacement (block/string (coerce-block replacement))
+        edited (str (str/slice source 0 (:start-offset range))
+                     replacement
+                     (str/slice source (:end-offset range) (str/length source)))
+        parsed (if-let [file (:file (:props root))]
+                 (block/parse-source edited {:file file})
+                 edited)
+        output (block-input parsed)]
+    (location-at output (path loc))))
 
 (defn delete-current
   [loc]
-  (zip/delete-right (location loc)))
+  (let [loc (location loc)
+        root (root-block loc)
+        range (location-range loc)
+        source (block/string root)
+        edited (str (str/slice source 0 (:start-offset range))
+                    (str/slice source (:end-offset range) (str/length source)))
+        parsed (if-let [file (:file (:props root))]
+                 (block/parse-source edited {:file file})
+                 edited)]
+    (location parsed)))
 
 (defn replace-at
   [input indexes replacement]

@@ -18,7 +18,7 @@ public class StdLibFsTest {
     try (Context context = Context.newBuilder(HaraLanguage.ID).build()) {
       assertTrue(context.eval(HaraLanguage.ID, "(promise? (File/read \"/missing\"))").asBoolean());
       assertEquals(
-          ":file/denied",
+          ":native/capability-denied",
           context
               .eval(
                   HaraLanguage.ID,

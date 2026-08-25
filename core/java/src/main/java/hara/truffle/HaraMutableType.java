@@ -8,6 +8,14 @@ public final class HaraMutableType extends HaraType {
     super(name, fields);
   }
 
+  HaraMutableType(
+      String name,
+      String[] fields,
+      HalcSchema.NamedField[] declarationFields,
+      Object schema) {
+    super(name, fields, declarationFields, schema);
+  }
+
   @Override
   public Object construct(Object[] values) throws ArityException {
     requireArity(values.length);

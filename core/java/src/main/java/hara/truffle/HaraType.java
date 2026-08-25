@@ -10,10 +10,23 @@ import com.oracle.truffle.api.library.ExportMessage;
 public class HaraType implements TruffleObject {
   private final String name;
   private final String[] fields;
+  private final HalcSchema.NamedField[] declarationFields;
+  private final Object schema;
 
   public HaraType(String name, String[] fields) {
+    this(name, fields, null, null);
+  }
+
+  HaraType(
+      String name,
+      String[] fields,
+      HalcSchema.NamedField[] declarationFields,
+      Object schema) {
     this.name = name;
     this.fields = fields.clone();
+    this.declarationFields =
+        declarationFields == null ? null : declarationFields.clone();
+    this.schema = schema;
   }
 
   public int arity() {
@@ -46,6 +59,14 @@ public class HaraType implements TruffleObject {
 
   String[] fields() {
     return fields.clone();
+  }
+
+  public HalcSchema.NamedField[] declarationFields() {
+    return declarationFields == null ? null : declarationFields.clone();
+  }
+
+  public Object schema() {
+    return schema;
   }
 
   @ExportMessage

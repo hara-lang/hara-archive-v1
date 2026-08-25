@@ -11,7 +11,7 @@ on:
       - 'core/lib/test/code/framework*'
       - 'core/lib/test/code/manage*'
       - 'core/lib/test/tool/migrate_test.hal'
-      - 'core/lib/test/tool/migrate_navigation_test.hal'
+      - 'core/lib/test/tool/migrate/common/block_test.hal'
       - 'core/lib/test/tool/migrate/**'
       - 'core/lib/test/work/verify/**'
       - 'core/spec/tool-migrate/**'
@@ -29,7 +29,7 @@ on:
       - 'core/lib/test/code/framework*'
       - 'core/lib/test/code/manage*'
       - 'core/lib/test/tool/migrate_test.hal'
-      - 'core/lib/test/tool/migrate_navigation_test.hal'
+      - 'core/lib/test/tool/migrate/common/block_test.hal'
       - 'core/lib/test/tool/migrate/**'
       - 'core/lib/test/work/verify/**'
       - 'core/spec/tool-migrate/**'
@@ -139,7 +139,7 @@ jobs:
             core/lib/test/code/framework_test.hal \
             core/lib/test/code/manage_cli_test.hal \
             core/lib/test/tool/migrate_test.hal \
-            core/lib/test/tool/migrate_navigation_test.hal \
+            core/lib/test/tool/migrate/common/block_test.hal \
             core/lib/test/tool/migrate/common/clojure_test.hal \
             core/lib/test/tool/migrate/common/corpus_test.hal \
             core/lib/test/tool/migrate/policy/foundation/conformance_test.hal \

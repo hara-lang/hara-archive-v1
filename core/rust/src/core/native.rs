@@ -2087,6 +2087,13 @@ pub fn call_host_value(service: Value, target: Value, arguments: Value) -> Resul
         Value::Tuple(values) => values.iter().cloned().collect(),
         _ => return Err("std.native.Host/call arguments must be a vector".into()),
     };
+    if !native_capability_granted("host-call") {
+        return Ok(native_capability_denied_promise(
+            "Host",
+            "call",
+            "host-call",
+        ));
+    }
     HOST_CALL_HANDLER.with(|active| {
         let Some(handler) = active.borrow().as_ref().cloned() else {
             let promise = Promise::new();

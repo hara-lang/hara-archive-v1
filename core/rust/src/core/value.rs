@@ -204,9 +204,18 @@ fn uuid_from_value(value: &Value) -> Result<uuid::Uuid, String> {
     }
 }
 
+fn random_uuid() -> uuid::Uuid {
+    let mut bytes = [0u8; 16];
+    getrandom::getrandom(&mut bytes)
+        .unwrap_or_else(|_| panic!("could not retrieve random bytes for uuid"));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    uuid::Uuid::from_bytes(bytes)
+}
+
 pub(crate) fn uuid_value(values: &[Value]) -> Result<Value, String> {
     let value = match values {
-        [] => uuid::Uuid::new_v4(),
+        [] => random_uuid(),
         [value] => uuid_from_value(value)?,
         [Value::Number(most), Value::Number(least)] => uuid_from_parts(*most, *least),
         _ if values.len() == 2 => {
@@ -1034,6 +1043,7 @@ fn native_kernel_provider(native_type: &str, method: &str) -> Result<Value, Stri
     let display_name = native_display_name(native_type, method);
     let method = method.to_owned();
     Ok(native_variadic_function(&display_name, move |arguments| {
+        require_native_capability("Kernel", &method, "kernel")?;
         kernel_provider(&method)?(method.clone(), arguments)
     }))
 }
@@ -1041,7 +1051,9 @@ fn native_kernel_provider(native_type: &str, method: &str) -> Result<Value, Stri
 fn native_sandbox_provider(native_type: &str, method: &str) -> Result<Value, String> {
     let display_name = native_display_name(native_type, method);
     let operation = format!("sandbox-{method}");
+    let method = method.to_owned();
     Ok(native_variadic_function(&display_name, move |arguments| {
+        require_native_capability("Sandbox", &method, "sandbox")?;
         kernel_provider(&operation)?(operation.clone(), arguments)
     }))
 }
@@ -1066,30 +1078,40 @@ fn native_package_provider(native_type: &str, method: &str) -> Result<Value, Str
     let display_name = native_display_name(native_type, method);
     let method = method.to_owned();
     Ok(native_variadic_function(&display_name, move |arguments| {
+        require_native_capability("Package", &method, "kernel")?;
         native_package_values(&method, arguments, &mut HashMap::new())
     }))
 }
 
 fn native_os_provider(native_type: &str, method: &str) -> Result<Value, String> {
     let display_name = native_display_name(native_type, method);
-    let operation = native_display_name(native_type, method);
+    let native_type = native_type.to_owned();
+    let method = method.to_owned();
+    let operation = native_display_name(&native_type, &method);
     Ok(native_variadic_function(&display_name, move |arguments| {
+        if native_type == "Process" {
+            require_native_capability("Process", &method, "native-runtime")?;
+        }
         os_values(&operation, arguments)
     }))
 }
 
 fn native_file_provider(native_type: &str, method: &str) -> Result<Value, String> {
     let display_name = native_display_name(native_type, method);
-    let operation = native_display_name(native_type, method);
+    let method = method.to_owned();
+    let operation = native_display_name(native_type, &method);
     Ok(native_variadic_function(&display_name, move |arguments| {
+        require_native_capability("File", &method, "file")?;
         file_values(&operation, arguments)
     }))
 }
 
 fn native_socket_provider(native_type: &str, method: &str) -> Result<Value, String> {
     let display_name = native_display_name(native_type, method);
-    let operation = native_display_name(native_type, method);
+    let method = method.to_owned();
+    let operation = native_display_name(native_type, &method);
     Ok(native_variadic_function(&display_name, move |arguments| {
+        require_native_capability("Socket", &method, "network")?;
         socket_values(&operation, arguments)
     }))
 }
@@ -1193,6 +1215,13 @@ fn native_host_provider(native_type: &str, method: &str) -> Result<Value, String
     let display_name = native_display_name(native_type, method);
     let method = method.to_owned();
     Ok(native_variadic_function(&display_name, move |arguments| {
+        if !native_capability_granted("host-call") {
+            return Ok(native_capability_denied_promise(
+                "Host",
+                &method,
+                "host-call",
+            ));
+        }
         native_host_values(&method, arguments)
     }))
 }

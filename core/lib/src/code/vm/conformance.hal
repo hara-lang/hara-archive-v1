@@ -1,26 +1,30 @@
 (ns code.vm.conformance
+  (:config {:role :internal})
   (:require [code.vm.model :as model]
             [code.vm.interpreter :as interpreter]
             [code.vm.halc :as halc]
             [code.vm.bytecode :as bytecode]))
 
+^{:public true}
 (def +report-schema+
   "hal.code-vm-conformance/0-alpha")
 
+^{:public true}
 (def +report-statuses+
   #{:pass :fail})
 
+^{:public true}
 (def +stage-kinds+
   [:interpreter :halc :bytecode])
 
 (def +runtime-kinds+
   [:interpreter :bytecode])
 
-(defn- invalid
+(defn invalid
   [message data]
   (throw (ex :argument data :ex/message message)))
 
-(defn- map-value
+(defn map-value
   [label value]
   (if (map? value)
     value
@@ -29,7 +33,7 @@
      {:field label
       :value value})))
 
-(defn- vector-value
+(defn vector-value
   [label value]
   (if (vector? value)
     value
@@ -38,7 +42,7 @@
      {:field label
       :value value})))
 
-(defn- non-empty-string
+(defn non-empty-string
   [label value]
   (if (and (string? value)
            (> (count value) 0))
@@ -48,13 +52,13 @@
      {:field label
       :value value})))
 
-(defn- supported-stage?
+(defn supported-stage?
   [kind]
   (or (= kind :interpreter)
       (= kind :halc)
       (= kind :bytecode)))
 
-(defn- normalize-required
+(defn normalize-required
   [value]
   (let [required (vector-value "required stages"
                                (vec (or value +stage-kinds+)))]
@@ -69,30 +73,30 @@
      []
      required)))
 
-(defn- machine-source-id
+(defn machine-source-id
   [machine]
   (get-in machine [:vm/options :source/index :source/id]))
 
-(defn- result-display
+(defn result-display
   [result]
   (if (and (map? result)
            (has? result :value/display))
     (:value/display result)
     result))
 
-(defn- result-type
+(defn result-type
   [result]
   (if (and (map? result)
            (has? result :value/type))
     (:value/type result)
     nil))
 
-(defn- terminal-event
+(defn terminal-event
   [machine]
   (let [transition (last (model/trace machine))]
     (get-in transition [:step/events 0])))
 
-(defn- machine-error-category
+(defn machine-error-category
   [machine]
   (let [event (terminal-event machine)]
     (or
@@ -102,7 +106,7 @@
      (:error/type event)
      (if (:vm/error machine) :runtime/error nil))))
 
-(defn- contiguous-indices?
+(defn contiguous-indices?
   [trace]
   (loop [remaining (vec trace)
          previous nil]
@@ -114,11 +118,12 @@
           false
           (recur (vec (rest remaining)) index))))))
 
-(defn- trace-bounded?
+(defn trace-bounded?
   [machine]
   (<= (count (model/trace machine))
       (get-in machine [:vm/limits :history])))
 
+^{:public true}
 (defn stage-summary
   [kind machine]
   (if (nil? machine)
@@ -158,7 +163,7 @@
        {:stage kind
         :value machine}))))
 
-(defn- summaries
+(defn summaries
   [machines]
   (reduce
    (fn [output kind]
@@ -167,7 +172,7 @@
    {}
    +stage-kinds+))
 
-(defn- supported-summaries
+(defn supported-summaries
   [stage-summaries]
   (reduce
    (fn [output kind]
@@ -178,7 +183,7 @@
    []
    +stage-kinds+))
 
-(defn- all-equal?
+(defn all-equal?
   [values]
   (let [values (vec values)]
     (if (<= (count values) 1)
@@ -189,14 +194,14 @@
            (= expected value))
          (rest values))))))
 
-(defn- check
+(defn check
   [id passing expected actual]
   {:check/id id
    :check/pass (if passing true false)
    :check/expected expected
    :check/actual actual})
 
-(defn- missing-required
+(defn missing-required
   [stage-summaries required]
   (reduce
    (fn [output kind]
@@ -206,7 +211,7 @@
    []
    required))
 
-(defn- non-terminal-required
+(defn non-terminal-required
   [stage-summaries required]
   (reduce
    (fn [output kind]
@@ -218,7 +223,7 @@
    []
    required))
 
-(defn- runtime-check
+(defn runtime-check
   [stage-summaries]
   (let [interpreter-summary (get stage-summaries :interpreter)
         bytecode-summary (get stage-summaries :bytecode)
@@ -275,7 +280,7 @@
                             (:stage/error-category bytecode-summary)
                             nil)})))))
 
-(defn- halc-check
+(defn halc-check
   [stage-summaries]
   (let [summary (get stage-summaries :halc)]
     (if (not (:stage/supported summary))
@@ -290,7 +295,7 @@
                true
                parity)))))
 
-(defn- source-check
+(defn source-check
   [stage-summaries expected-source-id]
   (let [source-ids
         (vec
@@ -312,7 +317,7 @@
      (or expected-source-id :shared)
      source-ids)))
 
-(defn- trace-check
+(defn trace-check
   [stage-summaries]
   (let [supported (supported-summaries stage-summaries)
         states
@@ -335,7 +340,7 @@
      true
      states)))
 
-(defn- transition-concept
+(defn transition-concept
   [kind transition]
   (cond
     (= kind :interpreter) :evaluation/order
@@ -344,7 +349,7 @@
     :execution/instruction
     :else :execution/control))
 
-(defn- teaching-annotation
+(defn teaching-annotation
   [kind transition]
   {:teaching/concept (transition-concept kind transition)
    :teaching/focus (:step/source transition)
@@ -358,6 +363,7 @@
     :step/rule (:step/rule transition)
     :step/events (:step/events transition)}})
 
+^{:public true}
 (defn teaching-annotations
   [machines]
   (let [machines (map-value "machines" machines)]
@@ -375,6 +381,7 @@
      []
      +stage-kinds+)))
 
+^{:public true}
 (defn report?
   [value]
   (and (map? value)
@@ -392,6 +399,7 @@
         (:conformance/checks value))
        (vector? (:conformance/teaching value))))
 
+^{:public true}
 (defn report
   ([fixture-id machines]
    (report fixture-id machines {}))
@@ -430,7 +438,7 @@
       :conformance/checks checks
       :conformance/teaching annotations})))
 
-(defn- source-options
+(defn source-options
   [fixture]
   {:source
    {:id (or (:fixture/source-id fixture)
@@ -439,6 +447,7 @@
    :limits (:fixture/limits fixture)
    :run (or (:fixture/run fixture) {})})
 
+^{:public true}
 (defn run
   [fixture]
   (let [fixture (map-value "fixture" fixture)

@@ -1,8 +1,11 @@
-(ns code.vm.instrument)
+(ns code.vm.instrument
+  (:config {:role :internal}))
 
+^{:public true}
 (def +protocol+
   "hara.instrumentation/0-alpha")
 
+^{:public true}
 (def +event-schema+
   "hara.instrumentation.event/0-alpha")
 
@@ -87,11 +90,11 @@
    :depth 16
    :bytes 65536})
 
-(defn- invalid
+(defn invalid
   [message data]
   (throw (ex-info message data)))
 
-(defn- map-value
+(defn map-value
   [label value]
   (if (map? value)
     value
@@ -100,7 +103,7 @@
      {:field label
       :value value})))
 
-(defn- non-empty-string
+(defn non-empty-string
   [label value]
   (if (and (string? value)
            (> (count value) 0))
@@ -110,7 +113,7 @@
      {:field label
       :value value})))
 
-(defn- instrument-id
+(defn instrument-id
   [value]
   (if (or (keyword? value)
           (and (string? value)
@@ -121,7 +124,7 @@
      {:field :instrument/id
       :value value})))
 
-(defn- non-negative-integer
+(defn non-negative-integer
   [label value]
   (if (and (long? value)
            (>= value 0))
@@ -131,7 +134,7 @@
      {:field label
       :value value})))
 
-(defn- positive-integer
+(defn positive-integer
   [label value]
   (if (and (long? value)
            (> value 0))
@@ -141,7 +144,7 @@
      {:field label
       :value value})))
 
-(defn- member
+(defn member
   [label allowed value]
   (if (has? allowed value)
     value
@@ -151,7 +154,7 @@
       :value value
       :allowed allowed})))
 
-(defn- member-set
+(defn member-set
   [label allowed value]
   (let [value (or value #{})
         value (cond
@@ -169,7 +172,7 @@
      #{}
      value)))
 
-(defn- contains-member?
+(defn contains-member?
   [values allowed]
   (reduce
    (fn [found value]
@@ -177,7 +180,7 @@
    false
    values))
 
-(defn- event-capability
+(defn event-capability
   [event]
   (cond
     (= event :semantic/boundary) :event/semantic-boundary
@@ -206,7 +209,7 @@
 
     :else false))
 
-(defn- projection-limit
+(defn projection-limit
   [label value]
   (if (nil? value)
     nil
@@ -222,7 +225,7 @@
                (str label " bytes")
                (:bytes value))})))
 
-(defn- projection-capabilities
+(defn projection-capabilities
   [projection]
   (reduce
    (fn [required entry]
@@ -291,6 +294,7 @@
                 +runtimes+
                 (:runtimes value))}))
 
+^{:public true}
 (defn registration
   [options]
   (let [options (map-value "registration" options)
@@ -365,6 +369,7 @@
         (or (:instrument/queue-capacity options) 256))
        nil)}))
 
+^{:public true}
 (defn registration?
   [value]
   (and (map? value)
@@ -384,6 +389,7 @@
            (and (long? (:instrument/queue-capacity value))
                 (> (:instrument/queue-capacity value) 0)))))
 
+^{:public true}
 (defn target
   [options]
   (let [options (map-value "target" options)]
@@ -405,6 +411,7 @@
                     +capabilities+
                     (:capabilities options))}))
 
+^{:public true}
 (defn target?
   [value]
   (and (map? value)
@@ -419,7 +426,7 @@
             (>= (:generation value) 0))
        (set? (:capabilities value))))
 
-(defn- normalize-span
+(defn normalize-span
   [value]
   (if (nil? value)
     nil
@@ -433,7 +440,7 @@
          {:start start
           :end end})))))
 
-(defn- normalize-location
+(defn normalize-location
   [target-kind event value]
   (if (nil? value)
     nil
@@ -461,6 +468,7 @@
        :function (:function value)
        :ip ip})))
 
+^{:public true}
 (defn event
   [registration target sequence event options]
   (if (not (registration? registration))
@@ -531,6 +539,7 @@
                 (:location options))
      :data data}))
 
+^{:public true}
 (defn event?
   [value]
   (and (map? value)
@@ -561,6 +570,7 @@
                  (or (not (nil? (get-in value [:location :form/path])))
                      (has? (:data value) :semantic/form))))))
 
+^{:public true}
 (defn trace-provenance
   [mode options]
   (let [mode (member "trace mode" #{:live :replay} mode)
