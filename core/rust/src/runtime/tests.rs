@@ -3576,10 +3576,10 @@ mod tests {
         }
         fn wrapper_source(path: &str) -> String {
             // The native contract still names the retired std.sandbox wrapper.
-            // Its implementation now lives in code.vm.kernel and is published
-            // through std.lib.kernel, so resolve that manifest alias here.
+            // Its implementation now lives in std.lib.kernel, so resolve that
+            // manifest alias here.
             let candidates = match path {
-                "lib/src/std/sandbox.hal" => vec!["lib/src/code/vm/kernel.hal", path],
+                "lib/src/std/sandbox.hal" => vec!["lib/src/std/lib/kernel.hal", path],
                 "lib/src/std/lib/package.hal" => {
                     vec!["lib/src/code/project/package.hal", path]
                 }

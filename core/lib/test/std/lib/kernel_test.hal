@@ -2,44 +2,175 @@
   (:use code.test)
   (:require [std.lib.kernel :as kernel]))
 
-(def results
-  [(fact "std.lib.kernel publishes the sandbox lifecycle"
-     [(fn? kernel/sandbox-open)
-      (fn? kernel/sandbox-eval)
-      (fn? kernel/sandbox-call)
-      (fn? kernel/sandbox-cancel)
-      (fn? kernel/sandbox-status)
-      (fn? kernel/sandbox-close)]
-     => [true true true true true true])
+(defn native-error
+  [f]
+  (try
+    (do
+      (f)
+      {:status :returned})
+    (catch error
+      (let [data (ex-data error)]
+        {:status :error
+         :code (:ex/code data)
+         :method (:native/method data)}))))
 
-   (fact "std.lib.kernel publishes sessions resources filesystems and capabilities"
-     [(fn? kernel/session-create)
-      (fn? kernel/session-close)
-      (fn? kernel/session-list)
-      (fn? kernel/session-info)
-      (fn? kernel/session-eval)
-      (fn? kernel/session-namespace)
-      (fn? kernel/session-complete)
-      (fn? kernel/resource-register)
-      (fn? kernel/resource-remove)
-      (fn? kernel/resource-list)
-      (fn? kernel/filesystem-create)
-      (fn? kernel/filesystem-attach)
-      (fn? kernel/filesystem-detach)
-      (fn? kernel/filesystem-info)
-      (fn? kernel/filesystem-close)
-      (fn? kernel/capabilities)]
-     => [true true true true true true true true
-         true true true true true true true true])
+(fact "std.lib.kernel owns its native wrappers"
+  [(get (Runtime/namespace 'std.lib.kernel) :namespace/role)
+   (nil? (get (ns-publics 'std.lib.kernel) 'sandbox-open))]
+  => [:internal false])
 
-   ^{:refer std.lib.kernel/sandbox-open}
-   (fact "sandbox-open remains the canonical prefixed operation"
-     (fn? kernel/sandbox-open)
-     => true)
+^{:refer std.lib.kernel/sandbox-open}
+(fact "sandbox-open calls the native sandbox boundary"
+  (native-error (fn [] (kernel/sandbox-open {})))
+  => {:status :error
+      :code :native/capability-denied
+      :method "open"})
 
-   ^{:refer std.lib.kernel/capabilities}
-   (fact "capabilities remains the canonical kernel inspection operation"
-     (fn? kernel/capabilities)
-     => true)])
+^{:refer std.lib.kernel/sandbox-eval}
+(fact "sandbox-eval calls the native sandbox boundary"
+  (native-error (fn [] (kernel/sandbox-eval 1 "(+ 1 2)")))
+  => {:status :error
+      :code :native/capability-denied
+      :method "eval"})
+
+^{:refer std.lib.kernel/sandbox-call}
+(fact "sandbox-call calls the native sandbox boundary"
+  (native-error (fn [] (kernel/sandbox-call 1 "demo/run" [])))
+  => {:status :error
+      :code :native/capability-denied
+      :method "call"})
+
+^{:refer std.lib.kernel/sandbox-cancel}
+(fact "sandbox-cancel calls the native sandbox boundary"
+  (native-error (fn [] (kernel/sandbox-cancel 1)))
+  => {:status :error
+      :code :native/capability-denied
+      :method "cancel"})
+
+^{:refer std.lib.kernel/sandbox-status}
+(fact "sandbox-status calls the native sandbox boundary"
+  (native-error (fn [] (kernel/sandbox-status 1)))
+  => {:status :error
+      :code :native/capability-denied
+      :method "status"})
+
+^{:refer std.lib.kernel/sandbox-close}
+(fact "sandbox-close calls the native sandbox boundary"
+  (native-error (fn [] (kernel/sandbox-close 1)))
+  => {:status :error
+      :code :native/capability-denied
+      :method "close"})
+
+^{:refer std.lib.kernel/session-create}
+(fact "session-create calls the native kernel boundary"
+  (native-error (fn [] (kernel/session-create "kernel-test")))
+  => {:status :error
+      :code :native/capability-denied
+      :method "session-create"})
+
+^{:refer std.lib.kernel/session-close}
+(fact "session-close calls the native kernel boundary"
+  (native-error (fn [] (kernel/session-close "kernel-test")))
+  => {:status :error
+      :code :native/capability-denied
+      :method "session-close"})
+
+^{:refer std.lib.kernel/session-list}
+(fact "session-list calls the native kernel boundary"
+  (native-error (fn [] (kernel/session-list)))
+  => {:status :error
+      :code :native/capability-denied
+      :method "session-list"})
+
+^{:refer std.lib.kernel/session-info}
+(fact "session-info calls the native kernel boundary"
+  (native-error (fn [] (kernel/session-info "kernel-test")))
+  => {:status :error
+      :code :native/capability-denied
+      :method "session-info"})
+
+^{:refer std.lib.kernel/session-eval}
+(fact "session-eval calls the native kernel boundary"
+  (native-error (fn [] (kernel/session-eval "kernel-test" "1")))
+  => {:status :error
+      :code :native/capability-denied
+      :method "session-eval"})
+
+^{:refer std.lib.kernel/session-namespace}
+(fact "session-namespace calls the native kernel boundary"
+  (native-error (fn [] (kernel/session-namespace "kernel-test")))
+  => {:status :error
+      :code :native/capability-denied
+      :method "session-namespace"})
+
+^{:refer std.lib.kernel/session-complete}
+(fact "session-complete calls the native kernel boundary"
+  (native-error (fn [] (kernel/session-complete "kernel-test" "std.lib")))
+  => {:status :error
+      :code :native/capability-denied
+      :method "session-complete"})
+
+^{:refer std.lib.kernel/resource-register}
+(fact "resource-register calls the native kernel boundary"
+  (native-error (fn [] (kernel/resource-register "kernel/test" "1")))
+  => {:status :error
+      :code :native/capability-denied
+      :method "resource-register"})
+
+^{:refer std.lib.kernel/resource-remove}
+(fact "resource-remove calls the native kernel boundary"
+  (native-error (fn [] (kernel/resource-remove "kernel/test")))
+  => {:status :error
+      :code :native/capability-denied
+      :method "resource-remove"})
+
+^{:refer std.lib.kernel/resource-list}
+(fact "resource-list calls the native kernel boundary"
+  (native-error (fn [] (kernel/resource-list)))
+  => {:status :error
+      :code :native/capability-denied
+      :method "resource-list"})
+
+^{:refer std.lib.kernel/filesystem-create}
+(fact "filesystem-create calls the native kernel boundary"
+  (native-error (fn [] (kernel/filesystem-create)))
+  => {:status :error
+      :code :native/capability-denied
+      :method "filesystem-create"})
+
+^{:refer std.lib.kernel/filesystem-attach}
+(fact "filesystem-attach calls the native kernel boundary"
+  (native-error (fn [] (kernel/filesystem-attach)))
+  => {:status :error
+      :code :native/capability-denied
+      :method "filesystem-attach"})
+
+^{:refer std.lib.kernel/filesystem-detach}
+(fact "filesystem-detach calls the native kernel boundary"
+  (native-error (fn [] (kernel/filesystem-detach)))
+  => {:status :error
+      :code :native/capability-denied
+      :method "filesystem-detach"})
+
+^{:refer std.lib.kernel/filesystem-info}
+(fact "filesystem-info calls the native kernel boundary"
+  (native-error (fn [] (kernel/filesystem-info)))
+  => {:status :error
+      :code :native/capability-denied
+      :method "filesystem-info"})
+
+^{:refer std.lib.kernel/filesystem-close}
+(fact "filesystem-close calls the native kernel boundary"
+  (native-error (fn [] (kernel/filesystem-close)))
+  => {:status :error
+      :code :native/capability-denied
+      :method "filesystem-close"})
+
+^{:refer std.lib.kernel/capabilities}
+(fact "capabilities calls the native kernel boundary"
+  (native-error (fn [] (kernel/capabilities)))
+  => {:status :error
+      :code :native/capability-denied
+      :method "capabilities"})
 
 (pr-str (run '[std.lib.kernel-test]))

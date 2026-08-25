@@ -26,12 +26,12 @@ public class SandboxSubstrateTest {
   @Test
   public void nativeSandboxSurfaceUsesTheOwningKernel() {
     try (SessionKernel kernel = new SessionKernel(false, false)) {
-      kernel.root().eval("(require 'code.vm.kernel)");
+      kernel.root().eval("(require 'std.lib.kernel)");
       long id =
           kernel
               .root()
               .eval(
-                  "(deref (code.vm.kernel/sandbox-open {:protocol \"hara.sandbox/0-alpha\" "
+                  "(deref (std.lib.kernel/sandbox-open {:protocol \"hara.sandbox/0-alpha\" "
                       + ":provider :in-process :runtime \"hara.standard/0-alpha\" "
                       + ":entry-namespace 'user :bundles [] :mount nil :provider-options {} "
                       + ":limits {:source-bytes 65536 :result-bytes 1048576 "
@@ -40,28 +40,28 @@ public class SandboxSubstrateTest {
               .asLong();
       assertEquals(
           42L,
-          kernel.root().eval("(deref (code.vm.kernel/sandbox-eval " + id + " \"(+ 40 2)\"))").asLong());
+          kernel.root().eval("(deref (std.lib.kernel/sandbox-eval " + id + " \"(+ 40 2)\"))").asLong());
       assertEquals(
           6L,
           kernel
               .root()
-              .eval("(deref (code.vm.kernel/sandbox-call " + id + " 'std.foundation/+ [1 2 3]))")
+              .eval("(deref (std.lib.kernel/sandbox-call " + id + " 'std.foundation/+ [1 2 3]))")
               .asLong());
       assertFalse(
           kernel
               .root()
-              .eval("(:sandbox/secure (code.vm.kernel/sandbox-status " + id + "))")
+              .eval("(:sandbox/secure (std.lib.kernel/sandbox-status " + id + "))")
               .asBoolean());
-      kernel.root().eval("(deref (code.vm.kernel/sandbox-close " + id + "))");
+      kernel.root().eval("(deref (std.lib.kernel/sandbox-close " + id + "))");
       assertThrows(
           RuntimeException.class,
-          () -> kernel.root().eval("(code.vm.kernel/sandbox-status " + id + ")"));
+          () -> kernel.root().eval("(std.lib.kernel/sandbox-status " + id + ")"));
       assertEquals(
           ":sandbox/invalid-spec",
           kernel
               .root()
               .eval(
-                  "(try (deref (code.vm.kernel/sandbox-open {:unknown true})) "
+                  "(try (deref (std.lib.kernel/sandbox-open {:unknown true})) "
                       + "(catch Throwable error (:ex/code (ex-data error))))")
               .toString());
     }

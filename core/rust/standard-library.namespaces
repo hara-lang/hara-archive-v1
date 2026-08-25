@@ -61,7 +61,6 @@ code.vm.halc
 code.vm.instrument
 code.vm.instrument.trace
 code.vm.interpreter
-code.vm.kernel
 code.vm.model
 code.vm.source
 crypto.ext.noir

@@ -27,6 +27,41 @@
      :internal :internal :internal true true])
 
    (test-check
+    "code.vm exposes the live instrumentation trace surface"
+    (let [registration
+          (vm/instrumentation-registration
+           {:instrument/id :code.vm/root-test
+            :session-id "root-test"
+            :instrument/capabilities #{:event/call}
+            :instrument/events #{:call/enter}})
+          target
+          (vm/instrumentation-target
+           {:target-id "root-execution"
+            :target-kind :interpreter
+            :runtime :rust
+            :session-id "root-test"
+            :generation 1
+            :capabilities #{:event/call}})
+          event
+          (vm/instrumentation-event
+           registration
+           target
+           1
+           :call/enter
+           {:location {:source-id "root/source"
+                       :form/path [0]
+                       :function "root"}})
+          machine (vm/live-trace-create target)
+          consumed (vm/live-trace-consume machine event)]
+      [(:event event)
+       (vm/live-trace-machine? consumed)
+       (:vm/status consumed)
+       (:vm/step consumed)
+       (:instrument/event (get-in consumed [:vm/state]))
+       (:step/rule (first (vm/trace consumed)))])
+    [:call/enter true :running 1 :call/enter :instrument/call-enter])
+
+   (test-check
     "machine snapshots use one portable contract"
     (let [machine
           (vm/machine
