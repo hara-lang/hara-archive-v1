@@ -1,8 +1,8 @@
 {
   "schema": "hara.declaration-compatibility.v1",
   "protocolNamespace": "std.protocol.<ascii-lowercase-name>",
-  "protocolCount": 75,
-  "portableProtocolCount": 60,
+  "protocolCount": 76,
+  "portableProtocolCount": 61,
   "capabilityProtocolCount": 15,
   "declaredMethodCount": 129,
   "nativeTypeCount": 33,
@@ -16,7 +16,7 @@
     "INamespaced", "INth", "IOFn", "IObjType", "IPair", "IPeekFirst", "IPeekLast",
     "IPersistent", "IPromise", "IPointer", "IPopFirst", "IPopLast", "IPushFirst",
     "IPushLast", "IRealize", "IReduce", "IReset", "ISpace", "IToMutable", "IToPersistent",
-    "IWatch", "ISetType", "IStreamWrite", "IAbort", "IStreamPoll", "IStreamOffer", "IClosed", "IFlush",
+    "IWatch", "ISetType", "ISequential", "IStreamWrite", "IAbort", "IStreamPoll", "IStreamOffer", "IClosed", "IFlush",
     "IStreamDuplex", "IWork", "IWorkExecutor", "IWorkStore", "IWorkRef", "IWorkHost",
     "IWorkRun", "IMatch", "IMetadata", "IStringLike"
   ],

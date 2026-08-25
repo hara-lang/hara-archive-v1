@@ -1,14 +1,15 @@
 package hara.lang.data;
 
 import hara.lang.data.types.ILinkedType;
-import hara.lang.data.types.ISequentialType;
+import hara.lang.protocol.ISequential;
 import hara.lang.data.types.ObjPersistent;
 import hara.lang.protocol.IColl;
 import hara.lang.protocol.IMetadata;
 
 import java.util.Iterator;
 
-public class Cons<E> extends ObjPersistent implements ISequentialType<E>, ILinkedType<E>, IColl<E> {
+public class Cons<E> extends ObjPersistent
+    implements ISequential<E>, ILinkedType<E>, IColl<E> {
 
   private final E _first;
   private final ILinkedType<E> _more;

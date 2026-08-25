@@ -252,7 +252,7 @@ pub fn compose_unordered(obj_name: &str, items: impl IntoIterator<Item = i64>) -
 }
 
 /// Hash of a map entry. Java map iterators yield `Tuple.Tup2.L` entries,
-/// which are `ISequentialType` — ordered composition with the
+/// which are `ISequential` — ordered composition with the
 /// `"::SEQUENTIAL"` seed: `(seed * 31 + hk) * 31 + hv`.
 pub fn compose_entry(key_hash: i64, value_hash: i64) -> i64 {
     compose_ordered("SEQUENTIAL", [key_hash, value_hash])

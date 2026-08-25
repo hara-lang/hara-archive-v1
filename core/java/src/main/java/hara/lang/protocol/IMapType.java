@@ -14,9 +14,12 @@ import java.util.function.Function;
 @HaraProtocolBinding(
     namespace = "std.protocol.imaptype",
     name = "IMapType",
-    parents = {"IColl", "IObjType", "IMetadata", "ILookup", "IAssoc", "IDissoc", "IFind", "IFn"})
+    parents = {
+      "IColl", "ICount", "IObjType", "IMetadata", "ILookup", "IAssoc", "IDissoc", "IFind", "IFn"
+    })
 public interface IMapType<K, V>
     extends IColl<Entry<K, V>>,
+        ICount,
         IObjType,
         IMetadata,
         ILookup<K, V>,

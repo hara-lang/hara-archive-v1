@@ -57,7 +57,7 @@ public class HaraLanguageTest {
   public void collectionCategoryPredicatesClassifyAllPortableFamilies() {
     try (Context context = context()) {
       assertEquals(
-          "[true true false true true false true true true true true false false false false false true false true false true true]",
+          "[true true false true true false true true true true true true true false false false true false true false true true]",
           context
               .eval(
                   HaraLanguage.ID,
@@ -88,12 +88,19 @@ public class HaraLanguageTest {
   }
 
   @Test
-  public void seqDoesNotSatisfyConjOrSupportConjInvocation() {
+  public void sequentialAndLinearCategoriesRemainDistinct() {
     try (Context context = context()) {
-      assertFalse(context.eval(HaraLanguage.ID, "(satisfies? IConj (seq [1 2]))").asBoolean());
-      assertThrows(
-          PolyglotException.class,
-          () -> context.eval(HaraLanguage.ID, "(IConj/conj (seq [1 2]) 3)"));
+      assertEquals(
+          "[true false true false true]",
+          context
+              .eval(
+                  HaraLanguage.ID,
+                  "[(satisfies? ISequential (seq [1 2])) "
+                      + " (satisfies? ILinearType (seq [1 2])) "
+                      + " (satisfies? ISequential (cons 1 [2])) "
+                      + " (satisfies? ILinearType (cons 1 [2])) "
+                      + " (satisfies? ILinearType [1 2])]")
+              .toString());
     }
   }
 
@@ -1914,9 +1921,9 @@ public class HaraLanguageTest {
     while (names.find()) {
       protocols.add(names.group(1));
     }
-    assertTrue(contract, contract.contains(":protocol-count 60"));
+    assertTrue(contract, contract.contains(":protocol-count 61"));
     assertTrue(contract, contract.contains(":capability-specific-protocol-count 15"));
-    assertEquals(75, protocols.size());
+    assertEquals(76, protocols.size());
     Set<String> unavailableProtocols =
         Set.of(
             "IHasRuntime",

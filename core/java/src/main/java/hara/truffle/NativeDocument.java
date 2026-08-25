@@ -2,7 +2,7 @@ package hara.truffle;
 
 import hara.lang.data.Keyword;
 import hara.lang.protocol.IMapType;
-import hara.lang.data.types.ISequentialType;
+import hara.lang.protocol.ISequential;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -126,7 +126,7 @@ final class NativeDocument {
   }
 
   private static List<Object> sequential(Object value) {
-    if (!(value instanceof ISequentialType<?> sequence)) return null;
+    if (!(value instanceof ISequential<?> sequence)) return null;
     List<Object> values = new ArrayList<>();
     for (Object element : sequence) values.add(HaraBox.unwrap(element));
     return values;

@@ -13,7 +13,7 @@ import java.util.Map.Entry;
 import java.util.function.Function;
 
 public interface Trie<V>
-    extends IColl<String>, IObjType, IAssoc<String, V>, IDissoc<String>, ILookup<String, V> {
+    extends IColl<String>, ICount, IObjType, IAssoc<String, V>, IDissoc<String>, ILookup<String, V> {
 
   @Override
   Trie<V> assoc(String key, V val);

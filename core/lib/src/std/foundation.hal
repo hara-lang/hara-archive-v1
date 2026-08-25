@@ -445,7 +445,7 @@
 
 (defn ^{:inline true :schema [:fn [:any] :bool]}
   sequential? "Returns true when value has sequential collection semantics." [value]
-  (satisfies? ILinearType value))
+  (satisfies? ISequential value))
 
 (defn ^{:inline true :schema [:fn [:any] :bool]}
   coll? "Returns true when value satisfies the runtime collection capability." [value]

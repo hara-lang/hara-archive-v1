@@ -5,6 +5,7 @@ import hara.kernel.Foundation;
 import hara.kernel.base.RT;
 import hara.lang.base.Ex;
 import hara.lang.base.Iter;
+import hara.lang.protocol.ICount;
 
 import java.util.List;
 
@@ -95,9 +96,9 @@ public class Session {
 
     java.util.Map<String, Object> info = new java.util.LinkedHashMap<>();
     info.put("name", rt._key);
-    info.put("paths", rt.pathCache().count());
-    info.put("classes", rt.classCache().count());
-    info.put("aliases", rt.aliasCache().count());
+    info.put("paths", ((ICount) rt.pathCache()).count());
+    info.put("classes", ((ICount) rt.classCache()).count());
+    info.put("aliases", ((ICount) rt.aliasCache()).count());
 
     return info;
   }

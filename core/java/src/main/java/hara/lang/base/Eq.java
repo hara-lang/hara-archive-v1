@@ -2,7 +2,7 @@ package hara.lang.base;
 
 import hara.lang.base.primitive.Num;
 import hara.lang.protocol.IMapType;
-import hara.lang.data.types.ISequentialType;
+import hara.lang.protocol.ISequential;
 import hara.lang.protocol.IEquality;
 
 import java.util.Iterator;
@@ -31,10 +31,8 @@ public interface Eq {
             || !eq(entry.getValue(), other.getValue())) return false;
       }
       return true;
-    } else if (a instanceof ISequentialType<?> left
-        && b instanceof ISequentialType<?> right) {
-      return left.count() == right.count()
-          && eqIterator((Iterator<Object>) left.iterator(), (Iterator<Object>) right.iterator());
+    } else if (a instanceof ISequential<?> left && b instanceof ISequential<?> right) {
+      return left.equality(right);
     } else if (a instanceof IEquality) {
       return ((IEquality) a).equality(b);
     } else if (b instanceof IEquality) {

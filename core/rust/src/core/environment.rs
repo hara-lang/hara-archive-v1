@@ -347,6 +347,10 @@ impl ProtocolRegistry {
             let category_matches = match protocol_name {
                 "IMapType" => self.extension_has_category(receiver, "map"),
                 "ISetType" => self.extension_has_category(receiver, "set"),
+                "ISequential" => {
+                    self.extension_has_category(receiver, "sequential")
+                        || self.extension_has_category(receiver, "linear")
+                }
                 "ILinearType" => self.extension_has_category(receiver, "linear"),
                 "IColl" => {
                     self.extension_has_category(receiver, "coll")
@@ -441,6 +445,9 @@ impl ProtocolRegistry {
         });
         registry.register_marker_declared("IMapType", |value| {
             native_protocol_supports("IMapType", value)
+        });
+        registry.register_marker_declared("ISequential", |value| {
+            native_protocol_supports("ISequential", value)
         });
         registry.register_marker_declared("ILinearType", |value| {
             native_protocol_supports("ILinearType", value)

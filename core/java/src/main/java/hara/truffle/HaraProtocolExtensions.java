@@ -2,7 +2,6 @@ package hara.truffle;
 
 import hara.lang.base.Reduced;
 import hara.lang.data.types.ISequentialLookupType;
-import hara.lang.data.types.ISequentialType;
 import hara.lang.protocol.ILinearType;
 import hara.lang.protocol.ISetType;
 import hara.lang.protocol.IMapType;
@@ -354,7 +353,7 @@ final class HaraProtocolExtensions {
                                         ? "visit-map"
                                         : receiver instanceof ISetType<?>
                                             ? "visit-set"
-                                            : receiver instanceof ISequentialType<?>
+                                            : receiver instanceof ISequential<?>
                                                 ? "visit-seq"
                                                 : "visit-unknown";
     return context.invokeProtocol("IEncodeVisitor", method, visitor, receiver);
@@ -368,11 +367,11 @@ final class HaraProtocolExtensions {
   @HaraProtocolExtension(protocol = ICons.class, method = "cons", receiver = hara.lang.data.Vector.class)
   @HaraProtocolExtension(protocol = ICons.class, method = "cons", receiver = Tuple.Tup0.class)
   @HaraProtocolExtension(protocol = ICons.class, method = "cons", receiver = Tuple.Tup1.class)
-  @HaraProtocolExtension(protocol = ICons.class, method = "cons", receiver = ISequentialType.class)
+  @HaraProtocolExtension(protocol = ICons.class, method = "cons", receiver = ISequential.class)
   @HaraProtocolExtension(protocol = ICons.class, method = "cons", receiver = ICons.class)
   static Object consProtocol(Object receiver, Object[] arguments) {
-    return receiver instanceof ISequentialType
-        ? consSequential((ISequentialType<?>) receiver, arguments[0])
+    return receiver instanceof ISequential
+        ? consSequential((ISequential<?>) receiver, arguments[0])
         : consValue((ICons<?>) receiver, arguments[0]);
   }
 
@@ -774,9 +773,9 @@ final class HaraProtocolExtensions {
   }
 
   @SuppressWarnings("unchecked")
-  private static Object consSequential(ISequentialType<?> sequential, Object value) {
+  private static Object consSequential(ISequential<?> sequential, Object value) {
     hara.lang.data.Seq<Object> tail =
-        hara.lang.data.Seq.create(((ISequentialType<Object>) sequential).iterator());
+        hara.lang.data.Seq.create(((ISequential<Object>) sequential).iterator());
     return new hara.lang.data.Cons<>(null, value, tail);
   }
 

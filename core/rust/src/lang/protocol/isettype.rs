@@ -4,6 +4,6 @@ use hara_protocol_macros::hara_protocol;
 #[hara_protocol(
     namespace = "std.protocol.isettype",
     name = "ISetType",
-    parents = ["IColl", "IObjType", "IDissoc", "IFind", "IFn"]
+    parents = ["IColl", "ICount", "IObjType", "IDissoc", "IFind", "IFn"]
 )]
 pub trait ISetType {}

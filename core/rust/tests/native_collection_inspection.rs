@@ -37,7 +37,7 @@ fn native_set_inspection_does_not_reclassify_sequential_values() {
 }
 
 #[test]
-fn canonical_peek_first_protocol_is_available_without_legacy_aliases() {
+fn canonical_peek_first_protocol_alias_is_available_without_legacy_method_aliases() {
     let mut runtime = Runtime::new();
     assert_eq!(
         runtime
@@ -48,7 +48,7 @@ fn canonical_peek_first_protocol_is_available_without_legacy_aliases() {
     assert!(runtime
         .eval_native("std.protocol.ipeekfirst/peek-first")
         .is_err());
-    assert!(runtime.eval_native("std.foundation/IPeekFirst").is_err());
+    assert!(runtime.eval_native("std.foundation/IPeekFirst").is_ok());
 
     #[cfg(feature = "bytecode-vm")]
     assert_eq!(
@@ -121,23 +121,25 @@ fn portable_collection_categories_classify_all_portable_families() {
                  (iter? [1 2])]"
             )
             .unwrap(),
-        "[true true false true true false true true true true true true false false false false true false true false]"
+        "[true true false true true false true true true true true true true false false false true false true false]"
     );
 }
 
 #[test]
-fn seq_does_not_satisfy_conj_or_support_conj_invocation() {
+fn sequential_and_linear_categories_remain_distinct() {
     let mut runtime = Runtime::new();
     assert_eq!(
         runtime
-            .eval_native("(satisfies? IConj (seq [1 2]))")
+            .eval_native(
+                "[(satisfies? ISequential (seq [1 2]))\
+                 (satisfies? ILinearType (seq [1 2]))\
+                 (satisfies? ISequential (cons 1 [2]))\
+                 (satisfies? ILinearType (cons 1 [2]))\
+                 (satisfies? ILinearType [1 2])]"
+            )
             .unwrap(),
-        "false"
+        "[true false true false true]"
     );
-    let error = runtime
-        .eval_native("(IConj/conj (seq [1 2]) 3)")
-        .unwrap_err();
-    assert!(error.contains("missing protocol implementation: std.protocol.iconj.IConj/conj"));
 }
 
 #[test]

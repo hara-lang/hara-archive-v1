@@ -1,6 +1,7 @@
 /// Installs the runtime-owned substrate required by canonical Foundation
-/// source. Ordinary Foundation functions and compatibility aliases are
-/// intentionally absent; they are defined by the source modules themselves.
+/// source. Ordinary Foundation functions and protocol method aliases are
+/// intentionally absent; canonical protocol values are seeded so Foundation
+/// predicates can resolve them while the source modules load.
 const FOUNDATION_INTRINSICS: &[&str] = &[
     "+", "-", "*", "/", "=", "<", "<=", ">", ">=", "quot", "rem", "mod",
 ];

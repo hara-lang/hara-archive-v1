@@ -280,7 +280,7 @@ impl<E: Clone + std::fmt::Debug> IDisplay for Standard<E> {
 }
 impl<E: Clone + std::hash::Hash + JavaHash> IHash for Standard<E> {
     fn hash_calc(&self, hash_type: HashType) -> u64 {
-        // Java Queue extends ISequentialLookupType → ISequentialType:
+        // Java Queue extends ISequentialLookupType → ISequential:
         // ordered composition, "::SEQUENTIAL" seed (see lang::hash).
         crate::lang::hash::compose_ordered(
             "SEQUENTIAL",

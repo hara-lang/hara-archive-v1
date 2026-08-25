@@ -653,11 +653,13 @@
 
 ^{:refer std.foundation/sequential?}
 (Test/run
- [{:name "uses ILinearType satisfaction"
+ [{:name "uses ISequential satisfaction"
    :test (fn [] [(std.foundation/sequential? [1])
                  (std.foundation/sequential? '(1))
+                 (std.foundation/sequential? (cons 1 [2]))
+                 (std.foundation/sequential? (seq [1 2]))
                  (std.foundation/sequential? #{1})])
-   :expected [true true false]}])
+   :expected [true true true true false]}])
 
 ^{:refer std.foundation/unreduced}
 (Test/run

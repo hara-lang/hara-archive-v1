@@ -8,9 +8,9 @@ import java.util.Iterator;
 @HaraProtocolBinding(
     namespace = "std.protocol.icoll",
     name = "IColl",
-    parents = {"IEquality", "IConj", "IEmpty", "ICount", "IHash", "IDisplay"})
+    parents = {"IEquality", "IConj", "IEmpty", "IHash", "IDisplay"})
 public interface IColl<E>
-    extends Iterable<E>, IEquality, IConj<E>, IEmpty, ICount, IHash, IDisplay {
+    extends Iterable<E>, IEquality, IConj<E>, IEmpty, IHash, IDisplay {
 
   @HaraMethod(value = "start-string", arity = 1)
   String startString();

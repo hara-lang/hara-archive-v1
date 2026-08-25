@@ -249,7 +249,7 @@ impl<E: Clone + std::fmt::Debug> IDisplay for Tuple<E> {
 }
 impl<E: Clone + std::hash::Hash + JavaHash> IHash for Tuple<E> {
     fn hash_calc(&self, hash_type: HashType) -> u64 {
-        // Java Tuple.TupN implements ISequentialType: ordered composition,
+        // Java Tuple.TupN implements ISequential: ordered composition,
         // "::SEQUENTIAL" seed — NOT "::TUPLE" (see lang::hash). Map entries
         // are Tup2 instances and hash through this same path in Java.
         crate::lang::hash::compose_ordered(

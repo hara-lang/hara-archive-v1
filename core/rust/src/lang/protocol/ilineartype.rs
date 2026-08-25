@@ -5,6 +5,7 @@ use hara_protocol_macros::hara_protocol;
     namespace = "std.protocol.ilineartype",
     name = "ILinearType",
     parents = [
+        "ISequential",
         "IColl",
         "IPeekFirst",
         "IPeekLast",

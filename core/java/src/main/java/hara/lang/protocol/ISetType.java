@@ -10,9 +10,9 @@ import java.util.function.Function;
 @HaraProtocolBinding(
     namespace = "std.protocol.isettype",
     name = "ISetType",
-    parents = {"IColl", "IObjType", "IDissoc", "IFind", "IFn"})
+    parents = {"IColl", "ICount", "IObjType", "IDissoc", "IFind", "IFn"})
 public interface ISetType<E>
-    extends IColl<E>, IObjType, IDissoc<E>, IFind<E, E>, IFn<E, E, E> {
+    extends IColl<E>, ICount, IObjType, IDissoc<E>, IFind<E, E>, IFn<E, E, E> {
 
   default java.util.Set<E> asJavaSet() {
     return null;

@@ -10,6 +10,7 @@ use hara_protocol_macros::hara_protocol;
     name = "IMapType",
     parents = [
         "IColl",
+        "ICount",
         "IObjType",
         "IMetadata",
         "ILookup",

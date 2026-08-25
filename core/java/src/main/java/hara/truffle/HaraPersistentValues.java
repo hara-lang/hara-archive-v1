@@ -1,7 +1,7 @@
 package hara.truffle;
 
 import hara.lang.protocol.IMapType;
-import hara.lang.data.types.ISequentialType;
+import hara.lang.protocol.ISequential;
 import hara.lang.protocol.ISetType;
 import java.lang.reflect.Array;
 import java.util.ArrayList;
@@ -17,7 +17,7 @@ final class HaraPersistentValues {
     if (unwrapped == null
         || unwrapped instanceof byte[]
         || unwrapped instanceof IMapType<?, ?>
-        || unwrapped instanceof ISequentialType<?>
+        || unwrapped instanceof ISequential<?>
         || unwrapped instanceof ISetType<?>) {
       return unwrapped;
     }

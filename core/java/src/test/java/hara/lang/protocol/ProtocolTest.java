@@ -45,11 +45,6 @@ public class ProtocolTest {
           }
 
           @Override
-          public long count() {
-            return 2;
-          }
-
-          @Override
           public long hashCalc(Constant.HashType type) {
             return 0;
           }

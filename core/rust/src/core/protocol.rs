@@ -1838,7 +1838,18 @@ impl Value {
         matches!(
             value,
             Self::List(_)
+                | Self::Queue(_)
+                | Self::Deque(_)
+                | Self::Tuple(_)
+                | Self::Vector(_)
+        ) || mutable_linear_satisfies(value, true, true)
+    }
+    fn supports_native_isequential(value: &Self) -> bool {
+        matches!(
+            value,
+            Self::List(_)
                 | Self::Cons(_)
+                | Self::Seq(_)
                 | Self::Queue(_)
                 | Self::Deque(_)
                 | Self::Tuple(_)
@@ -1868,7 +1879,6 @@ impl Value {
                 | Self::Deque(_)
                 | Self::Tuple(_)
                 | Self::Vector(_)
-                | Self::Seq(_)
                 | Self::MutableCollection(_)
         )
     }
@@ -1876,7 +1886,7 @@ impl Value {
         matches!(
             value,
             Self::Nil | Self::Array(_) | Self::Object(_) | Self::MutableCollection(_)
-        ) || (Self::supports_native_icoll(value) && !matches!(value, Self::Seq(_)))
+        ) || Self::supports_native_icoll(value)
     }
     fn supports_native_icons(value: &Self) -> bool {
         matches!(
@@ -1968,7 +1978,8 @@ impl Value {
         Self::supports_native_icoll(value)
             || matches!(
                 value,
-                Self::String(_)
+                Self::Seq(_)
+                    | Self::String(_)
                     | Self::Bytes(_)
                     | Self::ByteBuffer(_)
                     | Self::Array(_)
@@ -2095,6 +2106,7 @@ impl Value {
                 Self::Symbol(_)
                     | Self::Keyword(_)
                     | Self::Pointer(_)
+                    | Self::Seq(_)
                     | Self::Var(_)
                     | Self::Function(_)
                     | Self::Struct(_)
@@ -2199,6 +2211,7 @@ fn native_protocol_supports(protocol: &str, value: &Value) -> bool {
         .unwrap_or(protocol);
     match name {
         "IColl" => Value::supports_native_icoll(value),
+        "ISequential" => Value::supports_native_isequential(value),
         "IMapType" => Value::supports_native_imaptype(value),
         "ILinearType" => Value::supports_native_ilineartype(value),
         "ISetType" => Value::supports_native_isettype(value),

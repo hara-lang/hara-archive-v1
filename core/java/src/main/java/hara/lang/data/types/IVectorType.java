@@ -4,7 +4,6 @@ import hara.lang.protocol.*;
 
 public interface IVectorType<E>
     extends IColl<E>,
-        ISequentialType<E>,
         ISequentialLookupType<E>,
         ILinearType<E>,
         INth<E>,

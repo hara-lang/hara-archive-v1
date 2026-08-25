@@ -5,7 +5,7 @@ import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
 import hara.lang.protocol.IMapType;
-import hara.lang.data.types.ISequentialType;
+import hara.lang.protocol.ISequential;
 import hara.lang.protocol.ISetType;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -29,13 +29,13 @@ public class HaraPersistentValuesTest {
     assertTrue(normalized instanceof IMapType<?, ?>);
     @SuppressWarnings("unchecked")
     IMapType<Object, Object> result = (IMapType<Object, Object>) normalized;
-    assertTrue(result.lookup("items") instanceof ISequentialType<?>);
+    assertTrue(result.lookup("items") instanceof ISequential<?>);
     assertTrue(result.lookup("tags") instanceof ISetType<?>);
-    assertTrue(result.lookup("array") instanceof ISequentialType<?>);
+    assertTrue(result.lookup("array") instanceof ISequential<?>);
 
     nested.add("mutable-after-copy");
     tags.add("changed");
-    assertEquals(1L, ((ISequentialType<?>) result.lookup("items")).count());
+    assertEquals(1L, ((hara.lang.protocol.ICount) result.lookup("items")).count());
     assertEquals(1L, ((ISetType<?>) result.lookup("tags")).count());
   }
 

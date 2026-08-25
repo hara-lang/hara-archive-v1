@@ -74,6 +74,8 @@ pub mod iiter;
 pub mod iiterator;
 #[path = "protocol/ilineartype.rs"]
 pub mod ilineartype;
+#[path = "protocol/isequential.rs"]
+pub mod isequential;
 #[path = "protocol/ilookup.rs"]
 pub mod ilookup;
 #[path = "protocol/imatch.rs"]
@@ -192,6 +194,7 @@ pub use imaptype::IMapType;
 pub use iiter::IIter;
 pub use iiterator::IIterator;
 pub use ilineartype::ILinearType;
+pub use isequential::ISequential;
 pub use ilookup::ILookup;
 pub use imatch::IMatch;
 pub use imetadata::{IMetadata, MetaType};

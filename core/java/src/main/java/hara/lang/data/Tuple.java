@@ -3,7 +3,6 @@ package hara.lang.data;
 import hara.lang.base.Ex;
 import hara.lang.base.Iter;
 import hara.lang.protocol.ILinearType;
-import hara.lang.data.types.ISequentialType;
 import hara.lang.data.types.ObjEmpty;
 import hara.lang.data.types.ObjPersistent;
 import hara.lang.protocol.IMetadata;
@@ -20,7 +19,7 @@ public interface Tuple {
 
   @SuppressWarnings({"unchecked", "rawtypes"})
   public class Tup0 extends ObjEmpty
-      implements ISequentialType, ILinearType, IPushFirst, IPushLast, IPopFirst, IPopLast {
+      implements ILinearType, IPushFirst, IPushLast, IPopFirst, IPopLast {
 
     public static final Tup0 EMPTY = new Tup0(null);
 
@@ -66,7 +65,7 @@ public interface Tuple {
 
   @SuppressWarnings({"unchecked", "rawtypes"})
   public interface Tup1<A>
-      extends ISequentialType, ILinearType, IPushFirst, IPushLast, IPopFirst, IPopLast {
+      extends ILinearType, IPushFirst, IPushLast, IPopFirst, IPopLast {
 
     @Override
     default long count() {
@@ -147,7 +146,7 @@ public interface Tuple {
   }
 
   @SuppressWarnings({"unchecked", "rawtypes"})
-  public interface Tup2<A, B> extends Tup1<A>, ISequentialType, ILinearType {
+  public interface Tup2<A, B> extends Tup1<A>, ILinearType {
 
     @Override
     default long count() {
@@ -241,7 +240,7 @@ public interface Tuple {
   }
 
   @SuppressWarnings({"unchecked", "rawtypes"})
-  public interface Tup3<A, B, X> extends Tup2<A, B>, ISequentialType, ILinearType {
+  public interface Tup3<A, B, X> extends Tup2<A, B>, ILinearType {
 
     @Override
     default long count() {
@@ -334,7 +333,7 @@ public interface Tuple {
   }
 
   @SuppressWarnings({"unchecked", "rawtypes"})
-  public interface Tup4<A, B, C, D> extends Tup3<A, B, C>, ISequentialType, ILinearType {
+  public interface Tup4<A, B, C, D> extends Tup3<A, B, C>, ILinearType {
 
     @Override
     default long count() {
@@ -436,7 +435,7 @@ public interface Tuple {
   }
 
   @SuppressWarnings({"unchecked", "rawtypes"})
-  public interface Tup5<A, B, C, D, E> extends Tup4<A, B, C, D>, ISequentialType, ILinearType {
+  public interface Tup5<A, B, C, D, E> extends Tup4<A, B, C, D>, ILinearType {
 
     @Override
     default long count() {
@@ -548,7 +547,7 @@ public interface Tuple {
 
   @SuppressWarnings({"unchecked", "rawtypes"})
   public interface Tup6<A, B, C, D, E, F>
-      extends Tup5<A, B, C, D, E>, ISequentialType, ILinearType {
+      extends Tup5<A, B, C, D, E>, ILinearType {
 
     @Override
     default long count() {
@@ -669,7 +668,7 @@ public interface Tuple {
 
   @SuppressWarnings({"unchecked", "rawtypes"})
   public interface Tup7<A, B, C, D, E, F, G>
-      extends Tup6<A, B, C, D, E, F>, ISequentialType, ILinearType {
+      extends Tup6<A, B, C, D, E, F>, ILinearType {
 
     @Override
     default long count() {
@@ -801,7 +800,7 @@ public interface Tuple {
 
   @SuppressWarnings({"unchecked", "rawtypes"})
   public interface Tup8<A, B, C, D, E, F, G, H>
-      extends Tup7<A, B, C, D, E, F, G>, ISequentialType, ILinearType {
+      extends Tup7<A, B, C, D, E, F, G>, ILinearType {
 
     @Override
     default long count() {

@@ -843,7 +843,7 @@ impl<K: Clone + Eq + Hash + std::fmt::Debug, V: Clone + std::fmt::Debug> IDispla
 impl<K: Clone + Eq + Hash + JavaHash, V: Clone + Hash + JavaHash> IHash for Standard<K, V> {
     fn hash_calc(&self, hash_type: HashType) -> u64 {
         // Java IMapType → IUnOrderedType over entries: order-insensitive sum,
-        // "::MAP" seed. Entries iterate as Tuple.Tup2.L (ISequentialType) in
+        // "::MAP" seed. Entries iterate as Tuple.Tup2.L (ISequential) in
         // Java, so each entry hashes as an ordered 2-tuple ("::SEQUENTIAL"
         // seed): (seed * 31 + hk) * 31 + hv. See lang::hash.
         crate::lang::hash::compose_unordered(

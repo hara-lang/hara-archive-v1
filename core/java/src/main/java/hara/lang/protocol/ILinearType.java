@@ -8,9 +8,19 @@ import hara.lang.declaration.HaraProtocolBinding;
 @HaraProtocolBinding(
     namespace = "std.protocol.ilineartype",
     name = "ILinearType",
-    parents = {"IColl", "IPeekFirst", "IPeekLast", "ICons", "IConj", "INth", "ICount"})
+    parents = {
+      "ISequential", "IColl", "IPeekFirst", "IPeekLast", "ICons", "IConj", "INth", "ICount"
+    })
 public interface ILinearType<E>
-    extends IColl<E>, IPeekFirst<E>, IPeekLast<E>, ICons<E>, IConj<E>, INth<E>, ICount {
+    extends
+        ISequential<E>,
+        IColl<E>,
+        IPeekFirst<E>,
+        IPeekLast<E>,
+        ICons<E>,
+        IConj<E>,
+        INth<E>,
+        ICount {
 
   @Override
   default ICons<E> cons(E element) {

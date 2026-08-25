@@ -2390,7 +2390,7 @@ mod tests {
                 }
             }
         }
-        assert_eq!(portable_protocol_count, 60);
+        assert_eq!(portable_protocol_count, 61);
         assert_eq!(portable_method_count, 109);
         assert_eq!(capability_protocol_count, 15);
         assert_eq!(capability_method_count, 20);
@@ -4225,7 +4225,7 @@ mod tests {
                      (set? (IToMutable/to-mutable #{1}))]"
                 )
                 .unwrap(),
-            "[true true false true true false true true true true true true false false false false true false true false true true]"
+            "[true true false true true false true true true true true true true false false false true false true false true true]"
         );
         assert_eq!(
             runtime

@@ -8,7 +8,7 @@ import java.util.Iterator;
 import java.util.Map.Entry;
 
 public interface ISequentialLookupType<E>
-    extends ISequentialType<E>,
+    extends ISequential<E>,
         Iterable<E>,
         ICount,
         INth<E>,

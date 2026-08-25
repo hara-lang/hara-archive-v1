@@ -2495,7 +2495,7 @@ public final class HaraContext {
       if (values.length != 2 || !(HaraBox.unwrap(values[0]) instanceof HaraProtocol protocol)) {
         throw new HaraException("satisfies? expects a protocol and value");
       }
-      return protocol.satisfies(HaraBox.unwrap(values[1]));
+      return protocolSatisfies(protocol, HaraBox.unwrap(values[1]));
     }));
     target.define(
         "instance?",
@@ -7953,15 +7953,11 @@ public final class HaraContext {
         || function instanceof HbcMachine.HbcNativeCallable;
   }
 
-  private boolean protocolSatisfies(String protocolName, Object value) {
+  private boolean protocolSatisfies(HaraProtocol protocol, Object value) {
     Object receiver = HaraBox.unwrap(value);
-    Boolean policy = protocolSatisfactionPolicy(protocolName, receiver);
+    Boolean policy = protocolSatisfactionPolicy(protocol.name(), receiver);
     if (policy != null) return policy;
-    HaraNamespace foundation = namespaces.get(FOUNDATION_NAMESPACE);
-    HaraVar variable = foundation == null ? null : foundation.lookup(protocolName);
-    Object descriptor = variable == null ? null : HaraBox.unwrap(variable.deref());
-    return descriptor instanceof HaraProtocol protocol
-        && protocol.satisfies(receiver);
+    return protocol.satisfies(receiver);
   }
 
   /**
@@ -7970,8 +7966,12 @@ public final class HaraContext {
    * get-like membership without being key/value lookupables.
    */
   private Boolean protocolSatisfactionPolicy(String protocolName, Object receiver) {
-    if ("IFn".equals(protocolName)) return isFunctionValue(receiver);
-    if ("ILookup".equals(protocolName)
+    String simpleName = protocolName.substring(protocolName.lastIndexOf('.') + 1);
+    if ("IFn".equals(simpleName)) return isFunctionValue(receiver);
+    if ("ISequential".equals(simpleName)) {
+      return receiver instanceof hara.lang.protocol.ISequential<?>;
+    }
+    if ("ILookup".equals(simpleName)
         && receiver instanceof hara.lang.protocol.ISetType<?>) {
       return false;
     }

@@ -1,7 +1,7 @@
 package hara.lang.data;
 
 import hara.lang.data.types.ILinkedType;
-import hara.lang.data.types.ISequentialType;
+import hara.lang.protocol.ISequential;
 import hara.lang.data.types.ObjPersistent;
 import hara.lang.base.G;
 import hara.lang.protocol.IMetadata;
@@ -9,7 +9,8 @@ import hara.lang.protocol.IMetadata;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
 
-public class Seq<E> extends ObjPersistent implements ISequentialType<E>, ILinkedType<E> {
+public class Seq<E> extends ObjPersistent
+    implements ISequential<E>, ILinkedType<E> {
 
   public static final int DISPLAY_LIMIT = 10;
 
