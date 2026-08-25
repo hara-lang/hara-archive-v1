@@ -37,12 +37,13 @@ fn corpus_methods() -> BTreeSet<String> {
 }
 
 fn live_methods() -> BTreeSet<String> {
-    core::NATIVE_TYPES
+    core::native_declarations()
         .iter()
-        .flat_map(|(native_type, methods)| {
-            methods
+        .flat_map(|declaration| {
+            declaration
+                .methods
                 .iter()
-                .map(move |method| format!("{native_type}/{method}"))
+                .map(move |method| format!("{}/{}", declaration.name, method))
         })
         .collect()
 }

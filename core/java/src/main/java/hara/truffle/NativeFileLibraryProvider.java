@@ -10,6 +10,6 @@ public final class NativeFileLibraryProvider implements HaraLibraryProvider {
 
   @Override
   public void install(HaraContext context) {
-    context.installFileLibrary();
+    context.installNativeLibrary(namespace());
   }
 }

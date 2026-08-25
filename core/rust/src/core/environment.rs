@@ -135,6 +135,9 @@ impl ProtocolRegistry {
         F: Fn(&[Value]) -> Result<Value, String> + 'static,
     {
         let protocol = protocol.into();
+        let protocol = crate::lang::protocol::find_protocol(&protocol)
+            .map(|declaration| declaration.runtime_name())
+            .unwrap_or(protocol);
         self.methods
             .borrow_mut()
             .entry((protocol, method.into()))
@@ -335,6 +338,28 @@ impl ProtocolRegistry {
     }
 
     pub fn satisfies(&self, protocol: &GuestProtocol, value: &Value) -> bool {
+        if let Value::Extension(receiver) = value {
+            let protocol_name = protocol
+                .name
+                .rsplit(|character| character == '/' || character == '.')
+                .next()
+                .unwrap_or(protocol.name.as_str());
+            let category_matches = match protocol_name {
+                "IMapType" => self.extension_has_category(receiver, "map"),
+                "ISetType" => self.extension_has_category(receiver, "set"),
+                "ILinearType" => self.extension_has_category(receiver, "linear"),
+                "IColl" => {
+                    self.extension_has_category(receiver, "coll")
+                        || ["map", "set", "linear"]
+                            .iter()
+                            .any(|category| self.extension_has_category(receiver, category))
+                }
+                _ => false,
+            };
+            if category_matches {
+                return true;
+            }
+        }
         if !protocol.parents.iter().all(|parent| {
             crate::lang::protocol::find_protocol(parent)
                 .is_some_and(|declaration| self.satisfies(&guest_protocol(declaration), value))
@@ -352,13 +377,23 @@ impl ProtocolRegistry {
             return false;
         }
         if let Value::Extension(receiver) = value {
+            let methods = self.methods.borrow();
+            let extensions = self.extension_methods.borrow();
             return protocol.methods.keys().all(|method| {
-                self.extension_methods.borrow().contains_key(&(
+                extensions.contains_key(&(
                     receiver.provider.clone(),
                     receiver.type_name.clone(),
                     protocol_name.clone(),
                     method.clone(),
                 ))
+                    || methods
+                        .get(&(protocol_name.clone(), method.clone()))
+                        .is_some_and(|implementations| {
+                            implementations
+                                .iter()
+                                .rev()
+                                .any(|implementation| (implementation.supports)(value))
+                        })
             });
         }
         if let Value::Struct(receiver) = value {

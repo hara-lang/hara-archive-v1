@@ -13,6 +13,6 @@ public final class StringLibraryProvider implements HaraLibraryProvider {
 
   @Override
   public void install(HaraContext context) {
-    context.installStringLibrary();
+    context.installNativeLibrary(namespace());
   }
 }

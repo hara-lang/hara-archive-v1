@@ -4,8 +4,8 @@ use std::collections::HashSet;
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
 use syn::{
-    parse_macro_input, Error, Ident, ItemMod, ItemTrait, LitBool, LitInt, LitStr, Result, Token,
-    TraitItem,
+    parse_macro_input, Error, Ident, ItemMod, ItemTrait, LitBool, LitInt, LitStr, Path, Result,
+    Token, TraitItem,
 };
 
 struct NativeArgs {
@@ -13,6 +13,7 @@ struct NativeArgs {
     name: Option<LitStr>,
     methods: Vec<LitStr>,
     whole_wasm_methods: Vec<NativeWholeWasmMethod>,
+    provider: Option<Path>,
     availability: LitStr,
     capability: Option<LitStr>,
 }
@@ -40,6 +41,7 @@ impl Default for NativeArgs {
             name: None,
             methods: Vec::new(),
             whole_wasm_methods: Vec::new(),
+            provider: None,
             availability: LitStr::new("portable", proc_macro2::Span::call_site()),
             capability: None,
         }
@@ -72,6 +74,7 @@ impl Parse for NativeArgs {
                             .into_iter()
                             .collect();
                 }
+                "provider" => args.provider = Some(input.parse()?),
                 _ => return Err(Error::new(key.span(), "unknown hara_native option")),
             }
             if input.peek(Token![,]) {
@@ -136,6 +139,12 @@ fn expand_native_registry(mut input: ItemMod) -> Result<proc_macro2::TokenStream
         let name = args
             .name
             .ok_or_else(|| Error::new_spanned(&native_type.ident, "hara_native requires name"))?;
+        let provider = args.provider.ok_or_else(|| {
+            Error::new_spanned(
+                &native_type.ident,
+                "hara_native requires a provider function",
+            )
+        })?;
         if namespace.value() != "std.native" {
             return Err(Error::new_spanned(
                 &namespace,
@@ -239,6 +248,7 @@ fn expand_native_registry(mut input: ItemMod) -> Result<proc_macro2::TokenStream
                 name: #name,
                 methods: &[#(#methods),*],
                 whole_wasm_methods: &[#(#whole_wasm_methods),*],
+                provider: #provider,
                 availability: #availability,
                 capability: #capability,
             }
@@ -255,10 +265,6 @@ fn expand_native_registry(mut input: ItemMod) -> Result<proc_macro2::TokenStream
 
     let declaration_table =
         format_ident!("{}_DECLARATIONS", input.ident.to_string().to_uppercase());
-    let type_table = format_ident!("{}_TYPES", input.ident.to_string().to_uppercase());
-    let declaration_methods = declarations
-        .iter()
-        .map(|declaration| quote!(((#declaration).name, (#declaration).methods)));
 
     Ok(quote! {
         #input
@@ -266,11 +272,6 @@ fn expand_native_registry(mut input: ItemMod) -> Result<proc_macro2::TokenStream
         #[doc(hidden)]
         pub(crate) const #declaration_table: &[crate::core::NativeDeclaration] = &[
             #(#declarations),*
-        ];
-
-        #[doc(hidden)]
-        pub(crate) const #type_table: &[(&str, &[&str])] = &[
-            #(#declaration_methods),*
         ];
     })
 }

@@ -50,4 +50,34 @@ public class HaraBuiltinCatalogTest {
           assertEquals(type + " contains duplicate methods", methods.size(), Set.copyOf(methods).size());
         });
   }
+
+  @Test
+  public void libraryProvidersAreUniqueAnnotatedAndDoNotAdvertiseDirectlyInstalledEdn() {
+    assertFalse(new HaraLibraryLoader().provides("std.native.Edn"));
+
+    HaraLibraryProvider duplicate =
+        new HaraLibraryProvider() {
+          @Override
+          public String namespace() {
+            return "std.native.String";
+          }
+
+          @Override
+          public void install(HaraContext context) {}
+        };
+    assertThrows(
+        HaraException.class, () -> new HaraLibraryLoader(List.of(duplicate, duplicate)));
+
+    HaraLibraryProvider unannotated =
+        new HaraLibraryProvider() {
+          @Override
+          public String namespace() {
+            return "std.native.Unannotated";
+          }
+
+          @Override
+          public void install(HaraContext context) {}
+        };
+    assertThrows(HaraException.class, () -> new HaraLibraryLoader(List.of(unannotated)));
+  }
 }

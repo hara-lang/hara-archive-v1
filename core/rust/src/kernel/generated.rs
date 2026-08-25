@@ -20,41 +20,6 @@ pub(crate) fn foundation_library_alias(library: &str) -> Option<&'static str> {
 #[path = "generated/rewrite.rs"]
 mod rewrite;
 
-const NATIVE_TYPES: &[&str] = &[
-    "Maths",
-    "Num",
-    "Bits",
-    "Kernel",
-    "Sandbox",
-    "Package",
-    "String",
-    "Bytes",
-    "Crypto",
-    "OS",
-    "Process",
-    "File",
-    "Socket",
-    "Promise",
-    "Coroutine",
-    "Stream",
-    "Arr",
-    "Obj",
-    "Runtime",
-    "Printer",
-    "Document",
-    "Edn",
-    "Json",
-    "Host",
-    "Test",
-    "RegExp",
-    "Result",
-    "Schema",
-    "Exception",
-    "Base",
-    "Algo",
-    "Iter",
-];
-
 #[derive(Debug, Clone, Default)]
 pub struct GeneratedNamespaceConfig {
     aliases: HashMap<String, String>,

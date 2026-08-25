@@ -380,10 +380,10 @@ fn native_mutable_values(operation: &str, values: Vec<Value>) -> Result<Value, S
             "std.native.{type_name}/{method} expects a receiver"
         ));
     }
-    let supported = NATIVE_TYPES
+    let supported = native_declarations()
         .iter()
-        .find_map(|(name, methods)| (*name == type_name).then_some(*methods))
-        .is_some_and(|methods| methods.contains(&method));
+        .find(|declaration| declaration.name == type_name)
+        .is_some_and(|declaration| declaration.method(method));
     if !supported {
         return Err(format!("unknown std.native.{type_name} method: {method}"));
     }

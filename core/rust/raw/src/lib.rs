@@ -3,7 +3,7 @@ pub use hara_runtime::file;
 use hara_runtime::journal;
 #[cfg(feature = "bytecode-vm")]
 use hara_runtime::vm;
-use hara_runtime::{core, hta, json, kernel, lang};
+use hara_runtime::{core, hta, kernel, lang};
 
 use core::{EvalFiber, EvalFiberState, Promise, PromiseRejection, PromiseState, Value};
 use std::cell::RefCell;
@@ -258,56 +258,7 @@ impl Session {
         events: Rc<RefCell<VecDeque<Vec<u8>>>>,
     ) -> Self {
         let namespaces = core::minimal_namespace_registry();
-        let native_json = namespaces.find_or_create("std.native.Json");
-        native_json.intern(
-            "read",
-            core::native_function("std.native.Json/read", 1, |arguments| {
-                match arguments.as_slice() {
-                    [Value::String(source)] => json::read(source),
-                    _ => Err("json/read expects a string".into()),
-                }
-            }),
-        );
-        native_json.intern(
-            "write",
-            core::native_function("std.native.Json/write", 1, |arguments| {
-                json::write(&arguments[0]).map(Value::String)
-            }),
-        );
-        native_json.intern(
-            "pretty",
-            core::native_function("std.native.Json/pretty", 2, |arguments| {
-                if core::map_entries(&arguments[1]).is_none() {
-                    return Err("json/pretty expects an options map".into());
-                }
-                json::write_pretty(&arguments[0]).map(Value::String)
-            }),
-        );
-        let native_edn = namespaces.find_or_create("std.native.Edn");
-        native_edn.intern(
-            "read",
-            core::native_function("std.native.Edn/read", 1, |arguments| {
-                match arguments.as_slice() {
-                    [Value::String(source)] => core::read_edn(source),
-                    _ => Err("edn/read expects a string".into()),
-                }
-            }),
-        );
-        native_edn.intern(
-            "write",
-            core::native_function("std.native.Edn/write", 1, |arguments| {
-                Ok(Value::String(arguments[0].display()))
-            }),
-        );
-        native_edn.intern(
-            "pretty",
-            core::native_function("std.native.Edn/pretty", 2, |arguments| {
-                if core::map_entries(&arguments[1]).is_none() {
-                    return Err("edn/pretty expects an options map".into());
-                }
-                Ok(Value::String(arguments[0].display()))
-            }),
-        );
+        core::install_foundation_intrinsics(&namespaces);
         let mut env = HashMap::new();
         core::select_namespace_environment(&namespaces, &mut env, "user");
         let provider_resources = resources.clone();
@@ -2323,11 +2274,11 @@ fn error_code(error: &str) -> i32 {
 
 fn one_shot_environment() -> HashMap<String, Value> {
     let mut env = HashMap::new();
-    if let Some((_, methods)) = core::NATIVE_TYPES
+    if let Some(declaration) = core::native_declarations()
         .iter()
-        .find(|(native_type, _)| *native_type == "Iter")
+        .find(|declaration| declaration.name == "Iter")
     {
-        for method in *methods {
+        for method in declaration.methods {
             let function = core::native_type_function_value("Iter", method)
                 .unwrap_or_else(|error| panic!("{error}"));
             env.insert(format!("Iter/{method}"), function.clone());
@@ -3009,52 +2960,32 @@ mod tests {
 
     #[test]
     fn raw_kernels_expose_the_foundation_data_namespaces() {
-        assert_eq!(hara_runtime::core::NATIVE_TYPES.len(), 34);
-        assert_eq!(
-            hara_runtime::core::NATIVE_TYPES
-                .iter()
-                .map(|(_, methods)| methods.len())
-                .sum::<usize>(),
-            397
-        );
+        let declarations = hara_runtime::core::native_declarations();
+        assert!(!declarations.is_empty());
         let mut runtime = Session::new();
         assert!(runtime.env.contains_key("std.native.Edn/write"));
         assert!(runtime
             .env
             .contains_key("std.protocol.icount.ICount"));
-        for native_type in [
-            "Maths",
-            "Num",
-            "Bits",
-            "Kernel",
-            "String",
-            "Bytes",
-            "Crypto",
-            "OS",
-            "Process",
-            "File",
-            "Socket",
-            "Promise",
-            "Coroutine",
-            "Arr",
-            "Obj",
-            "Runtime",
-            "Printer",
-            "Edn",
-            "Json",
-            "Host",
-            "RegExp",
-            "Exception",
-            "Base",
-            "Iter",
-            "Work",
-        ] {
+        for declaration in declarations {
             assert!(
                 runtime
                     .env
-                    .contains_key(&format!("std.native.{native_type}")),
-                "std.native.{native_type}"
+                    .contains_key(&format!("std.native.{}", declaration.name)),
+                "std.native.{}",
+                declaration.name
             );
+            for method in declaration.methods {
+                assert!(
+                    runtime.env.contains_key(&format!(
+                        "std.native.{}/{}",
+                        declaration.name, method
+                    )),
+                    "std.native.{}/{}",
+                    declaration.name,
+                    method
+                );
+            }
         }
         runtime
             .start_fiber(1,             "(ns example.json) (std.native.Json/write {\"answer\" 42})")
@@ -3316,11 +3247,11 @@ mod tests {
                     .is_none(),
                 "{native_type}"
             );
-            let (_, methods) = hara_runtime::core::NATIVE_TYPES
+            let declaration = hara_runtime::core::native_declarations()
                 .iter()
-                .find(|(name, _)| *name == *native_type)
+                .find(|declaration| declaration.name == *native_type)
                 .unwrap();
-            for method in *methods {
+            for method in declaration.methods {
                 for symbol in [
                     format!("{native_type}/{method}"),
                     format!("{qualified}/{method}"),

@@ -943,237 +943,306 @@ pub(crate) fn direct_function_value(name: &str) -> Option<Value> {
 /// so makes alias precedence part of native invocation and permits facade →
 /// native → facade recursion.
 pub fn native_type_function_value(native_type: &str, method: &str) -> Result<Value, String> {
-    let display_name = format!("std.native.{native_type}/{method}");
-    if native_type == "Work" {
-        return crate::work::guest::values()
-            .into_iter()
-            .find(|(name, _)| *name == method)
-            .map(|(_, value)| value)
-            .ok_or_else(|| format!("unknown std.native.Work operation: {method}"));
+    let declaration = NATIVE_DECLARATIONS
+        .iter()
+        .find(|declaration| declaration.name == native_type)
+        .ok_or_else(|| {
+            format!(
+                "missing annotated native declaration: std.native.{native_type}/{method}"
+            )
+        })?;
+    if !declaration.method(method) {
+        return Err(format!(
+            "unknown annotated native method: std.native.{native_type}/{method}"
+        ));
     }
-    let value = match native_type {
-        "Base" => {
-            let method = method.to_owned();
-            native_variadic_function(&display_name, move |arguments| {
-                native_base_values(&method, &arguments)
-            })
+    (declaration.provider)(native_type, method)
+}
+
+fn native_display_name(native_type: &str, method: &str) -> String {
+    format!("std.native.{native_type}/{method}")
+}
+
+fn native_base_provider(native_type: &str, method: &str) -> Result<Value, String> {
+    let display_name = native_display_name(native_type, method);
+    let method = method.to_owned();
+    Ok(native_variadic_function(&display_name, move |arguments| {
+        native_base_values(&method, &arguments)
+    }))
+}
+
+fn native_schema_provider(native_type: &str, method: &str) -> Result<Value, String> {
+    let display_name = native_display_name(native_type, method);
+    let method = method.to_owned();
+    Ok(native_variadic_function(&display_name, move |arguments| {
+        native_schema_values(&method, &arguments)
+    }))
+}
+
+fn native_string_provider(native_type: &str, method: &str) -> Result<Value, String> {
+    let display_name = native_display_name(native_type, method);
+    let operation = format!("str/{method}");
+    Ok(native_variadic_function(&display_name, move |arguments| {
+        string_operation(&operation, arguments)
+    }))
+}
+
+fn native_bytes_provider(native_type: &str, method: &str) -> Result<Value, String> {
+    let display_name = native_display_name(native_type, method);
+    let method = method.to_owned();
+    Ok(native_variadic_function(&display_name, move |arguments| {
+        native_bytes_operation(&method, arguments)
+    }))
+}
+
+fn native_iter_provider(native_type: &str, method: &str) -> Result<Value, String> {
+    let display_name = native_display_name(native_type, method);
+    let method = method.to_owned();
+    Ok(native_variadic_function(&display_name, move |arguments| {
+        native_iter_operation(&method, arguments)
+    }))
+}
+
+fn native_maths_provider(native_type: &str, method: &str) -> Result<Value, String> {
+    let display_name = native_display_name(native_type, method);
+    let method = method.to_owned();
+    Ok(native_variadic_function(&display_name, move |arguments| {
+        math_values(&method, arguments)
+    }))
+}
+
+fn native_num_provider(native_type: &str, method: &str) -> Result<Value, String> {
+    let display_name = native_display_name(native_type, method);
+    let method = method.to_owned();
+    Ok(native_variadic_function(&display_name, move |arguments| {
+        if arguments.len() != 1 {
+            return Err(format!("{method} expects one value"));
         }
-        "Schema" => {
-            let method = method.to_owned();
-            native_variadic_function(&display_name, move |arguments| {
-                native_schema_values(&method, &arguments)
-            })
-        }
-        "String" => {
-            let operation = format!("str/{method}");
-            native_variadic_function(&display_name, move |arguments| {
-                string_operation(&operation, arguments)
-            })
-        }
-        "Bytes" => {
-            let method = method.to_owned();
-            native_variadic_function(&display_name, move |arguments| {
-                native_bytes_operation(&method, arguments)
-            })
-        }
-        "Iter" => {
-            let method = method.to_owned();
-            native_variadic_function(&display_name, move |arguments| {
-                native_iter_operation(&method, arguments)
-            })
-        }
-        "Maths" => {
-            let method = method.to_owned();
-            native_variadic_function(&display_name, move |arguments| {
-                math_values(&method, arguments)
-            })
-        }
-        "Num" => {
-            let method = method.to_owned();
-            native_variadic_function(&display_name, move |arguments| {
-                if arguments.len() != 1 {
-                    return Err(format!("{method} expects one value"));
-                }
-                number_conversion_value(&method, arguments.into_iter().next().unwrap())
-            })
-        }
-        "Bits" => {
-            let method = method.to_owned();
-            native_variadic_function(&display_name, move |arguments| {
-                bit_values(&method, &arguments)
-            })
-        }
-        "Kernel" => {
-            let method = method.to_owned();
-            native_variadic_function(&display_name, move |arguments| {
-                kernel_provider(&method)?(method.clone(), arguments)
-            })
-        }
-        "Sandbox" => {
-            let operation = format!("sandbox-{method}");
-            native_variadic_function(&display_name, move |arguments| {
-                kernel_provider(&operation)?(operation.clone(), arguments)
-            })
-        }
-        "Crypto" => {
-            let method = method.to_owned();
-            native_variadic_function(&display_name, move |arguments| {
-                native_crypto::operation(&method, arguments)
-            })
-        }
-        "Document" => {
-            let method = method.to_owned();
-            native_variadic_function(&display_name, move |arguments| {
-                document_operation(&method, arguments)
-            })
-        }
-        "Package" => {
-            let method = method.to_owned();
-            native_variadic_function(&display_name, move |arguments| {
-                native_package_values(&method, arguments, &mut HashMap::new())
-            })
-        }
-        "OS" | "Process" => {
-            let operation = format!("std.native.{native_type}/{method}");
-            native_variadic_function(&display_name, move |arguments| {
-                os_values(&operation, arguments)
-            })
-        }
-        "File" => {
-            let operation = format!("std.native.File/{method}");
-            native_variadic_function(&display_name, move |arguments| {
-                file_values(&operation, arguments)
-            })
-        }
-        "Socket" => {
-            let operation = format!("std.native.Socket/{method}");
-            native_variadic_function(&display_name, move |arguments| {
-                socket_values(&operation, arguments)
-            })
-        }
-        "Promise" => {
-            let method = method.to_owned();
-            native_variadic_function(&display_name, move |arguments| {
-                native_promise_values(&method, arguments)
-            })
-        }
-        "Coroutine" => {
-            let method = method.to_owned();
-            match method.as_str() {
-                "create" => native_fiber_function(
-                    &display_name,
-                    1,
-                    false,
-                    native_coroutine_create,
-                    native_coroutine_create_fiber,
-                ),
-                "yield" => native_fiber_function(
-                    &display_name,
-                    1,
-                    false,
-                    native_coroutine_yield,
-                    native_coroutine_yield_fiber,
-                ),
-                "await" => native_fiber_function(
-                    &display_name,
-                    1,
-                    false,
-                    native_coroutine_await,
-                    native_coroutine_await_fiber,
-                ),
-                _ => return Err(format!("unknown std.native.Coroutine operation: {method}")),
+        number_conversion_value(&method, arguments.into_iter().next().unwrap())
+    }))
+}
+
+fn native_bits_provider(native_type: &str, method: &str) -> Result<Value, String> {
+    let display_name = native_display_name(native_type, method);
+    let method = method.to_owned();
+    Ok(native_variadic_function(&display_name, move |arguments| {
+        bit_values(&method, &arguments)
+    }))
+}
+
+fn native_kernel_provider(native_type: &str, method: &str) -> Result<Value, String> {
+    let display_name = native_display_name(native_type, method);
+    let method = method.to_owned();
+    Ok(native_variadic_function(&display_name, move |arguments| {
+        kernel_provider(&method)?(method.clone(), arguments)
+    }))
+}
+
+fn native_sandbox_provider(native_type: &str, method: &str) -> Result<Value, String> {
+    let display_name = native_display_name(native_type, method);
+    let operation = format!("sandbox-{method}");
+    Ok(native_variadic_function(&display_name, move |arguments| {
+        kernel_provider(&operation)?(operation.clone(), arguments)
+    }))
+}
+
+fn native_crypto_provider(native_type: &str, method: &str) -> Result<Value, String> {
+    let display_name = native_display_name(native_type, method);
+    let method = method.to_owned();
+    Ok(native_variadic_function(&display_name, move |arguments| {
+        native_crypto::operation(&method, arguments)
+    }))
+}
+
+fn native_document_provider(native_type: &str, method: &str) -> Result<Value, String> {
+    let display_name = native_display_name(native_type, method);
+    let method = method.to_owned();
+    Ok(native_variadic_function(&display_name, move |arguments| {
+        document_operation(&method, arguments)
+    }))
+}
+
+fn native_package_provider(native_type: &str, method: &str) -> Result<Value, String> {
+    let display_name = native_display_name(native_type, method);
+    let method = method.to_owned();
+    Ok(native_variadic_function(&display_name, move |arguments| {
+        native_package_values(&method, arguments, &mut HashMap::new())
+    }))
+}
+
+fn native_os_provider(native_type: &str, method: &str) -> Result<Value, String> {
+    let display_name = native_display_name(native_type, method);
+    let operation = native_display_name(native_type, method);
+    Ok(native_variadic_function(&display_name, move |arguments| {
+        os_values(&operation, arguments)
+    }))
+}
+
+fn native_file_provider(native_type: &str, method: &str) -> Result<Value, String> {
+    let display_name = native_display_name(native_type, method);
+    let operation = native_display_name(native_type, method);
+    Ok(native_variadic_function(&display_name, move |arguments| {
+        file_values(&operation, arguments)
+    }))
+}
+
+fn native_socket_provider(native_type: &str, method: &str) -> Result<Value, String> {
+    let display_name = native_display_name(native_type, method);
+    let operation = native_display_name(native_type, method);
+    Ok(native_variadic_function(&display_name, move |arguments| {
+        socket_values(&operation, arguments)
+    }))
+}
+
+fn native_promise_provider(native_type: &str, method: &str) -> Result<Value, String> {
+    let display_name = native_display_name(native_type, method);
+    let method = method.to_owned();
+    Ok(native_variadic_function(&display_name, move |arguments| {
+        native_promise_values(&method, arguments)
+    }))
+}
+
+fn native_coroutine_provider(native_type: &str, method: &str) -> Result<Value, String> {
+    let display_name = native_display_name(native_type, method);
+    match method {
+        "create" => Ok(native_fiber_function(
+            &display_name,
+            1,
+            false,
+            native_coroutine_create,
+            native_coroutine_create_fiber,
+        )),
+        "yield" => Ok(native_fiber_function(
+            &display_name,
+            1,
+            false,
+            native_coroutine_yield,
+            native_coroutine_yield_fiber,
+        )),
+        "await" => Ok(native_fiber_function(
+            &display_name,
+            1,
+            false,
+            native_coroutine_await,
+            native_coroutine_await_fiber,
+        )),
+        _ => Err(format!("unknown std.native.Coroutine operation: {method}")),
+    }
+}
+
+fn native_stream_provider(native_type: &str, method: &str) -> Result<Value, String> {
+    let display_name = native_display_name(native_type, method);
+    let method = method.to_owned();
+    Ok(native_variadic_function(&display_name, move |arguments| {
+        native_stream_values(&method, arguments)
+    }))
+}
+
+fn native_mutable_provider(native_type: &str, method: &str) -> Result<Value, String> {
+    let display_name = native_display_name(native_type, method);
+    let operation = native_display_name(native_type, method);
+    Ok(native_variadic_function(&display_name, move |arguments| {
+        native_mutable_values(&operation, arguments)
+    }))
+}
+
+fn native_runtime_provider(native_type: &str, method: &str) -> Result<Value, String> {
+    let display_name = native_display_name(native_type, method);
+    let method = method.to_owned();
+    Ok(native_variadic_function(&display_name, move |arguments| {
+        native_runtime_values(&method, arguments, &mut HashMap::new())
+    }))
+}
+
+fn native_printer_provider(native_type: &str, method: &str) -> Result<Value, String> {
+    let display_name = native_display_name(native_type, method);
+    let method = method.to_owned();
+    Ok(native_variadic_function(&display_name, move |arguments| {
+        native_printer_values(&method, arguments)
+    }))
+}
+
+fn native_edn_provider(native_type: &str, method: &str) -> Result<Value, String> {
+    let display_name = native_display_name(native_type, method);
+    let method = method.to_owned();
+    Ok(native_variadic_function(&display_name, move |arguments| {
+        native_edn_values(&method, arguments)
+    }))
+}
+
+fn native_json_provider(native_type: &str, method: &str) -> Result<Value, String> {
+    let display_name = native_display_name(native_type, method);
+    let method = method.to_owned();
+    Ok(native_variadic_function(&display_name, move |arguments| {
+        match (method.as_str(), arguments.as_slice()) {
+            ("read", [Value::String(source)]) => crate::json::read(source),
+            ("write", [value]) => crate::json::write(value).map(Value::String),
+            ("pretty", [value, options]) if map_entries(options).is_some() => {
+                crate::json::write_pretty(value).map(Value::String)
             }
+            ("pretty", [_, _]) => Err("json/pretty expects an options map".into()),
+            ("read", _) => Err("json/read expects a string".into()),
+            ("write", _) => Err("json/write expects one value".into()),
+            ("pretty", _) => Err("json/pretty expects a value and options map".into()),
+            _ => Err(format!("unknown std.native.Json operation: {method}")),
         }
-        "Stream" => {
-            let method = method.to_owned();
-            native_variadic_function(&display_name, move |arguments| {
-                native_stream_values(&method, arguments)
-            })
-        }
-        "Arr" | "Obj" => {
-            let operation = format!("std.native.{native_type}/{method}");
-            native_variadic_function(&display_name, move |arguments| {
-                native_mutable_values(&operation, arguments)
-            })
-        }
-        "Runtime" => {
-            let method = method.to_owned();
-            native_variadic_function(&display_name, move |arguments| {
-                native_runtime_values(&method, arguments, &mut HashMap::new())
-            })
-        }
-        "Printer" => {
-            let method = method.to_owned();
-            native_variadic_function(&display_name, move |arguments| {
-                native_printer_values(&method, arguments)
-            })
-        }
-        "Edn" => {
-            let method = method.to_owned();
-            native_variadic_function(&display_name, move |arguments| {
-                native_edn_values(&method, arguments)
-            })
-        }
-        "Json" => {
-            let method = method.to_owned();
-            native_variadic_function(&display_name, move |arguments| {
-                match (method.as_str(), arguments.as_slice()) {
-                    ("read", [Value::String(source)]) => crate::json::read(source),
-                    ("write", [value]) => crate::json::write(value).map(Value::String),
-                    ("pretty", [value, options]) if map_entries(options).is_some() => {
-                        crate::json::write_pretty(value).map(Value::String)
-                    }
-                    ("pretty", [_, _]) => Err("json/pretty expects an options map".into()),
-                    ("read", _) => Err("json/read expects a string".into()),
-                    ("write", _) => Err("json/write expects one value".into()),
-                    ("pretty", _) => Err("json/pretty expects a value and options map".into()),
-                    _ => Err(format!("unknown std.native.Json operation: {method}")),
-                }
-            })
-        }
-        "Host" => {
-            let method = method.to_owned();
-            native_variadic_function(&display_name, move |arguments| {
-                native_host_values(&method, arguments)
-            })
-        }
-        "Test" => {
-            let method = method.to_owned();
-            native_variadic_function(&display_name, move |arguments| {
-                native_test_values(&method, arguments)
-            })
-        }
-        "RegExp" => {
-            let method = method.to_owned();
-            native_variadic_function(&display_name, move |arguments| {
-                native_regex_values(&method, arguments)
-            })
-        }
-        "Result" => {
-            let method = method.to_owned();
-            native_variadic_function(&display_name, move |arguments| {
-                native_result_values(&method, arguments)
-            })
-        }
-        "Exception" => {
-            let method = method.to_owned();
-            native_variadic_function(&display_name, move |arguments| {
-                native_exception_values(&method, arguments)
-            })
-        }
-        "Algo" => {
-            let method = method.to_owned();
-            native_variadic_function(&display_name, move |arguments| {
-                native_algo_values(&format!("std.native.Algo/{method}"), arguments)
-            })
-        }
-        _ => {
-            return Err(format!(
-                "missing direct native implementation family: std.native.{native_type}/{method}"
-            ))
-        }
-    };
-    Ok(value)
+    }))
+}
+
+fn native_host_provider(native_type: &str, method: &str) -> Result<Value, String> {
+    let display_name = native_display_name(native_type, method);
+    let method = method.to_owned();
+    Ok(native_variadic_function(&display_name, move |arguments| {
+        native_host_values(&method, arguments)
+    }))
+}
+
+fn native_test_provider(native_type: &str, method: &str) -> Result<Value, String> {
+    let display_name = native_display_name(native_type, method);
+    let method = method.to_owned();
+    Ok(native_variadic_function(&display_name, move |arguments| {
+        native_test_values(&method, arguments)
+    }))
+}
+
+fn native_regexp_provider(native_type: &str, method: &str) -> Result<Value, String> {
+    let display_name = native_display_name(native_type, method);
+    let method = method.to_owned();
+    Ok(native_variadic_function(&display_name, move |arguments| {
+        native_regex_values(&method, arguments)
+    }))
+}
+
+fn native_result_provider(native_type: &str, method: &str) -> Result<Value, String> {
+    let display_name = native_display_name(native_type, method);
+    let method = method.to_owned();
+    Ok(native_variadic_function(&display_name, move |arguments| {
+        native_result_values(&method, arguments)
+    }))
+}
+
+fn native_exception_provider(native_type: &str, method: &str) -> Result<Value, String> {
+    let display_name = native_display_name(native_type, method);
+    let method = method.to_owned();
+    Ok(native_variadic_function(&display_name, move |arguments| {
+        native_exception_values(&method, arguments)
+    }))
+}
+
+fn native_algo_provider(native_type: &str, method: &str) -> Result<Value, String> {
+    let display_name = native_display_name(native_type, method);
+    let operation = native_display_name(native_type, method);
+    Ok(native_variadic_function(&display_name, move |arguments| {
+        native_algo_values(&operation, arguments)
+    }))
+}
+
+fn native_work_provider(_native_type: &str, method: &str) -> Result<Value, String> {
+    crate::work::guest::values()
+        .into_iter()
+        .find(|(name, _)| *name == method)
+        .map(|(_, value)| value)
+        .ok_or_else(|| format!("unknown std.native.Work operation: {method}"))
 }
 
 fn native_coroutine_create(arguments: Vec<Value>) -> Result<Value, String> {
