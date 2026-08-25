@@ -1,0 +1,35 @@
+(ns crypto.ext.noir-test
+  (:use code.test)
+  (:require [crypto.ext.noir :as noir]))
+
+(fact "Noir package identity is stable"
+  [noir/+namespace+ noir/+extension-namespace+ noir/+identity+ noir/+version+
+   noir/+artifact-format+ noir/+proof-format+]
+  => ["crypto.ext.noir"
+      "ledger.noir"
+      "hara/ledger.noir"
+      "0.1.0"
+      "hara/ledger.noir/v1"
+      "hara.noir.proof/0-alpha"])
+
+^{:refer crypto.ext.noir/manifest}
+(fact "Noir manifest declares the HTA targets and callable surface"
+  (let [manifest (noir/manifest)]
+     [(select-keys manifest [:namespace :identity :provider :abi])
+      (:targets manifest)
+     (set (keys (:exports manifest)))
+     (:assets manifest)])
+  => [{:namespace "ledger.noir"
+       :identity "hara/ledger.noir"
+       :provider :hta
+       :abi :hta.v1}
+      {:node {:module "node/worker.mjs" :runtime :process}
+       :browser {:module "browser/worker.mjs" :runtime :web-worker}}
+      #{"compile" "prove" "verify"}
+      ["assets/noir-wasm.mjs"
+       "assets/barretenberg.js"
+       "assets/barretenberg-threads.js"
+       "assets/main.worker.js"
+       "assets/thread.worker.js"]])
+
+(pr-str (run '[crypto.ext.noir-test]))

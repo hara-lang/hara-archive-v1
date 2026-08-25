@@ -11,8 +11,8 @@ use crate::vm::{FunctionId, Machine, VmOutcome};
 
 use super::artifact::{decode_artifact, NativeArtifact};
 use super::bridge::{
-    self, Slot, RESULT_BOOL, RESULT_HANDLE, RESULT_I64, SLOT_BOOL, SLOT_CONSTANT, SLOT_HANDLE,
-    SLOT_I64, SLOT_NIL,
+    self, Slot, TargetKind, RESULT_BOOL, RESULT_HANDLE, RESULT_I64, SLOT_BOOL, SLOT_CONSTANT,
+    SLOT_HANDLE, SLOT_I64, SLOT_NIL,
 };
 use super::codegen::{
     ERROR_ARRAY_BOUNDS, ERROR_DIVISION_BY_ZERO, ERROR_INTEGER_OVERFLOW, ERROR_OBJECT_KEY,
@@ -23,6 +23,7 @@ use super::handles::{Handle, HandleScope};
 struct HostState {
     handles: HandleScope,
     constants: Vec<Value>,
+    targets: Vec<bridge::TargetDescriptor>,
     error_code: i32,
     instrumentation: Option<BridgeInstrumentation>,
 }
@@ -68,6 +69,7 @@ impl NativeModule {
             HostState {
                 handles: HandleScope::default(),
                 constants: artifact.program.constants.clone(),
+                targets: artifact.targets.clone(),
                 error_code: 0,
                 instrumentation,
             },
@@ -286,8 +288,14 @@ fn define_target_import(linker: &mut Linker<HostState>) -> Result<(), String> {
                     .iter()
                     .map(|slot| resolve_bridge_slot(&caller, *slot))
                     .collect::<Result<Vec<_>, _>>()?;
-                let name = bridge::target_name(target)
+                let descriptor = usize::try_from(target)
+                    .ok()
+                    .and_then(|index| caller.data().targets.get(index))
+                    .cloned()
                     .ok_or_else(|| host_error(format!("unknown whole-Wasm target {target}")))?;
+                bridge::validate_target_call(&descriptor, arguments.len(), result_mode)
+                    .map_err(host_error)?;
+                let name = descriptor.symbol.as_str();
                 let instrumentation = caller.data().instrumentation.clone();
                 emit_bridge_event(
                     instrumentation.as_ref(),
@@ -297,10 +305,16 @@ fn define_target_import(linker: &mut Linker<HostState>) -> Result<(), String> {
                     "enter",
                 )
                 .map_err(host_error)?;
-                let value = match if name.starts_with("std.protocol.") {
-                    crate::core::protocol_intrinsic_call(name, &arguments).map_err(host_error)
-                } else {
-                    crate::core::apply_intrinsic_name(name, &arguments).map_err(host_error)
+                let value = match match descriptor.kind {
+                    TargetKind::Protocol => {
+                        crate::core::protocol_intrinsic_call(name, &arguments).map_err(host_error)
+                    }
+                    TargetKind::Native => {
+                        crate::core::apply_intrinsic_name(name, &arguments).map_err(host_error)
+                    }
+                    TargetKind::VectorConstruct | TargetKind::MapConstruct => Err(host_error(
+                        format!("whole-Wasm target is not callable: {name}"),
+                    )),
                 } {
                     Ok(value) => value,
                     Err(error) => {
@@ -387,22 +401,23 @@ fn define_value_construct_import(linker: &mut Linker<HostState>) -> Result<(), S
                     .iter()
                     .map(|slot| resolve_bridge_slot(&caller, *slot))
                     .collect::<Result<Vec<_>, _>>()?;
-                let value = match target {
-                    bridge::TARGET_VECTOR_CONSTRUCT => {
+                let descriptor = usize::try_from(target)
+                    .ok()
+                    .and_then(|index| caller.data().targets.get(index))
+                    .cloned()
+                    .ok_or_else(|| {
+                        host_error(format!("unknown whole-Wasm structural target {target}"))
+                    })?;
+                bridge::validate_value_construct(&descriptor, values.len()).map_err(host_error)?;
+                let value = match descriptor.kind {
+                    TargetKind::VectorConstruct => {
                         Value::Vector(crate::lang::data::Vector::from_iter(values))
                     }
-                    bridge::TARGET_MAP_CONSTRUCT => {
-                        if values.len() % 2 != 0 {
-                            return Err(host_error(
-                                "whole-Wasm map construction needs key/value pairs".into(),
-                            ));
-                        }
-                        crate::core::vm_build_map(
-                            values.into_iter().collect::<Vec<_>>(),
-                        )
-                        .map_err(host_error)?
+                    TargetKind::MapConstruct => {
+                        crate::core::vm_build_map(values.into_iter().collect::<Vec<_>>())
+                            .map_err(host_error)?
                     }
-                    _ => {
+                    TargetKind::Protocol | TargetKind::Native => {
                         return Err(host_error(format!(
                             "unknown whole-Wasm structural target {target}"
                         )))
@@ -501,7 +516,9 @@ fn encode_bridge_result(
         },
         RESULT_BOOL => match value {
             Value::Bool(value) => Ok(i64::from(value)),
-            _ => Err(host_error("whole-Wasm target did not return a boolean".into())),
+            _ => Err(host_error(
+                "whole-Wasm target did not return a boolean".into(),
+            )),
         },
         _ => unreachable!("result mode validated above"),
     }

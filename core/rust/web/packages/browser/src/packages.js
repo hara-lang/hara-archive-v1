@@ -6,7 +6,7 @@ import {
   loadHtaExtension,
   parseEdnData,
   parseHtaManifest
-} from "../../hta/index.js";
+} from "@hara-lang/hta";
 
 const ednOptions = {
   mapAs: "object",

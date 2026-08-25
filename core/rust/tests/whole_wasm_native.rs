@@ -123,7 +123,7 @@ fn runtime_whole_wasm_product_has_stable_alpha_metadata() {
     assert_eq!(manifest["schema"], "hara.compiled-product.manifest/0-alpha");
     assert_eq!(manifest["product"], "whole-wasm");
     assert_eq!(manifest["format"], "HNW0");
-    assert_eq!(manifest["abi-version"], "hnw0/3");
+    assert_eq!(manifest["abi-version"], "hnw0/4");
     assert_eq!(manifest["artifact-bytes"], first.len());
     assert_eq!(manifest["entrypoint"], "hara_entry");
     assert_eq!(manifest["error-global"], "hara_error");

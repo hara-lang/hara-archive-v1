@@ -1,4 +1,4 @@
-import { decodeHta, encodeHta, HtaKeyword } from "../hta/index.js";
+import { decodeHta, encodeHta, HtaKeyword } from "@hara-lang/hta";
 
 export const WORK_SCHEMA_VERSION = 1;
 

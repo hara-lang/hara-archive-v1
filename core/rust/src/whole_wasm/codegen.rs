@@ -8,9 +8,8 @@ use wasm_encoder::{
 use crate::core::IntrinsicOp;
 
 use super::bridge::{
-    HEAP_BASE, MAX_SLOTS, RESULT_BOOL, RESULT_HANDLE, RESULT_I64, SLOT_BOOL, SLOT_BYTES,
-    SLOT_CONSTANT, SLOT_HANDLE, SLOT_I64, SLOT_NIL, TARGET_ASSOC, TARGET_COUNT, TARGET_LOOKUP,
-    TARGET_MAP_CONSTRUCT, TARGET_NTH, TARGET_NUMBER_P, TARGET_VECTOR_CONSTRUCT,
+    target_id, HEAP_BASE, MAX_SLOTS, RESULT_BOOL, RESULT_HANDLE, RESULT_I64, SLOT_BOOL, SLOT_BYTES,
+    SLOT_CONSTANT, SLOT_HANDLE, SLOT_I64, SLOT_NIL,
 };
 use super::ssa::{
     lower_program, operands, result as operation_result, verify, SsaEdge, SsaFunction,
@@ -632,7 +631,9 @@ fn emit_target_call(
     emit_bridge_slots(out, arguments)?;
     out.instruction(&Instruction::I64Const(target));
     out.instruction(&Instruction::I64Const(0));
-    out.instruction(&Instruction::I64Const(i64::try_from(arguments.len()).unwrap()));
+    out.instruction(&Instruction::I64Const(
+        i64::try_from(arguments.len()).unwrap(),
+    ));
     out.instruction(&Instruction::I64Const(result_mode));
     out.instruction(&Instruction::Call(HOST_TARGET_CALL));
     out.instruction(&Instruction::LocalSet(destination));
@@ -648,7 +649,9 @@ fn emit_value_construct(
     emit_bridge_slots(out, arguments)?;
     out.instruction(&Instruction::I64Const(target));
     out.instruction(&Instruction::I64Const(0));
-    out.instruction(&Instruction::I64Const(i64::try_from(arguments.len()).unwrap()));
+    out.instruction(&Instruction::I64Const(
+        i64::try_from(arguments.len()).unwrap(),
+    ));
     out.instruction(&Instruction::Call(HOST_VALUE_CONSTRUCT));
     out.instruction(&Instruction::LocalSet(destination));
     Ok(())
@@ -928,7 +931,7 @@ fn emit_operation(
                 .collect::<Vec<_>>();
             emit_value_construct(
                 out,
-                TARGET_VECTOR_CONSTRUCT,
+                target_id("hara.whole-wasm/vector"),
                 &arguments,
                 locals.get(*destination),
             )?;
@@ -1027,7 +1030,7 @@ fn emit_operation(
                 .collect::<Vec<_>>();
             emit_value_construct(
                 out,
-                TARGET_MAP_CONSTRUCT,
+                target_id("hara.whole-wasm/map"),
                 &arguments,
                 locals.get(*destination),
             )?;
@@ -1039,7 +1042,7 @@ fn emit_operation(
         } => {
             emit_value_construct(
                 out,
-                TARGET_MAP_CONSTRUCT,
+                target_id("hara.whole-wasm/map"),
                 &[
                     BridgeArg::Local(locals.get(*key), representations[key.0 as usize]),
                     BridgeArg::Local(locals.get(*value), representations[value.0 as usize]),
@@ -1055,7 +1058,7 @@ fn emit_operation(
         } => {
             emit_target_call(
                 out,
-                TARGET_ASSOC,
+                target_id("std.protocol.iassoc.IAssoc/assoc"),
                 &[
                     BridgeArg::Local(
                         locals.get(*collection),
@@ -1077,22 +1080,28 @@ fn emit_operation(
         } => {
             emit_value_construct(
                 out,
-                TARGET_MAP_CONSTRUCT,
+                target_id("hara.whole-wasm/map"),
                 &[
-                    BridgeArg::Local(locals.get(*inner_key), representations[inner_key.0 as usize]),
+                    BridgeArg::Local(
+                        locals.get(*inner_key),
+                        representations[inner_key.0 as usize],
+                    ),
                     BridgeArg::Local(locals.get(*value), representations[value.0 as usize]),
                 ],
                 temp_a,
             )?;
             emit_target_call(
                 out,
-                TARGET_ASSOC,
+                target_id("std.protocol.iassoc.IAssoc/assoc"),
                 &[
                     BridgeArg::Local(
                         locals.get(*collection),
                         representations[collection.0 as usize],
                     ),
-                    BridgeArg::Local(locals.get(*outer_key), representations[outer_key.0 as usize]),
+                    BridgeArg::Local(
+                        locals.get(*outer_key),
+                        representations[outer_key.0 as usize],
+                    ),
                     BridgeArg::Local(temp_a, super::ir::Rep::TruthyHandle),
                 ],
                 RESULT_HANDLE,
@@ -1106,7 +1115,7 @@ fn emit_operation(
         } => {
             emit_target_call(
                 out,
-                TARGET_LOOKUP,
+                target_id("std.protocol.ilookup.ILookup/lookup"),
                 &[
                     BridgeArg::Local(
                         locals.get(*collection),
@@ -1125,7 +1134,7 @@ fn emit_operation(
         } => {
             emit_target_call(
                 out,
-                TARGET_LOOKUP,
+                target_id("std.protocol.ilookup.ILookup/lookup"),
                 &[
                     BridgeArg::Local(
                         locals.get(*collection),
@@ -1145,7 +1154,7 @@ fn emit_operation(
         } => {
             emit_target_call(
                 out,
-                TARGET_LOOKUP,
+                target_id("std.protocol.ilookup.ILookup/lookup"),
                 &[
                     BridgeArg::Local(
                         locals.get(*collection),
@@ -1158,8 +1167,11 @@ fn emit_operation(
             )?;
             emit_target_call(
                 out,
-                TARGET_LOOKUP,
-                &[BridgeArg::Local(temp_a, super::ir::Rep::TruthyHandle), BridgeArg::Constant(*second_key)],
+                target_id("std.protocol.ilookup.ILookup/lookup"),
+                &[
+                    BridgeArg::Local(temp_a, super::ir::Rep::TruthyHandle),
+                    BridgeArg::Constant(*second_key),
+                ],
                 RESULT_I64,
                 locals.get(*destination),
             )?;
@@ -1167,7 +1179,7 @@ fn emit_operation(
         MirOp::IsNumber { destination, value } => {
             emit_target_call(
                 out,
-                TARGET_NUMBER_P,
+                target_id("std.native.Base/number?"),
                 &[BridgeArg::Local(
                     locals.get(*value),
                     representations[value.0 as usize],
@@ -1190,7 +1202,7 @@ fn emit_operation(
         } => {
             emit_target_call(
                 out,
-                TARGET_COUNT,
+                target_id("std.protocol.icount.ICount/count"),
                 &[BridgeArg::Local(
                     locals.get(*collection),
                     representations[collection.0 as usize],
@@ -1220,7 +1232,7 @@ fn emit_operation(
         } => {
             emit_target_call(
                 out,
-                TARGET_NTH,
+                target_id("std.protocol.inth.INth/nth"),
                 &[
                     BridgeArg::Local(
                         locals.get(*collection),

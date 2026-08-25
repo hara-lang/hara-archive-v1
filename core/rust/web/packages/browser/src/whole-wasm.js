@@ -10,6 +10,10 @@ function readU32(bytes, offset) {
     .getUint32(offset, false);
 }
 
+function readU16(view, offset) {
+  return view.getUint16(offset, false);
+}
+
 /** Extracts the WebAssembly payload from an HNW0 artifact produced by Rust. */
 export function decodeHnw0(input) {
   const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
@@ -25,14 +29,14 @@ export function decodeHnw0(input) {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const abiVersion = view.getUint16(offset, false);
   offset += 2;
-  if (abiVersion !== 3) throw new Error(`unsupported HNW ABI version ${abiVersion}`);
-  const functionCount = view.getUint16(offset, false);
+  if (abiVersion !== 4) throw new Error(`unsupported HNW ABI version ${abiVersion}`);
+  const functionCount = readU16(view, offset);
   offset += 2;
   const functions = [];
   for (let index = 0; index < functionCount; index += 1) {
     if (offset + 4 > payloadEnd) throw new Error("native artifact is truncated");
-    const id = view.getUint16(offset, false);
-    const arity = view.getUint16(offset + 2, false);
+    const id = readU16(view, offset);
+    const arity = readU16(view, offset + 2);
     offset += 4;
     if (id !== index) throw new Error("native artifact function table is not canonical");
     functions.push({ id, arity });
@@ -47,6 +51,37 @@ export function decodeHnw0(input) {
     return native === 1;
   });
   offset += functionCount;
+  if (offset + 2 > payloadEnd) throw new Error("native artifact is truncated");
+  const targetCount = readU16(view, offset);
+  offset += 2;
+  const targets = [];
+  const decoder = new TextDecoder();
+  for (let index = 0; index < targetCount; index += 1) {
+    if (offset + 7 > payloadEnd) throw new Error("native artifact target table is truncated");
+    const id = readU16(view, offset);
+    offset += 2;
+    const kind = view.getUint8(offset);
+    offset += 1;
+    if (kind < 0 || kind > 3) throw new Error("native artifact target kind is invalid");
+    const encodedArity = readU16(view, offset);
+    offset += 2;
+    const symbolLength = readU16(view, offset);
+    offset += 2;
+    if (offset + symbolLength > payloadEnd) {
+      throw new Error("native artifact target symbol is truncated");
+    }
+    const symbol = decoder.decode(bytes.subarray(offset, offset + symbolLength));
+    offset += symbolLength;
+    if (id !== index || symbol.length === 0) {
+      throw new Error("native artifact target table is not canonical");
+    }
+    targets.push({
+      id,
+      kind,
+      arity: encodedArity === 0xffff ? null : encodedArity,
+      symbol
+    });
+  }
   if (offset + 4 > payloadEnd) {
     throw new Error("native artifact contains malformed sections");
   }
@@ -69,7 +104,7 @@ export function decodeHnw0(input) {
   if (String.fromCharCode(...wasm.subarray(0, 4)) !== "\0asm") {
     throw new Error("native artifact contains invalid Wasm");
   }
-  return { abiVersion, functionCount, functions, capabilities, hbc, wasm };
+  return { abiVersion, functionCount, functions, capabilities, targets, hbc, wasm };
 }
 
 function hostImports(host, getMemory) {

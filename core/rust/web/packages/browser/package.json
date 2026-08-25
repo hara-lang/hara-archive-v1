@@ -4,7 +4,14 @@
   "description": "Embeddable Hara browser runtime and CDN loader",
   "license": "Apache-2.0",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hara-lang/hara.git",
+    "directory": "core/rust/web/packages/browser"
+  },
+  "homepage": "https://github.com/hara-lang/hara/tree/main/core/rust/web/packages/browser#readme",
   "dependencies": {
+    "@hara-lang/hta": "0.1.0",
     "edn-data": "1.1.2",
     "fflate": "0.8.2"
   },

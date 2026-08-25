@@ -1,0 +1,10 @@
+{:hara/type :project
+ :hara/version "1.0.0"
+ :project/id "hara:crypto/ext/noir"
+ :project/version "0.1.0"
+ :project/source-paths []
+ :project/source-files ["noir.hal"]
+ :project/test-paths []
+ :project/extension-paths []
+ :project/capabilities #{}
+ :project/dependencies {}}

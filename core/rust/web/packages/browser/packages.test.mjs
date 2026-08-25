@@ -7,7 +7,7 @@ import {
   installPackageProvider,
   loadLockedPackageResources
 } from "./src/packages.js";
-import { decodeHta, encodeHta, HtaKeyword } from "../hta/index.js";
+import { decodeHta, encodeHta, HtaKeyword } from "@hara-lang/hta";
 
 const encoder = new TextEncoder();
 

@@ -3,11 +3,12 @@ use wasm_encoder::Module;
 
 use crate::vm::{decode_program, encode_program, FunctionId, Instruction, Program};
 
+use super::bridge::{self, TargetDescriptor, TargetKind};
 use super::codegen::compile_program;
 use super::ir::lower_function;
 
 const MAGIC: &[u8; 4] = b"HNW0";
-pub const HNW_ABI_VERSION: u16 = 3;
+pub const HNW_ABI_VERSION: u16 = 4;
 
 #[derive(Debug, Clone)]
 pub struct NativeArtifact {
@@ -16,6 +17,7 @@ pub struct NativeArtifact {
     pub wasm: Vec<u8>,
     pub functions: Vec<(FunctionId, u16)>,
     pub capabilities: Vec<bool>,
+    pub targets: Vec<TargetDescriptor>,
 }
 
 pub fn compile_artifact(program: &Program) -> Result<Vec<u8>, String> {
@@ -56,6 +58,22 @@ pub fn compile_artifact(program: &Program) -> Result<Vec<u8>, String> {
     }
     for native in &capabilities {
         payload.push(u8::from(*native));
+    }
+    let targets = bridge::target_table();
+    put_u16(
+        &mut payload,
+        u16::try_from(targets.len()).map_err(|_| "too many HNW0 targets")?,
+    );
+    for target in &targets {
+        put_u16(&mut payload, target.id);
+        payload.push(target.kind as u8);
+        put_u16(&mut payload, target.arity.unwrap_or(u16::MAX));
+        let symbol = target.symbol.as_bytes();
+        put_u16(
+            &mut payload,
+            u16::try_from(symbol.len()).map_err(|_| "HNW0 target symbol is too long")?,
+        );
+        payload.extend_from_slice(symbol);
     }
     put_bytes(&mut payload, &hbc)?;
     put_bytes(&mut payload, &wasm)?;
@@ -115,6 +133,32 @@ pub fn decode_artifact(bytes: &[u8]) -> Result<NativeArtifact, String> {
             _ => Err("native artifact capability table is not canonical".into()),
         })
         .collect::<Result<Vec<_>, String>>()?;
+    let target_count = usize::from(reader.u16()?);
+    let mut targets = Vec::with_capacity(target_count);
+    for _ in 0..target_count {
+        let id = reader.u16()?;
+        let kind = match reader.take(1)?[0] {
+            0 => TargetKind::Protocol,
+            1 => TargetKind::Native,
+            2 => TargetKind::VectorConstruct,
+            3 => TargetKind::MapConstruct,
+            _ => return Err("native artifact target kind is invalid".into()),
+        };
+        let arity = match reader.u16()? {
+            u16::MAX => None,
+            value => Some(value),
+        };
+        let symbol_length = usize::from(reader.u16()?);
+        let symbol = String::from_utf8(reader.take(symbol_length)?.to_vec())
+            .map_err(|_| "native artifact target symbol is not UTF-8")?;
+        targets.push(TargetDescriptor {
+            id,
+            symbol,
+            kind,
+            arity,
+        });
+    }
+    bridge::validate_target_table(&targets)?;
     let program = decode_program(reader.bytes()?)?;
     let wasm = reader.bytes()?.to_vec();
     reader.finish()?;
@@ -136,6 +180,7 @@ pub fn decode_artifact(bytes: &[u8]) -> Result<NativeArtifact, String> {
         wasm,
         functions,
         capabilities,
+        targets,
     })
 }
 

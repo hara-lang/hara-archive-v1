@@ -3,7 +3,7 @@ use wasm_bindgen::prelude::*;
 use crate::core::{self, Value};
 
 use super::artifact::decode_artifact;
-use super::bridge::{self, Slot, RESULT_BOOL, RESULT_HANDLE, RESULT_I64};
+use super::bridge::{self, Slot, TargetKind, RESULT_BOOL, RESULT_HANDLE, RESULT_I64};
 use super::handles::{Handle, HandleScope};
 
 /// Browser-side owner for the dynamic Hara values referenced by a generated
@@ -13,6 +13,7 @@ use super::handles::{Handle, HandleScope};
 pub struct WholeWasmHost {
     constants: Vec<Value>,
     capabilities: Vec<bool>,
+    targets: Vec<bridge::TargetDescriptor>,
     entry_function: u16,
     handles: HandleScope,
 }
@@ -26,6 +27,7 @@ impl WholeWasmHost {
             entry_function: artifact.program.entry,
             constants: artifact.program.constants,
             capabilities: artifact.capabilities,
+            targets: artifact.targets,
             handles: HandleScope::default(),
         })
     }
@@ -64,41 +66,49 @@ impl WholeWasmHost {
             .iter()
             .map(|slot| self.resolve_slot(*slot))
             .collect::<Result<Vec<_>, _>>()?;
-        if let Some(name) = bridge::target_name(target) {
-            let value = if name.starts_with("std.protocol.") {
-                core::protocol_intrinsic_call(name, &values)
-            } else {
-                core::apply_intrinsic_name(name, &values)
+        let descriptor = usize::try_from(target)
+            .ok()
+            .and_then(|index| self.targets.get(index))
+            .cloned()
+            .ok_or_else(|| js_error(format!("unknown whole-Wasm target {target}")))?;
+        bridge::validate_target_call(&descriptor, values.len(), result_mode).map_err(js_error)?;
+        let value = match descriptor.kind {
+            TargetKind::Protocol => core::protocol_intrinsic_call(&descriptor.symbol, &values),
+            TargetKind::Native => core::apply_intrinsic_name(&descriptor.symbol, &values),
+            TargetKind::VectorConstruct | TargetKind::MapConstruct => {
+                return Err(js_error(format!(
+                    "whole-Wasm target is not callable: {}",
+                    descriptor.symbol
+                )))
             }
-            .map_err(js_error)?;
-            return self.encode_result(value, result_mode);
         }
-        Err(js_error(format!("unknown whole-Wasm target {target}")))
+        .map_err(js_error)?;
+        self.encode_result(value, result_mode)
     }
 
     #[wasm_bindgen(js_name = valueConstruct)]
-    pub fn value_construct(
-        &mut self,
-        target: i64,
-        arguments: JsValue,
-    ) -> Result<i64, JsValue> {
+    pub fn value_construct(&mut self, target: i64, arguments: JsValue) -> Result<i64, JsValue> {
         let values = parse_slots(arguments)?
             .iter()
             .map(|slot| self.resolve_slot(*slot))
             .collect::<Result<Vec<_>, _>>()?;
-        let value = match target {
-            bridge::TARGET_VECTOR_CONSTRUCT => {
+        let descriptor = usize::try_from(target)
+            .ok()
+            .and_then(|index| self.targets.get(index))
+            .cloned()
+            .ok_or_else(|| js_error(format!("unknown whole-Wasm structural target {target}")))?;
+        bridge::validate_value_construct(&descriptor, values.len()).map_err(js_error)?;
+        let value = match descriptor.kind {
+            TargetKind::VectorConstruct => {
                 Value::Vector(crate::lang::data::Vector::from_iter(values))
             }
-            bridge::TARGET_MAP_CONSTRUCT => {
-                if values.len() % 2 != 0 {
-                    return Err(js_error(
-                        "whole-Wasm map construction needs key/value pairs".into(),
-                    ));
-                }
-                core::vm_build_map(values).map_err(js_error)?
+            TargetKind::MapConstruct => core::vm_build_map(values).map_err(js_error)?,
+            TargetKind::Protocol | TargetKind::Native => {
+                return Err(js_error(format!(
+                    "whole-Wasm target is not a value constructor: {}",
+                    descriptor.symbol
+                )))
             }
-            _ => return Err(js_error(format!("unknown structural target {target}"))),
         };
         self.insert(value)
     }
@@ -155,7 +165,6 @@ impl WholeWasmHost {
             _ => Err(js_error("whole-Wasm value is not an integer".into())),
         }
     }
-
 }
 
 impl WholeWasmHost {
@@ -196,7 +205,9 @@ impl WholeWasmHost {
                 .map_err(|_| js_error("whole-Wasm integer overflow".into())),
             RESULT_BOOL => match value {
                 Value::Bool(value) => Ok(i64::from(value)),
-                _ => Err(js_error("whole-Wasm target did not return a boolean".into())),
+                _ => Err(js_error(
+                    "whole-Wasm target did not return a boolean".into(),
+                )),
             },
             _ => unreachable!("result mode validated above"),
         }
@@ -209,7 +220,9 @@ fn parse_slots(value: JsValue) -> Result<Vec<Slot>, JsValue> {
     for item in slots.iter() {
         let pair = js_sys::Array::from(&item);
         if pair.length() != 2 {
-            return Err(js_error("whole-Wasm bridge slot must have two fields".into()));
+            return Err(js_error(
+                "whole-Wasm bridge slot must have two fields".into(),
+            ));
         }
         let kind = pair
             .get(0)

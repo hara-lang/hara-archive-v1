@@ -65,6 +65,7 @@ code.vm.interpreter
 code.vm.kernel
 code.vm.model
 code.vm.source
+crypto.ext.noir
 db.ledger.chain
 db.ledger.common
 db.ledger.protocol

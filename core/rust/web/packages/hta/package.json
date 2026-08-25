@@ -7,9 +7,9 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/hara-lang/hara.git",
-    "directory": "rust/web/packages/hta"
+    "directory": "core/rust/web/packages/hta"
   },
-  "homepage": "https://github.com/hara-lang/hara/tree/main/rust/web/packages/hta#readme",
+  "homepage": "https://github.com/hara-lang/hara/tree/main/core/rust/web/packages/hta#readme",
   "bugs": {
     "url": "https://github.com/hara-lang/hara/issues"
   },
