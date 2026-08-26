@@ -118,6 +118,35 @@
         :item/id 0
         :value 1}]])
 
+^{:refer work.base.frame/emit}
+(fact "forwards native events to the optional receipt capability"
+  (let [calls (atom [])
+        runtime {:work/policy {:work/mode :native}
+                 :work/hooks
+                 {:work/capability-call
+                  (fn [capability operation arguments]
+                    (swap! calls conj [capability operation arguments]))}}
+        frame {:run/id "run-1"
+               :work/root :root
+               :node/path [:step]
+               :item/id 0}
+        emitted (subject/emit runtime frame :completed {:value 2})]
+    [emitted (deref calls)])
+  => [{:event :completed
+       :run/id "run-1"
+       :work/root :root
+       :node/path [:step]
+       :item/id 0
+       :value 2}
+      [[:work/receipts
+        :record
+        [{:event :completed
+          :run/id "run-1"
+          :work/root :root
+          :node/path [:step]
+          :item/id 0
+          :value 2}]]]])
+
 ^{:refer work.base.frame/leaf-context}
 (fact "adds frame identity and cleanup state to a leaf context"
   (subject/leaf-context

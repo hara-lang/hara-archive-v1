@@ -7,7 +7,8 @@
             [work.base.execution.graph :as graph]
             [work.base.execution.ensure :as ensure]
             [work.base.execution.batch :as batch]
-            [work.base.execution.bind :as bind]))
+            [work.base.execution.bind :as bind]
+            [work.base.execution.await :as await]))
 
 (defn normalise-provider
   [provider]
@@ -50,7 +51,8 @@
    :ensure ensure/run-ensure
    :batch batch/run-batch
    :bind bind/run-bind
-   :graph graph/run-graph})
+   :graph graph/run-graph
+   :await await/run-await})
 
 (defn evaluator-handlers
   [runtime]

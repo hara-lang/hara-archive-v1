@@ -246,6 +246,36 @@
             {:op :step
              :fn function}))))
 
+^{:public true}
+(defn suspend
+  "Creates a serializable Work node that waits on an ephemeral or durable
+  suspension capability.  The wait identity and absolute deadline are data;
+  providers own the pending handle."
+  ([wait]
+   (suspend {} wait))
+  ([options wait]
+   (if (not (map? wait))
+     (throw
+      (ex :argument {:wait wait} :ex/message "Work await descriptor must be a map")))
+   (let [kind (:wait/kind wait)
+         deadline (:wait/deadline wait)]
+     (if (nil? (:wait/id wait))
+       (throw
+        (ex :dependency {:wait wait} :ex/message "Work await descriptor requires :wait/id")))
+     (if (not (contains-value? #{:signal :timer} kind))
+       (throw
+        (ex :argument {:wait/kind kind} :ex/message "Work await descriptor kind must be :signal or :timer")))
+     (if (and (= :timer kind) (nil? deadline))
+       (throw
+        (ex :dependency {:wait/id (:wait/id wait)} :ex/message "Timer await descriptor requires :wait/deadline")))
+     (if (and deadline (not (number? deadline)))
+       (throw
+        (ex :argument {:wait/deadline deadline} :ex/message "Work await deadline must be an absolute number")))
+     (definition
+      (merge (or options {})
+             {:op :await
+              :wait wait})))))
+
 (defn chain
   ([children]
    (chain {} children))
@@ -339,6 +369,41 @@
 (def receipts runtime/receipts)
 (def receipt-status runtime/receipt-status)
 (def publish-receipts runtime/publish-receipts)
+
+^{:public true}
+(def capabilities host/capabilities)
+^{:public true}
+(def capability? host/capability?)
+^{:public true}
+(def capability-descriptors host/capability-descriptors)
+^{:public true}
+(def capability-descriptor host/capability-descriptor)
+^{:public true}
+(def capability-operation? host/capability-operation?)
+^{:public true}
+(def capability-call host/capability-call)
+^{:public true}
+(def await-work host/await-work)
+^{:public true}
+(def signal-work host/signal-work)
+^{:public true}
+(def claim-acquire host/claim-acquire)
+^{:public true}
+(def claim-renew host/claim-renew)
+^{:public true}
+(def claim-release host/claim-release)
+^{:public true}
+(def claim-assert host/claim-assert)
+^{:public true}
+(def receipt-candidates host/receipt-candidates)
+^{:public true}
+(def receipt-capability-status host/receipt-status)
+^{:public true}
+(def receipt-sign host/receipt-sign)
+^{:public true}
+(def receipt-publish host/receipt-publish)
+^{:public true}
+(def reset-capabilities host/reset-capabilities)
 
 (def default-host
   (ephemeral/ephemeral-host))

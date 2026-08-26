@@ -1,0 +1,640 @@
+(ns work.provider.ephemeral.capability-test
+  (:use code.test)
+  (:require [work.base :as work]
+            [work.provider.ephemeral :as provider]
+            [work.provider.ephemeral.capability :as subject]))
+
+^{:refer work.provider.ephemeral.capability/initial-state}
+(fact "creates a clean process-local sidecar with injected clock metadata"
+  (let [state (subject/initial-state
+               {:clock/now (fn [] 11)
+                :authority/id :test-authority
+                :state/generation 4})]
+    [(:authority/id state)
+     (:state/generation state)
+     (:waits state)
+     (:claims state)
+     (:runs state)
+     (:candidates state)
+     (:published state)
+     ((:clock/now state))])
+  => [:test-authority 4 {} {} {} [] {} 11])
+
+^{:refer work.provider.ephemeral.capability/state}
+(fact "returns the sidecar atom owned by a capability system"
+  (let [system (subject/system {})]
+    (= (:provider/capability-state system)
+       (subject/state system)))
+  => true)
+
+^{:refer work.provider.ephemeral.capability/now}
+(fact "uses the injected clock rather than reading time directly"
+  (let [state (atom (subject/initial-state {:clock/now (fn [] 123)}))]
+    (subject/now state))
+  => 123)
+
+^{:refer work.provider.ephemeral.capability/generation}
+(fact "reports the current reset generation"
+  (subject/generation
+   (atom (subject/initial-state {:state/generation 9})))
+  => 9)
+
+^{:refer work.provider.ephemeral.capability/wait-key}
+(fact "keys waits by run and portable wait identity"
+  (subject/wait-key "run-1" :approval)
+  => ["run-1" :approval])
+
+^{:refer work.provider.ephemeral.capability/claim-resource}
+(fact "builds a shared resource identity for fenced operations"
+  (subject/claim-resource :work/receipt :receipt-1)
+  => [:work/receipt :receipt-1])
+
+^{:refer work.provider.ephemeral.capability/valid-run-id}
+(fact "accepts a run identity and rejects a missing one"
+  [(subject/valid-run-id :run-1)
+   (try
+     (subject/valid-run-id nil)
+     :not-rejected
+     (catch error (:ex/code (ex-data error))))]
+  => [:run-1 :hara/argument])
+
+^{:refer work.provider.ephemeral.capability/normalise-wait}
+(fact "validates signal and absolute timer wait descriptors"
+  [(subject/normalise-wait {:wait/id :signal :wait/kind :signal})
+   (subject/normalise-wait {:wait/id :timer :wait/kind :timer :wait/deadline 100})
+   (try
+     (subject/normalise-wait {:wait/id :bad :wait/kind :timer})
+     :not-rejected
+     (catch error (:ex/code (ex-data error))))]
+  => [{:wait/id :signal :wait/kind :signal}
+      {:wait/id :timer :wait/kind :timer :wait/deadline 100}
+      :hara/dependency])
+
+^{:refer work.provider.ephemeral.capability/wait-outcome}
+(fact "normalises signal, timeout, and cancellation outcomes"
+  [(subject/wait-outcome {:wait/id :w} :signalled :ok)
+   (subject/wait-outcome {:wait/id :w :wait/deadline 20} :timed-out nil)
+   (subject/wait-outcome {:wait/id :w} :cancelled nil)]
+  => [{:wait/id :w :wait/status :signalled :wait/value :ok}
+      {:wait/id :w :wait/status :timed-out :wait/deadline 20}
+      {:wait/id :w :wait/status :cancelled :wait/value nil}])
+
+^{:refer work.provider.ephemeral.capability/wait-error}
+(fact "maps wait admission states to stable structured errors"
+  [(try (throw (subject/wait-error :missing "run-1" :w))
+        :not-rejected
+        (catch error (:ex/code (ex-data error))))
+   (try (throw (subject/wait-error :pending? "run-1" :w))
+        :not-rejected
+        (catch error (:ex/code (ex-data error))))
+   (try (throw (subject/wait-error :signalled "run-1" :w))
+        :not-rejected
+        (catch error (:ex/code (ex-data error))))]
+  => [:hara/not-found :hara/conflict :hara/conflict])
+
+^{:refer work.provider.ephemeral.capability/settle-wait}
+(fact "settles a pending wait once and invokes its resolver"
+  (let [seen (atom nil)
+        state (atom {:waits
+                     {[:run-1 :w]
+                      {:status :pending
+                       :wait {:wait/id :w}
+                       :resolve (fn [value] (reset! seen value))}}})
+        outcome {:wait/id :w :wait/status :signalled :wait/value :ok}
+        transition (subject/settle-wait state [:run-1 :w] :signalled outcome)]
+    [(:accepted? transition)
+     (get-in (deref state) [:waits [:run-1 :w] :status])
+     (deref seen)
+     (:accepted? (subject/settle-wait state [:run-1 :w] :signalled outcome))])
+  => [true :signalled
+      {:wait/id :w :wait/status :signalled :wait/value :ok}
+      false])
+
+^{:refer work.provider.ephemeral.capability/cancel-wait}
+(fact "rejects a pending wait and makes repeated cancellation a no-op"
+  (let [seen (atom nil)
+        reject-fn (atom nil)
+        pending (promise/new (fn [resolve reject]
+                               (reset! reject-fn reject)))
+        state (atom {:waits
+                     {[:run-1 :w]
+                      {:status :pending
+                       :wait {:wait/id :w}
+                       :promise pending
+                       :reject (fn [error]
+                                 (reset! seen (:ex/code (ex-data error)))
+                                 ((deref reject-fn) error))}}})
+        first-result (subject/cancel-wait state [:run-1 :w])
+        second-result (subject/cancel-wait state [:run-1 :w])]
+    [(:accepted? first-result)
+     (:status second-result)
+     (promise/state pending)
+     (deref seen)])
+  => [true :cancelled :rejected :hara/state])
+
+^{:refer work.provider.ephemeral.capability/timeout-wait}
+(fact "settles a timer wait with its absolute deadline"
+  (let [seen (atom nil)
+        state (atom {:waits
+                     {[:run-1 :timer]
+                      {:status :pending
+                       :wait {:wait/id :timer :wait/deadline 100}
+                       :resolve (fn [value] (reset! seen value))}}})]
+    [(subject/timeout-wait state [:run-1 :timer]
+                            {:wait/id :timer :wait/deadline 100})
+     (deref seen)])
+  => [{:wait/id :timer :wait/status :timed-out :wait/deadline 100}
+      {:wait/id :timer :wait/status :timed-out :wait/deadline 100}])
+
+^{:refer work.provider.ephemeral.capability/delay-ms}
+(fact "converts an absolute deadline through the injected clock"
+  (let [state (atom (subject/initial-state {:clock/now (fn [] 100)}))]
+    [(subject/delay-ms state 125)
+     (subject/delay-ms state 99)])
+  => [25 0])
+
+^{:refer work.provider.ephemeral.capability/await-wait}
+(fact "admitted signal waits resume their native Work run exactly once"
+  (let [host (provider/ephemeral-host {:id "capability-await"})
+        run (work/submit host
+                         (work/suspend {:wait/id :approval :wait/kind :signal})
+                         :input)
+        result (IWorkRun/work-result run)
+        _ (promise/state result)
+        run-id (IWorkRef/work-id run)
+        state (:provider/capability-state (:provider host))
+        claim (subject/claim-acquire
+               state
+               [:work/wait [run-id :approval]]
+               {:claim/id :signaler :lease/ms 10000})
+        signal (subject/signal-wait
+                state
+                run-id
+                {:signal/id :approval :signal/value :approved}
+                {:claim/token (:claim/token claim)})
+        value (deref result)]
+    (try
+      [(:signal/status signal)
+       value
+       (IWorkRun/work-status run)]
+      (finally
+        (subject/reset (:provider host)))))
+  => [:admitted
+      {:wait/id :approval :wait/status :signalled :wait/value :approved}
+      :completed])
+
+^{:refer work.provider.ephemeral.capability/token}
+(fact "creates a portable fenced token with a monotonic generation"
+  (subject/token [:work/wait ["run-1" :w]] :signaler 3 2000)
+  => {:claim/resource [:work/wait ["run-1" :w]]
+      :claim/id :signaler
+      :claim/generation 3
+      :claim/expires-at 2000})
+
+^{:refer work.provider.ephemeral.capability/await-wait}
+(fact "timer waits resolve through the native host at an absolute deadline"
+  (let [host (provider/ephemeral-host {:id "capability-timer"})
+        run (work/submit
+             host
+             (work/suspend
+              {:wait/id :timer
+               :wait/kind :timer
+               :wait/deadline (OS/time-ms)})
+             :input)
+        value (work/await run)]
+    (try
+      [(:wait/id value)
+       (:wait/status value)
+       (number? (:wait/deadline value))
+       (IWorkRun/work-status run)]
+      (finally
+        (subject/reset (:provider host)))))
+  => [:timer :timed-out true :completed])
+
+^{:refer work.provider.ephemeral.capability/await-wait}
+(fact "rejects an await admission from an obsolete generation"
+  (let [state (atom (subject/initial-state {:state/generation 1}))
+        failure
+        (try
+          (subject/await-wait
+           state
+           "run-1"
+           {:wait/id :approval :wait/kind :signal}
+           {:capability/generation 0})
+          :not-rejected
+          (catch error (:ex/code (ex-data error))))]
+    failure)
+  => :hara/conflict)
+
+^{:refer work.provider.ephemeral.capability/await-wait}
+(fact "records native cancellation as a cancelled receipt"
+  (let [host (provider/ephemeral-host {:id "capability-cancel"})
+        run (work/submit
+             host
+             (work/suspend {:wait/id :approval :wait/kind :signal})
+             :input
+             {:id "capability-cancel-run"})
+        result (IWorkRun/work-result run)
+        _ (promise/state result)
+        _ (deref (IWorkRun/work-cancel run :stop))
+        candidates (subject/receipt-candidates
+                    (:provider/capability-state (:provider host))
+                    "capability-cancel-run")
+        has-cancelled? (reduce
+                        (fn [found candidate]
+                          (or found
+                              (= :work/run-cancelled
+                                 (:receipt/kind candidate))))
+                        false
+                        candidates)
+        has-failed? (reduce
+                     (fn [found candidate]
+                       (or found
+                           (= :work/run-failed
+                              (:receipt/kind candidate))))
+                     false
+                     candidates)]
+    (try
+      [(promise/state result)
+       (IWorkRun/work-status run)
+       has-cancelled?
+       has-failed?]
+      (finally
+        (subject/reset (:provider host)))))
+  => [:cancelled :cancelled true false])
+
+^{:refer work.provider.ephemeral.capability/lease-until}
+(fact "accepts absolute or relative future lease expiry"
+  (let [state (atom (subject/initial-state {:clock/now (fn [] 1000)}))]
+    [(subject/lease-until state {:lease/until 1500})
+     (subject/lease-until state {:lease/ms 20})
+     (try
+       (subject/lease-until state {})
+       :not-rejected
+       (catch error (:ex/code (ex-data error))))])
+  => [1500 1020 :hara/dependency])
+
+^{:refer work.provider.ephemeral.capability/assert-claim}
+(fact "accepts the current token and rejects a different fencing generation"
+  (let [state (atom (subject/initial-state {:clock/now (fn [] 1000)}))
+        acquired (subject/claim-acquire state :resource
+                                        {:claim/id :owner :lease/until 2000})
+        token (:claim/token acquired)
+        stale (assoc token :claim/generation 0)]
+    [(:claim/status (subject/assert-claim state :resource token))
+     (try
+       (subject/assert-claim state :resource stale)
+       :not-rejected
+       (catch error (:ex/code (ex-data error))))])
+  => [:valid :hara/conflict])
+
+^{:refer work.provider.ephemeral.capability/assert-claim}
+(fact "rejects a token issued before a capability reset"
+  (let [state (atom (subject/initial-state {:state/generation 0
+                                             :clock/now (fn [] 1000)}))
+        first-claim (subject/claim-acquire
+                     state
+                     :resource
+                     {:claim/id :owner :lease/until 2000})
+        _ (subject/reset-state state)
+        second-claim (subject/claim-acquire
+                      state
+                      :resource
+                      {:claim/id :owner :lease/until 3000})
+        stale
+        (try
+          (subject/assert-claim
+           state
+           :resource
+           (:claim/token first-claim))
+          :not-rejected
+          (catch error (:ex/code (ex-data error))))]
+    [(:claim/state-generation (:claim/token second-claim)) stale])
+  => [1 :hara/conflict])
+
+^{:refer work.provider.ephemeral.capability/claim-acquire}
+(fact "is idempotent for one claimant and fences a reclaimed lease"
+  (let [clock (atom 1000)
+        state (atom (subject/initial-state {:clock/now (fn [] (deref clock))}))
+        first-claim (subject/claim-acquire state :resource
+                                           {:claim/id :owner :lease/until 1100})
+        same-claim (subject/claim-acquire state :resource
+                                          {:claim/id :owner :lease/until 1100})
+        conflict (try
+                   (subject/claim-acquire state :resource
+                                          {:claim/id :other :lease/until 1100})
+                   :not-rejected
+                   (catch error (:ex/code (ex-data error))))
+        _ (reset! clock 1200)
+        reclaimed (subject/claim-acquire state :resource
+                                         {:claim/id :other :lease/until 1300})]
+    [(:claim/status first-claim)
+     (= (:claim/token first-claim) (:claim/token same-claim))
+     conflict
+     (:claim/generation (:claim/token reclaimed))])
+  => [:acquired true :hara/conflict 2])
+
+^{:refer work.provider.ephemeral.capability/claim-renew}
+(fact "renews only the live token that owns the current generation"
+  (let [state (atom (subject/initial-state {:clock/now (fn [] 1000)}))
+        acquired (subject/claim-acquire state :resource
+                                        {:claim/id :owner :lease/until 1100})
+        renewed (subject/claim-renew state (:claim/token acquired)
+                                     {:lease/until 1200})
+        stale (assoc (:claim/token acquired) :claim/generation 0)]
+    [(:claim/status renewed)
+     (:claim/expires-at (:claim/token renewed))
+     (try
+       (subject/claim-renew state stale {:lease/until 1300})
+       :not-rejected
+       (catch error (:ex/code (ex-data error))))])
+  => [:renewed 1200 :hara/conflict])
+
+^{:refer work.provider.ephemeral.capability/claim-release}
+(fact "releases the current token and rejects it afterwards"
+  (let [state (atom (subject/initial-state {:clock/now (fn [] 1000)}))
+        acquired (subject/claim-acquire state :resource
+                                        {:claim/id :owner :lease/until 1100})
+        token (:claim/token acquired)
+        released (subject/claim-release state token)]
+    [(:claim/status released)
+     (try
+       (subject/assert-claim state :resource token)
+       :not-rejected
+       (catch error (:ex/code (ex-data error))))])
+  => [:released :hara/conflict])
+
+^{:refer work.provider.ephemeral.capability/signal-wait}
+(fact "requires a fenced token and rejects signals for timer waits"
+  (let [state (atom (subject/initial-state {:clock/now (fn [] 1000)}))
+        missing-token
+        (try
+          (subject/signal-wait state "run-1" {:signal/id :w} {})
+          :not-rejected
+          (catch error (:ex/code (ex-data error))))
+        resource [:work/wait ["run-1" :timer]]
+        claim (subject/claim-acquire state resource
+                                     {:claim/id :signaler :lease/until 2000})
+        _ (swap! state
+                 assoc-in
+                 [:waits ["run-1" :timer]]
+                 {:status :pending
+                  :wait {:wait/id :timer :wait/kind :timer :wait/deadline 1100}})
+        timer-signal
+        (try
+          (subject/signal-wait
+           state
+           "run-1"
+           {:signal/id :timer}
+           {:claim/token (:claim/token claim)})
+          :not-rejected
+          (catch error (:ex/code (ex-data error))))]
+    [missing-token timer-signal])
+  => [:hara/dependency :hara/argument])
+
+^{:refer work.provider.ephemeral.capability/run-root}
+(fact "selects the portable run root in precedence order"
+  [(subject/run-root {:op :pure :root :root :id :id} {})
+   (subject/run-root {:op :pure :id :id} {})
+   (subject/run-root {:op :pure :id :id} {:work-root :option})]
+  => [:root :id :option])
+
+^{:refer work.provider.ephemeral.capability/run-record}
+(fact "creates the receipt run projection without retaining executable work"
+  (let [record (subject/run-record
+                "run-1"
+                {:op :pure :root :root :version 2}
+                :input
+                {:work-root :option :work-version 3})]
+    [(:run/id record)
+     (:run/work-root record)
+     (:run/work-version record)
+     (:run/input record)
+     (:run/status record)
+     (:run/created? record)])
+  => ["run-1" :option 3 :input :running false])
+
+^{:refer work.provider.ephemeral.capability/append-candidate}
+(fact "increments a run revision and appends a deterministic envelope"
+  (let [result (subject/append-candidate
+                {:candidates []}
+                {:run/id "run-1"
+                 :run/revision 2
+                 :run/work-root :root
+                 :run/work-version 1
+                 :run/runtime-version 1
+                 :run/schema-version 1
+                 :run/attributes {}}
+                :work/event
+                :identity
+                {:node/path [:node]})]
+    [(:run/revision (:run result))
+     (:receipt/kind (:envelope result))
+     (:receipt/id (:envelope result))
+     (count (:candidates (:state result)))])
+  => [3 :work/event
+      ["hara.work.receipt/0-alpha" "run-1" 3 :work/event :identity]
+      1])
+
+^{:refer work.provider.ephemeral.capability/receipt-run-start}
+(fact "records one run-created candidate idempotently"
+  (let [state (atom (subject/initial-state {}))
+        first-result (subject/receipt-run-start state "run-1" {:op :pure :id :root} :input {})
+        second-result (subject/receipt-run-start state "run-1" {:op :pure :id :root} :input {})]
+    [(:receipt/status first-result)
+     (:receipt/status second-result)
+     (count (:candidates (deref state)))])
+  => [:recorded :known 1])
+
+^{:refer work.provider.ephemeral.capability/receipt-record}
+(fact "records events only for an admitted run and ignores stale callbacks"
+  (let [state (atom (subject/initial-state {}))
+        _ (subject/receipt-run-start state "run-1" {:op :pure :id :root} :input {})
+        event (subject/receipt-record
+               state
+               {:run/id "run-1" :event :work/node-started :node/path []})
+        ignored (subject/receipt-record
+                 state
+                 {:run/id "old-run" :event :work/node-started :node/path []})]
+    [(:receipt/status event)
+     (:receipt/status ignored)
+     (:reason ignored)
+     (count (:candidates (deref state)))])
+  => [:recorded :ignored :run-not-admitted 2])
+
+^{:refer work.provider.ephemeral.capability/receipt-run-complete}
+(fact "rejects terminal callbacks from a reset generation even after id reuse"
+  (let [state (atom (subject/initial-state {:state/generation 0}))
+        _ (subject/receipt-run-start
+           state
+           "run-1"
+           {:op :pure :id :root}
+           :input
+           {:capability/generation 0})
+        _ (subject/reset-state state)
+        _ (subject/receipt-run-start
+           state
+           "run-1"
+           {:op :pure :id :root}
+           :input
+           {:capability/generation 1})
+        stale-event (subject/receipt-record
+                     state
+                     {:run/id "run-1"
+                      :capability/generation 0
+                      :event :work/node-started
+                      :node/path []})
+        stale-completion (subject/receipt-run-complete
+                          state
+                          "run-1"
+                          :completed
+                          :old
+                          nil
+                          {:capability/generation 0})]
+    [(:receipt/status stale-event)
+     (:reason stale-event)
+     (:receipt/status stale-completion)
+     (:reason stale-completion)
+     (count (subject/receipt-candidates state "run-1"))])
+  => [:ignored :stale-generation
+      :ignored :stale-generation
+      1])
+
+^{:refer work.provider.ephemeral.capability/completion-kind}
+(fact "maps terminal run states to receipt kinds"
+  [(subject/completion-kind :completed)
+   (subject/completion-kind :cancelled)
+   (subject/completion-kind :failed)]
+  => [:work/run-completed :work/run-cancelled :work/run-failed])
+
+^{:refer work.provider.ephemeral.capability/receipt-run-complete}
+(fact "records terminal result state and ignores an unknown run"
+  (let [state (atom (subject/initial-state {}))
+        _ (subject/receipt-run-start state "run-1" {:op :pure :id :root} :input {})
+        completed (subject/receipt-run-complete state "run-1" :completed 42 nil)
+        ignored (subject/receipt-run-complete state "old-run" :completed 9 nil)]
+    [(:receipt/status completed)
+     (:receipt/kind (:receipt completed))
+     (:run/status (:receipt/run (:receipt completed)))
+     (:receipt/status ignored)
+     (count (:candidates (deref state)))])
+  => [:recorded :work/run-completed :completed :ignored 2])
+
+^{:refer work.provider.ephemeral.capability/receipt-candidates}
+(fact "filters receipt candidates by run identity"
+  (let [state (atom (subject/initial-state {}))
+        _ (subject/receipt-run-start state "run-1" {:op :pure :id :one} 1 {})
+        _ (subject/receipt-run-start state "run-2" {:op :pure :id :two} 2 {})]
+    [(count (subject/receipt-candidates state nil))
+     (count (subject/receipt-candidates state "run-1"))
+     (:receipt/run-id (first (subject/receipt-candidates state "run-2")))])
+  => [2 1 "run-2"])
+
+^{:refer work.provider.ephemeral.capability/receipt-status}
+(fact "reports pending until every candidate is published"
+  (let [state (atom (subject/initial-state {}))
+        _ (subject/receipt-run-start state "run-1" {:op :pure :id :root} :input {})
+        candidate (first (subject/receipt-candidates state "run-1"))
+        pending (subject/receipt-status state "run-1")
+        _ (swap! state assoc :published {(:receipt/id candidate) candidate})]
+    [pending (subject/receipt-status state "run-1")])
+  => [:pending :published])
+
+^{:refer work.provider.ephemeral.capability/sign-receipt}
+(fact "adds a deterministic ephemeral signature without credentials"
+  (let [state (atom (subject/initial-state {:authority/id :authority}))
+        signed (subject/sign-receipt
+                state
+                {:receipt/id :receipt-1 :receipt/payload-root :root}
+                {})]
+    (:receipt/signature signed))
+  => {:signature/algorithm :ephemeral/deterministic
+      :signature/authority :authority
+      :signature/value [:authority :receipt-1 :root]})
+
+^{:refer work.provider.ephemeral.capability/publish-receipt}
+(fact "publishes idempotently under a fenced receipt claim"
+  (let [state (atom (subject/initial-state {:clock/now (fn [] 1000)}))
+        envelope {:receipt/id :receipt-1 :receipt/payload-root :root}
+        signed (subject/sign-receipt state envelope {})
+        claim (subject/claim-acquire state [:work/receipt :receipt-1]
+                                     {:claim/id :publisher :lease/until 2000})
+        options {:claim/token (:claim/token claim)}
+        first-result (subject/publish-receipt state signed options)
+        second-result (subject/publish-receipt state signed options)
+        conflict
+        (try
+          (subject/publish-receipt
+           state
+           (assoc signed :receipt/payload-root :different)
+           options)
+          :not-rejected
+          (catch error (:ex/code (ex-data error))))]
+    [(:receipt/status first-result)
+     (= (:receipt/envelope first-result)
+        (:receipt/envelope second-result))
+     conflict])
+  => [:published true :hara/conflict])
+
+^{:refer work.provider.ephemeral.capability/reset-state}
+(fact "cancels pending state and restores a clean incremented generation"
+  (let [seen (atom nil)
+        state (atom
+               (assoc
+                (subject/initial-state {:state/generation 2})
+                :claims {:resource :claim}
+                :candidates [:candidate]
+                :published {:published :receipt}
+                :waits
+                {[:run-1 :w]
+                 {:status :pending
+                  :wait {:wait/id :w}
+                  :promise (promise/new (fn [resolve reject] nil))
+                  :reject (fn [error]
+                            (reset! seen (:ex/code (ex-data error))))}}))
+        summary (subject/reset-state state)
+        current (deref state)]
+    [(:reset? summary)
+     (:waits summary)
+     (:claims summary)
+     (:candidates summary)
+     (:published summary)
+     (:state/generation current)
+     (:waits current)
+     (:claims current)
+     (deref seen)])
+  => [true 1 1 1 1 3 {} {} :hara/state])
+
+^{:refer work.provider.ephemeral.capability/reset}
+(fact "resets a capability system through its explicit boundary"
+  (let [system (subject/system {})
+        state (subject/state system)
+        _ (swap! state assoc :claims {:resource :claim})
+        result (subject/reset system)]
+    [(:reset? result)
+     (:claims (deref state))])
+  => [true {}])
+
+^{:refer work.provider.ephemeral.capability/operations}
+(fact "assembles the three capability operation suites"
+  (let [system (subject/system {})
+        operations (subject/operations system)]
+    [(has? operations :work/suspension)
+     (has? operations :work/claims)
+     (has? operations :work/receipts)
+     (has? (get operations :work/claims) :acquire)
+     (has? (get operations :work/receipts) :publish)])
+  => [true true true true true])
+
+^{:refer work.provider.ephemeral.capability/system}
+(fact "installs descriptors, operations, state, and reset metadata"
+  (let [system (subject/system {:authority/id :authority})]
+    [(= (:provider/capabilities system) subject/capability-keys)
+     (get-in system [:provider/capability-descriptors
+                     :work/suspension
+                     :capability/persistence])
+     (fn? (:provider/reset system))
+     (:authority/id (deref (:provider/capability-state system)))])
+  => [true :ephemeral true :authority])
+
+(pr-str (run {:namespace "work.provider.ephemeral.capability-test"}))

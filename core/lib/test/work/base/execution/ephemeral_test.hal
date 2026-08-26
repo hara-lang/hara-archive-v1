@@ -1,0 +1,135 @@
+(ns work.base.execution.ephemeral-test
+  (:use code.test)
+  (:require [work.base :as work]
+            [work.base.execution.ephemeral :as subject]
+            [work.base.model :as model]))
+
+^{:refer work.base.execution.ephemeral/execution-hooks}
+(fact "combines runtime hooks with ephemeral execution extensions"
+  (let [hooks (subject/execution-hooks
+               {:work/hooks {:existing :hook}
+                :work/capability-call identity
+                :work/capability-descriptors {:work/suspension :descriptor}
+                :work/handlers {:custom identity}})]
+    [(:existing hooks)
+     (:work/capability-descriptors hooks)
+     (:work/handlers hooks)
+     (fn? (:work/capability-call hooks))]
+    => [:hook
+        {:work/suspension :descriptor}
+        {:custom identity}
+        true]))
+
+^{:refer work.base.execution.ephemeral/execution-runtime}
+(fact "creates the canonical native runtime with an inline executor"
+  (let [runtime (subject/execution-runtime
+                 {:work/capability-call identity})]
+    [(model/canonical-runtime? runtime)
+     (model/runtime-mode runtime)
+     (nil? (model/runtime-store runtime))
+     (fn? (:work/capability-call (model/runtime-hooks runtime)))]
+    => [true :native true true]))
+
+^{:refer work.base.execution.ephemeral/invoke-run-hook}
+(fact "invokes optional hooks and absorbs hook failures"
+  (let [seen (atom [])
+        options {:hook (fn [value]
+                         (swap! seen conj value)
+                         nil)}
+        result (subject/invoke-run-hook options :hook [4])
+        failure (subject/invoke-run-hook
+                 {:hook (fn [] (throw (ex :state {} :ex/message "hook failure")))}
+                 :hook
+                 [])]
+    [result (deref seen) failure])
+  => [nil [4] nil])
+
+^{:refer work.base.execution.ephemeral/complete-value}
+(fact "runs the successful completion hook and preserves the value"
+  (let [seen (atom [])
+        value (subject/complete-value
+               {:work/run-complete
+                (fn [run-id status result error]
+                  (swap! seen conj [run-id status result error]))}
+               "run-1"
+               42)]
+    [value (deref seen)])
+  => [42 [["run-1" :completed 42 nil]]])
+
+^{:refer work.base.execution.ephemeral/complete-error}
+(fact "runs the failed completion hook and rethrows the structured error"
+  (let [seen (atom [])
+        error (ex :state {:reason :test} :ex/message "failure")
+        thrown
+        (try
+          (subject/complete-error
+           {:work/run-complete
+            (fn [run-id status result failure]
+              (swap! seen conj
+                     [run-id status result (:ex/code (ex-data failure))]))}
+           "run-1"
+           error)
+          :not-rejected
+          (catch error
+            (:ex/code (ex-data error))))]
+    [thrown (deref seen)])
+  => [:hara/state [["run-1" :failed nil :hara/state]]])
+
+^{:refer work.base.execution.ephemeral/root-id}
+(fact "resolves a root identity from options, spec, or an anonymous fallback"
+  [(subject/root-id {:root :spec-root :id :spec-id} {:work-root :option-root})
+   (subject/root-id {:root :spec-root :id :spec-id} {})
+   (subject/root-id {:id :spec-id} {})
+   (subject/root-id {} {})]
+  => [:option-root :spec-root :spec-id :anonymous])
+
+^{:refer work.base.execution.ephemeral/initial-frame}
+(fact "builds a stable root execution frame"
+  (subject/initial-frame
+   {:id :work-id :version 3}
+   {:work-root :root
+    :work-version 2
+    :context {:source :test}}
+   "run-1")
+  => {:run/id "run-1"
+      :work/root :root
+      :work/version 2
+      :node/path []
+      :item/id nil
+      :item/path []
+      :context {:source :test}
+      :options {:work-root :root
+                :work-version 2
+                :context {:source :test}}})
+
+^{:refer work.base.execution.ephemeral/execute}
+(fact "executes a work value and reports its terminal outcome"
+  (let [seen (atom [])
+        run
+        (IWorkHost/work-submit
+         (Work/default-host)
+         (work/pure :double (fn [input context] (* 2 input)))
+         3
+         {:id "ephemeral-execute"
+          :work/execute
+          (fn [run-work input options id]
+            (subject/execute
+             run-work
+             input
+             (assoc options
+                    :work/run-start
+                    (fn [run-id work input options]
+                      (swap! seen conj [:start run-id input]))
+                    :work/run-complete
+                    (fn [run-id status result error]
+                      (swap! seen conj
+                             [:complete run-id status result error])))
+             id))})
+        value
+        (deref (IWorkRun/work-result run))]
+    [value (deref seen)])
+  => [6
+      [[:start "ephemeral-execute" 3]
+       [:complete "ephemeral-execute" :completed 6 nil]]])
+
+(pr-str (run {:namespace "work.base.execution.ephemeral-test"}))

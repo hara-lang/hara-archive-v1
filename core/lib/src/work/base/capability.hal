@@ -1,0 +1,72 @@
+(ns work.base.capability
+  (:config {:role :internal}))
+
+;; Optional Work capabilities are descriptor-backed operation suites.  The
+;; descriptor is portable metadata; the operation map is deliberately a live
+;; provider boundary and must never be placed in a Work value.
+
+(defn contains-value?
+  [values value]
+  (reduce
+   (fn [found candidate]
+     (or found (= candidate value)))
+   false
+   (or values [])))
+
+(defn descriptors
+  [provider]
+  (or (:provider/capability-descriptors provider) {}))
+
+^{:public true}
+(defn descriptor
+  [provider capability]
+  (get (descriptors provider) capability))
+
+^{:public true}
+(defn capability?
+  [provider capability]
+  (or (not (nil? (descriptor provider capability)))
+      (contains-value? (:provider/capabilities provider) capability)))
+
+(defn operations
+  [provider capability]
+  (or (get (:provider/capability-operations provider) capability) {}))
+
+(defn operation?
+  [provider capability operation]
+  (let [description (descriptor provider capability)]
+    (and description
+         (contains-value? (:capability/operations description) operation)
+         (not (nil? (get (operations provider capability) operation))))))
+
+(defn assert-capability
+  [provider capability operation]
+  (if (not (capability? provider capability))
+    (throw
+     (ex :dependency
+         {:provider/capability capability}
+         :ex/message "Work provider does not advertise the required capability")))
+  (if (nil? (descriptor provider capability))
+    (throw
+     (ex :state
+         {:provider/capability capability}
+         :ex/message "Work capability is advertised without a descriptor")))
+  (if (not (operation? provider capability operation))
+    (throw
+     (ex :not-found
+         {:provider/capability capability
+          :capability/operation operation}
+         :ex/message "Work capability operation is not installed")))
+  provider)
+
+^{:public true}
+(defn call
+  "Invokes one explicitly installed optional capability operation.
+
+   `arguments` is a vector so the dispatcher never has to infer a wire shape
+   from a variadic call.  Providers may return either a direct value or a
+   Promise; callers retain the existing Work result convention."
+  [provider capability operation arguments]
+  (assert-capability provider capability operation)
+  (apply (get (operations provider capability) operation)
+         (or arguments [])))

@@ -1,6 +1,7 @@
 (ns work.base-host-test
   (:use code.test)
   (:require [work.base.host :as host]
+            [work.base :as work]
             [work.provider.ephemeral :as ephemeral]))
 
 (defn test-provider
@@ -91,5 +92,290 @@
      (deref (IWorkRun/work-result run))
      (IWorkRun/work-status run)])
   => [true true 42 :completed])
+
+^{:refer work.base.host/normalise-locator}
+(fact "normalises a host locator to the portable identity fields"
+  (host/normalise-locator
+   {:host/type :ephemeral
+    :host/id "portable"
+    :host/endpoint "ignored-by-host"})
+  => {:host/type :ephemeral
+      :host/id "portable"
+      :host/api :std.work.host/v1
+      :host/endpoint "ignored-by-host"})
+
+^{:refer work.base.host/operations}
+(fact "reads provider operations without changing their call shape"
+  (let [operation (fn [] :ok)]
+    (= operation
+       (get (host/operations {:provider/operations {:status operation}})
+            :status)))
+  => true)
+
+^{:refer work.base.host/validate-provider}
+(fact "validates a provider against the host API and required operation set"
+  (let [locator {:host/type :ephemeral :host/id "validated"}
+        valid (test-provider (host/normalise-locator locator))
+        missing (try
+                  (host/validate-provider
+                   (assoc valid :provider/operations {})
+                   (host/normalise-locator locator))
+                  :not-rejected
+                  (catch error (:ex/code (ex-data error))))]
+    [(map? (host/validate-provider valid (host/normalise-locator locator)))
+     missing])
+  => [true :hara/not-found])
+
+^{:refer work.base.host/host}
+(fact "constructs a host only after provider validation"
+  (let [scheduler (host/host locator (test-provider locator))]
+    [(satisfies? IWorkHost scheduler)
+     (host/locator scheduler)])
+  => [true
+      {:host/type :ephemeral
+       :host/id "test"
+       :host/api :std.work.host/v1}])
+
+^{:refer work.base.host/locator}
+(fact "returns the portable locator from a host value"
+  (host/locator (host/host locator (test-provider locator)))
+  => {:host/type :ephemeral
+      :host/id "test"
+      :host/api :std.work.host/v1})
+
+^{:refer work.base.host/capabilities}
+(fact "combines advertised capabilities with descriptor-backed suites"
+  (let [scheduler (ephemeral/ephemeral-host)]
+    [(has? (host/capabilities scheduler) :portable-graphs)
+     (has? (host/capabilities scheduler) :work/suspension)
+     (has? (host/capabilities scheduler) :work/claims)
+     (has? (host/capabilities scheduler) :work/receipts)])
+  => [true true true true])
+
+^{:refer work.base.host/capability-descriptors}
+(fact "exposes portable descriptors independently of live operations"
+  (let [scheduler (ephemeral/ephemeral-host)]
+    (has? (host/capability-descriptors scheduler) :work/receipts))
+  => true)
+
+^{:refer work.base.host/capability-descriptor}
+(fact "selects one host capability descriptor"
+  (let [scheduler (ephemeral/ephemeral-host)]
+    (get (host/capability-descriptor scheduler :work/suspension)
+         :capability/persistence))
+  => :ephemeral)
+
+^{:refer work.base.host/capability?}
+(fact "checks for an installed optional host capability"
+  (let [scheduler (ephemeral/ephemeral-host)]
+    [(host/capability? scheduler :work/suspension)
+     (host/capability? scheduler :missing)])
+  => [true false])
+
+^{:refer work.base.host/capability-operation?}
+(fact "checks that a declared capability operation is callable"
+  (let [scheduler (ephemeral/ephemeral-host)]
+    [(host/capability-operation? scheduler :work/claims :acquire)
+     (host/capability-operation? scheduler :work/claims :missing)])
+  => [true false])
+
+^{:refer work.base.host/capability-call}
+(fact "dispatches typed host capability calls through a portable vector"
+  (let [scheduler (ephemeral/ephemeral-host {:clock/now (fn [] 1000)})
+        result (host/capability-call
+                scheduler
+                :work/claims
+                :acquire
+                [[:test :resource]
+                 {:claim/id :owner :lease/until 2000}])]
+    [(:claim/status result)
+     (:claim/resource (:claim/token result))])
+  => [:acquired [:test :resource]])
+
+^{:refer work.base.host/await-work}
+(fact "routes await requests to the suspension capability"
+  (let [scheduler (ephemeral/ephemeral-host)
+        pending (host/await-work
+                  scheduler
+                  "run-1"
+                  {:wait/id "wait-1" :wait/kind :signal})
+        claim (host/claim-acquire
+               scheduler
+               [:work/wait ["run-1" "wait-1"]]
+               {:claim/id :signaller :lease/ms 1000})
+        signalled (host/signal-work
+                   scheduler
+                   "run-1"
+                   {:signal/id "wait-1" :signal/value :ready}
+                   {:claim/token (:claim/token claim)})
+        released (host/claim-release scheduler (:claim/token claim))]
+    [(promise? pending)
+     (deref pending)
+     (:signal/status signalled)
+     (:claim/status released)])
+  => [true
+      {:wait/id "wait-1" :wait/status :signalled :wait/value :ready}
+      :admitted
+      :released])
+
+^{:refer work.base.host/signal-work}
+(fact "requires a fenced token when routing an external signal"
+  (let [scheduler (ephemeral/ephemeral-host)
+        failure (try
+                  (host/signal-work
+                   scheduler
+                   "run-1"
+                   {:signal/id "wait-1"})
+                  :not-rejected
+                  (catch error (:ex/code (ex-data error))))]
+    failure)
+  => :hara/dependency)
+
+^{:refer work.base.host/claim-assert}
+(fact "provides the complete fenced claim lifecycle"
+  (let [scheduler (ephemeral/ephemeral-host {:clock/now (fn [] 1000)})
+        resource [:test :claim]
+        acquired (host/claim-acquire
+                  scheduler resource
+                  {:claim/id :owner :lease/until 2000})
+        token (:claim/token acquired)
+        renewed (host/claim-renew scheduler token {:lease/until 3000})
+        asserted (host/claim-assert scheduler resource (:claim/token renewed))
+        released (host/claim-release scheduler (:claim/token renewed))
+        stale (try
+                (host/claim-assert scheduler resource (:claim/token renewed))
+                :not-rejected
+                (catch error (:ex/code (ex-data error))))]
+    [(:claim/status acquired)
+     (:claim/status renewed)
+     (:claim/status asserted)
+     (:claim/status released)
+     stale])
+  => [:acquired :renewed :valid :released :hara/conflict])
+
+^{:refer work.base.host/receipt-publish}
+(fact "supports ephemeral receipt inspection, signing, and fenced publication"
+  (let [scheduler (ephemeral/ephemeral-host
+                   {:clock/now (fn [] 1000)
+                    :authority/id :test-authority})
+        run (host/submit
+             scheduler
+             (work/pure :receipt-work (fn [input context] (+ input 1)))
+             4
+             {:id "receipt-run"})
+        _ (deref (IWorkRun/work-result run))
+        candidates (host/receipt-candidates scheduler "receipt-run")
+        candidate (first candidates)
+        signed (host/receipt-sign scheduler candidate)
+        claim (host/claim-acquire
+               scheduler
+               [:work/receipt (:receipt/id signed)]
+               {:claim/id :publisher :lease/until 2000})
+        published (host/receipt-publish
+                   scheduler
+                   signed
+                   {:claim/token (:claim/token claim)})]
+    [(> (count candidates) 0)
+     (:signature/algorithm (:receipt/signature signed))
+     (:receipt/status published)
+     (host/receipt-status scheduler "receipt-run")])
+  => [true :ephemeral/deterministic :published :pending])
+
+^{:refer work.base.host/claim-acquire}
+(fact "acquires a claim through the host facade"
+  (let [scheduler (ephemeral/ephemeral-host {:clock/now (fn [] 1000)})
+        result (host/claim-acquire
+                scheduler
+                [:test :acquire]
+                {:claim/id :owner :lease/until 2000})]
+    (:claim/status result))
+  => :acquired)
+
+^{:refer work.base.host/claim-renew}
+(fact "renews a claim through the host facade"
+  (let [scheduler (ephemeral/ephemeral-host {:clock/now (fn [] 1000)})
+        acquired (host/claim-acquire
+                  scheduler
+                  [:test :renew]
+                  {:claim/id :owner :lease/until 2000})
+        renewed (host/claim-renew
+                 scheduler
+                 (:claim/token acquired)
+                 {:lease/until 3000})]
+    (:claim/status renewed))
+  => :renewed)
+
+^{:refer work.base.host/claim-release}
+(fact "releases a claim through the host facade"
+  (let [scheduler (ephemeral/ephemeral-host {:clock/now (fn [] 1000)})
+        acquired (host/claim-acquire
+                  scheduler
+                  [:test :release]
+                  {:claim/id :owner :lease/until 2000})]
+    (:claim/status
+     (host/claim-release scheduler (:claim/token acquired))))
+  => :released)
+
+^{:refer work.base.host/receipt-candidates}
+(fact "lists all or run-scoped ephemeral receipt candidates"
+  (let [scheduler (ephemeral/ephemeral-host)
+        run (host/submit scheduler
+                         (work/pure :candidate-work
+                                    (fn [input context] input))
+                         :value
+                         {:id "candidate-run"})
+        _ (deref (IWorkRun/work-result run))]
+    [(> (count (host/receipt-candidates scheduler)) 0)
+     (count (host/receipt-candidates scheduler "candidate-run"))])
+  => [true 4])
+
+^{:refer work.base.host/receipt-status}
+(fact "reports the publication status of run-scoped candidates"
+  (let [scheduler (ephemeral/ephemeral-host)
+        run (host/submit scheduler
+                         (work/pure :status-work
+                                    (fn [input context] input))
+                         :value
+                         {:id "status-run"})
+        _ (deref (IWorkRun/work-result run))]
+    (host/receipt-status scheduler "status-run"))
+  => :pending)
+
+^{:refer work.base.host/receipt-sign}
+(fact "signs a receipt candidate with the ephemeral authority"
+  (let [scheduler (ephemeral/ephemeral-host)
+        run (host/submit scheduler
+                         (work/pure :sign-work
+                                    (fn [input context] input))
+                         :value
+                         {:id "sign-run"})
+        _ (deref (IWorkRun/work-result run))
+        candidate (first (host/receipt-candidates scheduler "sign-run"))]
+    (:signature/algorithm
+     (:receipt/signature (host/receipt-sign scheduler candidate))))
+  => :ephemeral/deterministic)
+
+^{:refer work.base.host/reset-capabilities}
+(fact "resets ephemeral capability state through an explicit boundary"
+  (let [scheduler (ephemeral/ephemeral-host)
+        run (host/submit
+             scheduler
+             (work/pure :reset-work (fn [input context] input))
+             :value
+             {:id "reset-run"})
+        _ (deref (IWorkRun/work-result run))
+        before (count (host/receipt-candidates scheduler "reset-run"))
+        returned (host/reset-capabilities scheduler)
+        after (count (host/receipt-candidates scheduler "reset-run"))
+        next-run (host/submit
+                  scheduler
+                  (work/pure :reset-work-next
+                             (fn [input context] input))
+                  :next
+                  {:id "reset-run-next"})
+        _ (deref (IWorkRun/work-result next-run))
+        next-count (count (host/receipt-candidates scheduler "reset-run-next"))]
+    [(= scheduler returned) (> before 0) after (> next-count 0)])
+  => [true true 0 true])
 
 (pr-str (run '[work.base-host-test]))

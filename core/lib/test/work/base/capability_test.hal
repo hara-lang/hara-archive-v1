@@ -1,0 +1,82 @@
+(ns work.base.capability-test
+  (:use code.test)
+  (:require [work.base.capability :as subject]))
+
+^{:refer work.base.capability/contains-value?}
+(fact "finds an equal capability value without requiring a collection type"
+  [(subject/contains-value? [:a :b] :b)
+   (subject/contains-value? nil :b)]
+  => [true false])
+
+^{:refer work.base.capability/descriptors}
+(fact "reads descriptor metadata from a provider"
+  (subject/descriptors
+   {:provider/capability-descriptors {:work/suspension {:capability/api :v1}}})
+  => {:work/suspension {:capability/api :v1}})
+
+^{:refer work.base.capability/descriptor}
+(fact "selects one descriptor by capability identity"
+  (subject/descriptor
+   {:provider/capability-descriptors {:work/suspension {:capability/api :v1}}}
+   :work/suspension)
+  => {:capability/api :v1})
+
+^{:refer work.base.capability/capability?}
+(fact "accepts descriptor-backed and advertised capabilities"
+  [(subject/capability?
+    {:provider/capability-descriptors {:work/suspension {}}}
+    :work/suspension)
+   (subject/capability?
+    {:provider/capabilities #{:work/claims}}
+    :work/claims)
+   (subject/capability? {} :work/receipts)]
+  => [true true false])
+
+^{:refer work.base.capability/operations}
+(fact "returns only the operation map for one capability"
+  (let [operation (fn [value] value)]
+    (= {:acquire operation}
+       (subject/operations
+        {:provider/capability-operations
+         {:work/claims {:acquire operation}}}
+        :work/claims))
+    => true))
+
+^{:refer work.base.capability/operation?}
+(fact "checks both descriptor declaration and installed operation"
+  (let [provider
+        {:provider/capability-descriptors
+         {:work/claims {:capability/operations #{:acquire}}}
+         :provider/capability-operations
+         {:work/claims {:acquire (fn [] true)}}}]
+    [(subject/operation? provider :work/claims :acquire)
+     (subject/operation? provider :work/claims :release)]
+    => [true false]))
+
+^{:refer work.base.capability/assert-capability}
+(fact "returns a valid provider and rejects an undeclared operation"
+  (let [provider
+        {:provider/capability-descriptors
+         {:work/claims {:capability/operations #{:acquire}}}
+         :provider/capability-operations
+         {:work/claims {:acquire (fn [] true)}}}]
+    [(= provider (subject/assert-capability provider :work/claims :acquire))
+     (try
+       (subject/assert-capability provider :work/claims :release)
+       :not-rejected
+       (catch error (:ex/code (ex-data error))))]
+    => [true :hara/not-found]))
+
+^{:refer work.base.capability/call}
+(fact "dispatches a portable argument vector through the capability envelope"
+  (subject/call
+   {:provider/capability-descriptors
+    {:work/math {:capability/operations #{:add}}}
+    :provider/capability-operations
+    {:work/math {:add (fn [left right] (+ left right))}}}
+   :work/math
+   :add
+   [20 22])
+  => 42)
+
+(pr-str (run {:namespace "work.base.capability-test"}))

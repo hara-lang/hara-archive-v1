@@ -1,0 +1,56 @@
+(ns work.base.execution.await
+  (:config {:role :internal})
+  (:require [work.base.frame :as frame]
+            [work.base.model :as base]
+            [work.base.result :as result]))
+
+(defn capability-call
+  [runtime]
+  (:work/capability-call (base/runtime-hooks runtime)))
+
+(defn require-capability-call
+  [runtime]
+  (let [call (capability-call runtime)]
+    (if (nil? call)
+      (throw
+       (ex :dependency
+           {:capability :work/suspension}
+           :ex/message "Work await requires an installed suspension capability")))
+    call))
+
+(defn await-pending
+  [runtime frame spec]
+  (let [call (require-capability-call runtime)
+        options (:options frame)
+        arguments
+        (if (and options (has? options :capability/generation))
+          [(:run/id frame)
+           (:wait spec)
+           {:capability/generation (:capability/generation options)}]
+          [(:run/id frame) (:wait spec)])]
+    (call :work/suspension
+          :await
+          arguments)))
+
+(defn run-await
+  [execute runtime frame spec input]
+  (let [pending (await-pending runtime frame spec)
+        admitted
+        (frame/emit runtime
+                    frame
+                    :work/await-admitted
+                    {:wait (:wait spec)})]
+    (result/then
+     admitted
+     (fn [_]
+       (result/then
+        pending
+        (fn [outcome]
+          (result/then
+           (frame/emit runtime
+                       frame
+                       :work/await-resumed
+                       {:wait (:wait spec)
+                        :outcome outcome})
+           (fn [_]
+             outcome))))))))

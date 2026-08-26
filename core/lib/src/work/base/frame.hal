@@ -51,12 +51,18 @@
 
 (defn event-record
   [frame event data]
-  (merge {:event event
-          :run/id (:run/id frame)
-          :work/root (:work/root frame)
-          :node/path (:node/path frame)
-          :item/id (:item/id frame)}
-         (or data {})))
+  (let [record
+        (merge {:event event
+                :run/id (:run/id frame)
+                :work/root (:work/root frame)
+                :node/path (:node/path frame)
+                :item/id (:item/id frame)}
+               (or data {}))
+        options (:options frame)]
+    (if (and options (has? options :capability/generation))
+      (assoc record :capability/generation
+             (:capability/generation options))
+      record)))
 
 (defn notify-event
   [runtime event]
@@ -114,7 +120,18 @@
     (cond
       (native-runtime? runtime)
       (do
-        (Work/emit event record)
+        ;; Promise continuations may resume after the native host has left its
+        ;; callback context.  The host owns the lifecycle events in that
+        ;; phase; the portable receipt hook still receives the record below.
+        (if (Work/current-run)
+          (Work/emit event record)
+          nil)
+        (let [call (:work/capability-call (base/runtime-hooks runtime))]
+          (if call
+            (try
+              (call :work/receipts :record [record])
+              (catch error nil))
+            nil))
         record)
 
       (nil? (base/runtime-store runtime))

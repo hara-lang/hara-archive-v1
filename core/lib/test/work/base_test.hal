@@ -1,7 +1,38 @@
 (ns work.base-test
+  (:use code.test)
   (:require 
             [work.base :as work]
             [work.flow.task.command :as command]))
+
+^{:refer work.base/suspend}
+(fact "creates a serializable signal or timer await node"
+  (let [signal (work/work-spec
+                (work/suspend
+                 {:id :signal-node}
+                 {:wait/id "signal-1" :wait/kind :signal}))
+        timer (work/work-spec
+               (work/suspend
+                {:id :timer-node}
+                {:wait/id "timer-1"
+                 :wait/kind :timer
+                 :wait/deadline 1000}))
+        invalid
+        (try
+          (work/suspend {:wait/id "missing-kind"})
+          :not-rejected
+          (catch error (:ex/code (ex-data error))))]
+    [(:op signal)
+     (:wait signal)
+     (:op timer)
+     (:wait timer)
+     invalid]
+    => [:await
+        {:wait/id "signal-1" :wait/kind :signal}
+        :await
+        {:wait/id "timer-1"
+         :wait/kind :timer
+         :wait/deadline 1000}
+        :hara/dependency]))
 
 (defn event-count
   [events event]

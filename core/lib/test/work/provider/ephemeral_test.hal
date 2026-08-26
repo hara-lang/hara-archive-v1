@@ -15,12 +15,21 @@
     [(:provider/id provider)
      (:provider/locator provider)
      (not (nil? (:provider/native-host provider)))
-     (has? (:provider/capabilities provider) :process-owned)])
+     (has? (:provider/capabilities provider) :process-owned)
+     (has? (:provider/capabilities provider) :work/suspension)
+     (get-in provider
+             [:provider/capability-descriptors
+              :work/receipts
+              :capability/persistence])
+     (fn? (:provider/reset provider))])
   => [:ephemeral
       {:host/type :ephemeral
        :host/id "process-default"
        :host/api :std.work.host/v1}
       true
+      true
+      true
+      :ephemeral
       true])
 
 ^{:refer work.provider.ephemeral/ephemeral-host}

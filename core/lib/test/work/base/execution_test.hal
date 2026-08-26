@@ -1,0 +1,110 @@
+(ns work.base.execution-test
+  (:use code.test)
+  (:require [work.base :as work]
+            [work.base.execution :as subject]
+            [work.base.execution.ephemeral :as ephemeral]
+            [work.base.model :as model]
+            [work.provider.inline :as inline]))
+
+^{:refer work.base.execution/normalise-provider}
+(fact "accepts an executor provider and rejects missing or incompatible values"
+  (let [executor (inline/inline-executor)
+        missing
+        (try
+          (subject/normalise-provider nil)
+          :not-rejected
+          (catch error (:ex/code (ex-data error))))
+        incompatible
+        (try
+          (subject/normalise-provider {})
+          :not-rejected
+          (catch error (:ex/code (ex-data error))))]
+    [(satisfies? IWorkExecutor
+                 (subject/normalise-provider executor))
+     missing
+     incompatible]
+    => [true :hara/dependency :hara/generic]))
+
+^{:refer work.base.execution/executor-descriptor}
+(fact "prefers a nested executor descriptor when present"
+  [(subject/executor-descriptor {:descriptor {:provider/id :nested}})
+   (subject/executor-descriptor {:provider/id :direct})]
+  => [{:provider/id :nested} {:provider/id :direct}])
+
+^{:refer work.base.execution/executor-id}
+(fact "derives a stable executor identity from its descriptor"
+  [(subject/executor-id {:descriptor {:provider/id :nested}})
+   (subject/executor-id {:id :direct})
+   (subject/executor-id {})]
+  => [:nested :direct :executor])
+
+^{:refer work.base.execution/execute-work}
+(fact "delegates one work value to the node evaluator"
+  (let [runtime (assoc (ephemeral/execution-runtime)
+                       :work/policy {:work/mode :portable})
+        frame {:run/id "run-1"
+               :work/root :root
+               :node/path []
+               :item/id nil}
+        value (subject/execute-work
+               runtime
+               frame
+               (work/pure :identity (fn [input context] input))
+               42)]
+    value)
+  => 42)
+
+^{:refer work.base.execution/default-handlers}
+(fact "installs the built-in await handler alongside the core algebra"
+  [(fn? (get subject/default-handlers :pure))
+   (fn? (get subject/default-handlers :await))
+   (get subject/default-handlers :missing)]
+  => [true true nil])
+
+^{:refer work.base.execution/evaluator-handlers}
+(fact "adds runtime handlers without replacing built-ins"
+  (let [runtime (model/runtime-map
+                 nil nil nil {:work/mode :native}
+                 {:work/handlers {:custom identity}})
+        handlers (subject/evaluator-handlers runtime)]
+    [(fn? (get handlers :pure))
+     (= identity (get handlers :custom))])
+  => [true true])
+
+^{:refer work.base.execution/execute-node-handler}
+(fact "runs a selected handler and emits its completion event"
+  (let [runtime (assoc (ephemeral/execution-runtime)
+                       :work/policy {:work/mode :portable})
+        frame {:run/id "run-1"
+               :work/root :root
+               :node/path [:custom]
+               :item/id nil}
+        spec {:op :custom :id :custom}
+        value (subject/execute-node-handler
+               runtime
+               frame
+               spec
+               :custom
+               (fn [execute runtime frame spec input]
+                 input)
+               7)]
+    value)
+  => 7)
+
+^{:refer work.base.execution/execute-node}
+(fact "resolves a work operation and evaluates it"
+  (let [runtime (assoc (ephemeral/execution-runtime)
+                       :work/policy {:work/mode :portable})
+        frame {:run/id "run-1"
+               :work/root :root
+               :node/path []
+               :item/id nil}
+        value (subject/execute-node
+               runtime
+               frame
+               (work/pure :identity (fn [input context] input))
+               :payload)]
+    value)
+  => :payload)
+
+(pr-str (run {:namespace "work.base.execution-test"}))

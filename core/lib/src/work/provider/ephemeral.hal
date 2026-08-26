@@ -1,6 +1,8 @@
 (ns work.provider.ephemeral
   (:require [work.base.host :as host]
-            [work.base.execution.ephemeral :as execution]))
+            [work.base.capability :as capability]
+            [work.base.execution.ephemeral :as execution]
+            [work.provider.ephemeral.capability :as ephemeral-capability]))
 
 (def default-locator
   {:host/type :ephemeral
@@ -14,69 +16,121 @@
       (:state value)
       value)))
 
+^{:public true}
 (defn provider
   ([]
    (provider {}))
   ([options]
    (let [native-host (or (:native-host options)
                          (Work/default-host))
+         capability-system (ephemeral-capability/system options)
+         capability-state (:provider/capability-state capability-system)
          locator
          (host/normalise-locator
           {:host/type :ephemeral
            :host/id (or (:id options) "process-default")
            :host/api :std.work.host/v1})]
-     {:provider/role :work/host
-      :provider/api :std.work.host/v1
-      :provider/id :ephemeral
-      :provider/locator locator
-      :provider/capabilities #{:portable-graphs
-                               :process-owned
-                               :structured-cancellation}
-      :provider/native-host native-host
-      :provider/operations
-      {:start
-       (fn []
-         (IComponent/start native-host))
-       :stop
-       (fn []
-         (IComponent/stop native-host))
-       :kill
-       (fn []
-         (IComponent/kill native-host))
-       :status
-       (fn []
-         (component-status native-host))
-       :submit
-       (fn [work input submit-options]
-         (let [submit-options
-               (if (:work/execute submit-options)
-                 submit-options
-                 (assoc submit-options :work/execute execution/execute))
-               run
-               (IWorkHost/work-submit native-host
-                                      work
-                                      input
-                                      submit-options)]
-           {:run/id (IWorkRef/work-id run)
-            :run/handle run}))
-       :resolve
-       (fn [reference]
-         {:run/handle
-          (IWorkHost/work-resolve native-host
-                                  (IWorkRef/work-id reference))})
-       :run-status
-       (fn [reference run]
-         (IWorkRun/work-status run))
-       :run-result
-       (fn [reference run]
-         (IWorkRun/work-result run))
-       :run-events
-       (fn [reference run options]
-         (IWorkRun/work-events run options))
-       :run-cancel
-       (fn [reference run reason]
-         (IWorkRun/work-cancel run reason))}})))
+     (merge
+      capability-system
+      {:provider/role :work/host
+       :provider/api :std.work.host/v1
+       :provider/id :ephemeral
+       :provider/locator locator
+       :provider/capabilities
+       (reduce
+        (fn [installed capability-id]
+          (conj installed capability-id))
+        #{:portable-graphs
+          :process-owned
+          :structured-cancellation}
+        (:provider/capabilities capability-system))
+       :provider/native-host native-host
+       :provider/operations
+       {:start
+        (fn []
+          (IComponent/start native-host))
+        :stop
+        (fn []
+          (IComponent/stop native-host))
+        :kill
+        (fn []
+          (IComponent/kill native-host))
+        :status
+        (fn []
+          (component-status native-host))
+        :submit
+        (fn [work input submit-options]
+          (let [submit-options (or submit-options {})
+                run-holder (atom nil)
+                capability-generation
+                (ephemeral-capability/generation capability-state)
+                submit-options
+                (if (:work/execute submit-options)
+                  submit-options
+                  (assoc submit-options :work/execute execution/execute))
+                submit-options
+                (assoc submit-options
+                       :work/capability-call
+                       (fn [capability-id operation arguments]
+                         (capability/call capability-system
+                                          capability-id
+                                          operation
+                                          arguments))
+                       :work/capability-descriptors
+                       (:provider/capability-descriptors capability-system)
+                       :capability/generation
+                       capability-generation
+                       :work/run-start
+                       (fn [run-id run-work run-input run-options]
+                         (capability/call capability-system
+                                          :work/receipts
+                                          :run-start
+                                          [run-id run-work run-input run-options]))
+                       :work/run-complete
+                       (fn [run-id status value error]
+                         (let [run (deref run-holder)
+                               run-status (if run
+                                           (IWorkRun/work-status run)
+                                           nil)
+                               cancelled? (or (= :cancelling run-status)
+                                              (= :cancelled run-status))]
+                           (capability/call capability-system
+                                            :work/receipts
+                                            :run-complete
+                                            [run-id
+                                             (if cancelled? :cancelled status)
+                                             value
+                                             error
+                                             {:capability/generation
+                                              capability-generation}]))))
 
+                run
+                (IWorkHost/work-submit native-host
+                                       work
+                                       input
+                                       submit-options)
+                _ (reset! run-holder run)]
+            {:run/id (IWorkRef/work-id run)
+             :run/handle run}))
+        :resolve
+        (fn [reference]
+          {:run/handle
+           (IWorkHost/work-resolve native-host
+                                   (IWorkRef/work-id reference))})
+        :run-status
+        (fn [reference run]
+          (IWorkRun/work-status run))
+        :run-result
+        (fn [reference run]
+          (IWorkRun/work-result run))
+        :run-events
+        (fn [reference run options]
+          (IWorkRun/work-events run options))
+        :run-cancel
+        (fn [reference run reason]
+          (IWorkRun/work-cancel run reason))}}))))
+
+^{:public true}
 (defn ephemeral-host
   ([]
    (ephemeral-host {}))

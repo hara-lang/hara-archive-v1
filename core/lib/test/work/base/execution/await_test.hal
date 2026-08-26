@@ -1,0 +1,99 @@
+(ns work.base.execution.await-test
+  (:use code.test)
+  (:require [work.base.execution.await :as subject]
+            [work.base.model :as model]))
+
+^{:refer work.base.execution.await/capability-call}
+(fact "reads the capability dispatcher from the canonical runtime hooks"
+  (let [call (fn [capability operation arguments]
+               [capability operation arguments])
+        runtime (model/runtime-map
+                 nil
+                 nil
+                 nil
+                 {:work/mode :native}
+                 {:work/capability-call call})]
+    (= call (subject/capability-call runtime)))
+  => true)
+
+^{:refer work.base.execution.await/require-capability-call}
+(fact "requires an installed suspension dispatcher"
+  (let [runtime (model/runtime-map nil nil nil {:work/mode :native} {})
+        missing
+        (try
+          (subject/require-capability-call runtime)
+          :not-rejected
+          (catch error (:ex/code (ex-data error))))]
+    [missing
+     (fn? (subject/require-capability-call
+           (model/runtime-map
+            nil nil nil {:work/mode :native}
+            {:work/capability-call (fn [& arguments] arguments)})))]
+    => [:hara/dependency true]))
+
+^{:refer work.base.execution.await/await-pending}
+(fact "dispatches an await using the serializable run and wait data"
+  (let [calls (atom [])
+        runtime
+        (model/runtime-map
+         nil
+         nil
+         nil
+         {:work/mode :native}
+         {:work/capability-call
+          (fn [capability operation arguments]
+            (swap! calls conj [capability operation arguments])
+            (promise/from {:wait/status :signalled
+                           :wait/id "wait-1"
+                           :wait/value :ready}))})
+        frame {:run/id "run-1"}
+        spec {:wait {:wait/id "wait-1" :wait/kind :signal}}]
+    [(deref (subject/await-pending runtime frame spec))
+     (deref calls)]
+    => [{:wait/status :signalled
+         :wait/id "wait-1"
+         :wait/value :ready}
+        [[:work/suspension
+          :await
+          ["run-1" {:wait/id "wait-1" :wait/kind :signal}]]]]))
+
+^{:refer work.base.execution.await/run-await}
+(fact "emits admission and resume events around a capability wait"
+  (let [observer (model/recording-observer)
+        calls (atom [])
+        runtime
+        (model/runtime-map
+         nil
+         nil
+         nil
+         {:work/mode :portable}
+         {:work/observer observer
+          :work/capability-call
+          (fn [capability operation arguments]
+            (swap! calls conj [capability operation arguments])
+            (promise/from {:wait/status :signalled
+                           :wait/id "wait-1"
+                           :wait/value :ready}))})
+        frame {:run/id "run-1"
+               :work/root :root
+               :node/path [:await]
+               :item/id nil}
+        spec {:op :await
+              :wait {:wait/id "wait-1" :wait/kind :signal}}
+        result (subject/run-await
+                identity
+                runtime
+                frame
+                spec
+                :input)]
+    [(deref result)
+     (vec (map (fn [event] (:event event))
+               (model/observer-events observer)))
+     (count (deref calls))]
+    => [{:wait/status :signalled
+         :wait/id "wait-1"
+         :wait/value :ready}
+        [:work/await-admitted :work/await-resumed]
+        1]))
+
+(pr-str (run {:namespace "work.base.execution.await-test"}))

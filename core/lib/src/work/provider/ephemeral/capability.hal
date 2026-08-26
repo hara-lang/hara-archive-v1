@@ -1,0 +1,828 @@
+(ns work.provider.ephemeral.capability
+  (:config {:role :internal})
+  (:require [work.base.capability :as capability]
+            [work.base.model :as base]
+            [work.base.receipt :as receipt]))
+
+;; Process-local implementations for the optional Work capability suites.
+;; The state is intentionally an explicit sidecar.  No value returned by this
+;; namespace is suitable for a portable Work graph unless it is a descriptor,
+;; wait identity, claim token, or receipt envelope.
+
+(def suspension-api :std.work.suspension/v1)
+(def claims-api :std.work.claims/v1)
+(def receipts-api :std.work.receipts/v1)
+
+(def capability-descriptors
+  {:work/suspension
+   {:capability/api suspension-api
+    :capability/persistence :ephemeral
+    :capability/operations #{:await :signal}}
+   :work/claims
+   {:capability/api claims-api
+    :capability/persistence :ephemeral
+    :capability/operations #{:acquire :renew :release :assert}}
+   :work/receipts
+   {:capability/api receipts-api
+    :capability/persistence :ephemeral
+    :capability/operations #{:run-start
+                             :record
+                             :run-complete
+                             :candidates
+                             :status
+                             :sign
+                             :publish}}})
+
+(def capability-keys
+  #{:work/suspension :work/claims :work/receipts})
+
+(defn initial-state
+  [options]
+  {:clock/now (or (:clock/now options)
+                  (fn [] (OS/time-ms)))
+   :authority/id (or (:authority/id options) :ephemeral-authority)
+   :state/generation (or (:state/generation options) 0)
+   :waits {}
+   :claims {}
+   :claim/generations {}
+   :runs {}
+   :candidates []
+   :published {}})
+
+(defn state
+  [system]
+  (:provider/capability-state system))
+
+(defn now
+  [state]
+  ((:clock/now (deref state))))
+
+(defn generation
+  [state]
+  (:state/generation (deref state)))
+
+(defn wait-key
+  [run-id wait-id]
+  [run-id wait-id])
+
+(defn claim-resource
+  [kind value]
+  [kind value])
+
+(defn valid-run-id
+  [run-id]
+  (if (nil? run-id)
+    (throw
+     (ex :argument
+         {:run/id run-id}
+         :ex/message "Ephemeral Work capability requires a run identity")))
+  run-id)
+
+(defn normalise-wait
+  [wait]
+  (if (not (map? wait))
+    (throw
+     (ex :argument
+         {:wait wait}
+         :ex/message "Work await descriptor must be a map")))
+  (let [wait-id (:wait/id wait)
+        kind (:wait/kind wait)
+        deadline (:wait/deadline wait)]
+    (if (nil? wait-id)
+      (throw
+       (ex :dependency
+           {:wait wait}
+           :ex/message "Work await descriptor requires :wait/id")))
+    (if (not (capability/contains-value? #{:signal :timer} kind))
+      (throw
+       (ex :argument
+           {:wait/kind kind}
+           :ex/message "Work await descriptor kind must be :signal or :timer")))
+    (if (and (= :timer kind) (nil? deadline))
+      (throw
+       (ex :dependency
+           {:wait/id wait-id}
+           :ex/message "Timer await descriptor requires :wait/deadline")))
+    (if (and deadline (not (number? deadline)))
+      (throw
+       (ex :argument
+           {:wait/deadline deadline}
+           :ex/message "Work await deadline must be an absolute number")))
+    wait))
+
+(defn wait-outcome
+  [wait status value]
+  (cond
+    (= :signalled status)
+    {:wait/id (:wait/id wait)
+     :wait/status :signalled
+     :wait/value value}
+
+    (= :timed-out status)
+    {:wait/id (:wait/id wait)
+     :wait/status :timed-out
+     :wait/deadline (:wait/deadline wait)}
+
+    :else
+    {:wait/id (:wait/id wait)
+     :wait/status status
+     :wait/value value}))
+
+(defn wait-error
+  [status run-id wait-id]
+  (cond
+    (= :missing status)
+    (ex :not-found
+        {:run/id run-id :wait/id wait-id}
+        :ex/message "Work wait has not been admitted")
+
+    (= :pending? status)
+    (ex :conflict
+        {:run/id run-id :wait/id wait-id}
+        :ex/message "Work wait is already admitted")
+
+    (= :signalled status)
+    (ex :conflict
+        {:run/id run-id :wait/id wait-id :wait/status status}
+        :ex/message "Work wait has already been signalled")
+
+    (= :timed-out status)
+    (ex :conflict
+        {:run/id run-id :wait/id wait-id :wait/status status}
+        :ex/message "Work wait has already timed out")
+
+    :else
+    (ex :state
+        {:run/id run-id :wait/id wait-id :wait/status status}
+        :ex/message "Work wait is no longer active")))
+
+(defn settle-wait
+  ([state key status outcome]
+   (settle-wait state key status outcome true true))
+  ([state key status outcome cancel-timer?]
+   (settle-wait state key status outcome cancel-timer? true))
+  ([state key status outcome cancel-timer? resolve?]
+   (let [[transition _]
+         (swap-return!
+          state
+          (fn [current]
+            (let [entry (get-in current [:waits key])]
+              (cond
+                (nil? entry)
+                [{:accepted? false
+                  :status :missing}
+                 current]
+
+                (not= :pending (:status entry))
+                [{:accepted? false
+                  :status (:status entry)}
+                 current]
+
+                :else
+                [{:accepted? true
+                  :entry entry}
+                 (assoc-in current
+                           [:waits key]
+                           (assoc entry
+                                  :status status
+                                  :outcome outcome))])))
+          true)]
+     (if (:accepted? transition)
+       (do
+         (if (and cancel-timer? (:timer (:entry transition)))
+           (promise/cancel (:timer (:entry transition))))
+         (if (and resolve? (:resolve (:entry transition)))
+           ((:resolve (:entry transition)) outcome)
+           nil)
+         transition)
+       transition))))
+
+(defn cancel-wait
+  [state key]
+  (let [entry (get-in (deref state) [:waits key])]
+    (if (and entry (= :pending (:status entry)))
+      (let [outcome (wait-outcome (:wait entry) :cancelled nil)
+        transition (settle-wait state key :cancelled outcome true false)]
+        (if (:accepted? transition)
+          (do
+            (if (:reject (:entry transition))
+              ((:reject (:entry transition))
+               (ex :state
+                   {:wait/id (:wait/id (:wait transition))}
+                   :ex/message "Work wait was cancelled"))
+              nil)
+            transition)
+          transition))
+      {:accepted? false
+       :status (if entry (:status entry) :missing)})))
+
+(defn timeout-wait
+  [state key wait]
+  (let [outcome (wait-outcome wait :timed-out nil)
+        transition (settle-wait state key :timed-out outcome false)]
+    (if (:accepted? transition)
+      outcome
+      nil)))
+
+(defn delay-ms
+  [state deadline]
+  (let [remaining (- deadline (now state))]
+    (if (< remaining 0) 0 remaining)))
+
+(defn await-wait
+  ([state run-id raw-wait]
+   (await-wait state run-id raw-wait {}))
+  ([state run-id raw-wait options]
+   (let [run-id (valid-run-id run-id)
+         wait (normalise-wait raw-wait)
+         options (or options {})
+         key (wait-key run-id (:wait/id wait))]
+     (if (and (has? options :capability/generation)
+              (not= (:capability/generation options)
+                    (generation state)))
+       (throw
+        (ex :conflict
+            {:run/id run-id
+             :wait/id (:wait/id wait)
+             :capability/generation (:capability/generation options)
+             :state/generation (generation state)}
+            :ex/message "Work await belongs to an obsolete capability generation")))
+     (let [callbacks (atom {})
+           pending
+           (promise/new
+            (fn [resolve reject]
+              (reset! callbacks {:resolve resolve :reject reject})))
+           admission
+           (swap-return!
+            state
+            (fn [current]
+              (if (get-in current [:waits key])
+                [{:accepted? false :status :pending?} current]
+                [{:accepted? true}
+                 (assoc-in current
+                           [:waits key]
+                           {:status :pending
+                            :wait wait
+                            :promise pending
+                            :resolve (:resolve (deref callbacks))
+                            :reject (:reject (deref callbacks))})]))
+            )]
+       (if (not (:accepted? admission))
+         (throw (wait-error (:status admission) run-id (:wait/id wait))))
+       (if (= :timer (:wait/kind wait))
+         (let [timer
+               (promise/delay
+                (delay-ms state (:wait/deadline wait))
+                (fn [] (timeout-wait state key wait)))]
+           (swap!
+            state
+            (fn [current]
+              (if (= :pending (get-in current [:waits key :status]))
+                (assoc-in current [:waits key :timer] timer)
+                current)))
+           nil)
+         nil)
+       (if (Work/current-run)
+         (try
+           (Work/on-close
+            (fn [run]
+              (cancel-wait state key)))
+           (catch error
+             (cancel-wait state key)
+             (throw
+              (ex :dependency
+                  {:run/id run-id :wait/id (:wait/id wait)}
+                  :ex/message "Work await could not register its run cleanup"
+                  :ex/cause error))))
+         nil)
+       pending))))
+
+(defn token
+  [resource claimant generation expires-at]
+  {:claim/resource resource
+   :claim/id claimant
+   :claim/generation generation
+   :claim/expires-at expires-at})
+
+(defn lease-until
+  [state options]
+  (let [absolute (:lease/until options)
+        milliseconds (:lease/ms options)
+        value
+        (or absolute
+            (if milliseconds
+              (+ (now state) milliseconds)
+              nil))]
+    (if (nil? value)
+      (throw
+       (ex :dependency
+           {:lease/options options}
+           :ex/message "Work claim requires an absolute :lease/until or :lease/ms")))
+    (if (not (number? value))
+      (throw
+       (ex :argument
+           {:lease/until value}
+           :ex/message "Work claim lease expiry must be numeric")))
+    (if (<= value (now state))
+      (throw
+       (ex :argument
+           {:lease/until value}
+           :ex/message "Work claim lease must expire in the future")))
+    value))
+
+(defn assert-claim
+  [state resource claim]
+  (let [current (get-in (deref state) [:claims resource])]
+    (if (or (nil? claim)
+            (nil? current)
+            (not= resource (:claim/resource claim))
+            (not= (:claim/id current) (:claim/id claim))
+            (not= (:claim/generation current) (:claim/generation claim))
+            (not= (generation state)
+                  (:claim/state-generation claim))
+            (<= (:claim/expires-at current) (now state)))
+      (throw
+       (ex :conflict
+           {:claim/resource resource
+            :claim/expected current
+            :claim/actual claim}
+           :ex/message "Work claim is stale, expired, or not held")))
+    {:claim/status :valid
+     :claim/token current}))
+
+(defn claim-acquire
+  [state resource options]
+  (if (nil? resource)
+    (throw
+     (ex :argument
+         {:claim/resource resource}
+         :ex/message "Work claim requires a resource identity")))
+  (let [claimant (:claim/id options)
+        expires-at (lease-until state options)]
+    (if (nil? claimant)
+      (throw
+       (ex :dependency
+           {:claim/options options}
+           :ex/message "Work claim requires :claim/id")))
+    (let [result
+          (swap-return!
+           state
+           (fn [current]
+             (let [existing (get-in current [:claims resource])
+                   live? (and existing
+                              (> (:claim/expires-at existing) (now state)))]
+               (cond
+                 (and live? (= claimant (:claim/id existing)))
+                 [{:claim/status :acquired
+                   :claim/token existing}
+                  current]
+
+                 live?
+                 [{:error :claim-conflict
+                   :claim/current existing}
+                  current]
+
+                 :else
+                 (let [generation
+                       (inc (or (get-in current [:claim/generations resource]) 0))
+                       value
+                       (assoc
+                        (token resource claimant generation expires-at)
+                        :claim/state-generation
+                        (:state/generation current))]
+                   [{:claim/status :acquired
+                     :claim/token value}
+                    (assoc-in
+                     (assoc-in current [:claims resource] value)
+                     [:claim/generations resource]
+                     generation)]))))
+           )]
+      (if (:error result)
+        (throw
+         (ex :conflict
+             {:claim/resource resource
+              :claim/current (:claim/current result)}
+             :ex/message "Work claim is already held by another claimant"))
+        result))))
+
+(defn claim-renew
+  [state claim options]
+  (let [resource (:claim/resource claim)
+        expires-at (lease-until state options)
+        result
+        (swap-return!
+         state
+         (fn [current]
+           (let [existing (get-in current [:claims resource])]
+             (if (and existing
+                      (= (:claim/id existing) (:claim/id claim))
+                      (= (:claim/generation existing) (:claim/generation claim))
+                      (= (:state/generation current)
+                         (:claim/state-generation claim))
+                      (> (:claim/expires-at existing) (now state)))
+               (let [updated (assoc existing :claim/expires-at expires-at)]
+                 [{:claim/status :renewed
+                   :claim/token updated}
+                  (assoc-in current [:claims resource] updated)])
+               [{:error :stale-claim} current])))
+         )]
+    (if (:error result)
+      (throw
+       (ex :conflict
+           {:claim/resource resource
+            :claim/actual claim}
+           :ex/message "Cannot renew a stale or expired Work claim"))
+      result)))
+
+(defn claim-release
+  [state claim]
+  (let [resource (:claim/resource claim)
+        result
+        (swap-return!
+         state
+         (fn [current]
+           (let [existing (get-in current [:claims resource])]
+             (if (and existing
+                      (= (:claim/id existing) (:claim/id claim))
+                      (= (:claim/generation existing) (:claim/generation claim))
+                      (= (:state/generation current)
+                         (:claim/state-generation claim))
+                      (> (:claim/expires-at existing) (now state)))
+               [{:claim/status :released
+                 :claim/resource resource}
+                (assoc current :claims (dissoc (:claims current) resource))]
+               [{:error :stale-claim} current])))
+         )]
+    (if (:error result)
+      (throw
+       (ex :conflict
+           {:claim/resource resource
+            :claim/actual claim}
+           :ex/message "Cannot release a stale or expired Work claim"))
+      result)))
+
+(defn signal-wait
+  [state run-id signal options]
+  (let [run-id (valid-run-id run-id)
+        wait-id (:signal/id signal)
+        value (if (has? signal :signal/value)
+                (:signal/value signal)
+                nil)
+        resource (claim-resource :work/wait [run-id wait-id])]
+    (if (nil? wait-id)
+      (throw
+       (ex :dependency
+           {:signal signal}
+           :ex/message "Work signal requires :signal/id")))
+    (if (nil? (:claim/token options))
+      (throw
+       (ex :dependency
+           {:run/id run-id :wait/id wait-id}
+           :ex/message "Work signal requires a fenced claim token"))
+      (assert-claim state resource (:claim/token options)))
+    (let [key (wait-key run-id wait-id)
+          wait (get-in (deref state) [:waits key])
+          _ (if (and wait (not= :signal (:wait/kind (:wait wait))))
+              (throw
+               (ex :argument
+                   {:run/id run-id :wait/id wait-id}
+                   :ex/message "Only signal waits accept Work signals")))
+          outcome (wait-outcome (or (:wait wait) {:wait/id wait-id})
+                                :signalled
+                                value)
+          transition (settle-wait state key :signalled outcome)]
+      (if (:accepted? transition)
+        {:signal/status :admitted
+         :run/id run-id
+         :wait/id wait-id
+         :wait/outcome outcome}
+        (throw (wait-error (:status transition) run-id wait-id))))))
+
+(defn run-root
+  [work options]
+  (let [spec (base/work-spec-map work)]
+    (or (:work-root options)
+        (:root spec)
+        (:id spec)
+        :anonymous)))
+
+(defn run-record
+  [run-id work input options]
+  {:run/id run-id
+   :run/revision 0
+   :run/status :running
+   :run/execution-status :running
+   :run/work-root (run-root work options)
+   :run/work-version (or (:work-version options)
+                         (:version (base/work-spec-map work))
+                         1)
+   :run/runtime-version 1
+   :run/schema-version 1
+   :run/input input
+   :run/attributes {}
+   :run/created? false})
+
+(defn append-candidate
+  [current run kind identity evidence]
+  (let [revision (inc (or (:run/revision run) 0))
+        run (assoc run :run/revision revision)
+        envelope (receipt/envelope run revision kind identity evidence)]
+    {:run run
+     :envelope envelope
+     :state (assoc current
+                   :candidates
+                   (conj (or (:candidates current) []) envelope))}))
+
+(defn receipt-run-start
+  [state run-id work input options]
+  (let [result
+        (swap-return!
+         state
+         (fn [current]
+           (if (and (has? options :capability/generation)
+                    (not= (:capability/generation options)
+                          (:state/generation current)))
+             [{:receipt/status :ignored
+               :run/id run-id
+               :reason :stale-generation}
+              current]
+             (let [existing (get-in current [:runs run-id])
+                   run (merge (run-record run-id work input options) existing)]
+               (if (:run/created? run)
+                 [{:receipt/status :known
+                   :run/id run-id}
+                  current]
+                 (let [created
+                       (append-candidate
+                        current
+                        (assoc run :run/created? true)
+                        :work/run-created
+                        :run-created
+                        {:run/id run-id})]
+                   [{:receipt/status :recorded
+                     :run/id run-id
+                     :receipt (:envelope created)}
+                    (assoc-in (:state created) [:runs run-id] (:run created))])))))
+         )]
+    result))
+
+(defn receipt-record
+  [state event]
+  (let [run-id (valid-run-id (:run/id event))
+        result
+        (swap-return!
+         state
+         (fn [current]
+           (let [existing (get-in current [:runs run-id])]
+             (cond
+               (and (has? event :capability/generation)
+                    (not= (:capability/generation event)
+                          (:state/generation current)))
+               [{:receipt/status :ignored
+                 :run/id run-id
+                 :reason :stale-generation}
+                current]
+
+               (nil? existing)
+               [{:receipt/status :ignored
+                 :run/id run-id
+                 :reason :run-not-admitted}
+                current]
+               :else
+               (let [recorded
+                     (append-candidate
+                      current
+                      existing
+                      :work/event
+                      [(:event event) (:node/path event) (:item/id event)]
+                      event)]
+                 [{:receipt/status :recorded
+                   :run/id run-id
+                   :receipt (:envelope recorded)}
+                  (assoc-in (:state recorded) [:runs run-id] (:run recorded))]))))
+         )]
+    result))
+
+(defn completion-kind
+  [status]
+  (case status
+    :completed :work/run-completed
+    :cancelled :work/run-cancelled
+    :work/run-failed))
+
+(defn receipt-run-complete
+  ([state run-id status value error]
+   (receipt-run-complete state run-id status value error {}))
+  ([state run-id status value error options]
+  (let [result
+        (swap-return!
+         state
+         (fn [current]
+           (let [run (get-in current [:runs run-id])]
+             (cond
+               (and (has? options :capability/generation)
+                    (not= (:capability/generation options)
+                          (:state/generation current)))
+               [{:receipt/status :ignored
+                 :run/id run-id
+                 :reason :stale-generation}
+                current]
+
+               (nil? run)
+               [{:receipt/status :ignored
+                 :run/id run-id
+                 :reason :run-not-admitted}
+                current]
+               :else
+               (let [updated (assoc run
+                                    :run/status status
+                                    :run/execution-status status
+                                    :run/result value
+                                    :run/error error)
+                     recorded
+                     (append-candidate
+                      current
+                      updated
+                      (completion-kind status)
+                      status
+                      {:run/id run-id
+                       :run/status status
+                       :run/result value
+                       :run/error error})]
+                 [{:receipt/status :recorded
+                   :run/id run-id
+                   :receipt (:envelope recorded)}
+                  (assoc-in (:state recorded) [:runs run-id] (:run recorded))]))))
+         )]
+    result)))
+
+(defn receipt-candidates
+  [state run-id]
+  (let [values (or (:candidates (deref state)) [])]
+    (vec
+     (filter
+      (fn [candidate]
+        (or (nil? run-id)
+            (= run-id (:receipt/run-id candidate))))
+      values))))
+
+(defn receipt-status
+  [state run-id]
+  (let [values (receipt-candidates state run-id)
+        published (:published (deref state))]
+    (cond
+      (empty? values) :pending
+      (every? (fn [candidate]
+                (has? published (:receipt/id candidate)))
+              values) :published
+      :else :pending)))
+
+(defn sign-receipt
+  [state envelope options]
+  (let [authority (or (:authority/id options)
+                      (:authority/id (deref state))
+                      :ephemeral-authority)]
+    (assoc envelope
+           :receipt/signature
+           {:signature/algorithm :ephemeral/deterministic
+            :signature/authority authority
+            :signature/value [authority
+                              (:receipt/id envelope)
+                              (:receipt/payload-root envelope)]})))
+
+(defn publish-receipt
+  [state envelope options]
+  (let [signed (if (:receipt/signature envelope)
+                 envelope
+                 (sign-receipt state envelope options))
+        receipt-id (:receipt/id signed)
+        resource (claim-resource :work/receipt receipt-id)
+        _ (assert-claim state resource (:claim/token options))
+        result
+        (swap-return!
+         state
+         (fn [current]
+           (let [existing (get-in current [:published receipt-id])]
+             (cond
+               (nil? existing)
+               [{:receipt/status :published
+                 :receipt/envelope signed}
+                (assoc-in current [:published receipt-id] signed)]
+
+               (= existing signed)
+               [{:receipt/status :published
+                 :receipt/envelope existing}
+                current]
+
+               :else
+               [{:error :receipt-conflict} current])))
+         )]
+    (if (:error result)
+      (throw
+       (ex :conflict
+           {:receipt/id receipt-id}
+           :ex/message "Receipt publication conflicts with an existing payload"))
+      result)))
+
+(defn reset-state
+  [state]
+  (let [[output _]
+        (swap-return!
+         state
+         (fn [current]
+           (let [waits (vec (vals (:waits current)))
+                 claims (count (or (:claims current) {}))
+                 candidates (count (or (:candidates current) []))
+                 published (count (or (:published current) {}))]
+             [{:reset? true
+               :waits (count waits)
+               :claims claims
+               :candidates candidates
+               :published published
+               :wait-entries waits}
+              (initial-state
+               {:clock/now (:clock/now current)
+                :authority/id (:authority/id current)
+                :state/generation (inc (:state/generation current))})]))
+         true)]
+    (reduce
+     (fn [_ entry]
+       (if (and (= :pending (:status entry)) (:timer entry))
+         (promise/cancel (:timer entry)))
+       (if (= :pending (:status entry))
+         (if (:reject entry)
+           (try
+             ((:reject entry)
+              (ex :state
+                  {:wait/id (:wait/id (:wait entry))}
+                  :ex/message "Ephemeral Work capability state was reset"))
+             (catch error nil))
+           (if (:promise entry)
+             (promise/cancel (:promise entry))
+             nil)))
+       nil)
+     nil
+     (vec (or (:wait-entries output) [])))
+    (dissoc output :wait-entries)))
+
+(defn reset
+  [system]
+  (reset-state (state system)))
+
+(defn operations
+  [system]
+  (let [state (state system)]
+     {:work/suspension
+     {:await (fn
+               ([run-id wait]
+                (await-wait state run-id wait))
+               ([run-id wait options]
+                (await-wait state run-id wait (or options {}))))
+      :signal (fn [run-id signal options]
+                (signal-wait state run-id signal (or options {})))}
+     :work/claims
+     {:acquire (fn [resource options]
+                 (claim-acquire state resource (or options {})))
+      :renew (fn [claim options]
+               (claim-renew state claim (or options {})))
+      :release (fn [claim]
+                 (claim-release state claim))
+      :assert (fn [resource claim]
+                (assert-claim state resource claim))}
+     :work/receipts
+     {:run-start (fn [run-id work input options]
+                   (receipt-run-start state run-id work input (or options {})))
+      :record (fn [event]
+                (receipt-record state event))
+      :run-complete (fn
+                      ([run-id status value error]
+                       (receipt-run-complete state run-id status value error))
+                      ([run-id status value error options]
+                       (receipt-run-complete
+                        state
+                        run-id
+                        status
+                        value
+                        error
+                        (or options {}))))
+      :candidates (fn [run-id]
+                    (receipt-candidates state run-id))
+      :status (fn [run-id]
+                (receipt-status state run-id))
+      :sign (fn [envelope options]
+              (sign-receipt state envelope (or options {})))
+      :publish (fn [envelope options]
+                 (publish-receipt state envelope (or options {})))}}))
+
+(defn system
+  ([]
+   (system {}))
+  ([options]
+   (let [state (atom (initial-state (or options {})))
+         system
+         {:provider/capabilities capability-keys
+          :provider/capability-descriptors capability-descriptors
+          :provider/capability-state state}]
+     (assoc system
+            :provider/capability-operations (operations system)
+            :provider/reset (fn [] (reset-state state))))))

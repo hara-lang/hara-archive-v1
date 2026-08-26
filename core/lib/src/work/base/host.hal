@@ -1,4 +1,5 @@
-(ns work.base.host)
+(ns work.base.host
+  (:require [work.base.capability :as capability]))
 
 (def host-api :std.work.host/v1)
 (def terminal-statuses #{:completed :failed :cancelled})
@@ -110,13 +111,124 @@
   [host]
   (:locator host))
 
+^{:public true}
 (defn capabilities
   [host]
-  (or (:provider/capabilities (:provider host)) #{}))
+  (reduce
+   (fn [installed capability-id]
+     (conj installed capability-id))
+   (or (:provider/capabilities (:provider host)) #{})
+   (keys (:provider/capability-descriptors (:provider host)))))
 
+^{:public true}
+(defn capability-descriptors
+  [host]
+  (or (:provider/capability-descriptors (:provider host)) {}))
+
+^{:public true}
+(defn capability-descriptor
+  [host capability]
+  (get (capability-descriptors host) capability))
+
+^{:public true}
 (defn capability?
   [host capability]
-  (contains-value? (capabilities host) capability))
+  (capability/capability? (:provider host) capability))
+
+^{:public true}
+(defn capability-operation?
+  [host capability operation]
+  (capability/operation? (:provider host) capability operation))
+
+^{:public true}
+(defn capability-call
+  "Invokes an explicitly installed optional host capability operation.
+
+  Arguments are supplied as a portable vector.  The host and provider
+  protocols remain unchanged; capability operations are ordinary provider
+  data behind this boundary."
+  [host capability-id operation arguments]
+  (capability/call (:provider host) capability-id operation arguments))
+
+^{:public true}
+(defn await-work
+  [host run-id wait]
+  (capability-call host :work/suspension :await [run-id wait]))
+
+^{:public true}
+(defn signal-work
+  ([host run-id signal]
+   (signal-work host run-id signal {}))
+  ([host run-id signal options]
+   (capability-call host :work/suspension :signal
+                   [run-id signal (or options {})])))
+
+^{:public true}
+(defn claim-acquire
+  [host resource options]
+  (capability-call host :work/claims :acquire
+                  [resource (or options {})]))
+
+^{:public true}
+(defn claim-renew
+  [host claim options]
+  (capability-call host :work/claims :renew
+                  [claim (or options {})]))
+
+^{:public true}
+(defn claim-release
+  [host claim]
+  (capability-call host :work/claims :release [claim]))
+
+^{:public true}
+(defn claim-assert
+  [host resource claim]
+  (capability-call host :work/claims :assert [resource claim]))
+
+^{:public true}
+(defn receipt-candidates
+  ([host]
+   (receipt-candidates host nil))
+  ([host run-id]
+   (capability-call host :work/receipts :candidates [run-id])))
+
+^{:public true}
+(defn receipt-status
+  ([host]
+   (receipt-status host nil))
+  ([host run-id]
+   (capability-call host :work/receipts :status [run-id])))
+
+^{:public true}
+(defn receipt-sign
+  ([host envelope]
+   (receipt-sign host envelope {}))
+  ([host envelope options]
+   (capability-call host :work/receipts :sign
+                   [envelope (or options {})])))
+
+^{:public true}
+(defn receipt-publish
+  ([host envelope]
+   (receipt-publish host envelope {}))
+  ([host envelope options]
+   (capability-call host :work/receipts :publish
+                   [envelope (if (map? options)
+                               options
+                               {:claim/token options})])))
+
+^{:public true}
+(defn reset-capabilities
+  [host]
+  (let [resetter (:provider/reset (:provider host))]
+    (if resetter
+      (do
+        (resetter)
+        host)
+      (throw
+       (ex :dependency
+           {:host/locator (locator host)}
+           :ex/message "Work host does not provide a capability reset boundary")))))
 
 (defn- call-provider
   [provider operation & arguments]
