@@ -15,7 +15,7 @@
     (if (= index (str/length text))
       height
       (recur (inc index)
-             (if (= "\n" (str/char-at text index))
+             (if (= \newline (str/char-at text index))
                (inc height)
                height)))))
 
@@ -29,19 +29,29 @@
 (defn void
   ([] (void \space))
   ([character]
-   (let [tag (check/void-tag character)
-         text (str character)
-         width (if (= tag :eof)
-                 0
-                 (if (= tag :linebreak)
+   (cond
+     (nil? character)
+     (raw-block :void :eof "" nil [] {:width 0 :height 0})
+
+     :else
+     (let [tag (check/void-tag character)
+           text (str character)
+           width (if (= tag :eof)
                    0
-                   (if (= tag :linetab) 4 1)))
-         height (if (= tag :linebreak) 1 0)]
-     (raw-block :void tag text nil [] {:width width :height height})))
+                   (if (= tag :linebreak)
+                     0
+                     (if (= tag :linetab) 4 1)))
+           height (if (= tag :linebreak) 1 0)]
+       (raw-block :void tag text nil [] {:width width :height height}))))
   ([tag character]
-   (let [text (str character)]
-     (raw-block :void tag text nil [] {:width (text-width text)
-                                        :height (text-height text)}))))
+   (cond
+     (nil? character)
+     (raw-block :void tag "" nil [] {:width 0 :height 0})
+
+     :else
+     (let [text (str character)]
+       (raw-block :void tag text nil [] {:width (text-width text)
+                                          :height (text-height text)})))))
 
 (defn repeat-string
   [text amount]

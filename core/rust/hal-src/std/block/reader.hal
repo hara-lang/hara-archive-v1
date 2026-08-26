@@ -20,7 +20,7 @@
            column 1]
       (if (= index position)
         [row column]
-        (if (= "\n" (str/char-at source index))
+        (if (= \newline (str/char-at source index))
           (recur (inc index) (inc row) 1)
           (recur (inc index) row (inc column)))))))
 
@@ -38,7 +38,7 @@
             source (:source reader)
             character (if (= position (str/length source))
                         nil
-                        (first (str/char-at source position)))]
+                        (str/char-at source position))]
         (if character
           (swap! (:state reader)
                  (fn [current]

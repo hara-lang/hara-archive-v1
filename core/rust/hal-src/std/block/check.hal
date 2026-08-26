@@ -1,22 +1,7 @@
 (ns std.block.check)
 
 (def *boundaries*
-  (set [(first (pr-str ""))
-        (first (pr-str (first (pr-str ""))))
-        \'
-        \(
-        \)
-        \:
-        \;
-        \@
-        \[
-        \]
-        \^
-        \`
-        \{
-        \}
-        \~
-        nil]))
+  (set [\" \\ \' \( \) \: \; \@ \[ \] \^ \` \{ \} \~ nil]))
 
 (def ^:dynamic *linebreaks*
   #{\newline \return \formfeed})
@@ -34,7 +19,7 @@
   "returns whether a char is of a whitespace type\n \n   (whitespace? \\\\space) => true"
   {:added "3.0"}
   [c]
-  (and c (String/blank? (str c))))
+  (has? #{\space \tab \newline \return \formfeed} c))
 
 (defn comma?
   "returns whether a char is a comma\n \n   (comma? (first \\\",\\\")) => true"

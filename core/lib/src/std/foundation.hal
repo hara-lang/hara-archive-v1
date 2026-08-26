@@ -2314,28 +2314,33 @@
   "Traverses persistent data while preserving collection kinds and metadata."
   [inner outer form]
   (cond (form? form)
-        (outer (with-meta (apply list (map inner form)) (meta form)))
+        (let [metadata (meta form)
+              output   (apply list (map inner form))]
+          (outer (if (nil? metadata) output (with-meta output metadata))))
 
         (vector? form)
-        (outer (with-meta (reduce-in (empty form)
-                                     (fn [out value] (conj out (inner value)))
-                                     form)
-                          (meta form)))
+        (let [metadata (meta form)
+              output   (reduce-in (empty form)
+                                  (fn [out value] (conj out (inner value)))
+                                  form)]
+          (outer (if (nil? metadata) output (with-meta output metadata))))
 
         (set? form)
-        (outer (with-meta (reduce-in (empty form)
-                                     (fn [out value] (conj out (inner value)))
-                                     form)
-                          (meta form)))
+        (let [metadata (meta form)
+              output   (reduce-in (empty form)
+                                  (fn [out value] (conj out (inner value)))
+                                  form)]
+          (outer (if (nil? metadata) output (with-meta output metadata))))
 
         (map? form)
-        (outer (with-meta (reduce-in (empty form)
-                                     (fn [out entry]
-                                       (assoc out
-                                              (inner (key entry))
-                                              (inner (val entry))))
-                                     form)
-                          (meta form)))
+        (let [metadata (meta form)
+              output   (reduce-in (empty form)
+                                  (fn [out entry]
+                                    (assoc out
+                                           (inner (key entry))
+                                           (inner (val entry))))
+                                  form)]
+          (outer (if (nil? metadata) output (with-meta output metadata))))
 
         :else (outer form)))
 
@@ -2395,7 +2400,9 @@
    collection kinds and list metadata."
   [function form]
   (cond (list? form)
-        (with-meta (apply list (map function form)) (meta form))
+        (let [metadata (meta form)
+              output   (apply list (map function form))]
+          (if (nil? metadata) output (with-meta output metadata)))
 
         (vector? form)
         (reduce-in (empty form)
@@ -2425,7 +2432,9 @@
     (let [operator (first form)]
       (if (or (= operator 'unquote)
               (= operator 'unquote-splicing))
-        (with-meta (list operator (macroexpand-all (second form))) (meta form))
+        (let [metadata (meta form)
+              output   (list operator (macroexpand-all (second form)))]
+          (if (nil? metadata) output (with-meta output metadata)))
         (walk-code macroexpand-syntax-template form)))
     (walk-code macroexpand-syntax-template form)))
 
@@ -2441,9 +2450,9 @@
               expanded
 
               (= operator 'syntax-quote)
-              (with-meta
-                (list operator (macroexpand-syntax-template (second expanded)))
-                (meta expanded))
+              (let [metadata (meta expanded)
+                    output   (list operator (macroexpand-syntax-template (second expanded)))]
+                (if (nil? metadata) output (with-meta output metadata)))
 
               :else
               (walk-code macroexpand-all expanded)))

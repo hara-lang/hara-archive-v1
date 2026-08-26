@@ -814,7 +814,7 @@
                                            (cond (empty? more)
                                              (f zip)
                                              (can-step-inside? zip)
-                                             (step-outside (recur-fn (step-inside zip) more f recur-fn opts))
+                                             (step-outside (recur-fn (step-inside zip) (vec more) f recur-fn opts))
                                              :else
                                              zip)
                                            zip)

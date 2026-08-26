@@ -1346,13 +1346,22 @@
 (Test/run
  [{:name "walks Cons forms as source forms"
    :test (fn [] (std.foundation/walk std.foundation/inc identity (cons 1 (cons 2 nil))))
-   :expected '(2 3)}])
+   :expected '(2 3)}
+  {:name "walks metadata-free vectors without attaching metadata"
+   :test (fn [] (std.foundation/walk std.foundation/inc identity [1 2]))
+   :expected [2 3]}])
 
 ^{:refer std.foundation/postwalk}
-(Test/run [])
+(Test/run
+ [{:name "walks metadata-free vectors in post-order"
+   :test (fn [] (std.foundation/postwalk (fn [value] (if (number? value) (inc value) value)) [1 2]))
+   :expected [2 3]}])
 
 ^{:refer std.foundation/prewalk}
-(Test/run [])
+(Test/run
+ [{:name "walks metadata-free vectors in pre-order"
+   :test (fn [] (std.foundation/prewalk (fn [value] (if (number? value) (inc value) value)) [1 2]))
+   :expected [2 3]}])
 
 ^{:refer std.foundation/prewalk-replace}
 (Test/run [])

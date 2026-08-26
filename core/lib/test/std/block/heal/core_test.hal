@@ -351,6 +351,16 @@
    :test (fn []
              (b/parse-root (level/heal-content (std.foundation.string/decode-utf8 (deref (File/read "test-data/std.block.heal/cases/004_shorten.block"))))))
    :expected b/block?}
+  {:name "keeps shortened delimiter repairs on the matching close line"
+   :test (fn []
+             (let [content (std.foundation.string/decode-utf8 (deref (File/read "test-data/std.block.heal/cases/004_shorten.block")))
+                   healed  (level/heal-content content)
+                   lines   (str/split-lines healed)]
+               [(count healed)
+                (nth lines 70)
+                (last lines)
+                (= healed (level/heal-content healed))]))
+   :expected [4014 "" "           [:% tm/Separator]]]]]]]]))" true]}
   {:name "allow multiple passes to heal the delimiter #3"
    :test (fn []
              (b/parse-root (level/heal-content (std.foundation.string/decode-utf8 (deref (File/read "test-data/std.block.heal/cases/003_examples.block"))))))
