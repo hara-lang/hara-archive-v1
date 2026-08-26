@@ -1,10 +1,11 @@
 (ns tool.cli.test.project-test
   (:use code.test)
-  (:require [tool.cli.test.project :as test-project]))
+  (:require [code.project :as project]
+            [tool.cli.test.project :as test-project]))
 
 (def current-project
   {:project/id 'hara.lang
-   :project/root "/"
+   :project/root (File/resolve (os/cwd) "core")
    :project/source-paths ["lib/src" "lib/src-lang"]
    :project/test-paths ["lib/test" "lib/test-lang"]})
 (def known-file "lib/test/std/config_test.hal")
@@ -40,7 +41,9 @@
                (catch Throwable error (ex-message error)))]
             [true
              "--file accepts files, not directories"
-             "test file does not exist: /missing.hal"])
+             (str "test file does not exist: "
+                  (project/project-absolute-path current-project
+                                                  "missing.hal"))])
 
 ^{:refer tool.cli.test.project/files}
 (test-check "file discovery uses project test paths and explicit files"

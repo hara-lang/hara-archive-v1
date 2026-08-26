@@ -329,6 +329,18 @@
       :test/definition definition-token
       :test/options options}}))
 
+(defn fact-subject
+  "Returns the serializable identity used to resolve a fact at execution time.
+
+   Executable fact closures belong to the loaded test registry, not to a
+   durable task input or checkpoint."
+  [fact default-revision]
+  (let [fact-revision (fact-revision fact default-revision)]
+    {:namespace (fact-identity (:namespace fact))
+     :name (fact-identity (:name fact))
+     :test/revision fact-revision
+     :test/definition (fact-definition-token fact default-revision)}))
+
 (defn prepare-fact-batch
   [input context default-revision]
   (let [input-options (data-options input context)
@@ -599,8 +611,11 @@
 
 (defn run-namespace-item
   [item context]
-  (let [facts (:test/facts item)
-        options (work-execution-options (:test/options item) context)]
+  (let [subjects (:test/facts item)
+        facts (vec (map resolve-subject-fact subjects))
+        options (effective-suite-options
+                 facts
+                 (work-execution-options nil context))]
     (work/emit context
                :test/run-started
                {:namespace (:test/namespace item)
@@ -633,15 +648,16 @@
   (let [facts (namespace-facts facts namespace)
         first-fact (first facts)
         metadata (or (:meta first-fact) {})
-        namespace (fact-identity namespace)]
+        namespace (fact-identity namespace)
+        default-revision (work-revision options)]
     {:item/id namespace
      :item/value
      {:namespace namespace
       :test/namespace namespace
       :test/path (:path metadata)
-      :test/facts facts
-      :test/options options
-      :test/run run-namespace-item}}))
+      :test/facts (vec (map (fn [fact]
+                              (fact-subject fact default-revision))
+                            facts))}}))
 
 (defn namespace-items
   [options]
@@ -650,23 +666,37 @@
     (vec
      (map
       (fn [namespace]
-        (let [facts (namespace-facts facts namespace)
-              suite-options (effective-suite-options facts options)]
-          (namespace-item facts namespace suite-options)))
+        (namespace-item facts namespace options))
       namespaces))))
 
 (defn test-task-input
   [options]
-  (assoc options :test/items (namespace-items options)))
+  (assoc (select-keys options
+                      [:namespace
+                       :name
+                       :include-tags
+                       :exclude-tags
+                       :test/filter
+                       :test/revision
+                       :fail-fast
+                       :timeout])
+         :test/items
+         (namespace-items options)))
 
 (def test-task-summary task/test-summary-finalise)
+
+(defn run-test-task-item
+  [item context]
+  {:status :return
+   :data (run-namespace-item item context)})
 
 (defn test-task-work
   [batch-revision]
   (task/compile
    {:id 'code.test/run
     :type :test
-    :version batch-revision}))
+    :version batch-revision
+    :item {:run run-test-task-item}}))
 
 (defn fact-batch-work
   "Compatibility name for the namespace-item test task."

@@ -85,9 +85,18 @@
   [base records results]
   (let [data (vec (map test-data records))
         fact-results (test-result-values data)
+        item-errors
+        (reduce
+         (fn [total record]
+           (if (or (= :error (:status record))
+                   (= :critical (:status record)))
+             (inc total)
+             total))
+         0
+         records)
         counts {:passed (test-count-total data :passed)
                 :failed (test-count-total data :failed)
-                :error (test-count-total data :error)
+                :error (+ item-errors (test-count-total data :error))
                 :timeout (test-count-total data :timeout)
                 :skipped (test-count-total data :skipped)
                 :cancelled (test-count-total data :cancelled)}
@@ -96,7 +105,8 @@
                       :total (test-total data :checks)}
         failed (+ (test-total data :failed)
                   (test-total data :throw)
-                  (test-total data :timeout))
+                  (test-total data :timeout)
+                  item-errors)
         status (if (= 0 failed) :passed :failed)]
     (assoc base
            :items (:items base)
@@ -111,7 +121,7 @@
                       0)
            :passed (test-total data :passed)
            :failed (test-total data :failed)
-           :throw (test-total data :throw)
+           :throw (+ item-errors (test-total data :throw))
            :timeout (test-total data :timeout)
            :skipped (:skipped counts)
            :counts counts

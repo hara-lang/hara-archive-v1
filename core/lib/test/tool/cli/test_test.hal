@@ -6,7 +6,7 @@
 
 (def current-project
   {:project/id 'hara.lang
-   :project/root "/"
+   :project/root (File/resolve (os/cwd) "core")
    :project/source-paths ["lib/src" "lib/src-lang"]
    :project/test-paths ["lib/test" "lib/test-lang"]})
 

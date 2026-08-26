@@ -137,12 +137,19 @@
    ^{:refer work.flow.task/test-summary-finalise}
    (test-check
     "test summary finalisation exposes Foundation-compatible counters"
-    (select-keys profile-summary
-                 [:items :files :facts :checks :passed :failed :throw
-                  :timeout :skipped :status :results])
-    {:items 1 :files 1 :facts 2 :checks 3 :passed 2 :failed 0
-     :throw 0 :timeout 0 :skipped 0 :status :passed
-     :results [{:name :first} {:name :second}]})
+    (let [error-summary
+          (task/test-summary-finalise
+           {:items 1}
+           [{:status :error :error "item failed"}]
+           [])]
+      [(select-keys profile-summary
+                    [:items :files :facts :checks :passed :failed :throw
+                     :timeout :skipped :status :results])
+       (select-keys error-summary [:files :throw :status])])
+    [{:items 1 :files 1 :facts 2 :checks 3 :passed 2 :failed 0
+      :throw 0 :timeout 0 :skipped 0 :status :passed
+      :results [{:name :first} {:name :second}]}
+     {:files 1 :throw 1 :status :failed}])
 
    ^{:refer work.flow.task/test-task-defaults}
    (test-check

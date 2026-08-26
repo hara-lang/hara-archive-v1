@@ -295,9 +295,9 @@
                     (if (= key next-key)
                       (recur (conj group value) key)
                       (do (co/yield group)
-                          (recur [value] next-key))))))))
+                          (recur [value] next-key)))))))))
         (finally (close-value source)))))
-   [source])))
+   [source]))
 
 (defn reduce-next [function result source]
   (promise/then

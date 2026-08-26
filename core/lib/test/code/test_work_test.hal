@@ -223,8 +223,31 @@
        (:namespace value)
        (:test/namespace value)
        (count (:test/facts value))
-       (:test/options value)])
-    ["alpha.test" "alpha.test" "alpha.test" 2 {:fail-fast true}])
+       (has? (first (:test/facts value)) :function)
+       (select-keys (first (:test/facts value))
+                    [:namespace :name :test/revision :test/definition])])
+    ["alpha.test" "alpha.test" "alpha.test" 2 false
+     {:namespace "alpha.test"
+      :name "late"
+      :test/revision 1
+      :test/definition 1}])
+
+   ^{:refer code.test.work/fact-subject}
+   (test-check
+    "fact subjects contain identity and definition data without executable values"
+    (let [subject (test-work/fact-subject
+                   (first ordering-fixtures)
+                   17)]
+      [(select-keys subject
+                    [:namespace :name :test/revision :test/definition])
+       (has? subject :function)
+       (has? subject :meta)])
+    [{:namespace "alpha.test"
+      :name "late"
+      :test/revision 17
+      :test/definition 17}
+     false
+     false])
 
    ^{:refer code.test.work/cancelled-fact-result}
    (test-check
@@ -329,6 +352,31 @@
      :test/passed 0
      :test/failed 1
      :test/display "passed (0), errors: 1"})
+
+   ^{:refer code.test.work/run-test-task-item}
+   (test-check
+    "the test task item runner returns a normal task result"
+    (let [item (test-work/namespace-item
+                [registered-failing]
+                "code.test-work-test"
+                {})
+          result (test-work/run-test-task-item
+                  (:item/value item)
+                  {:work/emit (fn [event data] nil)})]
+      [(:status result)
+       (:test/status (:data result))
+       (:test/failed (:data result))])
+    [:return :failed 1])
+
+   ^{:refer code.test.work/test-task-work}
+   (test-check
+    "test task work installs the namespace item runner in the shared engine"
+    (let [spec (work/work-spec (test-work/test-task-work 13))
+          definition (:template/definition spec)]
+      [(:task/type definition)
+       (:task/version definition)
+       (fn? (get-in definition [:item :run]))])
+    [:test 13 true])
 
    ^{:refer code.test.work/namespace-items}
    (test-check
