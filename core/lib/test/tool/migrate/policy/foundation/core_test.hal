@@ -2,73 +2,162 @@
   (:use code.test)
   (:require [tool.migrate.policy.foundation.core :as core]))
 
-[
-^{:refer tool.migrate.policy.foundation.core/plan}
-(test-check
- "Foundation policy loads behind its dedicated namespace"
- (function? core/plan)
- true)
 
-^{:refer tool.migrate.policy.foundation.core/rewrite-requires}
-(test-check
- "rewrite-requires emits only the canonical Work frontend requires"
- (let [canonical
-       (core/rewrite-requires
-        "(:require [std.task :as task] [std.work :as work])")
-       retired "[std.work.template.task :as task]"]
-   [(str/includes? canonical "[work.flow.task :as task]")
-    (str/includes? canonical "[work.base :as work :refer [def.work]]")
-    (not (str/includes? canonical retired))])
- [true true true])
+   ^{:refer tool.migrate.policy.foundation.core/plan}
+   (fact "empty migration plans are valid"
+     (let [result (core/plan {:migration :lang.model/v1 :units []})]
+       [(:write result) (:records result) (empty? (:diagnostics result))])
+     => [nil [] true])
 
-^{:refer tool.migrate.policy.foundation.core/normalize-foundation-source}
-(test-check
- "normalize-foundation-source removes redundant intrinsic aliases"
- (let [source
-       "(ns demo.core
-          (:require [std.foundation :as h]
-                    [std.foundation :as walk]))
-        (defn apply-value [value]
-          (h/apply-with value (walk/prewalk identity)))"
-       output (core/normalize-foundation-source source)]
-   [(str/includes? output "std.foundation/apply-with")
-    (str/includes? output "std.foundation/prewalk")
-    (not (str/includes? output "[std.foundation :as h]"))
-    (not (str/includes? output "[std.foundation :as walk]"))])
- [true true true true])
+   ^{:refer tool.migrate.policy.foundation.core/rewrite-requires}
+   (fact "rewrite-requires emits only the canonical Work frontend requires"
+     (let [canonical (core/rewrite-requires "(:require [std.task :as task] [std.work :as work])")
+           retired "[std.work.template.task :as task]"]
+       [(str/includes? canonical "[work.flow.task :as task]")
+        (str/includes? canonical "[work.base :as work :refer [def.work]]")
+        (not (str/includes? canonical retired))])
+     => [true true true])
 
-^{:refer tool.migrate.policy.foundation.core/migrate-foundation-common-test-source}
-(test-check
- "migrate-foundation-common-test-source normalizes intrinsic aliases"
- (let [result
-       (core/migrate-foundation-common-test-source
-        "(ns demo.core
-           (:require [std.foundation :as h]
-                     [std.foundation :as walk]))
-         (fact \"value\" (= 1 (h/apply-with 1 (walk/prewalk identity))))"
-        "demo.core-test")
-       output (:after result)]
-   [(str/includes? output "std.foundation/apply-with")
-    (str/includes? output "std.foundation/prewalk")
-    (str/includes? output "(pr-str (run {:namespace \"demo.core-test\"}))")
-    (not (str/includes? output "[std.foundation :as h]"))
-    (not (str/includes? output "[std.foundation :as walk]"))])
- [true true true true true])
+   ^{:refer tool.migrate.policy.foundation.core/normalize-foundation-source}
+   (fact "normalize-foundation-source removes redundant intrinsic aliases"
+     (let [source "(ns demo.core (:require [std.foundation :as h] [std.foundation :as walk])) (defn apply-value [value] (h/apply-with value (walk/prewalk identity)))"
+           output (core/normalize-foundation-source source)]
+       [(str/includes? output "std.foundation/apply-with")
+        (str/includes? output "std.foundation/prewalk")
+        (not (str/includes? output "[std.foundation :as h]"))
+        (not (str/includes? output "[std.foundation :as walk]"))])
+     => [true true true true])
 
-^{:refer tool.migrate.policy.foundation.core/migrate-source}
-(test-check
- "migrate-source applies intrinsic alias normalization after policy edits"
- (let [result
-       (core/migrate-source
-        "(ns demo.core
-           (:require [std.foundation :as h]
-                     [std.foundation :as walk]))
-         (defn apply-value [value]
-           (h/apply-with value (walk/prewalk identity)))")
-       output (:after result)]
-   [(= true (:changed result))
-    (str/includes? output "std.foundation/apply-with")
-    (str/includes? output "std.foundation/prewalk")
-    (not (str/includes? output "[std.foundation :as h]"))
-    (not (str/includes? output "[std.foundation :as walk]"))])
- [true true true true true])]
+   ^{:refer tool.migrate.policy.foundation.core/migrate-foundation-common-test-source}
+   (fact "migrate-foundation-common-test-source normalizes intrinsic aliases"
+     (let [result (core/migrate-foundation-common-test-source
+                   "(ns demo.core (:require [std.foundation :as h] [std.foundation :as walk])) (fact value (= 1 (h/apply-with 1 (walk/prewalk identity))))"
+                   "demo.core-test")
+           output (:after result)]
+       [(str/includes? output "std.foundation/apply-with")
+        (str/includes? output "std.foundation/prewalk")
+        (str/includes? output "demo.core-test")
+        (not (str/includes? output "[std.foundation :as h]"))
+        (not (str/includes? output "[std.foundation :as walk]"))])
+     => [true true true true true])
+
+   ^{:refer tool.migrate.policy.foundation.core/migrate-source}
+   (fact "migrate-source applies intrinsic alias normalization after policy edits"
+     (let [result (core/migrate-source
+                   "(ns demo.core (:require [std.foundation :as h] [std.foundation :as walk])) (defn apply-value [value] (h/apply-with value (walk/prewalk identity)))")
+           output (:after result)]
+       [(= true (:changed result))
+        (str/includes? output "std.foundation/apply-with")
+        (str/includes? output "std.foundation/prewalk")
+        (not (str/includes? output "[std.foundation :as h]"))
+        (not (str/includes? output "[std.foundation :as walk]"))])
+     => [true true true true true])
+
+   ^{:refer tool.migrate.policy.foundation.core/lang-model-v1-test-source-path}
+   (fact "model test sources follow the versioned test tree"
+     (core/lang-model-v1-test-source-path "src/tahto/model/spec_c.clj")
+     => "test/tahto/model/spec_c.clj")
+
+   ^{:refer tool.migrate.policy.foundation.core/route-lang-model-v1-namespace}
+   (fact "model namespaces route from reference and legacy names"
+     [(core/route-lang-model-v1-namespace 'tahto.model.spec-c)
+      (core/route-lang-model-v1-namespace 'lang.model.spec-c)
+      (core/route-lang-model-v1-namespace 'lang.model.v1.spec-c)
+      (core/route-lang-model-v1-namespace 'demo.core)]
+     => ["lang.model.v1.spec-c" "lang.model.v1.spec-c" "lang.model.v1.spec-c" "demo.core"])
+
+   ^{:refer tool.migrate.policy.foundation.core/route-lang-model-v1-path}
+   (fact "model source and test paths route without changing target paths"
+     [(core/route-lang-model-v1-path "src/tahto/model/spec_c.clj")
+      (core/route-lang-model-v1-path "test/tahto/model/spec_c.clj")
+      (core/route-lang-model-v1-path "lib/src/lang/model/v1/spec_c.hal")
+      (core/route-lang-model-v1-path "docs/spec_c.clj")]
+     => ["lib/src/lang/model/v1/spec_c.hal" "lib/test-lang/lang/model/v1/spec_c.hal" "lib/src/lang/model/v1/spec_c.hal" "docs/spec_c.hal"])
+
+   ^{:refer tool.migrate.policy.foundation.core/lang-model-v1-source-namespace}
+   (fact "model source paths produce canonical reference namespaces"
+     [(core/lang-model-v1-source-namespace "src/tahto/model/spec_c.clj")
+      (core/lang-model-v1-source-namespace "src/tahto/model/sql/spec_common/form_defn.clj")]
+     => ["tahto.model.spec-c" "tahto.model.sql.spec-common.form-defn"])
+
+   ^{:refer tool.migrate.policy.foundation.core/lang-model-v1-unit}
+   (fact "model units retain provenance while routing targets"
+     (let [unit (core/lang-model-v1-unit
+                 "src/tahto/model/spec_c.clj"
+                 "(ns tahto.model.spec-c)"
+                 {:source/namespace 'tahto.model.spec-c :language :c :status :pending})]
+       [(:path unit) (:target/path unit) (:target/namespace unit) (:kind unit)
+        (:language unit) (:create unit) (:move unit)])
+     => ["src/tahto/model/spec_c.clj" "lib/src/lang/model/v1/spec_c.hal"
+         "lang.model.v1.spec-c" :source :c true true])
+
+   ^{:refer tool.migrate.policy.foundation.core/lang-model-v1-unit-for}
+   (fact "model inventory lookup distinguishes known and unknown paths"
+     (let [known (core/lang-model-v1-unit-for "src/tahto/model/spec_glsl.clj")
+           c-unit (core/lang-model-v1-unit-for "src/tahto/model/spec_c.clj")]
+       [(:id known) (:status known) (:status c-unit)
+        (nil? (core/lang-model-v1-unit-for "src/tahto/model/missing.clj"))])
+     => ["spec_glsl" :ported :ported true])
+
+   ^{:refer tool.migrate.policy.foundation.core/lang-model-v1-inventory}
+   (fact "model inventory includes all planned source-owned units"
+     (let [inventory (core/lang-model-v1-inventory)]
+       [(count inventory) (:target/path (first inventory))
+        (:target/namespace (first inventory)) (:target/namespace (last inventory))
+        (count (filter (fn [unit] (= :pending (:status unit))) inventory))])
+     => [39 "lib/src/lang/model/v1/spec_xtalk.hal"
+         "lang.model.v1.spec-xtalk" "lang.model.v1.spec-xtalk.fn-scheme" 28])
+
+   ^{:refer tool.migrate.policy.foundation.core/rewrite-lang-model-v1-source}
+   (fact "model rewrite preserves canonical names and is idempotent"
+     (let [source "(ns tahto.model.spec-c (:require [tahto.base.emit :as emit] [clojure.string]))"
+           output (core/rewrite-lang-model-v1-source source)]
+       [(str/includes? output "lang.model.v1.spec-c")
+        (str/includes? output "lang.common.emit")
+        (str/includes? output "std.foundation.string")
+        (= output (core/rewrite-lang-model-v1-source output))])
+     => [true true true true])
+
+   ^{:refer tool.migrate.policy.foundation.core/lang-model-v1-diagnostics}
+   (fact "model diagnostics classify source constructs without blocking warnings"
+     (let [diagnostics (core/lang-model-v1-diagnostics
+                        "(defn- hidden [] #'hidden) #( + 1 2) ^:private")]
+       [(count diagnostics) (:level (first diagnostics))
+        (:migration/error (first diagnostics))
+        (nil? (core/lang-model-v1-blocking? diagnostics))
+        (core/lang-model-v1-blocking? [{:level :error}])])
+     => [4 :warning :lang.model-v1/private-definition true true])
+
+   ^{:refer tool.migrate.policy.foundation.core/lang-model-v1-blocking?}
+   (fact "model blocking policy rejects errors and accepts warnings"
+     [(core/lang-model-v1-blocking? [])
+      (nil? (core/lang-model-v1-blocking? [{:level :warning}]))
+      (core/lang-model-v1-blocking? [{:level :error}])]
+     => [nil true true])
+
+   ^{:refer tool.migrate.policy.foundation.core/migrate-lang-model-v1-source}
+   (fact "model source migration records the route and clean diagnostics"
+     (let [result (core/migrate-lang-model-v1-source
+                   "(ns tahto.model.spec-c (:require [tahto.base.emit :as emit]))")]
+       [(:changed result) (:rules result) (:diagnostics result)
+        (str/includes? (:after result) "lang.model.v1.spec-c")])
+     => [true [:lang.model-v1/route] [] true])
+
+   ^{:refer tool.migrate.policy.foundation.core/migrate-lang-model-v1-unit}
+   (fact "model unit migration returns the routed target and provenance"
+     (let [result (core/migrate-lang-model-v1-unit
+                   {:source/path "src/tahto/model/spec_c.clj"
+                    :target/path "lib/src/lang/model/v1/spec_c.hal"
+                    :source/namespace 'tahto.model.spec-c
+                    :source "(ns tahto.model.spec-c)"})]
+       [(:path result) (:target/path result) (:target/namespace result)
+        (:move result) (:create result) (:changed result)])
+     => ["lib/src/lang/model/v1/spec_c.hal"
+         "lib/src/lang/model/v1/spec_c.hal" "lang.model.v1.spec-c" true true true])
+
+   ^{:refer tool.migrate.policy.foundation.core/+lang-model-v1-units+}
+   (fact "model migration inventory exposes the source-owned unit catalog"
+     [(count core/+lang-model-v1-units+)
+      (:status (first core/+lang-model-v1-units+))
+      (:status (last core/+lang-model-v1-units+))]
+     => [39 :ported :pending])

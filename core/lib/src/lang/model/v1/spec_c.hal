@@ -1,0 +1,318 @@
+(ns lang.model.v1.spec-c
+  (:require [lang.common.book :as book]
+            [lang.common.book-meta :as book-meta]
+            [lang.common.emit :as emit]
+            [lang.common.emit-helper :as helper]
+            [lang.common.grammar :as common]
+            [lang.common.grammar-api :as grammar]
+            [lang.common.registry :as registry]
+            [lang.common.util :as ut]
+            [lang.model.v1.spec-xtalk :as xtalk]
+            [std.foundation.string :as string]))
+
+^{:public true}
+(def +language+ :c)
+^{:public true}
+(def +tag+ :c)
+^{:public true}
+(def +version+ 1)
+^{:public true}
+(def +grammar-version+ 1)
+
+^{:public true}
+(defn tf-define
+  "Transforms a C define form."
+  {:added "4.0"}
+  [[_ sym & more :as form]]
+  (let [[args body] (if (= 1 (count more))
+                      [nil (first more)]
+                      more)]
+    (if args
+      (list :- "#define" (list :% sym (list 'quote
+                                            (apply list args)))
+            body)
+      (list :- "#define" sym body))))
+
+^{:public true}
+(defn tf-struct
+  "Transforms a C struct definition."
+  {:added "4.0"}
+  [[_ sym fields]]
+  (let [fields (partition 2 fields)
+        out (map (fn [[type name]]
+                   (list :- type (str name ";")))
+                 fields)]
+    (list :- "struct" sym
+          (list :- "{"
+                (list \\
+                      \\ (list \| (apply list 'do out)))
+                (list :- "\n};")))))
+
+^{:public true}
+(defn tf-enum
+  "Transforms a C enum definition."
+  {:added "4.0"}
+  [[_ sym fields]]
+  (list :- "enum" sym
+        (list :- "{")
+        (list 'quote fields)
+        (list :- "};")))
+
+^{:public true}
+(defn tf-typedef
+  "Transforms a C typedef form."
+  {:added "4.0"}
+  [[_ type alias]]
+  (let [alias-str (ut/sym-default-str alias)]
+    (list :- "typedef" type (str alias-str ";"))))
+
+^{:public true}
+(defn to-c-type
+  "Converts a value to a C type."
+  {:added "4.0"}
+  [t]
+  (cond (keyword? t) (name t)
+        (symbol? t) (name t)
+        (vector? t) (string/join " " (map to-c-type t))
+        :else (str t)))
+
+^{:public true}
+(defn c-sanitize
+  "Sanitizes a symbol for a C identifier."
+  {:added "4.0"}
+  [s]
+  (-> (str s)
+      (string/replace "-" "_")
+      (string/replace "." "_")
+      (string/replace "/" "____")))
+
+^{:public true}
+(defn c-fn-args
+  "Emits custom C function arguments."
+  {:added "4.0"}
+  [[_ args] grammar-value mopts]
+  (let [args (if (and (list? args) (= 'quote (first args)))
+               (second args)
+               args)
+        args (if (vector? args)
+               (cond (empty? args)
+                     []
+                     (vector? (first args))
+                     args
+                     (some keyword? args)
+                     (->> (helper/emit-typed-args args grammar-value)
+                          (map (fn [{:keys [modifiers symbol]}]
+                                 [(vec modifiers) symbol])))
+                     :else
+                     (partition 2 args))
+                [args])]
+    (str "("
+         (string/join ", "
+                      (map (fn [arg]
+                             (if (sequential? arg)
+                               (let [[type name] arg]
+                                 (str (to-c-type type)
+                                      " "
+                                      (if (symbol? name)
+                                        (c-sanitize name)
+                                        (emit/emit-main name grammar-value mopts))))
+                               (if (symbol? arg)
+                                 (c-sanitize arg)
+                                 (emit/emit-main arg grammar-value mopts))))
+                           args))
+         ")")))
+
+^{:public true}
+(defn emit-defn
+  "Emits a C function definition."
+  {:added "4.0"}
+  [[_ sym args & body] grammar-value mopts]
+  (let [ret-type (or (-> sym meta :tag) (-> sym meta :-) "void")
+        ret-type (to-c-type ret-type)
+        module (:module mopts)
+        sym-str (if (and module
+                         (symbol? sym)
+                         (not (namespace sym))
+                         (not= :flat (:layout mopts)))
+                  (c-sanitize (symbol (name (:id module)) (name sym)))
+                  (c-sanitize sym))
+        args-str (c-fn-args [:c-args args] grammar-value mopts)
+        body-str (emit/emit-main
+                  (list \\ \\ (list \| (apply list 'do body)))
+                  grammar-value
+                  mopts)]
+    (str ret-type " " sym-str args-str " "
+         "{\n"
+         body-str
+         "\n}")))
+
+^{:public true}
+(defn tf-arrow
+  "Transforms the C arrow form."
+  {:added "4.0"}
+  [[_ left right]]
+  (list :% left (list :- "->" right)))
+
+^{:public true}
+(defn tf-sizeof
+  "Transforms the C sizeof form."
+  {:added "4.0"}
+  [[_ val]]
+  (list :- "sizeof" val))
+
+(def +features+
+  (-> (common/build :exclude [:data-shortcuts
+                              :control-try-catch
+                              :class
+                              :macro-arrow])
+      (common/build:override
+       {:defn {:emit emit-defn}})
+      (common/build:extend
+       {:c-args {:op :c-args
+                 :symbol (set [:c-args])
+                 :emit c-fn-args}
+        :define {:op :define
+                 :symbol (set [(quote define)])
+                 :macro tf-define
+                 :type :def
+                 :emit :macro
+                 :section :code
+                 :priority 1}
+        :arrow {:op :arrow
+                :symbol (set [(quote ->) (quote arrow)])
+                :emit :infix
+                :raw "->"}
+        :sizeof {:op :sizeof
+                 :symbol (set [(quote sizeof)])
+                 :emit :prefix
+                 :raw "sizeof"
+                 :type :free}
+        :struct {:op :struct
+                 :symbol (set [(quote struct)])
+                 :emit :macro
+                 :macro tf-struct
+                 :section :code
+                 :type :def}
+        :enum {:op :enum
+               :symbol (set [(quote enum)])
+               :emit :macro
+               :macro tf-enum
+               :section :code
+               :type :def}
+        :typedef {:op :typedef
+                  :symbol (set [(quote typedef)])
+                  :emit :macro
+                  :macro tf-typedef
+                  :section :code
+                  :type :def}})))
+
+(def +template+
+  (merge-nested
+   (emit/default-grammar)
+   {:banned (set [:set :map :regex])
+    :highlight (set [(quote return) (quote break)])
+    :default {:function {:raw ""}}
+    :data {:vector {:start "{" :end "}" :space ""}
+           :tuple {:start "(" :end ")" :space ""}}
+    :block {:for {:parameter {:sep ","}}
+            :script {:start "" :end ""}}
+    :define {:def {:raw ""}}}))
+
+^{:public true}
+(def +grammar+
+  (grammar/definition
+   {:grammar/id +tag+
+    :grammar/version +grammar-version+
+    :grammar/release "foundation-v1"
+    :grammar/language +language+
+    :grammar/tag +tag+
+    :grammar/engine {:minimum 1 :maximum 1}
+    :grammar/parent {:grammar/id xtalk/+tag+
+                     :grammar/version xtalk/+grammar-version+}
+    :operators {:exclude (set [:data-shortcuts :control-try-catch :class :macro-arrow])
+                :override {:defn {:emit emit-defn}}
+                :define {:c-args {:op :c-args
+                                  :symbol (set [:c-args])
+                                  :emit c-fn-args}
+                         :define {:op :define
+                                  :symbol (set [(quote define)])
+                                  :macro tf-define
+                                  :type :def
+                                  :emit :macro
+                                  :section :code
+                                  :priority 1}
+                         :arrow {:op :arrow
+                                 :symbol (set [(quote ->) (quote arrow)])
+                                 :emit :infix
+                                 :raw "->"}
+                         :sizeof {:op :sizeof
+                                  :symbol (set [(quote sizeof)])
+                                  :emit :prefix
+                                  :raw "sizeof"
+                                  :type :free}
+                         :struct {:op :struct
+                                  :symbol (set [(quote struct)])
+                                  :emit :macro
+                                  :macro tf-struct
+                                  :section :code
+                                  :type :def}
+                         :enum {:op :enum
+                                :symbol (set [(quote enum)])
+                                :emit :macro
+                                :macro tf-enum
+                                :section :code
+                                :type :def}
+                         :typedef {:op :typedef
+                                   :symbol (set [(quote typedef)])
+                                   :emit :macro
+                                   :macro tf-typedef
+                                   :section :code
+                                   :type :def}}}
+    :emit {:defaults +template+}}))
+
+(def +meta+
+  (book-meta/book-meta
+   {:module-import (fn [name _ _] (list ':- "#include" name))
+    :module-export (fn [_ _] nil)}))
+
+^{:public true}
+(defn install
+  "Installs the XTalk parent and C grammar into an immutable catalog."
+  [catalog]
+  (let [catalog (xtalk/install catalog)]
+    (if (registry/find catalog (grammar/source-coordinate +grammar+))
+      catalog
+      (registry/install catalog +grammar+))))
+
+^{:public true}
+(defn catalog
+  "Creates a fresh catalog containing the XTalk and C grammar sources."
+  []
+  (install (registry/registry)))
+
+^{:public true}
+(defn select
+  "Resolves the exact C grammar version from a catalog."
+  ([]
+   (select (catalog)))
+  ([catalog]
+   (registry/resolve
+    catalog
+    {:grammar/id +tag+ :grammar/version +grammar-version+})))
+
+^{:public true}
+(def +selection+ (select))
+
+^{:public true}
+(def +book+
+  (book/book
+   {:lang +language+
+    :parent :xtalk
+    :version +version+
+    :coordinate (:coordinate +selection+)
+    :grammar (:grammar +selection+)
+    :selection +selection+
+    :meta +meta+}))
+
+^{:public true}
+(def +init+ +book+)

@@ -1,0 +1,220 @@
+(ns lang.model.v1.spec-c-test
+  (:use code.test)
+  (:require [lang.common.book :as book]
+            [lang.common.book-meta :as book-meta]
+            [lang.common.emit :as emit]
+            [lang.common.grammar-api :as grammar]
+            [lang.common.registry :as registry]
+            [std.foundation.string :as string]
+            [lang.model.v1.spec-c :as c]))
+
+^{:refer lang.model.v1.spec-c/+language+}
+(fact "C language identity" c/+language+ => :c)
+
+^{:refer lang.model.v1.spec-c/+tag+}
+(fact "C grammar tag" c/+tag+ => :c)
+
+^{:refer lang.model.v1.spec-c/+version+}
+(fact "C book version" c/+version+ => 1)
+
+^{:refer lang.model.v1.spec-c/+grammar-version+}
+(fact "C grammar version" c/+grammar-version+ => 1)
+
+^{:refer lang.model.v1.spec-c/tf-define}
+(fact "C define transform preserves simple and argument forms"
+  [(c/tf-define '(define A 1))
+   (c/tf-define '(define A [a b] (+ a b)))]
+  => ['(:- "#define" A 1)
+      '(:- "#define" (:% A (quote (a b))) (+ a b))])
+
+^{:refer lang.model.v1.spec-c/tf-struct}
+(fact "C struct transform emits field statements"
+  (c/tf-struct '(struct Point [:int x :int y]))
+  => '(:- "struct" Point
+      (:- "{"
+          (\\ \\ (\| (do (:- :int "x;") (:- :int "y;"))))
+          (:- "\n};"))))
+
+^{:refer lang.model.v1.spec-c/tf-enum}
+(fact "C enum transform quotes the member values"
+  (c/tf-enum '(enum Color [RED GREEN BLUE]))
+  => '(:- "enum" Color (:- "{") (quote [RED GREEN BLUE]) (:- "};")))
+
+^{:refer lang.model.v1.spec-c/tf-typedef}
+(fact "C typedef transform normalizes the alias"
+  (c/tf-typedef '(typedef :int :my_int))
+  => '(:- "typedef" :int "my_int;"))
+
+^{:refer lang.model.v1.spec-c/to-c-type}
+(fact "C type conversion handles scalar, symbol, vector, and fallback values"
+  [(c/to-c-type :int)
+   (c/to-c-type 'char**)
+   (c/to-c-type [:const :char*])
+   (c/to-c-type 42)]
+  => ["int" "char**" "const char*" "42"])
+
+^{:refer lang.model.v1.spec-c/c-sanitize}
+(fact "C symbol sanitization replaces C-hostile separators"
+  (c/c-sanitize 'hello-world/foo.bar)
+  => "hello_world____foo_bar")
+
+^{:refer lang.model.v1.spec-c/c-fn-args}
+(fact "C function arguments emit typed declarations"
+  (c/c-fn-args '(quote [[:int argc] [:char** argv]]) nil nil)
+  => "(int argc, char** argv)")
+
+^{:refer lang.model.v1.spec-c/emit-defn}
+(fact "C function emission supports flat and module layouts"
+  [(c/emit-defn
+    '(defn add [[:int lhs] [:int rhs]]
+       (return (+ lhs rhs)))
+    (:grammar c/+selection+)
+    {})
+   (c/emit-defn
+    '(defn add [[:int lhs] [:int rhs]]
+       (return (+ lhs rhs)))
+    (:grammar c/+selection+)
+    {:module {:id 'math.core}})]
+  => ["void add(int lhs, int rhs) {\n\n  return lhs + rhs;\n}"
+      "void math_core____add(int lhs, int rhs) {\n\n  return lhs + rhs;\n}"])
+
+^{:refer lang.model.v1.spec-c/tf-arrow}
+(fact "C arrow transform creates an infix raw form"
+  (c/tf-arrow '(arrow ptr field))
+  => '(:% ptr (:- "->" field)))
+
+^{:refer lang.model.v1.spec-c/tf-sizeof}
+(fact "C sizeof transform creates a raw prefix form"
+  (c/tf-sizeof '(sizeof x))
+  => '(:- "sizeof" x))
+
+^{:refer lang.model.v1.spec-c/+features+}
+(fact "C legacy feature table retains the migrated operator hooks"
+  [(= (get-in c/+features+ [:defn :emit]) c/emit-defn)
+   (= (get-in c/+features+ [:c-args :emit]) c/c-fn-args)
+   (= (get-in c/+features+ [:define :macro]) c/tf-define)
+   (= (get-in c/+features+ [:arrow :raw]) "->")]
+  => [true true true true])
+
+^{:refer lang.model.v1.spec-c/+template+}
+(fact "C emitter template carries the migrated defaults"
+  [(get-in c/+template+ [:data :vector :start])
+   (get-in c/+template+ [:data :tuple :end])
+   (get-in c/+template+ [:block :for :parameter :sep])
+   (get-in c/+template+ [:block :script :start])
+   (get-in c/+template+ [:banned])]
+  => ["{" ")" "," "" (set [:set :map :regex])])
+
+^{:refer lang.model.v1.spec-c/+grammar+}
+(fact "C grammar declares parentage and target operator extensions"
+  [(get c/+grammar+ :source/kind)
+   (get c/+grammar+ :source/id)
+   (get c/+grammar+ :source/version)
+   (get c/+grammar+ :grammar/release)
+   (get-in c/+grammar+ [:grammar/parent :grammar/id])
+   (get-in c/+grammar+ [:operators :exclude])
+   (= (get-in c/+grammar+ [:operators :define :struct :macro])
+      c/tf-struct)]
+  => [:grammar :c 1 "foundation-v1" :xtalk
+      (set [:data-shortcuts :control-try-catch :class :macro-arrow]) true])
+
+^{:refer lang.model.v1.spec-c/+meta+}
+(fact "C metadata emits includes and export hooks"
+  [(book-meta/book-meta? c/+meta+)
+   ((:module-import c/+meta+) "stdio.h" nil {})
+   ((:module-export c/+meta+) {} {})]
+  => [true (list ':- "#include" "stdio.h") nil])
+
+^{:refer lang.model.v1.spec-c/install}
+(fact "C installation is idempotent and includes XTalk"
+  (let [base (registry/registry)
+        once (c/install base)
+        twice (c/install once)]
+    [(count (registry/list once))
+     (get-in (registry/find once
+                            (grammar/source-coordinate c/+grammar+))
+             [:grammar/id])
+     (= once twice)])
+  => [4 :c true])
+
+^{:refer lang.model.v1.spec-c/catalog}
+(fact "C catalog creates a complete immutable source set"
+  (let [value (c/catalog)]
+    [(count (registry/list value))
+     (get-in (c/select value) [:coordinate :grammar/id])
+     (= value (c/install value))])
+  => [4 :c true])
+
+^{:refer lang.model.v1.spec-c/select}
+(fact "C selection supports fresh and explicit catalogs"
+  (let [catalog (c/catalog)
+        fresh (c/select)
+        explicit (c/select catalog)]
+    [(:coordinate fresh)
+     (:provenance explicit)
+     (= fresh explicit)])
+  => [{:grammar/id :c
+       :grammar/version 1
+       :grammar/release "foundation-v1"
+       :grammar/facets []}
+      [[:emit-template :xtalk 1]
+       [:profile :xtalk 1]
+       [:grammar :xtalk 1]
+       [:grammar :c 1]]
+      true])
+
+^{:refer lang.model.v1.spec-c/+selection+}
+(fact "C selection pins its exact coordinate and provenance"
+  [(:coordinate c/+selection+)
+   (:provenance c/+selection+)]
+  => [{:grammar/id :c
+       :grammar/version 1
+       :grammar/release "foundation-v1"
+       :grammar/facets []}
+      [[:emit-template :xtalk 1]
+       [:profile :xtalk 1]
+       [:grammar :xtalk 1]
+       [:grammar :c 1]]])
+
+^{:refer lang.model.v1.spec-c/+book+}
+(fact "C book carries selected grammar and metadata"
+  [(book/book? c/+book+)
+   (:lang c/+book+)
+   (:parent c/+book+)
+   (:coordinate c/+book+)
+   (book-meta/book-meta? (:meta c/+book+))]
+  => [true :c :xtalk (:coordinate c/+selection+) true])
+
+^{:refer lang.model.v1.spec-c/+init+}
+(fact "C init is the immutable book value"
+  (= c/+init+ c/+book+)
+  => true)
+^{:refer lang.model.v1.spec-c/+selection+}
+(fact "C emission covers the Foundation C forms"
+  (string/join
+   "\n\n"
+   (map
+    (fn [form] (emit/emit form c/+selection+))
+    '[(define A 1)
+      (:* x)
+      (+ 1 2)
+      (br* (if true (return 1)) (else (return 0)))
+      (struct Point [:int x :int y])
+      (enum Color [RED GREEN BLUE])
+      (typedef :int :my_int)
+      (defn main [[:int argc] [:char** argv]]
+        (return 0))
+      (arrow ptr field)
+      (sizeof x)]))
+  => (string/join
+      "\n\n"
+      ["#define A 1"
+       "*x"
+       "1 + 2"
+       "if(true){\n  return 1;\n}\nelse{\n  return 0;\n}"
+       "struct Point { \n  int x;\n  int y; \n};"
+       "enum Color { RED,GREEN,BLUE };"
+       "typedef int my_int;"
+       "void main(int argc, char** argv) {\n\n  return 0;\n}"
+       "ptr -> field"
+       "sizeof x"]))

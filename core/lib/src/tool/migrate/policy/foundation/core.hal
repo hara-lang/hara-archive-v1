@@ -709,10 +709,242 @@
              records)
      :diagnostics diagnostics})))
 
-(def +lang-model-v1-prefix+ "lang.model.spec-")
-(def +lang-model-v1-target-prefix+ "lang.model.v1.spec-")
-(def +lang-model-v1-path-prefix+ "lang/model/spec_")
-(def +lang-model-v1-target-path-prefix+ "lang/model/v1/spec_")
+(def +lang-model-v1-prefix+ "tahto.model.")
+(def +lang-model-v1-legacy-prefix+ "lang.model.spec-")
+(def +lang-model-v1-target-prefix+ "lang.model.v1.")
+(def +lang-model-v1-path-prefix+ "src/tahto/model/")
+(def +lang-model-v1-target-path-prefix+ "lib/src/lang/model/v1/")
+(def +lang-model-v1-test-path-prefix+ "test/tahto/model/")
+(def +lang-model-v1-target-test-path-prefix+ "lib/test-lang/lang/model/v1/")
+
+(def +lang-model-v1-rewrites+
+  [["tahto.model." "lang.model.v1."]
+   ["lang.model.spec-" "lang.model.v1.spec-"]
+   ["tahto.common." "lang.common."]
+   ["tahto.base." "lang.common."]
+   ["tahto.core." "lang.core."]
+   ["tahto.typed." "lang.typed."]
+   ["clojure.string" "std.foundation.string"]
+   ["std.lib.template" "std.block.template"]])
+
+(defn lang-model-v1-test-source-path
+  [source-path]
+  (str/replace source-path
+               "src/tahto/"
+               "test/tahto/"))
+
+(defn route-lang-model-v1-namespace
+  [namespace]
+  (let [name (str namespace)]
+    (cond
+      (str/starts-with? name +lang-model-v1-target-prefix+)
+      name
+
+      (str/starts-with? name +lang-model-v1-prefix+)
+      (str +lang-model-v1-target-prefix+
+           (subs name (count +lang-model-v1-prefix+)))
+
+      (str/starts-with? name +lang-model-v1-legacy-prefix+)
+      (str +lang-model-v1-target-prefix+
+           "spec-"
+           (subs name (count +lang-model-v1-legacy-prefix+)))
+
+      :else name)))
+
+(defn route-lang-model-v1-path
+  [path]
+  (let [path (str/replace path "\\\\"
+                         "/")
+        output (cond
+                 (str/starts-with? path +lang-model-v1-target-test-path-prefix+)
+                 path
+
+                 (str/starts-with? path +lang-model-v1-test-path-prefix+)
+                 (str +lang-model-v1-target-test-path-prefix+
+                      (subs path (count +lang-model-v1-test-path-prefix+)))
+
+                 (str/starts-with? path +lang-model-v1-target-path-prefix+)
+                 path
+
+                 (str/starts-with? path +lang-model-v1-path-prefix+)
+                 (str +lang-model-v1-target-path-prefix+
+                      (subs path (count +lang-model-v1-path-prefix+)))
+
+                 :else path)]
+    (if (str/ends-with? output ".clj")
+      (str/replace output ".clj" ".hal")
+      output)))
+
+(defn lang-model-v1-unit
+  ([path source]
+   (lang-model-v1-unit path source {}))
+  ([path source options]
+   (let [test? (str/starts-with? path +lang-model-v1-test-path-prefix+)
+         target-path (route-lang-model-v1-path path)
+         source-namespace (or (:source/namespace options)
+                              (:namespace options))
+         target-namespace (or (:target/namespace options)
+                              (if source-namespace
+                                (route-lang-model-v1-namespace source-namespace)
+                                nil))]
+     {:id (or (:id options) path)
+      :path path
+      :source source
+      :source/path path
+      :target/path target-path
+      :source/namespace source-namespace
+      :target/namespace target-namespace
+      :kind (if test? :test :source)
+      :migration :lang.model/v1
+      :language (or (:language options) :hara)
+      :status (or (:status options) :planned)
+      :move (not= path target-path)
+      :copy false
+      :create (not= path target-path)
+      :write false})))
+
+(def +lang-model-v1-units+
+  [{:id "spec_xtalk" :source "src/tahto/model/spec_xtalk.clj"
+    :target "lib/src/lang/model/v1/spec_xtalk.hal" :status :ported}
+   {:id "spec_hara" :source "src/tahto/model/spec_hara.clj"
+    :target "lib/src/lang/model/v1/spec_hara.hal" :status :ported}
+   {:id "spec_js" :source "src/tahto/model/spec_js.clj"
+    :target "lib/src/lang/model/v1/spec_js.hal" :status :ported}
+   {:id "spec_js/ts" :source "src/tahto/model/spec_js/ts.clj"
+    :target "lib/src/lang/model/v1/spec_js/ts.hal" :status :ported}
+   {:id "spec_js/rewrite" :source "src/tahto/model/spec_js/rewrite.clj"
+    :target "lib/src/lang/model/v1/spec_js/rewrite.hal" :status :pending}
+   {:id "spec_js/jsx" :source "src/tahto/model/spec_js/jsx.clj"
+    :target "lib/src/lang/model/v1/spec_js/jsx.hal" :status :pending}
+   {:id "spec_js/html" :source "src/tahto/model/spec_js/html.clj"
+    :target "lib/src/lang/model/v1/spec_js/html.hal" :status :pending}
+   {:id "spec_js/qml" :source "src/tahto/model/spec_js/qml.clj"
+    :target "lib/src/lang/model/v1/spec_js/qml.hal" :status :pending}
+   {:id "spec_js/meta" :source "src/tahto/model/spec_js/meta.clj"
+    :target "lib/src/lang/model/v1/spec_js/meta.hal" :status :pending}
+   {:id "spec_python" :source "src/tahto/model/spec_python.clj"
+    :target "lib/src/lang/model/v1/spec_python.hal" :status :ported}
+   {:id "spec_python/rewrite" :source "src/tahto/model/spec_python/rewrite.clj"
+    :target "lib/src/lang/model/v1/spec_python/rewrite.hal" :status :ported}
+   {:id "spec_lua" :source "src/tahto/model/spec_lua.clj"
+    :target "lib/src/lang/model/v1/spec_lua.hal" :status :ported}
+   {:id "spec_lua/rewrite" :source "src/tahto/model/spec_lua/rewrite.clj"
+    :target "lib/src/lang/model/v1/spec_lua/rewrite.hal" :status :ported}
+   {:id "spec_postgres" :source "src/tahto/model/spec_postgres.clj"
+    :target "lib/src/lang/model/v1/spec_postgres.hal" :status :ported}
+   {:id "spec_glsl" :source "src/tahto/model/spec_glsl.clj"
+    :target "lib/src/lang/model/v1/spec_glsl.hal" :status :ported}
+   {:id "spec_c" :source "src/tahto/model/spec_c.clj"
+    :target "lib/src/lang/model/v1/spec_c.hal" :status :ported}
+   {:id "spec_go" :source "src/tahto/model/spec_go.clj"
+    :target "lib/src/lang/model/v1/spec_go.hal" :status :pending}
+   {:id "spec_go/typed" :source "src/tahto/model/spec_go/typed.clj"
+    :target "lib/src/lang/model/v1/spec_go/typed.hal" :status :pending}
+   {:id "spec_sql" :source "src/tahto/model/spec_sql.clj"
+    :target "lib/src/lang/model/v1/spec_sql.hal" :status :pending}
+   {:id "sql/spec_common" :source "src/tahto/model/sql/spec_common.clj"
+    :target "lib/src/lang/model/v1/sql/spec_common.hal" :status :pending}
+   {:id "sql/spec_common/common" :source "src/tahto/model/sql/spec_common/common.clj"
+    :target "lib/src/lang/model/v1/sql/spec_common/common.hal" :status :pending}
+   {:id "sql/spec_common/form_defenum" :source "src/tahto/model/sql/spec_common/form_defenum.clj"
+    :target "lib/src/lang/model/v1/sql/spec_common/form_defenum.hal" :status :pending}
+   {:id "sql/spec_common/form_defn" :source "src/tahto/model/sql/spec_common/form_defn.clj"
+    :target "lib/src/lang/model/v1/sql/spec_common/form_defn.hal" :status :pending}
+   {:id "sql/spec_common/form_deftype" :source "src/tahto/model/sql/spec_common/form_deftype.clj"
+    :target "lib/src/lang/model/v1/sql/spec_common/form_deftype.hal" :status :pending}
+   {:id "spec_dart" :source "src/tahto/model/spec_dart.clj"
+    :target "lib/src/lang/model/v1/spec_dart.hal" :status :pending}
+   {:id "spec_dart/rewrite" :source "src/tahto/model/spec_dart/rewrite.clj"
+    :target "lib/src/lang/model/v1/spec_dart/rewrite.hal" :status :pending}
+   {:id "spec_dart/typed" :source "src/tahto/model/spec_dart/typed.clj"
+    :target "lib/src/lang/model/v1/spec_dart/typed.hal" :status :pending}
+   {:id "spec_bash" :source "src/tahto/model/spec_bash.clj"
+    :target "lib/src/lang/model/v1/spec_bash.hal" :status :pending}
+   {:id "spec_llvm" :source "src/tahto/model/spec_llvm.clj"
+    :target "lib/src/lang/model/v1/spec_llvm.hal" :status :pending}
+   {:id "spec_haxe" :source "src/tahto/model/spec_haxe.clj"
+    :target "lib/src/lang/model/v1/spec_haxe.hal" :status :pending}
+   {:id "spec_lisp_common" :source "src/tahto/model/spec_lisp_common.clj"
+    :target "lib/src/lang/model/v1/spec_lisp_common.hal" :status :pending}
+   {:id "spec_elisp" :source "src/tahto/model/spec_elisp.clj"
+    :target "lib/src/lang/model/v1/spec_elisp.hal" :status :pending}
+   {:id "spec_scheme" :source "src/tahto/model/spec_scheme.clj"
+    :target "lib/src/lang/model/v1/spec_scheme.hal" :status :pending}
+   {:id "spec_ruby" :source "src/tahto/model/spec_ruby.clj"
+    :target "lib/src/lang/model/v1/spec_ruby.hal" :status :pending}
+   {:id "spec_ruby/rewrite" :source "src/tahto/model/spec_ruby/rewrite.clj"
+    :target "lib/src/lang/model/v1/spec_ruby/rewrite.hal" :status :pending}
+   {:id "spec_xtalk/fn_dart" :source "src/tahto/model/spec_xtalk/fn_dart.clj"
+    :target "lib/src/lang/model/v1/spec_xtalk/fn_dart.hal" :status :pending}
+   {:id "spec_xtalk/fn_elisp" :source "src/tahto/model/spec_xtalk/fn_elisp.clj"
+    :target "lib/src/lang/model/v1/spec_xtalk/fn_elisp.hal" :status :pending}
+   {:id "spec_xtalk/fn_go" :source "src/tahto/model/spec_xtalk/fn_go.clj"
+    :target "lib/src/lang/model/v1/spec_xtalk/fn_go.hal" :status :pending}
+   {:id "spec_xtalk/fn_scheme" :source "src/tahto/model/spec_xtalk/fn_scheme.clj"
+    :target "lib/src/lang/model/v1/spec_xtalk/fn_scheme.hal" :status :pending}])
+
+(defn lang-model-v1-unit-for
+  [path]
+  (first (filter (fn [unit]
+                   (= path (:source unit)))
+                 +lang-model-v1-units+)))
+
+(defn lang-model-v1-source-namespace
+  [source-path]
+  (-> source-path
+      (str/replace "src/tahto/model/" "tahto.model.")
+      (str/replace "/" ".")
+      (str/replace ".clj" "")
+      (str/replace "_" "-")))
+
+(defn lang-model-v1-inventory
+  []
+  (mapv (fn [unit]
+          (merge unit
+                 {:target/path (or (:target unit)
+                                   (route-lang-model-v1-path (:source unit)))
+                  :target/namespace
+                  (route-lang-model-v1-namespace
+                   (lang-model-v1-source-namespace (:source unit)))}))
+        +lang-model-v1-units+))
+
+(defn rewrite-lang-model-v1-source
+  [source]
+  (reduce (fn [output [from to]]
+            (str/replace output from to))
+          source
+          +lang-model-v1-rewrites+))
+
+(defn lang-model-v1-diagnostics
+  [source]
+  (vec
+   (concat
+    (if (str/includes? source "(defn-")
+      [{:level :warning
+        :migration/error :lang.model-v1/private-definition
+        :message "move private definitions into an internal namespace"}]
+      [])
+    (if (str/includes? source "#'")
+      [{:level :warning
+        :migration/error :lang.model-v1/reader-macro
+        :message "replace var reader macros with ordinary constructors"}]
+      [])
+    (if (str/includes? source "#(")
+      [{:level :warning
+        :migration/error :lang.model-v1/function-reader-macro
+        :message "replace anonymous function reader macros"}]
+      [])
+    (if (str/includes? source "^:private")
+      [{:level :warning
+        :migration/error :lang.model-v1/private-metadata
+        :message "move private definitions into an internal namespace"}]
+      []))))
+
+(defn lang-model-v1-blocking?
+  [diagnostics]
+  (some (fn [diagnostic]
+          (= :error (:level diagnostic)))
+        diagnostics))
 
 (def +foundation-common-test-rewrites+
   [["tahto.base.emit" "lang.common.emit"]
@@ -1270,46 +1502,31 @@
             :write false}
            result)))
 
-(defn route-lang-model-v1-namespace
-  [namespace]
-  (let [name (str namespace)]
-    (if (str/starts-with? name +lang-model-v1-prefix+)
-      (str +lang-model-v1-target-prefix+
-           (subs name (count +lang-model-v1-prefix+)))
-      name)))
-
-(defn route-lang-model-v1-path
-  [path]
-  (str/replace path
-               +lang-model-v1-path-prefix+
-               +lang-model-v1-target-path-prefix+))
-
-(defn rewrite-lang-model-v1-source
-  [source]
-  (str/replace source
-               +lang-model-v1-prefix+
-               +lang-model-v1-target-prefix+))
-
 (defn migrate-lang-model-v1-source
   [source]
-  (let [output (rewrite-lang-model-v1-source source)]
+  (let [output (rewrite-lang-model-v1-source source)
+        diagnostics (lang-model-v1-diagnostics output)]
     {:before source
      :after output
      :changed (not= source output)
-     :rules (if (= source output) [] [:lang.model/v1])
-     :diagnostics []}))
+     :rules (if (= source output) [] [:lang.model-v1/route])
+     :diagnostics diagnostics}))
 
 (defn migrate-lang-model-v1-unit
   [unit]
-  (let [source-path (:path unit)
-        target-path (route-lang-model-v1-path source-path)
+  (let [source-path (or (:source/path unit) (:path unit))
+        target-path (or (:target/path unit)
+                        (route-lang-model-v1-path source-path))
         result (migrate-lang-model-v1-source (:source unit))]
     (merge {:path target-path
             :source/path source-path
             :target/path target-path
+            :target/namespace (or (:target/namespace unit)
+                                  (route-lang-model-v1-namespace
+                                   (:source/namespace unit)))
             :language (or (:language unit) :hara)
             :move (not= source-path target-path)
-            :create false
+            :create (not= source-path target-path)
             :write false}
            result
            {:changed (or (:changed result)
@@ -1495,9 +1712,11 @@
         (sort-by :path (:units input)))))
     :run
     (fn [unit context]
-      (let [result (migrate-selected-unit unit)]
-        {:status
-         (if (empty? (:diagnostics result)) :return :error)
+      (let [result (migrate-selected-unit unit)
+            blocking? (if (= :lang.model/v1 (:migration unit))
+                        (lang-model-v1-blocking? (:diagnostics result))
+                        (not (empty? (:diagnostics result))))]
+        {:status (if blocking? :error :return)
          :data result}))}
    :return {:select :all :package :map}})
 

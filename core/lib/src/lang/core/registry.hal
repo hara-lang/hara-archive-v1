@@ -5,7 +5,9 @@
             [lang.model.v1.spec-js :as spec-js]
             [lang.model.v1.spec-python :as spec-python]
             [lang.model.v1.spec-lua :as spec-lua]
-            [lang.model.v1.spec-postgres :as spec-postgres]))
+            [lang.model.v1.spec-postgres :as spec-postgres]
+            [lang.model.v1.spec-glsl :as spec-glsl]
+            [lang.model.v1.spec-c :as spec-c]))
 
 ;; Foundation-compatible runtime registry. Runtime implementations are loaded
 ;; lazily from the exact [language runtime] coordinate.
@@ -71,6 +73,20 @@
           :versions
           {1 {:ns 'lang.model.v1.spec-postgres
               :load (fn [] spec-postgres/+book+)
+              :parent :xtalk}}}
+
+         [:glsl :default]
+         {:default-version 1
+          :versions
+          {1 {:ns 'lang.model.v1.spec-glsl
+              :load (fn [] spec-glsl/+book+)
+              :parent :xtalk}}}
+
+         [:c :default]
+         {:default-version 1
+          :versions
+          {1 {:ns 'lang.model.v1.spec-c
+              :load (fn [] spec-c/+book+)
               :parent :xtalk}}}}))
 
 ;; Grammars and books have distinct identities and registries. A Book pins one
@@ -78,13 +94,15 @@
 ;; versioned grammar definitions from which selections are resolved.
 (def +grammar-registry+
   (atom
-   (spec-postgres/install
-    (spec-lua/install
-     (spec-python/install
-      (spec-js/install
-       (spec-hara/install
-        (spec-xtalk/install
-         (grammar-registry/registry)))))))))
+   (spec-c/install
+    (spec-glsl/install
+     (spec-postgres/install
+      (spec-lua/install
+       (spec-python/install
+        (spec-js/install
+         (spec-hara/install
+          (spec-xtalk/install
+           (grammar-registry/registry)))))))))))
 
 (defn- atom-value [reference]
   (deref (identity reference)))

@@ -16,14 +16,14 @@
 (fact "the first language set is present in the grammar catalog"
   (set (map (fn [source] (:source/id source))
             (registry/registry-grammar-list {:source/kind :grammar})))
-  => #{:xtalk :hara :js :py :lua :postgres})
+  => #{:xtalk :hara :js :py :lua :postgres :glsl :c})
 
 (fact "language books are persistent values pinned to exact grammars"
   (mapv (fn [language]
           (let [value (registry/registry-book language)]
             [(book/book? value)
              (:grammar-coordinate value)]))
-        [:xtalk :hara :js :python :lua :postgres])
+        [:xtalk :hara :js :python :lua :postgres :glsl :c])
   => [[true {:grammar/release "foundation-v1"
              :grammar/version 1
              :grammar/id :xtalk
@@ -47,6 +47,12 @@
       [true {:grammar/release "alpha"
              :grammar/version 1
              :grammar/id :postgres
+             :grammar/facets []}]
+      [true {:grammar/release "foundation-v1"
+             :grammar/version 1
+             :grammar/id :glsl
+             :grammar/facets []}]
+      [true {:grammar/release "foundation-v1"
+             :grammar/version 1
+             :grammar/id :c
              :grammar/facets []}]])
-
-(run {:namespace "lang.core.grammar-registry-test"})
