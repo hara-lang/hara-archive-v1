@@ -133,7 +133,7 @@ impl<E: Clone + Eq + Hash + std::fmt::Debug> IDisplay for Standard<E> {
 }
 impl<E: Clone + Eq + Hash + JavaHash> IHash for Standard<E> {
     fn hash_calc(&self, hash_type: HashType) -> u64 {
-        // Java ISetType → IUnOrderedType: order-insensitive sum,
+        // Java ISetType uses unordered item hashing: order-insensitive sum,
         // "::SET" seed (see lang::hash).
         crate::lang::hash::compose_unordered("SET", self.iter().map(|v| v.java_hash(hash_type)))
             as u64

@@ -1,8 +1,8 @@
 //! Java-parity hashing stack for the hara Rust runtime.
 //!
 //! This module is the Rust analogue of `hara.lang.base.G` plus the
-//! collection hash composition in `hara.lang.data.types.IOrderedType` /
-//! `IUnOrderedType` / `IStringType` and `hara.lang.data.Trie`.
+//! collection hash composition for ordered and unordered collections,
+//! string-like values, and `hara.lang.data.Trie`.
 //!
 //! All hash values are Java `long`/`int` semantics: wrapping two's-complement
 //! arithmetic. Functions return `i64` (Java `long`); value-level hashes are
@@ -228,7 +228,7 @@ pub fn hash_string_type(hash_type: HashType, hashed: &str) -> i64 {
 }
 
 // ---------------------------------------------------------------------------
-// collection composition (IOrderedType / IUnOrderedType / Trie)
+// collection composition (ordered / unordered / Trie)
 // ---------------------------------------------------------------------------
 
 /// `IOrderedType.hashCalc`: acc starts at `hashSeed().hashCode()` (widened to
@@ -241,8 +241,8 @@ pub fn compose_ordered(obj_name: &str, items: impl IntoIterator<Item = i64>) -> 
     acc
 }
 
-/// `IUnOrderedType.hashCalc`: acc starts at the seed, then `acc += hash(item)`
-/// per item (order-insensitive sum), wrapping i64.
+/// Unordered collection hashing starts at the seed, then adds each item hash
+/// (order-insensitive sum), wrapping i64.
 pub fn compose_unordered(obj_name: &str, items: impl IntoIterator<Item = i64>) -> i64 {
     let mut acc = hash_seed(obj_name) as i64;
     for h in items {

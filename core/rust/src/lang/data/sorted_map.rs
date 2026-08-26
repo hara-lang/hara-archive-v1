@@ -848,7 +848,7 @@ impl<K: Clone + Ord + std::hash::Hash + JavaHash, V: Clone + std::hash::Hash + J
     for Standard<K, V>
 {
     fn hash_calc(&self, hash_type: HashType) -> u64 {
-        // Same composition as the hash map (Java IMapType → IUnOrderedType):
+        // Same unordered entry composition as the hash map:
         // "::MAP" seed, sum of ordered-entry hashes (see lang::hash).
         crate::lang::hash::compose_unordered(
             "MAP",
