@@ -762,7 +762,7 @@ impl Reader<'_> {
                     context, fields,
                 )))
             }
-            _ => Err("hta/value-malformed: unknown value tag".into()),
+            _ => Err(format!("hta/value-malformed: unknown value tag {tag}")),
         }
     }
     fn sequence(&mut self, depth: usize) -> Result<Vec<Value>, String> {

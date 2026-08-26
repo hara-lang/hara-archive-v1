@@ -150,7 +150,10 @@
   [value item & more]
   (loop [output (IConj/conj value item)
          remaining more]
-    (if (empty? remaining)
+    ;; Use the count boundary here instead of empty?.  The browser raw-WASM
+    ;; bootstrap does not yet expose the predicate's protocol dispatch while
+    ;; loading Foundation, whereas the variadic tail is always countable.
+    (if (= 0 (count remaining))
       output
       (recur (IConj/conj output (first remaining))
              (rest remaining)))))
@@ -1149,9 +1152,9 @@
   [value key new-value & more]
   (loop [output (IAssoc/assoc value key new-value)
          remaining more]
-    (if (empty? remaining)
+    (if (= 0 (count remaining))
       output
-      (if (empty? (rest remaining))
+      (if (= 0 (count (rest remaining)))
         (throw (ex :foundation/invalid-assoc
                    {:value value :key (first remaining)}
                    :ex/message "assoc requires key/value pairs"
@@ -1166,7 +1169,7 @@
   [value key & more]
   (loop [output (if (nil? value) nil (IDissoc/dissoc value key))
          remaining more]
-    (if (empty? remaining)
+    (if (= 0 (count remaining))
       output
       (recur
        (if (nil? output) nil (IDissoc/dissoc output (first remaining)))

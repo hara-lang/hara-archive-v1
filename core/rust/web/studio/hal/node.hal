@@ -19,7 +19,7 @@
   (require-node))
 
 (defn start [f]
-  (let [id (str "task-" (swap! *next-task* inc))
+  (let [id (String/join "" ["task-" (str (swap! *next-task* inc))])
         node-id (require-node)]
     (do
       ;; The callback starts in a later HTA evaluation. Capture its document
