@@ -2,6 +2,8 @@
   (:config {:role :internal})
   (:require [code.project :as project]
             [code.test.result :as test-result]
+            [std.lib.format.report :as report]
+            [std.lib.format.terminal :as terminal]
             [tool.cli.model :as model]))
 
 (defn vector-tail
@@ -61,35 +63,35 @@
   [record index]
   (let [path (:path record)
         namespace (:namespace record)
-        session (str "tool.cli.test." index)]
+        session (str "tool.cli.test." index)
+        started (time-ms)]
     (try
-      (do
-        (Kernel/session-create session)
-        (try
-          (let [value (Kernel/session-eval session (project/read-text path))
-                value (if (nil? value)
-                        (Kernel/session-eval
-                         session
-                         (str "(pr-str (code.test/run {:namespace "
-                              (pr-str namespace)
-                              "}))"))
-                        value)
-                counts (result-counts value)]
-            (Kernel/session-close session)
-            (assoc counts :path path :namespace namespace :value value))
-          (catch Throwable error
-            (Kernel/session-close session)
-            {:path path
-             :namespace namespace
-             :passed 0
-             :failed 1
-             :error (str error)})))
+      (Kernel/session-create session)
+      (let [value (Kernel/session-eval session (project/read-text path))
+            value (if (nil? value)
+                    (Kernel/session-eval
+                     session
+                     (str "(pr-str (code.test/run {:namespace "
+                          (pr-str namespace)
+                          "}))"))
+                    value)
+            counts (result-counts value)]
+        (assoc counts
+               :path path
+               :namespace namespace
+               :value value
+               :elapsed (- (time-ms) started)))
       (catch Throwable error
         {:path path
          :namespace namespace
          :passed 0
          :failed 1
-         :error (str error)}))))
+         :error (str error)
+         :elapsed (- (time-ms) started)})
+      (finally
+        (try
+          (Kernel/session-close session)
+          (catch Throwable error nil))))))
 
 (defn run-files
   [records]
@@ -112,16 +114,54 @@
    results))
 
 (defn result-messages
-  [results counts]
-  (conj
-   (reduce
-    (fn [messages result]
-      (conj messages
-            (model/message
-             (if (:error result) :stderr :stdout)
-             (str "test " (:path result) ": "
-                  (:passed result) " passed, " (:failed result) " failed\n"))))
-    []
-    results)
-   (model/message (str "test result: " (:passed counts) " passed, "
-                      (:failed counts) " failed\n"))))
+  ([results counts]
+   (result-messages results counts {}))
+  ([results counts options]
+   (let [options (or options {})
+         ansi (not (:no-color options))
+         total (count results)
+         index-width (+ 2 (* 2 (str/length (str total))))
+         id-width
+         (reduce
+          (fn [width result]
+            (max width (+ 2 (str/length (str (:namespace result))))))
+          0
+          results)]
+     (conj
+      (reduce
+       (fn [messages [index result]]
+         (let [status (if (:error result)
+                        :error
+                        (if (= 0 (:failed result)) :passed :failed))
+               line (report/progress-line
+                     {:item/id (:namespace result)
+                      :item/index index
+                      :item/total total
+                      :item/index-width index-width
+                      :item/id-width id-width
+                      :item/result-width 60
+                      :item/time-width 10
+                      :item/count (:passed result)
+                      :status status
+                      :error (:error result)
+                      :elapsed (if (has? result :elapsed)
+                                 (let [centiseconds
+                                       (quot (+ (:elapsed result) 5) 10)
+                                       seconds (quot centiseconds 100)
+                                       fraction (rem centiseconds 100)]
+                                   (str seconds "."
+                                        (if (< fraction 10) "0" "")
+                                        fraction
+                                        "s"))
+                                 nil)})
+               stream (if (or (= :error status) (= :failed status))
+                        :stderr
+                        :stdout)]
+           (conj messages
+                 (model/message
+                  stream
+                  (str (terminal/render-line line {:ansi ansi}) "\n")))))
+       []
+       (map-indexed (fn [index result] [index result]) results))
+      (model/message (str "test result: " (:passed counts) " passed, "
+                         (:failed counts) " failed\n"))))))

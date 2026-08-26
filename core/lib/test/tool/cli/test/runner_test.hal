@@ -62,14 +62,44 @@
             {:passed 5 :failed 1})
 
 ^{:refer tool.cli.test.runner/result-messages}
-(test-check "runner messages report each file and the aggregate"
-            (runner/result-messages
-             [{:path "one.hal" :passed 1 :failed 0}
-              {:path "two.hal" :passed 0 :failed 1 :error "broken"}]
-             {:passed 1 :failed 1})
-            [{:message/stream :stdout
-              :message/text "test one.hal: 1 passed, 0 failed\n"}
-             {:message/stream :stderr
-              :message/text "test two.hal: 0 passed, 1 failed\n"}
-             {:message/stream :stdout
-              :message/text "test result: 1 passed, 1 failed\n"}])]
+(test-check "runner messages report colored task rows and the aggregate"
+            (let [messages
+                  (runner/result-messages
+                   [{:path "one.hal" :namespace 'one-test :passed 15 :failed 0
+                     :elapsed 180}
+                    {:path "two.hal" :namespace 'two-test :passed 0 :failed 1
+                     :error "broken" :elapsed 20}]
+                   {:passed 1 :failed 1}
+                   {})
+                  first-text (:message/text (first messages))
+                  second-text (:message/text (second messages))]
+              [(:message/stream (first messages))
+               (str/includes? first-text "\u001b[32m1/2")
+               (str/includes? first-text "one-test")
+               (str/includes? first-text "passed (15)")
+               (str/includes? first-text "0.18s")
+               (:message/stream (second messages))
+               (str/includes? second-text "\u001b[31m2/2")
+               (str/includes? second-text "error (0)")
+               (str/includes? second-text "broken")
+               (str/includes? second-text "0.02s")
+               (:message/text (last messages))])
+            [:stdout true true true true
+             :stderr true true true true
+             "test result: 1 passed, 1 failed\n"])
+
+(fact "runner messages disable ANSI styling explicitly"
+  (let [text
+        (get-in
+         (first
+          (runner/result-messages
+           [{:namespace 'one-test :passed 1 :failed 0 :elapsed 1}]
+           {:passed 1 :failed 0}
+           {:no-color true}))
+         [:message/text])]
+    [(str/includes? text "1/1  one-test")
+     (str/includes? text "passed (1)")
+     (str/includes? text "0.00s")
+     (str/includes? text "\u001b[")])
+  => [true true true false])
+]

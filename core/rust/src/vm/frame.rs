@@ -105,21 +105,6 @@ impl Frame {
         }
     }
 
-    /// Moves a value local out when `alias` is the exact `Rc` clone currently
-    /// held by that slot. The VM uses this only when the next instruction
-    /// overwrites the same slot, so no observable persistent alias is lost.
-    pub(crate) fn take_value_alias(&mut self, slot: u16, alias: &VmSlot) -> Option<VmSlot> {
-        let cell = self.locals.get_mut(usize::from(slot))?;
-        match (&*cell, alias) {
-            (VmSlot::Value(local), VmSlot::Value(argument))
-                if std::rc::Rc::ptr_eq(local, argument) =>
-            {
-                Some(std::mem::replace(cell, VmSlot::Nil))
-            }
-            _ => None,
-        }
-    }
-
     /// Borrowed local slots for bounded machine observations.
     pub(crate) fn locals(&self) -> &[VmSlot] {
         &self.locals

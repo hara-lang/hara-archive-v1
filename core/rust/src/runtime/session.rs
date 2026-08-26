@@ -65,6 +65,7 @@ struct AttachedFilesystem {
 }
 
 impl Session {
+    #[cfg(test)]
     fn new(name: &str, runtime: Runtime) -> Self {
         let spec = SessionSpec::zero_authority(name)
             .expect("Session::new requires a validated session name");
@@ -106,6 +107,7 @@ impl Session {
         self.filesystem.as_ref().map(|filesystem| filesystem.id)
     }
 
+    #[cfg(test)]
     pub(crate) fn module_revision(&self, name: &str) -> Result<u64, String> {
         Ok(self.runtime()?.namespace_registry.module_revision(name))
     }

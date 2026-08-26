@@ -923,49 +923,6 @@ pub(crate) fn binding_is_local(var: &KernelVar<Value>) -> bool {
         .unwrap_or(true)
 }
 
-/// True when `name` reaches `var` through an explicit non-native namespace
-/// alias in the current namespace. Native type aliases such as `String` keep
-/// structural-native precedence; library aliases such as `str` call the HAL
-/// facade they name.
-pub(crate) fn binding_is_hal_alias(name: &str, var: &KernelVar<Value>) -> bool {
-    let Some((qualifier, _)) = name.split_once('/') else {
-        return false;
-    };
-    let Ok(registry) = namespace_registry() else {
-        return false;
-    };
-    registry
-        .current()
-        .aliases()
-        .into_iter()
-        .any(|(alias, target)| {
-            alias.as_str() == qualifier
-                && !target.name().as_str().starts_with("std.native.")
-                && var.symbol().get_namespace() == Some(target.name().as_str())
-        })
-}
-
-pub(crate) fn binding_is_native_alias(name: &str, var: &KernelVar<Value>) -> bool {
-    let Some((qualifier, _)) = name.split_once('/') else {
-        return false;
-    };
-    if qualifier.starts_with("std.native.") {
-        return var.symbol().get_namespace() == Some(qualifier);
-    }
-    let Ok(registry) = namespace_registry() else {
-        return false;
-    };
-    registry
-        .current()
-        .aliases()
-        .into_iter()
-        .any(|(alias, target)| {
-            alias.as_str() == qualifier
-                && target.name().as_str().starts_with("std.native.")
-                && var.symbol().get_namespace() == Some(target.name().as_str())
-        })
-}
-
 /// Names a fresh local var cell: qualified to the current namespace when
 /// a registry is active, bare otherwise. Qualifying matters: an
 /// unqualified cell fails `binding_is_local`, so redefining the name in

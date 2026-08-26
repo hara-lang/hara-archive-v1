@@ -43,6 +43,10 @@ public class HaraLanguageTest {
           context.eval(HaraLanguage.ID, "(IDisplay/display \\newline)").asString());
       assertEquals("a", context.eval(HaraLanguage.ID, "(str \\a)").asString());
       assertEquals("\\a", context.eval(HaraLanguage.ID, "(pr-str \\a)").asString());
+      assertEquals("true", context.eval(HaraLanguage.ID, "(IDisplay/display true)").asString());
+      assertEquals("false", context.eval(HaraLanguage.ID, "(IDisplay/display false)").asString());
+      assertEquals("true", context.eval(HaraLanguage.ID, "(str true)").asString());
+      assertEquals("false", context.eval(HaraLanguage.ID, "(pr-str false)").asString());
       assertTrue(context.eval(HaraLanguage.ID, "(char? (first \"abc\"))").asBoolean());
       assertEquals("a", context.eval(HaraLanguage.ID, "(str (first \"abc\"))").asString());
       assertEquals(

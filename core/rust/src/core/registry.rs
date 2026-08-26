@@ -198,6 +198,7 @@ pub struct MutableType {
 }
 
 impl MutableType {
+    #[cfg(test)]
     pub(crate) fn detached(name: String, fields: Vec<String>) -> Self {
         Self {
             name,

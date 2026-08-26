@@ -1,3 +1,4 @@
+#[cfg(test)]
 use crate::core::Value;
 use crate::{vm, Runtime};
 
@@ -13,6 +14,7 @@ pub(in crate::task::production) fn validate_bundle(
     Ok(runtime)
 }
 
+#[cfg(test)]
 pub(super) fn invoke_zero_arity(runtime: &Runtime, symbol: &str) -> Result<Value, String> {
     prepare_entrypoint(runtime, symbol)?.invoke(Vec::new())
 }

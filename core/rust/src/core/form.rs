@@ -710,13 +710,6 @@ pub(crate) fn arity_dispatcher(name: &str, functions: Vec<Rc<Function>>, is_macr
     }))
 }
 
-fn deref_value(value: Value) -> Value {
-    match value {
-        Value::Var(var) => var.deref_value(),
-        value => value,
-    }
-}
-
 fn deref_binding_value(name: &str, value: Value) -> Value {
     match value {
         Value::Var(var)

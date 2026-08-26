@@ -112,10 +112,6 @@ impl InstrumentedInterpreterLiveSession {
         Ok(session)
     }
 
-    pub(crate) fn pending_revision(&self) -> Option<&str> {
-        self.pending_source.as_ref().map(LiveSource::revision)
-    }
-
     fn instrument(&self) -> Result<&InstrumentHandle, LiveSessionError> {
         self.instrument.as_ref().ok_or_else(|| {
             LiveSessionError::new(

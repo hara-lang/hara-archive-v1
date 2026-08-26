@@ -70,6 +70,12 @@ final class HaraProtocolExtensions {
   }
 
   @HaraProtocolExtension(
+      protocol = IDisplay.class, method = "display", target = HaraProtocolTarget.BOOLEAN)
+  static Object displayBoolean(Object receiver, Object[] arguments) {
+    return hara.lang.base.G.display(receiver);
+  }
+
+  @HaraProtocolExtension(
       protocol = IDisplay.class, method = "display", target = HaraProtocolTarget.FOREIGN)
   static Object displayForeign(Object receiver, Object[] arguments) {
     return hara.lang.base.G.display(receiver);

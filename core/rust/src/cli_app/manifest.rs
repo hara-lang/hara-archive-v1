@@ -135,11 +135,3 @@ pub(super) fn merge_sources(base: &str, extension: &str) -> Result<String, Strin
 
     Ok(manifest.to_string())
 }
-
-pub(super) fn map_entries_for_test(form: &Form) -> Result<&[(Form, Form)], String> {
-    map_entries(form)
-}
-
-pub(super) fn map_value_for_test<'a>(entries: &'a [(Form, Form)], key: &str) -> Option<&'a Form> {
-    map_value(entries, key)
-}

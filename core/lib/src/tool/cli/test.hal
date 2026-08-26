@@ -40,7 +40,9 @@
                   :test/files results
                   :test/passed (:passed counts)
                   :test/failed (:failed counts)}
-            messages (runner/result-messages results counts)]
+            messages (runner/result-messages results
+                                             counts
+                                             (:request/options request))]
         (if (= 0 (:failed counts))
           (model/success data messages)
           (model/result :tool.cli.outcome/failed data messages))))))

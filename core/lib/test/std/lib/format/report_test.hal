@@ -37,26 +37,31 @@
 ^{:refer std.lib.format.report/record-role}
 (fact "maps task statuses to line roles"
   [(report/record-role {:status :return})
+   (report/record-role {:status :passed})
    (report/record-role {:status :warn})
    (report/record-role {:status :error})
+   (report/record-role {:status :failed})
    (report/record-role {:status :critical})
    (report/record-role {:status :other})]
-  => [:success :warning :error :critical :default])
+  => [:success :success :warning :error :error :critical :default])
 
 ^{:refer std.lib.format.report/status-text}
 (fact "maps task statuses to stable display text"
   [(report/status-text :return)
+   (report/status-text :passed)
    (report/status-text :warn)
    (report/status-text :error)
+   (report/status-text :failed)
    (report/status-text :critical)
    (report/status-text :other)]
-  => ["ok" "warn" "error" "critical" "other"])
+  => ["ok" "passed" "warn" "error" "failed" "critical" "other"])
 
 ^{:refer std.lib.format.report/time-text}
 (fact "renders optional elapsed values with units"
   [(report/time-text nil)
-   (report/time-text 8)]
-  => ["" "8ms"])
+   (report/time-text 8)
+   (report/time-text "0.18s")]
+  => ["" "8ms" "0.18s"])
 
 ^{:refer std.lib.format.report/progress-line}
 (fact "renders progress entries with role and elapsed details"
@@ -65,11 +70,11 @@
     {:item/id :alpha
      :item/index 0
      :item/total 2
-     :status :return
-     :item/display "changed"
-     :elapsed 3})
+     :status :passed
+     :item/count 15
+     :elapsed "0.18s"})
    [:line/text :line/role])
-  => {:line/text "1/2  :alpha  ok  changed  3ms"
+  => {:line/text "1/2  :alpha  passed (15)  0.18s"
       :line/role :success})
 
 ^{:refer std.lib.format.report/diagnostic-line}

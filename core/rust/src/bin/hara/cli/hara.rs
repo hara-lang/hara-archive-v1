@@ -120,6 +120,9 @@ fn launcher_argv(options: &Options, argv: &[String]) -> Vec<String> {
     if options.offline {
         output.push("--offline".into());
     }
+    if options.no_color {
+        output.push("--no-color".into());
+    }
     output.extend(argv.iter().cloned());
     output
 }

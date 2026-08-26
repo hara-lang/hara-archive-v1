@@ -807,22 +807,22 @@
      :as
      matchers]
     f
-    matchwalk
+    recur-fn
     {:as opts
      :keys [move-right
             can-move-right?]}]  (let [zip (if (try (pred zip) (catch Throwable t nil))
                                            (cond (empty? more)
                                              (f zip)
                                              (can-step-inside? zip)
-                                             (step-outside (matchwalk (step-inside zip) more f matchwalk opts))
+                                             (step-outside (recur-fn (step-inside zip) more f recur-fn opts))
                                              :else
                                              zip)
                                            zip)
                                      zip (if (can-step-inside? zip)
-                                           (step-outside (matchwalk (step-inside zip) matchers f matchwalk opts))
+                                           (step-outside (recur-fn (step-inside zip) matchers f recur-fn opts))
                                            zip)
                                      zip (if ((or can-move-right? can-step-right?) zip)
-                                           (matchwalk ((or move-right step-right) zip) matchers f matchwalk opts)
+                                           (recur-fn ((or move-right step-right) zip) matchers f recur-fn opts)
                                            zip)]
                                  zip)))
 

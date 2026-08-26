@@ -273,10 +273,6 @@ pub(crate) fn numeric_abs(value: &Value) -> Result<Value, String> {
     }
 }
 
-pub(crate) fn numeric_increment(value: &Value, delta: i64) -> Result<Value, String> {
-    numeric_binary(ArithmeticOp::Add, value, &Value::Number(delta))
-}
-
 pub(crate) fn bit_not(value: &Value) -> Result<Value, String> {
     Ok(compact_integer(!integer_value(value)?))
 }
@@ -379,22 +375,10 @@ pub(crate) fn to_i64_truncating(value: &Value) -> Result<i64, String> {
         .ok_or_else(|| "integer is outside signed 64-bit range".to_string())
 }
 
-pub(crate) fn to_i32_exact(value: &Value) -> Result<i32, String> {
-    boundary_integer(value)?
-        .to_i32()
-        .ok_or_else(|| "integer is outside signed 32-bit range".to_string())
-}
-
 pub(crate) fn to_u16_exact(value: &Value) -> Result<u16, String> {
     boundary_integer(value)?
         .to_u16()
         .ok_or_else(|| "integer is outside unsigned 16-bit range".to_string())
-}
-
-pub(crate) fn to_u32_exact(value: &Value) -> Result<u32, String> {
-    boundary_integer(value)?
-        .to_u32()
-        .ok_or_else(|| "integer is outside unsigned 32-bit range".to_string())
 }
 
 pub(crate) fn to_u64_exact(value: &Value) -> Result<u64, String> {

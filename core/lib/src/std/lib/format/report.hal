@@ -36,8 +36,10 @@
   [record]
   (case (:status record)
     :return :success
+    :passed :success
     :warn :warning
     :error :error
+    :failed :error
     :critical :critical
     :default))
 
@@ -45,8 +47,10 @@
   [status]
   (case status
     :return "ok"
+    :passed "passed"
     :warn "warn"
     :error "error"
+    :failed "failed"
     :critical "critical"
     (name (or status :return))))
 
@@ -54,14 +58,29 @@
   [value]
   (if (nil? value)
     ""
-    (str value "ms")))
+    (if (string? value)
+      value
+      (str value "ms"))))
 
 (defn progress-line
   [record]
   (let [index (or (:item/index record) 0)
         total (or (:item/total record) "?")
+        index-text (str (inc index) "/" total)
+        index-text (if (:item/index-width record)
+                     (common/pad index-text
+                                 (:item/index-width record)
+                                 :right)
+                     index-text)
         id (common/value-text (:item/id record))
+        id (if (:item/id-width record)
+             (common/pad id (:item/id-width record) :left)
+             id)
         status (status-text (:status record))
+        count-text
+        (if (has? record :item/count)
+          (str " (" (common/value-text (:item/count record)) ")")
+          "")
         display
         (if (and (= :return (:status record))
                  (has? record :item/display))
@@ -71,15 +90,25 @@
             (:error record)))
         elapsed
         (if (has? record :elapsed)
-          (str "  " (time-text (:elapsed record)))
+          (let [value (time-text (:elapsed record))]
+            (if (:item/time-width record)
+              (str "  " (common/pad value
+                                    (:item/time-width record)
+                                    :left))
+              (str "  " value)))
           "")]
     (common/line
-     (str (inc index) "/" total
+     (str index-text
           "  " id
-          "  " status
-          (if (nil? display)
-            ""
-            (str "  " (common/value-text display)))
+          "  "
+          (let [result (str status
+                            count-text
+                            (if (nil? display)
+                              ""
+                              (str "  " (common/value-text display))))]
+            (if (:item/result-width record)
+              (common/pad result (:item/result-width record) :left)
+              result))
           elapsed)
      (record-role record))))
 

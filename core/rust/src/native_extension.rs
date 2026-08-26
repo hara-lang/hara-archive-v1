@@ -22,6 +22,7 @@ pub struct ExtensionPackage {
 }
 
 impl ExtensionPackage {
+    #[cfg(test)]
     pub fn load(root: &Path) -> Result<Self, String> {
         let mut packages = packages_in_project(root)?;
         match packages.len() {
@@ -244,6 +245,7 @@ pub fn package_exists(namespace: &str, roots: &[PathBuf]) -> bool {
         .is_some()
 }
 
+#[cfg(test)]
 fn packages_in_project(root: &Path) -> Result<Vec<ExtensionPackage>, String> {
     let descriptor = if root.is_file() {
         root.to_path_buf()

@@ -308,14 +308,6 @@ fn handler_value(handler: &HandlerSnapshot) -> Value {
     ])
 }
 
-fn stack_depth(snapshot: &MachineSnapshot) -> usize {
-    snapshot.stack.len().saturating_add(snapshot.stack_omitted)
-}
-
-fn call_depth(snapshot: &MachineSnapshot) -> usize {
-    snapshot.calls.len().saturating_add(snapshot.calls_omitted)
-}
-
 fn object<I, K>(fields: I) -> Value
 where
     I: IntoIterator<Item = (K, Value)>,

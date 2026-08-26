@@ -1,7 +1,7 @@
 use crate::cli::Options;
 use hara_wasm::native_cli::RuntimeBroker;
 use hara_wasm::project;
-use hara_wasm::resp::{RespConnection, RespServer, RespValue};
+use hara_wasm::resp::RespServer;
 use rustyline::completion::{Completer, Pair};
 use rustyline::error::ReadlineError;
 use rustyline::highlight::Highlighter;
@@ -12,7 +12,6 @@ use rustyline::{Config, Context, Editor, Helper};
 use std::collections::HashSet;
 use std::env;
 use std::io::{self, BufRead};
-use std::net::TcpStream;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
@@ -705,48 +704,6 @@ fn incomplete(source: &str) -> bool {
     string || !stack.is_empty()
 }
 
-fn run_remote(endpoint: &str) -> Result<(), String> {
-    let (host, port) = parse_endpoint(endpoint, "127.0.0.1")?;
-    let stream = TcpStream::connect((host.as_str(), port))
-        .map_err(|error| format!("remote connect failed: {error}"))?;
-    let mut connection = RespConnection::new(stream)?;
-    connection.write(&RespValue::array(["HELLO", "4", "CLIENT", "HARA-REMOTE"]))?;
-    println!(
-        "{}",
-        response_text(connection.read()?.ok_or("remote closed")?)
-    );
-    let mut request = 0_u64;
-    for line in io::stdin().lock().lines() {
-        let source = line.map_err(|error| format!("stdin: {error}"))?;
-        if matches!(source.trim(), "/quit" | ":quit") {
-            connection.write(&RespValue::array(["QUIT"]))?;
-            break;
-        }
-        request += 1;
-        let id = format!("REMOTE-{request}");
-        connection.write(&RespValue::array(["EVAL", &id, source.trim()]))?;
-        if let Some(value) = connection.read()? {
-            println!("{}", response_text(value));
-        }
-        let _ = connection.read()?;
-    }
-    Ok(())
-}
-
-fn response_text(value: RespValue) -> String {
-    match value {
-        RespValue::Array(Some(values)) => values
-            .into_iter()
-            .map(response_text)
-            .collect::<Vec<_>>()
-            .join(" "),
-        RespValue::Bulk(Some(bytes)) => String::from_utf8_lossy(&bytes).into_owned(),
-        RespValue::Simple(value) | RespValue::Error(value) => value,
-        RespValue::Integer(value) => value.to_string(),
-        RespValue::Bulk(None) | RespValue::Array(None) => "nil".into(),
-    }
-}
-
 fn history_file() -> PathBuf {
     env::var_os("HARA_HISTORY")
         .map(PathBuf::from)
@@ -890,17 +847,6 @@ unsafe fn libc_isatty(fd: i32) -> i32 {
 #[cfg(not(unix))]
 unsafe fn libc_isatty(_fd: i32) -> i32 {
     0
-}
-
-fn usage() {
-    println!("hara [OPTIONS] [repl|standalone|headless|server|remote HOST:PORT|eval SOURCE|run FILE|stdin]");
-    println!("  --offline --host HOST --port PORT --root PATH --allow-net");
-    println!("  --history PATH --no-history --no-splash --no-color");
-}
-
-fn exit_error(message: &str, status: i32) -> ! {
-    eprintln!("hara: {message}");
-    std::process::exit(status)
 }
 
 #[cfg(test)]
