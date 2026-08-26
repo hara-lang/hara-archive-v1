@@ -31,18 +31,18 @@
               fourth (Bits/and packed 63)]
           (recur (+ index 3)
                  (str output
-                      (str/char-at +alphabet+ first)
-                      (str/char-at +alphabet+ second)
+                      (str/to-string (str/char-at +alphabet+ first))
+                      (str/to-string (str/char-at +alphabet+ second))
                       (if (> remaining 1)
-                        (str/char-at +alphabet+ third)
+                        (str/to-string (str/char-at +alphabet+ third))
                         "=")
                       (if (> remaining 2)
-                        (str/char-at +alphabet+ fourth)
+                        (str/to-string (str/char-at +alphabet+ fourth))
                         "="))))))))
 
 (defn value-of
   [character index]
-  (let [value (str/index-of +alphabet+ character)]
+  (let [value (str/index-of +alphabet+ (str/to-string character))]
     (if (neg? value)
       (throw (ex :serialization {:character character :index index} :ex/message "Invalid Base64 character"))
       value)))
@@ -56,21 +56,21 @@
       (throw (ex :serialization {:value source :length length} :ex/message "Base64 length must be a multiple of four")))
     (loop [index 0 output []]
       (if (= index length)
-        (apply bytes output)
+        (apply std.native.Bytes/new output)
         (let [last? (= (+ index 4) length)
               ca (str/char-at source index)
               cb (str/char-at source (inc index))
               cc (str/char-at source (+ index 2))
               cd (str/char-at source (+ index 3))]
-          (if (or (= ca "=")
-                  (= cb "=")
+          (if (or (= ca \=)
+                  (= cb \=)
                   (and (not last?)
-                       (or (= cc "=") (= cd "="))))
+                       (or (= cc \=) (= cd \=))))
             (throw (ex :serialization {:value source :index index} :ex/message "Base64 padding is only valid in the final quartet")))
           (let [a (value-of ca index)
                 b (value-of cb (inc index))
-                c-padding (= cc "=")
-                d-padding (= cd "=")]
+                c-padding (= cc \=)
+                d-padding (= cd \=)]
             (if (and c-padding (not d-padding))
               (throw (ex :serialization {:value source :index index} :ex/message "Invalid Base64 padding")))
             (let [c (if c-padding 0 (value-of cc (+ index 2)))

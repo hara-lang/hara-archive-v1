@@ -6,9 +6,9 @@
    prefix, and vectors are disjunctions."
   [selector identifier]
   (cond (or (nil? selector) (= :all selector)) true
-        (fn? selector) (if (selector identifier) true false)
         (or (string? selector) (symbol? selector) (keyword? selector))
         (str/starts-with? (str identifier) (str selector))
+        (fn? selector) (if (selector identifier) true false)
         (set? selector)
         (reduce (fn [matched value] (or matched (= value identifier)))
                 false selector)
@@ -89,4 +89,3 @@
                    (and matched (not (exclude-match? metadata filter))))
                  true
                  exclude))))
-

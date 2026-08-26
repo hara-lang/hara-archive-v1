@@ -116,7 +116,7 @@
             (recur (inc index)
                    (conj result
                          (Bytes/set
-                          (apply bytes (repeat (inc length) 0))
+                          (apply std.native.Bytes/new (repeat (inc length) 0))
                           0
                           (inc index))))))]
     (loop [offset 0 result output]
@@ -210,7 +210,7 @@
   (let [indexes (validate-shares shares)
         length (Bytes/count (nth shares 0))]
     (loop [offset 1
-           result (apply bytes (repeat (- length 1) 0))]
+           result (apply std.native.Bytes/new (repeat (- length 1) 0))]
       (if (= offset length)
         result
         (recur (inc offset)

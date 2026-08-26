@@ -17,7 +17,7 @@
    (loop [index 0]
      (if (= index (str/length value))
        true
-       (if (get +name-characters+ (str/char-at value index))
+       (if (get +name-characters+ (str/to-string (str/char-at value index)))
          (recur (inc index))
          false)))))
 
@@ -27,7 +27,7 @@
    (loop [index 0]
      (if (= index (str/length value))
        true
-       (if (get +coordinate-characters+ (str/char-at value index))
+       (if (get +coordinate-characters+ (str/to-string (str/char-at value index)))
          (recur (inc index))
          false)))))
 

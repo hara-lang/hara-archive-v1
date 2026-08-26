@@ -24,7 +24,7 @@
   (loop [index 0 output 0]
     (if (= index (str/length value))
       output
-      (let [digit (get +digits+ (str/char-at value index))]
+      (let [digit (get +digits+ (str/to-string (str/char-at value index)))]
         (if (nil? digit)
           nil
           (recur (inc index) (+ (* output 10) digit)))))))

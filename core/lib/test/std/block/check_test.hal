@@ -19,10 +19,10 @@
 ^{:refer std.block.check/boundary? :added "3.0"}
 (Test/run
  [{:name "returns whether a char is of a boundary type #1"
-   :test (fn [] (boundary? (first "[")))
+   :test (fn [] (boundary? \[))
    :expected true}
   {:name "returns whether a char is of a boundary type #2"
-   :test (fn [] (boundary? (first (pr-str ""))))
+   :test (fn [] (boundary? \"))
    :expected true}]
  migration-test-check)
 
@@ -36,7 +36,7 @@
 ^{:refer std.block.check/comma? :added "3.0"}
 (Test/run
  [{:name "returns whether a char is a comma"
-   :test (fn [] (comma? (first ",")))
+   :test (fn [] (comma? \,))
    :expected true}]
  migration-test-check)
 
@@ -50,7 +50,7 @@
 ^{:refer std.block.check/delimiter? :added "3.0"}
 (Test/run
  [{:name "check for delimiter char"
-   :test (fn [] (delimiter? (first ")")))
+   :test (fn [] (delimiter? \)))
    :expected true}]
  migration-test-check)
 

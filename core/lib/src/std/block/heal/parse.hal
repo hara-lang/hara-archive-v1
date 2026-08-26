@@ -38,16 +38,11 @@
                   escaped?    (get state :escaped?)]
                  (cond
                   (= char \newline)
-                  (assoc
-                   state
-                   :line-num
-                   (inc line-num)
-                   :col-num
-                   1
-                   :in-comment?
-                   false
-                   :escaped?
-                   false)
+                  (assoc state
+                         :line-num (inc line-num)
+                         :col-num 1
+                         :in-comment? false
+                         :escaped? false)
                   escaped?
                   (assoc state :col-num (inc col-num) :escaped? false)
                   (= char \\)
@@ -55,29 +50,25 @@
                   in-comment?
                   (assoc state :col-num (inc col-num))
                   in-string?
-                  (if
-                   (= char \")
-                   (assoc state :col-num (inc col-num) :in-comment? false :in-string? false)
-                   (assoc state :col-num (inc col-num) :in-comment? false :in-string? true))
+                  (if (= char \")
+                    (assoc state :col-num (inc col-num) :in-comment? false :in-string? false)
+                    (assoc state :col-num (inc col-num) :in-comment? false :in-string? true))
+                  (= char \;)
+                  (assoc state :col-num (inc col-num) :in-comment? true :in-string? false)
+                  (= char \")
+                  (assoc state :col-num (inc col-num) :in-comment? false :in-string? true)
+                  (delimiter-info char)
+                  (let [info (delimiter-info char)]
+                    (assoc state
+                           :col-num (inc col-num)
+                           :delimiters
+                           (conj (get state :delimiters)
+                                 (merge {:char (str/to-string char)
+                                         :col col-num
+                                         :line line-num}
+                                        info))))
                   :else
-                  (let
-                   [info (delimiter-info char)]
-                   (cond
-                    (= char \;)
-                    (assoc state :col-num (inc col-num) :in-comment? true :in-string? false)
-                    (= char \")
-                    (assoc state :col-num (inc col-num) :in-comment? false :in-string? true)
-                    info
-                    (assoc
-                     state
-                     :col-num
-                     (inc col-num)
-                     :delimiters
-                     (conj
-                      (get state :delimiters)
-                      (merge {:char (str char) :col col-num :line line-num} info)))
-                    :else
-                    (assoc state :col-num (inc col-num)))))))
+                  (assoc state :col-num (inc col-num)))))
                {:delimiters  []
                 :in-comment? false
                 :line-num    1
@@ -135,11 +126,14 @@
                                             :depth   (dec depth)})))))
                                       {:depth 0 :index 0 :pair-id 0 :processed [] :stack []}
                                       delimiters)]
-    (vec (sort-by (juxt :line :col)
-           (concat output
-             (map (fn [migration-argument-0]
-                    (assoc migration-argument-0 (keyword "correct?") false))
-               stack))))))
+    (vec (sort (fn [left right]
+                 (if (= (:line left) (:line right))
+                   (compare (:col left) (:col right))
+                   (compare (:line left) (:line right))))
+               (concat output
+                 (map (fn [migration-argument-0]
+                        (assoc migration-argument-0 (keyword "correct?") false))
+                   stack))))))
 
 (defn parse
   "creates a parse function"
@@ -209,12 +203,12 @@
              [current-line    (first lines)
               trimmed-line    (std.foundation.string/trim-left current-line)
               indent          (- (count current-line) (count trimmed-line))
-              char            (str (first trimmed-line))
-              dinfo           (if (#{"(" "{" "["} char)
-                                (reduce-kv (fn [output from to]
-                                             (if (has? output from) (assoc (dissoc output from) to (get output from)) output))
-                                  (delimiter-info (first char))
-                                  {:type :action}))
+              char            (if (empty? trimmed-line)
+                                nil
+                                (str/char-at trimmed-line 0))
+              dinfo           (if (has? #{\( \{ \[} char)
+                                (let [info (delimiter-info char)]
+                                  (assoc (dissoc info :type) :action (:type info))))
               quote-count     (count-unescaped-quotes current-line)
               next-multiline? (cond (and (zero? quote-count) in-multiline?) true
                                     (and (odd? quote-count) in-multiline?)  false
@@ -224,7 +218,7 @@
                                     (std.foundation.string/blank? current-line)        :blank
                                     (std.foundation.string/includes? current-line ";") :commented
                                     :else                                              :code)
-              has-code        (and (not= char ";") (or (= line-type :code) (= line-type :commented)))
+              has-code        (and (not= char \;) (or (= line-type :code) (= line-type :commented)))
               last-idx        (let [r-trimmed (std.foundation.string/trim-right current-line)]
                                 (if (not-empty r-trimmed) (dec (count r-trimmed))))]
              (parse-lines-raw--loop-1
@@ -238,7 +232,7 @@
                 last-idx
                 (assoc :last-idx last-idx)
                 has-code
-                (assoc :col (inc indent) :char char)
+                (assoc :col (inc indent) :char (str/to-string char))
                 :then
                 (merge dinfo)))))))]
     (parse-lines-raw--loop-1 lines 1 false [])))
@@ -296,4 +290,3 @@
     (map (fn [migration-map-juxt-value]
            [(get migration-map-juxt-value :index) (identity migration-map-juxt-value)])
       delimiters)))
-

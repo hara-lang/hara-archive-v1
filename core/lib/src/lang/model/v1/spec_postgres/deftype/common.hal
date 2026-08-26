@@ -14,13 +14,15 @@
 
 (defn- letter-upper?
   [value]
-  (and (= value (str/upper value))
-       (not (= value (str/lower value)))))
+  (let [value (str/to-string value)]
+    (and (= value (str/upper value))
+         (not (= value (str/lower value))))))
 
 (defn- letter-lower?
   [value]
-  (and (= value (str/lower value))
-       (not (= value (str/upper value)))))
+  (let [value (str/to-string value)]
+    (and (= value (str/lower value))
+         (not (= value (str/upper value))))))
 
 (defn snake-name
   "Converts Foundation identifiers to deterministic PostgreSQL snake case."
@@ -41,13 +43,13 @@
               boundary
               (and (> index 0)
                    (letter-upper? character)
-                   (not (= previous "_"))
+                   (not (= previous \_))
                    (or (not (letter-upper? previous))
                        (letter-lower? following)))]
           (recur (+ index 1)
                  (str output
                       (if boundary "_" "")
-                      character)))))))
+                      (str/to-string character))))))))
 
 (defn identifier-value
   [value]
@@ -349,4 +351,3 @@
                 :enum (:enum/resolved attributes)}
                nil)))
          columns)))
-

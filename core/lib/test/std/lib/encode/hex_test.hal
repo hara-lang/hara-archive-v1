@@ -1,12 +1,12 @@
 (ns std.lib.encode.hex-test
   (:require [std.lib.encode.hex :as hex]))
 
-(def +all-bytes+ (apply bytes (range 0 256)))
+(def +all-bytes+ (apply std.native.Bytes/new (range 0 256)))
 
 (def results
   [^{:refer std.lib.encode.hex/input-bytes}
    (test-check "accepts Bytes and rejects other encode inputs"
-               [(bytes? (hex/input-bytes (bytes 1 2 3)))
+               [(bytes? (hex/input-bytes (std.native.Bytes/new 1 2 3)))
                 (try (hex/input-bytes "Hara") false
                      (catch Throwable error true))]
                [true true])
@@ -29,14 +29,14 @@
 
    ^{:refer std.lib.encode.hex/encode}
    (test-check "hex encodes Bytes with lowercase output"
-               [(hex/encode (bytes))
-                (hex/encode (bytes 0 15 16 255))]
+               [(hex/encode (std.native.Bytes/new))
+                (hex/encode (std.native.Bytes/new 0 15 16 255))]
                ["" "000f10ff"])
 
    ^{:refer std.lib.encode.hex/decode}
    (test-check "hex decodes either letter case and round trips every byte"
                [(= (hex/decode "00FF10")
-                   (bytes 0 255 16))
+                   (std.native.Bytes/new 0 255 16))
                 (= (hex/decode (hex/encode +all-bytes+))
                    +all-bytes+)]
                [true true])
@@ -48,7 +48,7 @@
                      (catch Throwable error true))
                 (try (hex/decode "0g") false
                      (catch Throwable error true))
-                (try (hex/decode (bytes 0)) false
+                (try (hex/decode (std.native.Bytes/new 0)) false
                      (catch Throwable error true))]
                [true true true true])])
 

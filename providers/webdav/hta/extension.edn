@@ -1,27 +1,25 @@
-{:namespace "fs.webdav.wasm.hta"
+{:namespace "fs.webdav.wasm"
  :identity "hara/filesystem-webdav"
- :version "0.1.0"
- :provider :hta
+ :version "0.2.0"
+ :root "provider"
+ :provider :wasm
+ :module "provider.wasm"
  :abi :hta.v1
- :targets
- {:browser
-  {:provider "browser/provider.mjs"
-   :runtime :web-worker}}
  :capabilities [:filesystem :network]
  :host-calls
  {"filesystem.webdav"
-  {:methods ["open" "request" "cancel" "close"]
+  {:methods ["describe" "open" "request" "cancel" "close"]
    :capabilities [:filesystem :network]}}
  :exports
- {"describe" {:args [] :returns :value}
-  "open" {:args [:options] :returns :value}
-  "descriptor" {:args [:filesystem] :returns :value}
-  "stat" {:args [:filesystem :path] :returns :value}
-  "read" {:args [:filesystem :path] :returns :bytes}
-  "write" {:args [:filesystem :path :bytes :options :mutation] :returns :value}
-  "entries-page" {:args [:filesystem :path :request] :returns :value}
-  "mkdir" {:args [:filesystem :path :options :mutation] :returns :value}
-  "delete" {:args [:filesystem :path :options :mutation] :returns :value}
-  "copy" {:args [:filesystem :source :target :options :mutation] :returns :value}
-  "move" {:args [:filesystem :source :target :options :mutation] :returns :value}
-  "close" {:args [:filesystem] :returns :value}}}
+ {"describe" {:args [] :returns :value :async true}
+  "open" {:args [:options] :returns :value :async true}
+  "descriptor" {:args [:filesystem] :returns :value :async false}
+  "stat" {:args [:filesystem :path] :returns :value :async true}
+  "read" {:args [:filesystem :path] :returns :bytes :async true}
+  "write" {:args [:filesystem :path :bytes :options :mutation] :returns :value :async true}
+  "entries-page" {:args [:filesystem :path :request] :returns :value :async true}
+  "mkdir" {:args [:filesystem :path :options :mutation] :returns :value :async true}
+  "delete" {:args [:filesystem :path :options :mutation] :returns :value :async true}
+  "copy" {:args [:filesystem :source :target :options :mutation] :returns :value :async true}
+  "move" {:args [:filesystem :source :target :options :mutation] :returns :value :async true}
+  "close" {:args [:filesystem] :returns :value :async true}}}

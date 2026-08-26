@@ -233,7 +233,7 @@
    :test (fn []
              (with-out-string (parse/print-delimiters (std.foundation.string/decode-utf8 (deref (File/read "test-data/std.block.heal/cases/001_basic.block")))
                                                       (parse/parse-delimiters (std.foundation.string/decode-utf8 (deref (File/read "test-data/std.block.heal/cases/001_basic.block")))) {:line-numbers true})))
-   :expected string?}]
+   :expected (checker/satisfies string?)}]
  migration-test-check)
 
 ^{:refer std.block.heal.parse/count-unescaped-quotes :added "4.0"}
@@ -343,10 +343,10 @@ that acts as a multi-line comment or docstring in other languages but not clojur
                {:char "n" :col 5 :last-idx 10 :line 3 :type :code}]}
    {:name "parse lines #3"
     :test (fn [] (parse/parse-lines sample-code))
-    :expected vector?}
+    :expected (checker/satisfies vector?)}
    {:name "parse lines #4"
     :test (fn [] (parse/parse-lines another-sample))
-    :expected vector?}]
+    :expected (checker/satisfies vector?)}]
   migration-test-check))
 
 ^{:refer std.block.heal.parse/is-open-heavy :added "4.0"}
@@ -475,5 +475,5 @@ that acts as a multi-line comment or docstring in other languages but not clojur
  [{:name "creates the index lookup"
    :test (fn []
              (sort (keys (parse/make-delimiter-index-lu (parse/pair-delimiters (parse/parse-delimiters "((\n)\n) \n)"))))))
-   :expected (quote (0 1 2 3 4))}]
+   :expected [0 1 2 3 4]}]
  migration-test-check)

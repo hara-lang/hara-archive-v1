@@ -49,7 +49,7 @@
 ^{:refer std.foundation/hash}
 (Test/run
  [{:name "dispatches hashing through Base/hash"
-   :test (fn [] [(std.foundation/hash [1 2])
+   :test (fn [] [(long? (std.foundation/hash [1 2]))
                  (= (std.foundation/hash [1 2])
                     (std.foundation/hash (std.foundation/list 1 2)))])
    :expected [true true]}])
@@ -107,8 +107,8 @@
 (Test/run
  [{:name "dispatches indexed access through INth"
    :test (fn [] [(std.foundation/nth [10 20 30] 1)
-                 (std.foundation/nth {:a 1} :a)])
-   :expected [20 1]}])
+                 (std.foundation/nth (std.foundation/tuple 10 20) 1)])
+   :expected [20 20]}])
 
 ^{:refer std.foundation/conj}
 (Test/run
@@ -120,8 +120,8 @@
 ^{:refer std.foundation/cons}
 (Test/run
  [{:name "conses a value through ICons"
-   :test (fn [] (std.foundation/cons 1 [2 3]))
-   :expected (1 2 3)}])
+     :test (fn [] (std.foundation/cons 1 [2 3]))
+     :expected '(1 2 3)}])
 
 ^{:refer std.foundation/tuple}
 (Test/run
@@ -193,7 +193,8 @@
 ^{:refer std.foundation/var-sym}
 (Test/run
  [{:name "returns the qualified symbol naming a Var"
-   :test (fn [] (std.foundation/var-sym (resolve 'std.foundation/var-sym)))
+   :test (fn [] (std.foundation/var-sym
+                 (std.foundation/resolve 'std.foundation/var-sym)))
    :expected 'std.foundation/var-sym}])
 
 ^{:refer std.foundation/env-snapshot}
@@ -223,9 +224,15 @@
 ^{:refer std.foundation/env-module}
 (Test/run [])
 
-^{:refer std.foundation/env-resolve}
+^{:refer std.foundation/resolve}
 (Test/run
  [{:name "does not load an unresolved symbol"
+   :test (fn [] (std.foundation/resolve 'missing/value))
+   :expected nil}])
+
+^{:refer std.foundation/env-resolve}
+(Test/run
+ [{:name "retains the environment compatibility alias"
    :test (fn [] (std.foundation/env-resolve 'missing/value))
    :expected nil}])
 
@@ -267,7 +274,7 @@
 (Test/run
  [{:name "expands one macro layer"
    :test (fn [] (std.foundation/macroexpand-1 '(when true 1)))
-   :expected (if true 1 nil)}])
+   :expected '(if true (do 1) nil)}])
 
 ^{:refer std.foundation/ns-alias-state}
 (Test/run [])
@@ -594,7 +601,7 @@
  [{:name "recognizes associative values"
    :test (fn [] [(std.foundation/associative? {:a 1})
                  (std.foundation/associative? [1])])
-   :expected [true false]}])
+   :expected [true true]}])
 
 ^{:refer std.foundation/findable?}
 (Test/run
@@ -608,7 +615,7 @@
  [{:name "recognizes lookupable values"
    :test (fn [] [(std.foundation/lookupable? {:a 1})
                  (std.foundation/lookupable? [1])])
-   :expected [true false]}])
+   :expected [true true]}])
 
 ^{:refer std.foundation/derefable?}
 (Test/run

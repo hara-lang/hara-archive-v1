@@ -7,10 +7,10 @@
            (let [codec (frame/json-line)
                  first (frame/feed-frame codec
                                          (frame/initial-state codec)
-                                         (bytes 123 34 120))
+                                         (std.native.Bytes/new 123 34 120))
                  second (frame/feed-frame codec
                                           (:state first)
-                                          (bytes 34 58 49 125 10 91 50 93 13 10))]
+                                          (std.native.Bytes/new 34 58 49 125 10 91 50 93 13 10))]
              (:frames second)))
    :expected [{"x" 1} [2]]}
   {:name "emits an unterminated final line"
@@ -31,5 +31,4 @@
              false
              (catch Throwable error true)))
    :expected true}])
-
 

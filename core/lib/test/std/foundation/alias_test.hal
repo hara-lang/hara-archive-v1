@@ -6,7 +6,7 @@
      (str/trim "  hara  ")
      => "hara")
    (fact "bytes/get source-declared alias works"
-     (bytes/get (bytes -1) 0)
+     (bytes/get (std.native.Bytes/new -1) 0)
      => 255)
    (fact "promise? source-declared alias works"
      (promise? (promise/new (fn [resolve reject] (resolve 1))))

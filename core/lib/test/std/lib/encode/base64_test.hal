@@ -2,11 +2,11 @@
   (:use code.test)
   (:require [std.lib.encode.base64 :as base64]))
 
-(def +all-bytes+ (apply bytes (range 0 256)))
+(def +all-bytes+ (apply std.native.Bytes/new (range 0 256)))
 
 ^{:refer std.lib.encode.base64/input-bytes}
 (fact "accepts Bytes and rejects other encode inputs"
-  [(bytes? (base64/input-bytes (bytes 1 2 3)))
+  [(bytes? (base64/input-bytes (std.native.Bytes/new 1 2 3)))
    (try (base64/input-bytes "Hara") false
         (catch Throwable error true))]
   => [true true])

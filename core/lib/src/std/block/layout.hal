@@ -213,7 +213,10 @@
   "the default function for level 1 transformation"
   {:added "4.0"}
   [form opts]
-  (let [is-multiline          (est/estimate-multiline form {})
+  (let [estimate-opts         (if (has? opts :width)
+                                (assoc opts :readable-len (:width opts))
+                                opts)
+        is-multiline          (est/estimate-multiline form estimate-opts)
         migration-map-value-1 (if (coll? form) (meta form))
         metadata              (get migration-map-value-1 :metadata)
         spec                  (get migration-map-value-1 :spec)

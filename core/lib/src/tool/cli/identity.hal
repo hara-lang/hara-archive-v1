@@ -34,7 +34,7 @@
   (get (:request/options request) name))
 
 (defn hex-character? [value]
-  (str/includes? "0123456789abcdef" value))
+  (str/includes? "0123456789abcdef" (str/to-string value)))
 
 (defn valid-hex? [value bytes]
   (and (string? value)

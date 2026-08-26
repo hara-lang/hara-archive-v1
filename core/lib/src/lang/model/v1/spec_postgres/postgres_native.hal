@@ -188,8 +188,8 @@
       (if (= index (count value))
         (= depth 0)
         (let [character (str/char-at value index)
-              next-depth (cond (= character "(") (+ depth 1)
-                               (= character ")") (- depth 1)
+              next-depth (cond (= character \() (+ depth 1)
+                               (= character \)) (- depth 1)
                                :else depth)]
           (if (and (= next-depth 0)
                    (< index (- (count value) 1)))
@@ -722,4 +722,3 @@
          :if {:raw "IF"}
          :elseif {:raw "ELSIF"}
          :else {:raw "ELSE"}}}}}})
-

@@ -34,6 +34,12 @@
 ;; Opaque native byte-buffer boundary
 ;; ---------------------------------------------------------------------------
 
+(defn ^{:inline true :schema [:fn [& :int] :bytes]}
+  run
+  "Creates a byte buffer from signed or unsigned byte values."
+  [& values]
+  (std.foundation/apply Bytes/new values))
+
 (defn ^{:inline true :schema [:fn [:bytes] :int]}
   count
   "Returns the number of bytes in value."

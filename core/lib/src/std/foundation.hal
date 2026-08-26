@@ -525,7 +525,13 @@
   env-module "Returns the loaded module descriptor for path, or nil." [path] (Runtime/module path))
 
 (defn ^{:inline true :schema [:fn [:symbol] :any]}
-  env-resolve "Resolves symbol without triggering namespace or package loading." [symbol] (Runtime/resolve symbol))
+  resolve "Resolves symbol without triggering namespace or package loading." [symbol] (Runtime/resolve symbol))
+
+(defn ^{:inline true :schema [:fn [:symbol] :any]}
+  env-resolve
+  "Compatibility alias for resolve."
+  [symbol]
+  (Runtime/resolve symbol))
 
 (defn ^{:inline true :schema [:fn [:any] :any]}
   the-ns
@@ -553,7 +559,7 @@
   ([] (Runtime/gensym))
   ([prefix] (Runtime/gensym prefix)))
 
-(defn ^{:inline true :schema [:fn [:any] :any]}
+(defn ^{:inline false :schema [:fn [:any] :any]}
   macroexpand-1
   "Expands one macro layer of form."
   [form]
@@ -2712,7 +2718,7 @@
     (list 'if
           (list 'Runtime/resolve (list 'quote qualified))
           (list 'Runtime/resolve (list 'quote qualified))
-          (list 'eval (list 'quote (list 'def name expression))))))
+          (list 'Runtime/eval (list 'quote (list 'def name expression))))))
 
 (defmacro ->
   "Threads value through forms, inserting it as the first argument unless a

@@ -175,8 +175,8 @@
 ^{:refer std.block.type/modifier-block :added "3.0"}
 (Test/run
  [{:name "creates a modifier block, specifically #_"
-   :test (fn [] (modifier-block :hash-uneval "#_" (fn [acc _] acc)))
-   :expected modifier-block?}]
+   :test (fn [] (modifier-block? (modifier-block :hash-uneval "#_" (fn [acc _] acc))))
+   :expected true}]
  migration-test-check)
 
 ^{:refer std.block.type/code-block? :added "4.0"}

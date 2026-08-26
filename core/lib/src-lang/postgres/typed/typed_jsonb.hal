@@ -7,7 +7,7 @@
   (if (symbol? sym)
     (let [value (name sym)
           stripped (if (and (> (str/length value) 1)
-                            (= "-" (str/char-at value 1)))
+                            (= \- (str/char-at value 1)))
                      (str/slice value 2)
                      value)]
       (keyword stripped))

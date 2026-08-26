@@ -90,15 +90,15 @@
      [#ptr {:context :test
             :id :test
             :namespace "code.test-work-batch-test"
-            :name "batch failing fact"
+            :name "batch passing fact"
             :revision 11
-            :definition 11}
+            :definition "definition:batch-passing-v1"}
       #ptr {:context :test
             :id :test
             :namespace "code.test-work-batch-test"
-            :name "batch passing fact"
+            :name "batch failing fact"
             :revision 11
-            :definition "definition:batch-passing-v1"}]])
+            :definition 11}]])
 
    (test-check
     "explicit source digests invalidate checkpoint identity"

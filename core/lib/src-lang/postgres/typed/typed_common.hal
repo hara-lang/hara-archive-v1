@@ -62,12 +62,12 @@
         output
         (let [ch (str/char-at value index)
               lower-ch (str/char-at lowered index)
-              separator? (or (= ch "-") (= ch " "))
+              separator? (or (= ch \-) (= ch \space))
               hump? (and (> index 0) (not separator?) (not= ch lower-ch))]
           (recur (inc index)
                  (str output
                       (if (or separator? hump?) "_" "")
-                      (if separator? "" lower-ch))))))))
+                      (if separator? "" (str/to-string lower-ch)))))))))
 
 (defn normalize-key
   "Converts a string or structured key to a snake_case string."
@@ -83,20 +83,22 @@
 
 (defn- ts-first-char?
   [ch]
-  (str/includes? "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_$" ch))
+  (str/includes? "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_$"
+                 (str/to-string ch)))
 
 (defn- ts-rest-char?
   [ch]
-  (str/includes? "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_$" ch))
+  (str/includes? "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_$"
+                 (str/to-string ch)))
 
 (defn- ts-identifier?
   [value]
   (and (> (str/length value) 0)
-       (ts-first-char? (str/char-at value 0))
+       (ts-first-char? (str/to-string (str/char-at value 0)))
        (loop [index 1]
          (if (= index (str/length value))
            true
-           (if (ts-rest-char? (str/char-at value index))
+           (if (ts-rest-char? (str/to-string (str/char-at value index)))
              (recur (inc index))
              false)))))
 

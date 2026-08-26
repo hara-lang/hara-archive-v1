@@ -311,18 +311,18 @@
        (if (= index (str/length pattern))
          output
          (let [character (str/char-at pattern index)]
-           (cond (= character "'") (recur (inc index) output (not quoted))
-                 quoted (recur (inc index) (str output character) quoted)
+           (cond (= character \') (recur (inc index) output (not quoted))
+                 quoted (recur (inc index) (str output (str/to-string character)) quoted)
                  :else (let [token (token-at pattern index)]
                          (if token
                            (recur (+ index (str/length token))
                                   (str output (token-value date-value token)) false)
-                           (recur (inc index) (str output character) false))))))))))
+                           (recur (inc index) (str output (str/to-string character)) false))))))))))
 
 (defn format-iso [value]
   (std.lib.time/format value "yyyy-MM-dd'T'HH:mm:ss.SSSXXX"))
 
-(defn- digit? [character] (not= -1 (str/index-of "0123456789" character)))
+(defn- digit? [character] (not= -1 (str/index-of "0123456789" (str/to-string character))))
 
 (defn- parse-digits [source index width field]
   (if (> (+ index width) (str/length source))
@@ -331,19 +331,20 @@
       (if (every? digit? (map (fn [position] (str/char-at text position)) (range width)))
         [(reduce (fn [number position]
                    (+ (* number 10)
-                      (str/index-of "0123456789" (str/char-at text position))))
+                      (str/index-of "0123456789"
+                                    (str/to-string (str/char-at text position)))))
                  0 (range width))
          (+ index width)]
         (fail "time field contains non-digits" {:field field :text text})))))
 
 (defn- parse-offset [source]
-  (if (= "Z" (str/char-at source 23))
+  (if (= \Z (str/char-at source 23))
     0
     (let [hour (first (parse-digits source 24 2 :offset-hour))
           minute (first (parse-digits source 27 2 :offset-minute))]
       (if (or (> hour 18) (> minute 59) (and (= hour 18) (not= minute 0)))
         (fail "ISO offset is outside its valid range" {:source source})
-        (* (if (= "-" (str/char-at source 23)) -1 1)
+        (* (if (= \- (str/char-at source 23)) -1 1)
            (+ (* 60 hour) minute))))))
 
 (defn parse
@@ -354,17 +355,17 @@
            {:pattern pattern})
      (if-not (or (= 24 (str/length source)) (= 29 (str/length source)))
        (fail "ISO time text must end in Z or a signed offset" {:source source})
-       (if-not (and (= "-" (str/char-at source 4))
-                    (= "-" (str/char-at source 7))
-                    (= "T" (str/char-at source 10))
-                    (= ":" (str/char-at source 13))
-                    (= ":" (str/char-at source 16))
-                    (= "." (str/char-at source 19))
-                    (or (= "Z" (str/char-at source 23))
+       (if-not (and (= \- (str/char-at source 4))
+                    (= \- (str/char-at source 7))
+                    (= \T (str/char-at source 10))
+                    (= \: (str/char-at source 13))
+                    (= \: (str/char-at source 16))
+                    (= \. (str/char-at source 19))
+                    (or (= \Z (str/char-at source 23))
                         (and (= 29 (str/length source))
-                             (or (= "+" (str/char-at source 23))
-                                 (= "-" (str/char-at source 23)))
-                             (= ":" (str/char-at source 26)))))
+                             (or (= \+ (str/char-at source 23))
+                                 (= \- (str/char-at source 23)))
+                             (= \: (str/char-at source 26)))))
          (fail "ISO time text does not match the canonical pattern" {:source source})
          (make-civil
           {:year (first (parse-digits source 0 4 :year))

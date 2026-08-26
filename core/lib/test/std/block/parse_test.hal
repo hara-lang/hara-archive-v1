@@ -24,7 +24,7 @@
    :test (fn [] (read-dispatch \tab))
    :expected :void}
   {:name "dispatches on first symbol #2"
-   :test (fn [] (read-dispatch (first "#")))
+   :test (fn [] (read-dispatch (str/char-at "#" 0)))
    :expected :hash}]
  migration-test-check)
 
@@ -145,7 +145,7 @@
 (Test/run
  [{:name "checks if block is of tag :delimiter"
    :test (fn []
-             (delimiter-block? (binding [*end-delimiter* (first "}")] (-parse (reader/create "}")))))
+             (delimiter-block? (binding [*end-delimiter* (str/char-at "}" 0)] (-parse (reader/create "}")))))
    :expected true}]
  migration-test-check)
 
@@ -177,7 +177,7 @@
    :test (fn []
              (apply str
                     (map std.block.base/block-representation
-                         (read-collection (reader/create "(1 2 3 4 5)") "(" (first ")")))))
+                         (read-collection (reader/create "(1 2 3 4 5)") "(" (str/char-at ")" 0)))))
    :expected "1␣2␣3␣4␣5"}]
  migration-test-check)
 

@@ -23,7 +23,7 @@
   [character]
   (str/includes?
    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
-   character))
+   (str/to-string character)))
 
 (defn- windows-drive-path?
   [path]
@@ -35,7 +35,7 @@
           (str/split path "/")))]
     (and (not (nil? segment))
          (>= (str/length segment) 2)
-         (= (str/char-at segment 1) ":")
+         (= (str/char-at segment 1) \:)
          (ascii-letter? (str/char-at segment 0)))))
 
 (defn- checked-path

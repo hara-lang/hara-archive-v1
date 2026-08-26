@@ -9,26 +9,38 @@
 (def SERVICE "filesystem.github")
 (def ROUTE "hta-wasm")
 
+(defprotocol IFilesystemProvider
+  (provider-describe [provider])
+  (provider-open [provider options])
+  (provider-descriptor [provider filesystem])
+  (provider-stat [provider filesystem path])
+  (provider-read [provider filesystem path])
+  (provider-write [provider filesystem path bytes options mutation])
+  (provider-entries-page [provider filesystem path request])
+  (provider-mkdir [provider filesystem path options mutation])
+  (provider-delete [provider filesystem path options mutation])
+  (provider-copy [provider filesystem source target options mutation])
+  (provider-move [provider filesystem source target options mutation]))
+
+(defprotocol IFilesystemProviderLifecycle
+  (provider-close [provider filesystem]))
+
+(defstruct Provider [service route])
+(def provider (hara.hta.provider/Provider SERVICE ROUTE))
+
 (defn same?
   [left right]
   (= left right))
 
 (defn map-value?
   [value]
-  (if value
-    (try
-      (do
-        (ILookup/lookup value :__hta-map-probe)
-        true)
-      (catch error
-        false))
-    false))
+  (map? value))
 
 (defn lookup-field
   [value keyword-key string-key]
   (if (map-value? value)
-    (or (ILookup/lookup value keyword-key)
-        (ILookup/lookup value string-key))
+    (or (get value keyword-key)
+        (get value string-key))
     nil))
 
 (defn filesystem-id
@@ -217,33 +229,45 @@
     (promise/from nil)
     (host "close" [(filesystem-id filesystem)])))
 
+(extend-type Provider IFilesystemProvider
+  (provider-describe [_] (describe))
+  (provider-open [_ options] (open options))
+  (provider-descriptor [_ filesystem] (descriptor filesystem))
+  (provider-stat [_ filesystem path] (stat filesystem path))
+  (provider-read [_ filesystem path] (read filesystem path))
+  (provider-write [_ filesystem path bytes options mutation]
+    (write filesystem path bytes options mutation))
+  (provider-entries-page [_ filesystem path request]
+    (entries-page filesystem path request))
+  (provider-mkdir [_ filesystem path options mutation]
+    (mkdir filesystem path options mutation))
+  (provider-delete [_ filesystem path options mutation]
+    (delete filesystem path options mutation))
+  (provider-copy [_ filesystem source target options mutation]
+    (copy filesystem source target options mutation))
+  (provider-move [_ filesystem source target options mutation]
+    (move filesystem source target options mutation)))
+
+(extend-type Provider IFilesystemProviderLifecycle
+  (provider-close [_ filesystem] (close filesystem)))
+
 ^{:public true}
 (defn dispatch
   "Stable entrypoint used by the rich HTA raw runtime."
   [operation arguments]
   (cond
-    (same? operation "describe") (describe)
-    (same? operation "open") (open (ILookup/lookup arguments 0))
-    (same? operation "descriptor") (descriptor (ILookup/lookup arguments 0))
-    (same? operation "stat") (stat (ILookup/lookup arguments 0) (ILookup/lookup arguments 1))
-    (same? operation "read") (read (ILookup/lookup arguments 0) (ILookup/lookup arguments 1))
-    (same? operation "write") (write (ILookup/lookup arguments 0) (ILookup/lookup arguments 1)
-                                  (ILookup/lookup arguments 2) (ILookup/lookup arguments 3)
-                                  (ILookup/lookup arguments 4))
-    (same? operation "entries-page") (entries-page (ILookup/lookup arguments 0)
-                                                (ILookup/lookup arguments 1)
-                                                (ILookup/lookup arguments 2))
-    (same? operation "mkdir") (mkdir (ILookup/lookup arguments 0) (ILookup/lookup arguments 1)
-                                  (ILookup/lookup arguments 2) (ILookup/lookup arguments 3))
-    (same? operation "delete") (delete (ILookup/lookup arguments 0) (ILookup/lookup arguments 1)
-                                    (ILookup/lookup arguments 2) (ILookup/lookup arguments 3))
-    (same? operation "copy") (copy (ILookup/lookup arguments 0) (ILookup/lookup arguments 1)
-                                (ILookup/lookup arguments 2) (ILookup/lookup arguments 3)
-                                (ILookup/lookup arguments 4))
-    (same? operation "move") (move (ILookup/lookup arguments 0) (ILookup/lookup arguments 1)
-                                (ILookup/lookup arguments 2) (ILookup/lookup arguments 3)
-                                (ILookup/lookup arguments 4))
-    (same? operation "close") (close (ILookup/lookup arguments 0))
+    (same? operation "describe") (provider-describe provider)
+    (same? operation "open") (apply provider-open (cons provider arguments))
+    (same? operation "descriptor") (apply provider-descriptor (cons provider arguments))
+    (same? operation "stat") (apply provider-stat (cons provider arguments))
+    (same? operation "read") (apply provider-read (cons provider arguments))
+    (same? operation "write") (apply provider-write (cons provider arguments))
+    (same? operation "entries-page") (apply provider-entries-page (cons provider arguments))
+    (same? operation "mkdir") (apply provider-mkdir (cons provider arguments))
+    (same? operation "delete") (apply provider-delete (cons provider arguments))
+    (same? operation "copy") (apply provider-copy (cons provider arguments))
+    (same? operation "move") (apply provider-move (cons provider arguments))
+    (same? operation "close") (apply provider-close (cons provider arguments))
     :else (throw (ex :file/unsupported
                      {:operation operation}
                      :ex/message "GitHub filesystem operation is not exported"))))

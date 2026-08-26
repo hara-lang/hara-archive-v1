@@ -331,20 +331,18 @@
                                e2                   (first (drop 1 migration-errors-two))
                                more                 (drop 2 migration-errors-two)]
                               (cond
-                               (and (= (:type e1) :open) (nil? e2))
-                               (let
-                                [closed             (->>
-                                                     delimiters
-                                                     (filter
-                                                      (fn
-                                                       [migration-argument-0]
-                                                       (= ((keyword "type") migration-argument-0) (keyword "close"))))
-                                                     (group-by :line))
-                                 {:keys [line col]} (first
-                                                     (keep
-                                                      (fn [migration-argument-0] (last (get closed migration-argument-0)))
-                                                      (reverse (range (first (:line at)) (inc (second (:line at)))))))]
-                                [{:action :insert :col col :line line :new-char (parse/lu-close (:char e1))}])
+                               (and (= (:type e1) :open)
+                                    (every? (fn [error] (= :open (:type error))) errors))
+                               (let [line-number (second (:line at))
+                                     line-content (nth lines (dec line-number))
+                                     new-char (apply str
+                                                     (map (fn [error]
+                                                            (parse/lu-close (:char error)))
+                                                          (reverse errors)))]
+                                [{:action :insert
+                                  :col (count line-content)
+                                  :line line-number
+                                  :new-char new-char}])
                                (and (= (:type e1) :close) (nil? e2))
                                (edit/create-remove-edits [e1])
                                (and (= (:type e1) :close) (= (:type e2) :close))

@@ -31,10 +31,12 @@
                       [[(:line delim) (:col delim)] color])))
                    (into {}))]
     (do (reduce (fn [[line-num col-num] char]
-                  (let [color (get color-map [line-num col-num])]
-                    (if color (Printer/p (str color char +reset-color+)) (Printer/p char))
-                    (if (= char \newline) [(inc line-num) 1] [line-num (inc col-num)])))
+                  (let [color (get color-map [line-num col-num])
+                        text  (str/to-string char)]
+                    (if color (Printer/p (str color text +reset-color+)) (Printer/p text))
+                    (if (= char \newline)
+                      [(inc line-num) 1]
+                      [line-num (inc col-num)])))
           [1 1]
           (seq content))
       nil)))
-

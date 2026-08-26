@@ -7,6 +7,13 @@
    :refer 'sample.core/render
    :namespace 'sample.core})
 
+^{:refer work.flow.task.selector/matches?}
+(fact "task-flow keyword selectors do not invoke keyword lookup"
+  [(selector/matches? :fail-fast :fail-fast)
+   (selector/matches? :fail-fast :other)
+   (selector/matches? (fn [value] (= value :fail-fast)) :fail-fast)]
+  => [true false true])
+
 (fact "task-flow selectors preserve scalar and collection semantics"
   [(selector/matches? 'code 'code.test)
    (selector/matches? ['std 'code.test] 'code.test)

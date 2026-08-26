@@ -19,7 +19,7 @@
         content (if (and (> length 0) (= 13 (nth value (dec length))))
                   (vec (take (dec length) value))
                   value)]
-    ((:decode-value codec) (str/decode-utf8 (apply bytes content)))))
+    ((:decode-value codec) (str/decode-utf8 (apply std.native.Bytes/new content)))))
 
 (defn feed-values [codec values index current frames]
   (if (= index (count values))
@@ -46,7 +46,7 @@
         (if (> (bytes/count payload) (:max-frame-bytes codec))
           (throw (ex :limit {:error/type :codec/frame-too-large
                            :max-frame-bytes (:max-frame-bytes codec)} :ex/message "Frame exceeds maximum byte length"))
-          (apply bytes (conj (append-bytes [] payload) 10))))))
+          (apply std.native.Bytes/new (conj (append-bytes [] payload) 10))))))
   (feed-frame [codec state chunk]
     (if (not (bytes? chunk))
       (throw (ex :io {:value chunk} :ex/message "Frame codec expects Bytes")))
@@ -64,4 +64,3 @@
   ([] (json-line {}))
   ([options]
    (LineCodec Json/write Json/read (or (:max-frame-bytes options) 1048576))))
-

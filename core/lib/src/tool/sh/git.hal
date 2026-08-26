@@ -98,8 +98,8 @@
             (update output :untracked conj value)
 
             :else
-            (let [x (str/char-at code 0)
-                  y (str/char-at code 1)
+            (let [x (str/to-string (str/char-at code 0))
+                  y (str/to-string (str/char-at code 1))
                   output (if (staged-code? x)
                            (update output :staged conj value)
                            output)]

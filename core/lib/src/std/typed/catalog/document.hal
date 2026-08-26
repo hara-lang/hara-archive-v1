@@ -94,7 +94,7 @@
    (loop [index 0]
      (if (= index length)
        true
-       (let [character (str (str/char-at value index))]
+       (let [character (str/to-string (str/char-at value index))]
          (if (< (str/index-of +hex-digits+ character) 0)
            false
            (recur (inc index))))))))

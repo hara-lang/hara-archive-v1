@@ -27,21 +27,22 @@
         (let [byte (bytes/get source index)]
           (recur (inc index)
                  (if (unreserved? byte)
-                   (str output (str/decode-utf8 (bytes byte)))
+                   (str output (str/decode-utf8 (std.native.Bytes/new byte)))
                    (str output "%"
-                        (str/char-at +hex+ (Bits/shift-right byte 4))
-                        (str/char-at +hex+ (Bits/and byte 15))))))))))
+                        (str/to-string (str/char-at +hex+ (Bits/shift-right byte 4)))
+                        (str/to-string (str/char-at +hex+ (Bits/and byte 15)))))))))))
 
 (defn- hex-value
   [character index]
-  (let [value (str/index-of +hex+ (str/upper-case character))]
+  (let [value (str/index-of +hex+
+                             (str/upper-case (str/to-string character)))]
     (if (neg? value)
       (throw (ex :serialization {:character character :index index} :ex/message "Invalid URL percent escape"))
       value)))
 
 (defn- append-character
   [output character]
-  (let [encoded (str/encode-utf8 character)]
+    (let [encoded (str/encode-utf8 (str/to-string character))]
     (loop [index 0 result output]
       (if (= index (bytes/count encoded))
         result
@@ -55,9 +56,9 @@
   (let [length (str/length source)]
     (loop [index 0 output []]
       (if (= index length)
-        (str/decode-utf8 (apply bytes output))
+        (str/decode-utf8 (apply std.native.Bytes/new output))
         (let [character (str/char-at source index)]
-          (if (= character "%")
+          (if (= character \%)
             (if (> (+ index 3) length)
               (throw (ex :serialization {:value source :index index} :ex/message "Incomplete URL percent escape"))
               (let [high (hex-value (str/char-at source (inc index))

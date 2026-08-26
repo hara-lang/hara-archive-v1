@@ -1,0 +1,12 @@
+{
+  "name": "@hara-lang/fs-s3-wasm",
+  "version": "0.1.0",
+  "description": "Rich HTA Wasm S3 IFilesystem provider for Hara",
+  "license": "Apache-2.0",
+  "type": "module",
+  "private": true,
+  "exports": {
+    "./host": "./host.mjs",
+    "./manifest": "./extension.edn"
+  }
+}

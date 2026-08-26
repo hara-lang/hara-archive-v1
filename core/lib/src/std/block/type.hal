@@ -40,7 +40,13 @@
 
 (defn void-block
   [tag character width height]
-  (Block :void tag (str character) nil [] {:width width :height height}))
+  (let [text (cond (= character \space) " "
+                   (= character \tab) "\t"
+                   (= character \newline) "\n"
+                   (= character \return) "\r"
+                   (= character \formfeed) "\f"
+                   :else (str character))]
+    (Block :void tag text nil [] {:width width :height height})))
 
 (defn void-block?
   [block]

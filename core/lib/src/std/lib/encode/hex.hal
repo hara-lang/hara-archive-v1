@@ -21,12 +21,13 @@
         (let [byte (bytes/get value index)]
           (recur (inc index)
                  (str output
-                      (str/char-at +digits+ (Bits/shift-right byte 4))
-                      (str/char-at +digits+ (Bits/and byte 15)))))))))
+                      (str/to-string (str/char-at +digits+ (Bits/shift-right byte 4)))
+                      (str/to-string (str/char-at +digits+ (Bits/and byte 15))))))))))
 
 (defn digit
   [value index]
-  (let [number (str/index-of +digits+ (str/lower-case value))]
+  (let [number (str/index-of +digits+
+                             (str/lower-case (str/to-string value)))]
     (if (neg? number)
       (throw (ex :serialization {:value value :index index} :ex/message "Invalid hexadecimal digit"))
       number)))
@@ -40,7 +41,7 @@
       (throw (ex :serialization {:value value :length length} :ex/message "Hex input must contain an even number of digits")))
     (loop [index 0 output []]
       (if (= index length)
-        (apply bytes output)
+        (apply std.native.Bytes/new output)
         (let [high (digit (str/char-at value index) index)
               low-index (inc index)
               low (digit (str/char-at value low-index) low-index)]

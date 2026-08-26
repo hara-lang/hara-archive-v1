@@ -109,8 +109,8 @@
         output
         (let [character (str/char-at source index)]
           (recur (inc index)
-                 (if (str/includes? allowed character)
-                   (str output character)
+                 (if (str/includes? allowed (str/to-string character))
+                   (str output (str/to-string character))
                    output)))))))
 
 (defn inferred-shape-rows

@@ -414,7 +414,7 @@
   (flush [relay] (std.stream.relay/flush relay)))
 
 (defn raw-bytes [values]
-  (apply bytes values))
+  (apply std.native.Bytes/new values))
 
 (defn pop-raw [relay length]
   (loop []

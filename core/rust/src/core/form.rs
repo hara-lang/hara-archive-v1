@@ -913,20 +913,22 @@ pub(crate) fn call_function(function: &Function, arguments: Vec<Value>) -> Resul
         });
     }
     let caller_scoped_foundation = function.namespace.as_deref() == Some("std.foundation")
-        && matches!(
-            function.name.as_deref(),
-            Some(
-                "macroexpand"
-                    | "env-current"
-                    | "current-namespace"
-                    | "env-snapshot"
-                    | "env-vars"
-                    | "env-namespaces"
-                    | "env-namespace"
-                    | "env-module"
-                    | "env-resolve"
-            )
-        );
+        && (function.is_macro
+            || matches!(
+                function.name.as_deref(),
+                Some(
+                    "macroexpand"
+                        | "macroexpand-1"
+                        | "env-current"
+                        | "current-namespace"
+                        | "env-snapshot"
+                        | "env-vars"
+                        | "env-namespaces"
+                        | "env-namespace"
+                        | "env-module"
+                        | "env-resolve"
+                )
+            ));
     let namespace_scope = namespace_registry().ok().and_then(|registry| {
         (!caller_scoped_foundation)
             .then_some(())

@@ -1,0 +1,212 @@
+;; Rich HTA provider source for hara/filesystem-sftp.
+;;
+;; SSH credentials, host-key verification, SFTP connections, and bounded
+;; transport operations remain in a trusted Node host.  This module contains
+;; only the portable Hara façade.
+(ns hara.hta.provider
+  (:config {:role :internal}))
+
+(def SERVICE "filesystem.sftp")
+(def ROUTE "hta-wasm")
+
+(defprotocol IFilesystemProvider
+  (provider-describe [provider])
+  (provider-open [provider options])
+  (provider-descriptor [provider filesystem])
+  (provider-stat [provider filesystem path])
+  (provider-read [provider filesystem path])
+  (provider-write [provider filesystem path bytes options mutation])
+  (provider-entries-page [provider filesystem path request])
+  (provider-mkdir [provider filesystem path options mutation])
+  (provider-delete [provider filesystem path options mutation])
+  (provider-copy [provider filesystem source target options mutation])
+  (provider-move [provider filesystem source target options mutation]))
+
+(defprotocol IFilesystemProviderLifecycle
+  (provider-close [provider filesystem]))
+
+(defstruct Provider [service route])
+(def provider (hara.hta.provider/Provider SERVICE ROUTE))
+
+(defn same? [left right] (= left right))
+
+(defn map-value? [value]
+  (map? value))
+
+(defn lookup-field [value keyword-key string-key]
+  (if (map-value? value)
+    (or (get value keyword-key)
+        (get value string-key))
+    nil))
+
+(defn filesystem-id [filesystem]
+  (if (map-value? filesystem)
+    (or (lookup-field filesystem :id "id")
+        (lookup-field filesystem :mount "mount")
+        (throw (ex :file/closed {:filesystem filesystem}
+                   :ex/message "SFTP filesystem descriptor has no provider id")))
+    filesystem))
+
+(defn normalise-path [value]
+  (if (same? (Base/type value) :std.native.String)
+    nil
+    (throw (ex :file/invalid-path {:path value}
+               :ex/message "SFTP filesystem path must be a string")))
+  (if (or (str/includes? value "\u0000")
+          (str/includes? value "\\")
+          (str/includes? value ":")
+          (str/includes? value "//")
+          (same? value ".")
+          (str/starts-with? value "./")
+          (str/ends-with? value "/."))
+    (throw (ex :file/invalid-path {:path value}
+               :ex/message "SFTP filesystem path contains an unsafe character")))
+  (if (or (same? value "..")
+          (str/starts-with? value "../")
+          (str/ends-with? value "/..")
+          (str/includes? value "/../"))
+    (throw (ex :file/outside-root {:path value}
+               :ex/message "SFTP filesystem path escapes the mounted root")))
+  (if (same? value "") "/"
+      (if (str/starts-with? value "/") value (String/join "" ["/" value]))))
+
+(defn options [value]
+  (if (same? value nil) {}
+      (if (map-value? value) value
+          (throw (ex :file/descriptor-invalid {:options value}
+                     :ex/message "SFTP filesystem options must be a map")))))
+
+(defn mutation [value]
+  (if (same? value nil) {}
+      (if (map-value? value) value
+          (throw (ex :file/descriptor-invalid {:mutation value}
+                     :ex/message "SFTP filesystem mutation context must be a map")))))
+
+(defn host [method arguments]
+  (std.native.Host/call SERVICE method arguments))
+
+(defn request [filesystem operation arguments]
+  (host "request" [(filesystem-id filesystem) operation arguments]))
+
+(defn annotate-descriptor [value]
+  (if (map-value? value)
+    (let [extensions (or (lookup-field value :extensions "extensions") {})]
+      (assoc value :extensions
+             (assoc extensions
+                    :provider/route ROUTE
+                    :provider/root-scoped? true
+                    :provider/transport-verified? true)))
+    value))
+
+^{:public true}
+(defn describe [] (host "describe" []))
+
+^{:public true}
+(defn open [value]
+  (promise/then (host "open" [(options value)]) annotate-descriptor))
+
+^{:public true}
+(defn descriptor [filesystem]
+  (or (lookup-field filesystem :descriptor "descriptor")
+      (throw (ex :file/descriptor-invalid {:filesystem filesystem}
+                 :ex/message "SFTP filesystem descriptor is missing"))))
+
+^{:public true}
+(defn stat [filesystem path]
+  (request filesystem "stat" [(normalise-path path)]))
+
+^{:public true}
+(defn read [filesystem path]
+  (request filesystem "read" [(normalise-path path)]))
+
+^{:public true}
+(defn write [filesystem path bytes write-options mutation-context]
+  (if (or (same? (Base/type bytes) :std.native.Bytes)
+          (same? (Base/type bytes) :std.native.ByteBuffer))
+    nil
+    (throw (ex :file/descriptor-invalid {:path path}
+               :ex/message "SFTP filesystem write requires bytes")))
+  (request filesystem "write"
+           [(normalise-path path) bytes (options write-options)
+            (mutation mutation-context)]))
+
+^{:public true}
+(defn entries-page [filesystem path page-request]
+  (request filesystem "entries-page"
+           [(normalise-path path) (options page-request)]))
+
+^{:public true}
+(defn mkdir [filesystem path mkdir-options mutation-context]
+  (request filesystem "mkdir"
+           [(normalise-path path) (options mkdir-options)
+            (mutation mutation-context)]))
+
+^{:public true}
+(defn delete [filesystem path delete-options mutation-context]
+  (if (same? "/" (normalise-path path))
+    (throw (ex :file/denied {:path path}
+               :ex/message "SFTP filesystem root cannot be deleted"))
+    (request filesystem "delete"
+             [(normalise-path path) (options delete-options)
+              (mutation mutation-context)])))
+
+^{:public true}
+(defn copy [filesystem source target copy-options mutation-context]
+  (request filesystem "copy"
+           [(normalise-path source) (normalise-path target)
+            (options copy-options) (mutation mutation-context)]))
+
+^{:public true}
+(defn move [filesystem source target move-options mutation-context]
+  (if (or (same? "/" (normalise-path source))
+          (same? "/" (normalise-path target)))
+    (throw (ex :file/denied {:source source :target target}
+               :ex/message "SFTP filesystem root cannot be moved"))
+    (request filesystem "move"
+             [(normalise-path source) (normalise-path target)
+              (options move-options) (mutation mutation-context)])))
+
+^{:public true}
+(defn close [filesystem]
+  (if (same? filesystem nil) (promise/from nil)
+      (host "close" [(filesystem-id filesystem)])))
+
+(extend-type Provider IFilesystemProvider
+  (provider-describe [_] (describe))
+  (provider-open [_ options] (open options))
+  (provider-descriptor [_ filesystem] (descriptor filesystem))
+  (provider-stat [_ filesystem path] (stat filesystem path))
+  (provider-read [_ filesystem path] (read filesystem path))
+  (provider-write [_ filesystem path bytes options mutation]
+    (write filesystem path bytes options mutation))
+  (provider-entries-page [_ filesystem path request]
+    (entries-page filesystem path request))
+  (provider-mkdir [_ filesystem path options mutation]
+    (mkdir filesystem path options mutation))
+  (provider-delete [_ filesystem path options mutation]
+    (delete filesystem path options mutation))
+  (provider-copy [_ filesystem source target options mutation]
+    (copy filesystem source target options mutation))
+  (provider-move [_ filesystem source target options mutation]
+    (move filesystem source target options mutation)))
+
+(extend-type Provider IFilesystemProviderLifecycle
+  (provider-close [_ filesystem] (close filesystem)))
+
+^{:public true}
+(defn dispatch [operation arguments]
+  (cond
+    (same? operation "describe") (provider-describe provider)
+    (same? operation "open") (apply provider-open (cons provider arguments))
+    (same? operation "descriptor") (apply provider-descriptor (cons provider arguments))
+    (same? operation "stat") (apply provider-stat (cons provider arguments))
+    (same? operation "read") (apply provider-read (cons provider arguments))
+    (same? operation "write") (apply provider-write (cons provider arguments))
+    (same? operation "entries-page") (apply provider-entries-page (cons provider arguments))
+    (same? operation "mkdir") (apply provider-mkdir (cons provider arguments))
+    (same? operation "delete") (apply provider-delete (cons provider arguments))
+    (same? operation "copy") (apply provider-copy (cons provider arguments))
+    (same? operation "move") (apply provider-move (cons provider arguments))
+    (same? operation "close") (apply provider-close (cons provider arguments))
+    :else (throw (ex :file/unsupported {:operation operation}
+                     :ex/message "SFTP filesystem operation is not exported"))))

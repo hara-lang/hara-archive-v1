@@ -298,6 +298,7 @@ fn protocol_namespaced_namespace(arguments: &[Value]) -> Result<Value, String> {
 fn protocol_string_like_to_string(arguments: &[Value]) -> Result<Value, String> {
     match arguments {
         [Value::String(value)] => Ok(Value::String(value.clone())),
+        [Value::Character(value)] => Ok(Value::String(value.to_string())),
         [Value::Keyword(value)] => Ok(Value::String(value.as_str().into())),
         [Value::Symbol(value)] => Ok(Value::String(value.as_str().into())),
         [Value::Bytes(value)] => String::from_utf8(value.clone())
@@ -560,6 +561,11 @@ fn protocol_find(arguments: &[Value]) -> Result<Value, String> {
         }
         Value::Tuple(values) => indexed_find(values.get(value_index(key)?), value_index(key)?),
         Value::Vector(values) => indexed_find(values.get(value_index(key)?), value_index(key)?),
+        Value::Seq(values) => {
+            let index = value_index(key)?;
+            let value = values.iter().nth(index).transpose()?;
+            indexed_find(value.as_ref(), index)
+        }
         Value::List(values) => indexed_find(values.get(value_index(key)?), value_index(key)?),
         Value::Cons(values) => {
             let index = value_index(key)?;
@@ -1966,6 +1972,7 @@ impl Value {
                     | Self::Struct(_)
                     | Self::Mutable(_)
                     | Self::MutableCollection(_)
+                    | Self::Seq(_)
                     | Self::Pointer(_)
             )
     }
@@ -2047,7 +2054,7 @@ impl Value {
         Self::supports_native_map(value)
             || matches!(
                 value,
-                Self::Vector(_) | Self::Struct(_) | Self::MutableCollection(_)
+                Self::Tuple(_) | Self::Vector(_) | Self::Struct(_) | Self::MutableCollection(_)
             )
     }
     fn supports_native_idissoc(value: &Self) -> bool {
@@ -2074,6 +2081,7 @@ impl Value {
                     | Self::Deque(_)
                     | Self::Vector(_)
                     | Self::Tuple(_)
+                    | Self::Seq(_)
                     | Self::Pointer(_)
                     | Self::Object(_)
                     | Self::Struct(_)
@@ -2082,11 +2090,28 @@ impl Value {
             )
     }
     fn supports_native_ilookup(value: &Self) -> bool {
-        matches!(value, Self::Nil)
+        matches!(
+            value,
+            Self::Nil
+                | Self::Array(_)
+                | Self::Bytes(_)
+                | Self::ByteBuffer(_)
+                | Self::Cons(_)
+                | Self::Deque(_)
+                | Self::List(_)
+                | Self::Queue(_)
+                | Self::Seq(_)
+                | Self::String(_)
+                | Self::Set(_)
+                | Self::OrderedSet(_)
+                | Self::SortedSet(_)
+                | Self::Result(_)
+        )
             || Self::supports_native_map(value)
             || matches!(
                 value,
-                Self::Vector(_)
+                Self::Object(_)
+                    | Self::Vector(_)
                     | Self::Tuple(_)
                     | Self::Pointer(_)
                     | Self::Struct(_)
@@ -2147,7 +2172,11 @@ impl Value {
     fn supports_native_istringlike(value: &Self) -> bool {
         matches!(
             value,
-            Self::String(_) | Self::Keyword(_) | Self::Symbol(_) | Self::Bytes(_)
+            Self::String(_)
+                | Self::Character(_)
+                | Self::Keyword(_)
+                | Self::Symbol(_)
+                | Self::Bytes(_)
         )
     }
     fn supports_native_inamespaced(value: &Self) -> bool {

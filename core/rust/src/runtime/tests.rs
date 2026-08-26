@@ -472,7 +472,7 @@ mod tests {
             runtime
                 .eval_text("(macroexpand-1 '(defonce retained-state (atom 1)))")
                 .unwrap(),
-            "(if (Runtime/resolve (quote user/retained-state)) (Runtime/resolve (quote user/retained-state)) (eval (quote (def retained-state (atom 1)))))"
+            "(if (Runtime/resolve (quote user/retained-state)) (Runtime/resolve (quote user/retained-state)) (Runtime/eval (quote (def retained-state (atom 1)))))"
         );
         assert_eq!(
             runtime
@@ -5179,7 +5179,7 @@ mod tests {
                     )
                     .unwrap();
                 let probes = [
-                    ("[(type (str/char-at \" \" 0)) (str/char-at \" \" 0)]", "[:std.native.String \" \"]"),
+                    ("[(type (str/char-at \" \" 0)) (str/char-at \" \" 0)]", "[:std.native.Character \\space]"),
                     ("(let [b (block/parse-string \"[1 2 3]\")] [(block/string b) (block/value b)])", "[\"[1 2 3]\" [1 2 3]]"),
                     ("(let [b (block/parse-first \"[1 2 3]\")] [(block/type b) (block/tag b) (vec (map block/value (filter block/code? (block/children b))))])", "[:container :vector [1 2 3]]"),
                     ("(let [blocks (block/spaces 3)] [(apply str (map block/string blocks)) (every? block/space? blocks)])", "[\"   \" true]"),
@@ -5187,7 +5187,7 @@ mod tests {
                     ("(block/string (grid/grid (block/parse-first \"(if\\nready\\ndone)\") 0 {:rules {'if {:indent 1}}}))", "\"(if\\n  ready\\n  done)\""),
                     ("(let [b (block/parse-first \"[1 #_2 3]\")] [(block/value b) (block/child-values b)])", "[[1 3] [1 3]]"),
                     ("(let [original (block/block [1 2]) location (std.lib.zip/step-right (std.lib.zip/step-right (std.lib.zip/step-inside (navigate/navigator original)))) edited (std.lib.zip/root-element (std.lib.zip/replace-right location (block/block 3)))] [(block/string original) (block/string edited)])", "[\"[1 2]\" \"[1 3]\"]"),
-                    ("(let [input (reader/create \"ab\\ncd\") first-two (reader/read-times input reader/read-char 2) newline (reader/read-char input)] [first-two (reader/reader-position input) (reader/read-to-boundary input)])", "[[\"a\" \"b\"] [2 1] \"cd\"]"),
+                    ("(let [input (reader/create \"ab\\ncd\") first-two (reader/read-times input reader/read-char 2) newline (reader/read-char input)] [first-two (reader/reader-position input) (reader/read-to-boundary input)])", "[[\\a \\b] [2 1] \"cd\"]"),
                     ("(block/value (block/parse-string \"[4 5]\"))", "[4 5]"),
                 ];
                 for (source, expected) in probes {
@@ -6227,9 +6227,21 @@ mod tests {
         );
         assert_eq!(runtime.eval_text(r#"(str/length "a😀b")"#).unwrap(), "3");
         assert_eq!(
-            runtime.eval_text(r#"(str/char-at "a😀b" 1)"#).unwrap(),
-            "\"😀\""
+            runtime.eval_text(r#"(type (str/char-at "a" 0))"#).unwrap(),
+            ":std.native.Character"
         );
+        assert_eq!(
+            runtime.eval_text(r#"(str/char-at " " 0)"#).unwrap(),
+            "\\space"
+        );
+        assert_eq!(
+            runtime.eval_text(r#"(str/char-at "a😀b" 1)"#).unwrap(),
+            "\\😀"
+        );
+        assert!(runtime
+            .eval_text(r#"(str/char-at "a" 1)"#)
+            .unwrap_err()
+            .contains("str/char-at index out of bounds"));
         assert_eq!(
             runtime.eval_text(r#"(str/slice "a😀b" 1 2)"#).unwrap(),
             "\"😀\""
@@ -6632,6 +6644,22 @@ mod tests {
                 .eval_text(r#"(IAssoc/assoc {"a" 9} "b" 10)"#)
                 .unwrap(),
             r#"{"a" 9 "b" 10}"#
+        );
+        assert_eq!(
+            runtime.eval_text("(IAssoc/assoc [1 2 3] 1 9)").unwrap(),
+            "[1 9 3]"
+        );
+        assert_eq!(
+            runtime
+                .eval_text(
+                    "(IReduce/reduce (seq [1 2 3]) (fn [left right] (+ left right)) 0)",
+                )
+                .unwrap(),
+            "6"
+        );
+        assert_eq!(
+            runtime.eval_text("(IFind/find (seq [10 20]) 1)").unwrap(),
+            "[1 20]"
         );
         assert_eq!(runtime.eval_text(r#"(IConj/conj [1] 2)"#).unwrap(), "[1 2]");
         assert_eq!(

@@ -48,14 +48,14 @@
         output
         (let [ch (str/char-at value index)
               lower-ch (str/char-at lowered index)
-              separator? (or (= ch "-") (= ch " "))
+              separator? (or (= ch \-) (= ch \space))
               hump? (and (> index 0)
                          (not separator?)
                          (not= ch lower-ch))]
           (recur (inc index)
                  (str output
                       (if (or separator? hump?) "_" "")
-                      (if separator? "" lower-ch))))))))
+                      (if separator? "" (str/to-string lower-ch)))))))))
 
 (defn- module-entries
   [module predicate]

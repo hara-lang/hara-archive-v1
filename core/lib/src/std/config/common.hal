@@ -40,7 +40,7 @@
   (and (string? path)
        (or (str/starts-with? path "/")
            (and (> (str/length path) 2)
-                (= ":" (str/char-at path 1))))))
+                (= \: (str/char-at path 1))))))
 
 (defn candidate-paths
   "Returns include candidates in contract order: including file directory,

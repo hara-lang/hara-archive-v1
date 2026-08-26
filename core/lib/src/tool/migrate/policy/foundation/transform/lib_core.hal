@@ -172,8 +172,8 @@
       nil
       (loop [index start]
         (let [character (str/char-at source index)]
-          (if (or (= character " ") (= character "\n")
-                  (= character "\t") (= character ")"))
+          (if (or (= character \space) (= character \newline)
+                  (= character \tab) (= character \)))
             (str/slice source start index)
             (recur (inc index))))))))
 

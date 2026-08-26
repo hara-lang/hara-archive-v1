@@ -26,12 +26,12 @@
   (and (string? s)
        (< 0 (str/length s))
        (str/includes? +ts-ident-start-chars+
-                         (str/char-at s 0))
+                         (str/to-string (str/char-at s 0)))
        (loop [index 1]
          (if (>= index (str/length s))
            true
            (if (str/includes? +ts-ident-rest-chars+
-                                 (str/char-at s index))
+                                 (str/to-string (str/char-at s index)))
              (recur (+ index 1))
              false)))))
 
@@ -46,11 +46,11 @@
             (let [ch (str/char-at source index)]
               (recur (+ index 1)
                      (str out
-                          (if (str/includes? +ts-ident-rest-chars+ ch)
-                            ch
+                          (if (str/includes? +ts-ident-rest-chars+ (str/to-string ch))
+                            (str/to-string ch)
                             "_"))))))
         mapped (if (str/blank? mapped) "_" mapped)]
-    (if (str/includes? +digits+ (str/char-at mapped 0))
+    (if (str/includes? +digits+ (str/to-string (str/char-at mapped 0)))
       (str "_" mapped)
       mapped)))
 

@@ -87,7 +87,7 @@
      (or (namespace sym)
          (and (< 0 (str/length name-str))
               (str/includes? +uppercase-letters+
-                                (str/char-at name-str 0)))))))
+                                (str/to-string (str/char-at name-str 0))))))))
 
 (defn resolve-type-symbol
   [sym {:keys [ns aliases]}]

@@ -1284,6 +1284,7 @@
                  (compatible-normal? (:type expected-field)
                                      (:type actual-field))))
           (map vector (:fields expected) (:fields actual))))
+    true
     (= :unknown (:kind expected)) true
     (= :unknown (:kind actual)) true
     (= :union (:kind expected))

@@ -66,9 +66,9 @@
   [value part]
   (String/ends-with? value part))
 
-(defn ^{:inline true :schema [:fn [:str :int] :str]}
+(defn ^{:inline true :schema [:fn [:str :int] :char]}
   char-at
-  "Returns the character at index as a one-character string."
+  "Returns the character at index as a Character."
   [value index]
   (String/char-at value index))
 
@@ -164,8 +164,8 @@
     (if (= end 0)
       ""
       (let [character (char-at value (dec end))]
-        (if (or (= character "\n")
-                (= character "\r"))
+        (if (or (= character \newline)
+                (= character \return))
           (recur (dec end))
           (slice value 0 end))))))
 
@@ -260,6 +260,9 @@
     (bytes? value)
     (decode-utf8 value)
 
+    (char? value)
+    (to-string value)
+
     (keyword? value)
     (let [prefix (namespace value)]
       (if (nil? prefix)
@@ -293,10 +296,11 @@
       (let [character (char-at value index)]
         (recur
          (inc index)
-         (str output
-              (if (has? replacements character)
-                (get replacements character)
-                character)))))))
+         (let [text (to-string character)]
+           (str output
+                (if (has? replacements text)
+                  (get replacements text)
+                  text))))))))
 
 (defn ^{:schema [:fn [:str :str] :bool]}
   caseless=
@@ -323,26 +327,28 @@
 
 (defn- identifier-separator?
   [character]
-  (or (= character " ")
-      (= character "_")
-      (= character "-")))
+  (or (= character \space)
+      (= character \_)
+      (= character \-)))
 
 (defn- digit-character?
   [character]
-  (includes? "0123456789" character))
+  (includes? "0123456789" (to-string character)))
 
 (defn- uppercase-character?
   [character]
-  (and (not= (lower-case character)
-             (upper-case character))
-       (= character (upper-case character))))
+  (let [text (to-string character)]
+    (and (not= (lower-case text)
+               (upper-case text))
+         (= text (upper-case text)))))
 
 (defn- lowercase-or-digit-character?
   [character]
   (or (digit-character? character)
-      (and (not= (lower-case character)
-                 (upper-case character))
-           (= character (lower-case character)))))
+      (let [text (to-string character)]
+        (and (not= (lower-case text)
+                   (upper-case text))
+             (= text (lower-case text))))))
 
 (defn- add-identifier-word
   [words word]
@@ -373,13 +379,13 @@
           hump?
           (recur (inc index)
                  (add-identifier-word words word)
-                 (lower-case character)
+                 (lower-case (to-string character))
                  character)
 
           :else
           (recur (inc index)
                  words
-                 (str word (lower-case character))
+                 (str word (lower-case (to-string character)))
                  character))))))
 
 (defn ^{:schema [:fn [:str] :str]}

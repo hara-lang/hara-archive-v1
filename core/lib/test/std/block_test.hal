@@ -27,8 +27,8 @@
    (test-check "constructs portable whitespace blocks"
                (let [spaces (block/spaces 3)
                      newline (block/newline)]
-                 [(block/string spaces)
-                  (block/space? spaces)
+                 [(apply str (map block/string spaces))
+                  (block/space? (first spaces))
                   (block/string newline)
                   (block/linebreak? newline)
                   (block/verify newline)])
@@ -44,7 +44,7 @@
                   (block/height form)])
                ["(alpha  ; note\n [1 {:k \"v\"}])"
                 "(alpha  ; note\n [1 {:k \"v\"}])"
-                [:token :space :space :comment :linebreak :space :vector]
+                [:symbol :linespace :linespace :comment :linebreak :linespace :vector]
                 1])
    (test-check "container values apply hash-uneval modifiers"
                (let [form (block/parse-first "[1 #_2 3]")]
@@ -84,19 +84,19 @@
                   (check/linebreak? newline)
                   (reader/reader-position input)
                   (reader/read-to-boundary input)])
-               [["a" "b"] true [2 1] "cd"])
+               [[\a \b] true [2 1] "cd"])
    (test-check "layout and line metrics retain the archived public surface"
                (let [laid-out (block/layout '(if ready [1 2] [3 4]))
                      wrapped (block/layout '(if ready [1 2] [3 4])
                                            {:width 10})
-                     multiline (block/parse-string "alpha\nlonger")]
+                     multiline (block/parse-root "alpha\nlonger")]
                  [(block/string laid-out)
                   (block/string wrapped)
                   (block/max-width multiline)
                   (block/line-width multiline)
                   (block/string (block/empty))])
                ["(if ready [1 2] [3 4])"
-                "(if\n  ready\n  [1 2]\n  [3 4]\n)"
+                "(if ready\n  [1 2]\n  [3 4])"
                 6 6 "()"])
    (test-check "grid applies portable indentation rules"
                (let [form (block/parse-first "(if\nready\ndone)")
@@ -114,7 +114,7 @@
                      first-form (first forms)
                      errors (filter block/error? (block/children root))]
                  [(block/string root)
-                  (select-keys (block/info first-form)
+                  (select-keys (:props first-form)
                                [:file :start-offset :end-offset
                                 :row :col :end-row :end-col])
                   (count errors)
@@ -132,7 +132,7 @@
                :facade)
    (test-check "parser indexes CRLF source positions in one pass"
                (let [source "a\r\n[b\nc]"
-                     parsed (block/parse-string source)
+                     parsed (block/parse-root source)
                      vector-block
                      (first
                       (filter
@@ -140,7 +140,7 @@
                          (= :vector (block/tag child)))
                        (block/children parsed)))]
                  (select-keys
-                  (block/info vector-block)
+                  (:props vector-block)
                   [:start-offset :end-offset
                    :row :col :end-row :end-col]))
                {:start-offset 3 :end-offset 8

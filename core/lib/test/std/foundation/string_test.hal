@@ -33,8 +33,11 @@
      (str/ends-with? "hara" "ra")
      => true)
    (fact "char-at"
-     (str/char-at "hara" 1)
-     => "a")
+     [(str/char-at "hara" 1)
+      (char? (str/char-at "hara" 1))
+      (str/char-at " " 0)
+      (str/char-at "a😀b" 1)]
+     => [\a true \space \😀])
    (fact "split"
      (nth (str/split "a,b" ",") 1)
      => "b")
@@ -162,12 +165,12 @@
      ((str/wrap-compare str/caseless=) :hello (symbol "HELLO"))
      => true)
    (fact "excluded-foundation-base-string-helpers-remain-absent"
-     [(nil? (resolve 'str/joinl))
-      (nil? (resolve (symbol "str/|")))
-      (nil? (resolve 'str/truncate))
-      (nil? (resolve 'str/lines))
-      (nil? (resolve 'str/single-line))
-      (nil? (resolve 'str/filter-empty))]
+     [(nil? (std.foundation/resolve 'str/joinl))
+      (nil? (std.foundation/resolve (symbol "str/|")))
+      (nil? (std.foundation/resolve 'str/truncate))
+      (nil? (std.foundation/resolve 'str/lines))
+      (nil? (std.foundation/resolve 'str/single-line))
+      (nil? (std.foundation/resolve 'str/filter-empty))]
      => [true true true true true true])])
 
 (pr-str (run '[std.foundation.string-test]))

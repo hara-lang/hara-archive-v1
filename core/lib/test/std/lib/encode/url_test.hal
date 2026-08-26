@@ -1,7 +1,7 @@
 (ns std.lib.encode.url-test
   (:require [std.lib.encode.url :as url]))
 
-(def +nul+ (str/decode-utf8 (bytes 0)))
+(def +nul+ (str/decode-utf8 (std.native.Bytes/new 0)))
 
 (def results
   [(test-check "URL encoding uses one RFC 3986 UTF-8 component"
@@ -16,9 +16,9 @@
                ["Hara + λ" "a+b" true])
 
    (test-check "URL components reject wrong types, malformed escapes, and invalid UTF-8"
-               [(try (url/encode (bytes 1)) false
+               [(try (url/encode (std.native.Bytes/new 1)) false
                      (catch Throwable error true))
-                (try (url/decode (bytes 1)) false
+                (try (url/decode (std.native.Bytes/new 1)) false
                      (catch Throwable error true))
                 (try (url/decode "%") false
                      (catch Throwable error true))

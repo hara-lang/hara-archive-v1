@@ -17,10 +17,9 @@ fn code_point_slice(text: &str, start: usize, end: usize) -> Result<String, Stri
     Ok(text.chars().skip(start).take(end - start).collect())
 }
 
-fn code_point_char_at(text: &str, index: usize) -> Result<String, String> {
+fn code_point_char_at(text: &str, index: usize) -> Result<char, String> {
     text.chars()
         .nth(index)
-        .map(|ch| ch.to_string())
         .ok_or_else(|| "str/char-at index out of bounds".into())
 }
 
@@ -113,7 +112,7 @@ fn string_operation(operation: &str, values: Vec<Value>) -> Result<Value, String
             }
             let text = string_value(&values[0], operation)?;
             let index = value_index(&values[1])?;
-            code_point_char_at(text, index).map(Value::String)
+            code_point_char_at(text, index).map(Value::Character)
         }
         "str/split" => {
             if values.len() != 2 {
