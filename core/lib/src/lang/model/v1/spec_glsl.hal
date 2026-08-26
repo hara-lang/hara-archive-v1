@@ -1,0 +1,17 @@
+(ns lang.model.v1.spec-glsl
+  (:config {:role :facade})
+  (:require [lang.model.v1.spec-glsl.internal :as internal]))
+
+(std.foundation/intern-in
+ [+language+ internal/+language+]
+ [+tag+ internal/+tag+]
+ [+version+ internal/+version+]
+ [+grammar-version+ internal/+grammar-version+]
+ [+grammar+ internal/+grammar+]
+ [+meta+ internal/+meta+]
+ [install internal/install]
+ [catalog internal/catalog]
+ [select internal/select]
+ [+selection+ internal/+selection+]
+ [+book+ internal/+book+]
+ [+init+ internal/+init+])

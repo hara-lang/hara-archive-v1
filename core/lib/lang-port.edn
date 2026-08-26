@@ -40,10 +40,12 @@
   :python "lang.model.v1.spec-python"
   :lua "lang.model.v1.spec-lua"
   :postgres "lang.model.v1.spec-postgres"
+  :glsl "lang.model.v1.spec-glsl"
   :identities
   {:js {:language :js :tag :js}
    :python {:language :python :tag :py}
-   :lua {:language :lua :tag :lua}}}
+   :lua {:language :lua :tag :lua}
+   :glsl {:language :glsl :tag :glsl}}}
  :phases
  [{:id :common-emit
    :priority 1
@@ -110,6 +112,11 @@
      :status :v1-source-owned
      :language :lua
      :tag :lua}
+    {:source "src/tahto/model/spec_glsl.clj"
+     :target "lib/src/lang/model/v1/spec_glsl.hal"
+     :status :v1-source-owned
+     :language :glsl
+     :tag :glsl}
     {:source "src/tahto/model/spec_sql.clj" :status :pending}
     {:source "src/tahto/model/spec_postgres.clj"
      :target "lib/src/lang/model/v1/spec_postgres.hal"
@@ -165,8 +172,7 @@
   {:id :remaining-language-models
    :priority 4
    :files
-   [{:source "src/tahto/model/spec_glsl.clj" :status :pending}
-    {:source "src/tahto/model/spec_dart.clj" :status :pending}
+   [{:source "src/tahto/model/spec_dart.clj" :status :pending}
     {:source "src/tahto/model/spec_bash.clj" :status :pending}
     {:source "src/tahto/model/spec_llvm.clj" :status :pending}
     {:source "src/tahto/model/spec_haxe.clj" :status :pending}

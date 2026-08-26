@@ -1,0 +1,138 @@
+(ns lang.model.v1.spec-glsl.internal-test
+  (:require [lang.common.book :as book]
+            [lang.common.book-meta :as book-meta]
+            [lang.common.grammar-api :as grammar]
+            [lang.common.registry :as registry]
+            [lang.model.v1.spec-glsl.internal :as glsl]))
+
+(def results
+  [
+   ^{:refer lang.model.v1.spec-glsl.internal/+language+}
+   (test-check "GLSL language identity" glsl/+language+ :glsl)
+
+   ^{:refer lang.model.v1.spec-glsl.internal/+tag+}
+   (test-check "GLSL grammar tag" glsl/+tag+ :glsl)
+
+   ^{:refer lang.model.v1.spec-glsl.internal/+version+}
+   (test-check "GLSL book version" glsl/+version+ 1)
+
+   ^{:refer lang.model.v1.spec-glsl.internal/+grammar-version+}
+   (test-check "GLSL grammar version" glsl/+grammar-version+ 1)
+
+   ^{:refer lang.model.v1.spec-glsl.internal/+types+}
+   (test-check "GLSL types retain the Foundation constructor inventory"
+               [(count glsl/+types+)
+                (first glsl/+types+)
+                (last glsl/+types+)
+                (has? (set glsl/+types+) :sampler2D)]
+               [47 :bool :dmat4x3 true])
+
+   ^{:refer lang.model.v1.spec-glsl.internal/+typeops+}
+   (test-check "GLSL types are reserved invoke operators"
+               [(count glsl/+typeops+)
+                (get-in glsl/+typeops+ [:vec4 :raw])
+                (get-in glsl/+typeops+ [:vec4 :symbol])
+                (get-in glsl/+typeops+ [:vec4 :emit])
+                (get-in glsl/+typeops+ [:sampler2D :raw])]
+               [47 "vec4" (set [:vec4]) :invoke "sampler2D"])
+
+   ^{:refer lang.model.v1.spec-glsl.internal/glsl-number}
+   (test-check "GLSL numeric emission removes only Hara float wrappers"
+               [(glsl/glsl-number 1.0 nil nil)
+                (glsl/glsl-number 1 nil nil)]
+               ["1.0" "1"])
+
+   ^{:refer lang.model.v1.spec-glsl.internal/+emit+}
+   (test-check "GLSL emitter defaults preserve source layout"
+               [(get-in glsl/+emit+ [:defaults :data :vector :start])
+                (get-in glsl/+emit+ [:defaults :data :tuple :end])
+                (get-in glsl/+emit+ [:defaults :block :for :parameter :sep])
+                (get-in glsl/+emit+ [:defaults :banned])
+                ((get-in glsl/+emit+ [:defaults :token :number :emit])
+                 1.0 nil nil)]
+               ["{" ")" "," (set [:set :map :regex]) "1.0"])
+
+   ^{:refer lang.model.v1.spec-glsl.internal/+grammar+}
+   (test-check "GLSL grammar extends XTalk with checked target adaptations"
+               [(get glsl/+grammar+ :source/kind)
+                (get glsl/+grammar+ :source/id)
+                (get glsl/+grammar+ :source/version)
+                (get glsl/+grammar+ :grammar/release)
+                (get-in glsl/+grammar+ [:grammar/parent :grammar/id])
+                (get-in glsl/+grammar+ [:grammar/parent :grammar/version])
+                (get-in glsl/+grammar+ [:operators :exclude])
+                (get-in glsl/+grammar+ [:operators :define :vec4 :raw])]
+               [:grammar :glsl 1 "foundation-v1" :xtalk 1
+                (set [:data-shortcuts :control-try-catch :class]) "vec4"])
+
+   ^{:refer lang.model.v1.spec-glsl.internal/+meta+}
+   (test-check "GLSL module imports use include directives"
+               [(book-meta/book-meta? glsl/+meta+)
+                ((:module-import glsl/+meta+) "lighting.glsl" nil {})]
+               [true (list ':- "#include" "lighting.glsl")])
+
+   ^{:refer lang.model.v1.spec-glsl.internal/install}
+   (test-check "GLSL installation is idempotent and includes its parent"
+               (let [base (registry/registry)
+                     once (glsl/install base)
+                     twice (glsl/install once)]
+                 [(count (registry/list once))
+                  (registry/find once
+                                  (grammar/source-coordinate glsl/+grammar+))
+                  (= once twice)])
+               [4 glsl/+grammar+ true])
+
+   ^{:refer lang.model.v1.spec-glsl.internal/catalog}
+   (test-check "GLSL catalog creates a complete immutable source set"
+               (let [value (glsl/catalog)]
+                 [(count (registry/list value))
+                  (get-in (glsl/select value) [:coordinate :grammar/id])
+                  (= value (glsl/install value))])
+               [4 :glsl true])
+
+   ^{:refer lang.model.v1.spec-glsl.internal/select}
+   (test-check "GLSL selection supports fresh and explicit catalogs"
+               (let [catalog (glsl/catalog)
+                     fresh (glsl/select)
+                     explicit (glsl/select catalog)]
+                 [(:coordinate fresh)
+                  (:provenance explicit)
+                  (= fresh explicit)])
+               [{:grammar/id :glsl
+                 :grammar/version 1
+                 :grammar/release "foundation-v1"
+                 :grammar/facets []}
+                [[:emit-template :xtalk 1]
+                 [:profile :xtalk 1]
+                 [:grammar :xtalk 1]
+                 [:grammar :glsl 1]]
+                true])
+
+   ^{:refer lang.model.v1.spec-glsl.internal/+selection+}
+   (test-check "GLSL selection pins its exact coordinate and provenance"
+               [(:coordinate glsl/+selection+)
+                (:provenance glsl/+selection+)]
+               [{:grammar/id :glsl
+                 :grammar/version 1
+                 :grammar/release "foundation-v1"
+                 :grammar/facets []}
+                [[:emit-template :xtalk 1]
+                 [:profile :xtalk 1]
+                 [:grammar :xtalk 1]
+                 [:grammar :glsl 1]]])
+
+   ^{:refer lang.model.v1.spec-glsl.internal/+book+}
+   (test-check "GLSL book carries its selected grammar and metadata"
+               [(book/book? glsl/+book+)
+                (:lang glsl/+book+)
+                (:parent glsl/+book+)
+                (:coordinate glsl/+book+)
+                (book-meta/book-meta? (:meta glsl/+book+))]
+               [true :glsl :xtalk (:coordinate glsl/+selection+) true])
+
+   ^{:refer lang.model.v1.spec-glsl.internal/+init+}
+   (test-check "GLSL init is the immutable book value"
+               (= glsl/+init+ glsl/+book+)
+               true)])
+
+results

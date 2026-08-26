@@ -1,0 +1,116 @@
+(ns lang.model.v1.spec-glsl-test
+  (:require [lang.common.emit :as emit]
+            [lang.common.grammar-api :as grammar]
+            [lang.common.registry :as registry]
+            [lang.model.v1.spec-glsl :as glsl]))
+
+(def results
+  [
+   ^{:refer lang.model.v1.spec-glsl/install}
+   (test-check "facade installation is idempotent"
+               (let [catalog (glsl/catalog)
+                     installed (glsl/install catalog)]
+                 [(= catalog installed)
+                  (get (registry/find catalog
+                                      (grammar/source-coordinate glsl/+grammar+))
+                       :grammar/id)])
+               [true :glsl])
+
+   ^{:refer lang.model.v1.spec-glsl/catalog}
+   (test-check "facade catalog exposes the XTalk parent and GLSL grammar"
+               (let [catalog (glsl/catalog)]
+                 [(count (registry/list catalog))
+                  (get-in (glsl/select catalog) [:coordinate :grammar/id])
+                  (get-in (glsl/select catalog) [:grammar :tag])])
+               [4 :glsl :glsl])
+
+   ^{:refer lang.model.v1.spec-glsl/select}
+   (test-check "facade selection resolves the exact v1 coordinate"
+               (let [fresh (glsl/select)
+                     explicit (glsl/select (glsl/catalog))]
+                 [(:coordinate fresh)
+                  (:provenance explicit)
+                  (= fresh explicit)])
+               [{:grammar/id :glsl
+                 :grammar/version 1
+                 :grammar/release "foundation-v1"
+                 :grammar/facets []}
+                [[:emit-template :xtalk 1]
+                 [:profile :xtalk 1]
+                 [:grammar :xtalk 1]
+                 [:grammar :glsl 1]]
+                true])
+
+   ^{:refer lang.model.v1.spec-glsl/+grammar+}
+   (test-check "facade publishes the source-owned grammar"
+               [(get glsl/+grammar+ :grammar/id)
+                (get glsl/+grammar+ :grammar/version)
+                (get glsl/+grammar+ :grammar/language)]
+               [:glsl 1 :glsl])
+
+   ^{:refer lang.model.v1.spec-glsl/+meta+}
+   (test-check "facade publishes GLSL module metadata"
+               ((:module-import (:meta glsl/+book+))
+                "lighting.glsl" nil {})
+               (list ':- "#include" "lighting.glsl"))
+
+   ^{:refer lang.model.v1.spec-glsl/+selection+}
+   (test-check "facade publishes the selected grammar"
+               [(:coordinate glsl/+selection+)
+                (:provenance glsl/+selection+)]
+               [{:grammar/id :glsl
+                 :grammar/version 1
+                 :grammar/release "foundation-v1"
+                 :grammar/facets []}
+                [[:emit-template :xtalk 1]
+                 [:profile :xtalk 1]
+                 [:grammar :xtalk 1]
+                 [:grammar :glsl 1]]])
+
+   ^{:refer lang.model.v1.spec-glsl/+book+}
+   (test-check "facade publishes a GLSL book"
+               [(:lang glsl/+book+)
+                (:parent glsl/+book+)
+                (= glsl/+init+ glsl/+book+)]
+               [:glsl :xtalk true])
+
+   ^{:refer lang.model.v1.spec-glsl/+init+}
+   (test-check "facade init retains the book identity"
+               (= glsl/+init+ glsl/+book+)
+               true)
+
+   ^{:refer lang.model.v1.spec-glsl/+selection+}
+   (test-check "GLSL emits the Foundation shader definition"
+               (str/join "\n\n"
+                         (map
+                          (fn [form] (emit/emit form glsl/+selection+))
+                          '[(defrun shader-vs
+                              (var :attribute :vec3 pos)
+                              (var :uniform :mat4 u_ModelView)
+                              (var :uniform :mat4 u_Persp)
+                              (fn ^{:- [:void]}
+                                main []
+                                (:= gl_Position
+                                    (* u_persp
+                                       u_ModelView
+                                       (:vec4 pos 1.0)))))]))
+               (str/join "\n"
+                         ["attribute vec3 pos;"
+                          "uniform mat4 u_ModelView;"
+                          "uniform mat4 u_Persp;"
+                          "void main(){"
+                          "  gl_Position = (u_persp * u_ModelView * vec4(pos,1.0));"
+                          "}"]))
+
+   ^{:refer lang.model.v1.spec-glsl/+selection+}
+   (test-check "GLSL emits sampler declarations and constructors"
+               (str/join "\n\n"
+                         (map
+                          (fn [form] (emit/emit form glsl/+selection+))
+                          '[(var :uniform :sampler2D u_Texture)
+                            (:= color (:vec4 1.0 0.5 0.0 1.0))]))
+               (str/join "\n\n"
+                         ["uniform sampler2D u_Texture"
+                          "color = vec4(1.0,0.5,0.0,1.0)"]))])
+
+results
