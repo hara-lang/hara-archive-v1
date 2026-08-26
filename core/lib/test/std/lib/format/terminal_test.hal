@@ -1,6 +1,16 @@
 (ns std.lib.format.terminal-test
   (:use code.test)
-  (:require [std.lib.format.terminal :as terminal]))
+  (:require [std.lib.format.common :as common]
+            [std.lib.format.terminal :as terminal]))
+
+^{:refer std.lib.format.terminal/render-cell}
+(fact "renders individual cells with their ANSI role"
+  [(terminal/render-cell (common/cell "index" :index) {:ansi true})
+   (terminal/render-cell (common/cell "timeout" :timeout) {:ansi true})
+   (terminal/render-cell (common/cell "elapsed" :bold) {})]
+  => ["\u001b[34mindex\u001b[0m"
+      "\u001b[35mtimeout\u001b[0m"
+      "elapsed"])
 
 ^{:refer std.lib.format.terminal/render-line}
 (fact "renders plain and ANSI lines while preserving empty text"
@@ -8,6 +18,17 @@
    (terminal/render-line {:line/text "hello" :line/role :success} {:ansi true})
    (terminal/render-line {:line/text "" :line/role :success} {:ansi true})]
   => ["hello" "\u001b[32mhello\u001b[0m" ""])
+
+(fact "renders per-cell ANSI roles without changing plain output"
+  (let [line (common/line-cells
+              [(common/cell "1/2" :index)
+               (common/cell "  ")
+               (common/cell "timeout" :timeout)
+               (common/cell "  4ms" :bold)])]
+    [(terminal/render-line line {})
+     (terminal/render-line line {:ansi true})])
+  => ["1/2  timeout  4ms"
+      "\u001b[34m1/2\u001b[0m  \u001b[35mtimeout\u001b[0m\u001b[1m  4ms\u001b[0m"])
 
 ^{:refer std.lib.format.terminal/render-lines}
 (fact "renders every structured line with stable ordering"

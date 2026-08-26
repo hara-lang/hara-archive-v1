@@ -4,6 +4,9 @@
   (:require [code.test.result :as test-result]
             [tool.cli.model :as model]
             [code.project :as project]
+            [std.lib.format.report :as report]
+            [std.lib.format.terminal :as terminal]
+            [work.flow.task :as task]
             [work.base :as work]))
 
 (defn read-arg
@@ -168,26 +171,98 @@
                      :ex/message (str "test path does not exist: " path))))))))
 
 (defn run-test-file [path index]
-  (let [session (str "tool.cli.test." index)]
-    (Kernel/session-create session)
+  (let [session (str "tool.cli.test." index)
+        started (time-ms)]
     (try
-      (let [value (Kernel/session-eval session (project/read-text path))
-            counts (result-counts value)]
-        (Kernel/session-close session)
-        (assoc counts :path path :value value))
+      (do
+        (Kernel/session-create session)
+        (let [value (Kernel/session-eval session (project/read-text path))
+              counts (result-counts value)]
+          (assoc counts
+                 :path path
+                 :value value
+                 :elapsed (- (time-ms) started))))
       (catch Throwable error
-        (Kernel/session-close session)
-        {:path path :passed 0 :failed 1 :error (str error)}))))
+        {:path path
+         :passed 0
+         :failed 1
+         :error (str error)
+         :elapsed (- (time-ms) started)})
+      (finally
+        (try
+          (Kernel/session-close session)
+          (catch Throwable error nil))))))
+
+(defn cli-task-item-list
+  [input context]
+  (vec (or (:test/files input) [])))
+
+(defn cli-task-item-index
+  [context]
+  (or (get-in context [:command/subject :task/index]) 0))
+
+(defn cli-task-item-run
+  [item context]
+  (let [data (run-test-file item (cli-task-item-index context))]
+    {:status :return
+     :data
+     (assoc data
+            :test/status
+            (if (:error data)
+              :error
+              (if (= 0 (:failed data)) :passed :failed)))}))
+
+(defn cli-task-item-display
+  [data]
+  (str "passed (" (or (:passed data) 0) ")"))
+
+(defn cli-task-summary
+  [base records results]
+  (let [values (vec (map (fn [record] (:data record)) records))
+        passed (reduce (fn [total value]
+                         (+ total (or (:passed value) 0)))
+                       0
+                       values)
+        failed (reduce (fn [total value]
+                         (+ total (or (:failed value) 0)))
+                       0
+                       values)]
+    {:status (if (= 0 failed) :passed :failed)
+     :items (:items base)
+     :files (count values)
+     :passed passed
+     :failed failed
+     :results values}))
+
+(def +cli-task-work+
+  (task/compile
+   {:id 'code.test/cli-task
+    :type :cli-test
+    :version 1
+    :item {:list cli-task-item-list
+           :list-mode :input-context
+           :run cli-task-item-run
+           :display cli-task-item-display
+           :status? false}
+    :summary {:fields [:files :passed :failed]
+              :finalise cli-task-summary}
+    :report {:title "TEST RESULTS"
+             :sections [:items :summary]
+             :labels {:items "TESTS" :summary "SUMMARY"}
+             :strict-summary-fields true
+             :status task/test-report-status}
+    :return {:select :all}}))
+
+(defn cli-task-results
+  [bundle]
+  (vec (map (fn [record] (:data record)) (:records bundle))))
+
+(defn run-test-bundle
+  [paths]
+  (work/run work/default-host +cli-task-work+ {:test/files paths}))
 
 (defn run-test-files [paths]
-  (loop [remaining (vec paths)
-         index 0
-         results []]
-    (if (empty? remaining)
-      results
-      (recur (vector-tail remaining 1)
-             (inc index)
-             (conj results (run-test-file (first remaining) index))))))
+  (cli-task-results (run-test-bundle paths)))
 
 (defn summary [results]
   (reduce
@@ -197,19 +272,67 @@
    {:passed 0 :failed 0}
    results))
 
-(defn result-messages [results counts]
-  (conj
-   (reduce
-    (fn [messages result]
-      (conj messages
-            (model/message
-             (if (:error result) :stderr :stdout)
-             (str "test " (:path result) ": "
-                  (:passed result) " passed, " (:failed result) " failed\n"))))
-    []
-    results)
-   (model/message (str "test result: " (:passed counts) " passed, "
-                       (:failed counts) " failed\n"))))
+(defn result-messages
+  ([results counts]
+   (result-messages results counts {}))
+  ([results counts options]
+   (result-messages nil results counts options))
+  ([document results counts options]
+   (let [options (or options {})
+         ansi (if (has? options :ansi)
+                (:ansi options)
+                (not (:no-color options)))]
+     (if document
+       [(model/message
+         (if (= 0 (:failed counts)) :stdout :stderr)
+         (str (report/render-report document {:ansi ansi}) "\n"))]
+       (let [total (count results)
+             index-width (+ 2 (* 2 (str/length (str total))))
+             id-width
+             (reduce
+              (fn [width result]
+                (max width (+ 2 (str/length (str (or (:namespace result)
+                                                     (:path result)))))))
+              0
+              results)]
+         (conj
+          (reduce
+           (fn [messages [index result]]
+             (let [status (if (:error result)
+                            :error
+                            (if (= 0 (:failed result)) :passed :failed))
+                   line (report/progress-line
+                         {:item/id (or (:namespace result) (:path result))
+                          :item/index index
+                          :item/total total
+                          :item/index-width index-width
+                          :item/id-width id-width
+                          :item/result-width 60
+                          :item/time-width 10
+                          :item/count (:passed result)
+                          :status status
+                          :error (:error result)
+                          :elapsed
+                          (if (has? result :elapsed)
+                            (let [centiseconds
+                                  (quot (+ (:elapsed result) 5) 10)
+                                  seconds (quot centiseconds 100)
+                                  fraction (rem centiseconds 100)]
+                              (str seconds "."
+                                   (if (< fraction 10) "0" "")
+                                   fraction
+                                   "s"))
+                            nil)})]
+               (conj messages
+                     (model/message
+                      (if (or (= :error status) (= :failed status))
+                        :stderr
+                        :stdout)
+                      (str (terminal/render-line line {:ansi ansi}) "\n")))))
+           []
+           (map-indexed (fn [index result] [index result]) results))
+          (model/message (str "test result: " (:passed counts) " passed, "
+                             (:failed counts) " failed\n"))))))))
 
 (defn execute [request]
   (let [cwd (or (:request/cwd request) (os/cwd))
@@ -220,14 +343,19 @@
                            (absolute-path cwd (first arguments))))
         paths (test-files current-project arguments cwd)
         registered (project/register-resources current-project)
-        results (run-test-files paths)
+        bundle (run-test-bundle paths)
+        results (cli-task-results bundle)
         counts (summary results)
         data {:test/project (:project/id current-project)
               :test/registered registered
               :test/files results
               :test/passed (:passed counts)
-              :test/failed (:failed counts)}
-        messages (result-messages results counts)]
+              :test/failed (:failed counts)
+              :test/report (:report bundle)}
+        messages (result-messages (:report bundle)
+                                 results
+                                 counts
+                                 (:request/options request))]
     (if (= 0 (:failed counts))
       (model/success data messages)
       (model/result :tool.cli.outcome/failed data messages))))

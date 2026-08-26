@@ -1,6 +1,7 @@
 (ns tool.cli.test-test
   (:use code.test)
   (:require [tool.cli.test :as test]
+            [work.flow.task :as task]
             [work.base :as work]))
 
 (def current-project
@@ -10,6 +11,68 @@
    :project/test-paths ["lib/test" "lib/test-lang"]})
 
 [
+^{:refer tool.cli.test/cli-task-item-list}
+(test-check "CLI task items come from selected test files"
+            (test/cli-task-item-list {:test/files [:one :two]} {})
+            [:one :two])
+
+^{:refer tool.cli.test/cli-task-item-index}
+(test-check "CLI task item indexes come from the task command subject"
+            [(test/cli-task-item-index {:command/subject {:task/index 3}})
+             (test/cli-task-item-index {})]
+            [3 0])
+
+^{:refer tool.cli.test/cli-task-item-run}
+(test-check "CLI task item execution converts file errors to task data"
+            (let [result
+                  (test/cli-task-item-run
+                   {:path "core/missing-test-file.hal"
+                    :namespace 'missing-test}
+                   {:command/subject {:task/index 2}})]
+              (select-keys (:data result) [:path :namespace :passed :failed :test/status]))
+            {:path "core/missing-test-file.hal"
+             :namespace 'missing-test
+             :passed 0
+             :failed 1
+             :test/status :error})
+
+^{:refer tool.cli.test/cli-task-item-display}
+(test-check "CLI task rows use the Foundation passed count display"
+            [(test/cli-task-item-display {:passed 15})
+             (test/cli-task-item-display {})]
+            ["passed (15)" "passed (0)"])
+
+^{:refer tool.cli.test/cli-task-summary}
+(test-check "CLI task summaries aggregate file results"
+            (test/cli-task-summary
+             {:items 2}
+             [{:data {:passed 2 :failed 0}}
+              {:data {:passed 1 :failed 1}}]
+             [])
+            {:status :failed
+             :items 2
+             :files 2
+             :passed 3
+             :failed 1
+             :results [{:passed 2 :failed 0}
+                       {:passed 1 :failed 1}]})
+
+^{:refer tool.cli.test/cli-task-results}
+(test-check "CLI task results project task records back to file data"
+            (test/cli-task-results
+             {:records [{:data {:path "one"}}
+                        {:data {:path "two"}}]})
+            [{:path "one"} {:path "two"}])
+
+^{:refer tool.cli.test/+cli-task-work+}
+(test-check "CLI execution uses the shared task engine template"
+            [(task/task-work? test/+cli-task-work+)
+             (get-in (work/work-spec test/+cli-task-work+)
+                     [:template/definition :task/type])
+             (get-in (work/work-spec test/+cli-task-work+)
+                     [:template/definition :return :select])]
+            [true :cli-test :all])
+
 ^{:refer tool.cli.test/parse-arguments}
 (test-check "public test parsing delegates to long-flag arguments"
             (test/parse-arguments ["--only" "[std]"])

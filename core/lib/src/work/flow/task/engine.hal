@@ -520,10 +520,14 @@
        (:task/value subject))
      :item/meta
      (fn [subject context]
-       {:item/id (:task/item-id subject)
-        :item/index (:task/index subject)
-        :item/source-index (:task/source-index subject)
-        :item/total (:task/total subject)})
+       (let [metadata
+             {:item/id (:task/item-id subject)
+              :item/index (:task/index subject)
+              :item/source-index (:task/source-index subject)
+              :item/total (:task/total subject)}]
+         (if (has? item :status?)
+           (assoc metadata :item/status? (:status? item))
+           metadata)))
      :pre (:pre item)
      :run
      (fn [prepared context]
@@ -764,7 +768,9 @@
        {:section/title title
         :section/fields
         (or (get-in definition [:summary :fields])
-            (get-in definition [:report :summary-fields]))})
+            (get-in definition [:report :summary-fields]))
+        :section/strict-fields
+        (get-in definition [:report :strict-summary-fields])})
       (report/section id :text [] {:section/title title}))))
 
 (defn task-report
@@ -841,7 +847,9 @@
 
     :warnings (:warnings bundle)
     :errors (:errors bundle)
-    :summary (:summary bundle)
+    :summary (if (= :test (:task/type definition))
+               (assoc (:summary bundle) :report (:report bundle))
+               (:summary bundle))
     :annotations (:annotations bundle)
     :report (:report bundle)
     :records (:records bundle)

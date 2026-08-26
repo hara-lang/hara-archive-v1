@@ -5,10 +5,12 @@
 (def +ansi-codes+
   {:default nil
    :muted "\u001b[2m"
-   :index "\u001b[2m"
+   :index "\u001b[34m"
    :success "\u001b[32m"
    :warning "\u001b[33m"
    :error "\u001b[31m"
+   :timeout "\u001b[35m"
+   :bold "\u001b[1m"
    :critical "\u001b[1;31m"
    :highlight "\u001b[1;36m"})
 
@@ -16,16 +18,33 @@
   {:ansi false
    :emit println})
 
-(defn render-line
+(defn render-cell
   [entry options]
-  (let [text (:line/text entry)
-        role (or (:line/role entry) :default)
+  (let [text (:cell/text entry)
+        role (or (:cell/role entry) :default)
         code (get +ansi-codes+ role)]
     (if (and (:ansi options)
              code
              (not (empty? text)))
       (str code text +ansi-reset+)
       text)))
+
+(defn render-line
+  [entry options]
+  (if (:line/cells entry)
+    (str/join ""
+              (map
+               (fn [cell]
+                 (render-cell cell options))
+               (:line/cells entry)))
+    (let [text (:line/text entry)
+          role (or (:line/role entry) :default)
+          code (get +ansi-codes+ role)]
+      (if (and (:ansi options)
+               code
+               (not (empty? text)))
+        (str code text +ansi-reset+)
+        text))))
 
 (defn ^{:public true} render-lines
   "Renders structured lines as plain or ANSI-styled strings."

@@ -3,12 +3,21 @@
 
 (defn- record-role
   [record]
-  (case (:status record)
-    :return :success
-    :warn :warning
-    :error :error
-    :critical :critical
-    :default))
+  (let [data (:data record)
+        status (or (:test/status record)
+                   (if (map? data) (:test/status data) nil)
+                   (:status record))]
+    (case status
+      :return :success
+      :passed :success
+      :warn :warning
+      :error :error
+      :failed :error
+      :timeout :timeout
+      :skipped :warning
+      :cancelled :warning
+      :critical :critical
+      :default)))
 
 (defn- column-label
   [column-key]
@@ -25,11 +34,13 @@
       (merge
        {:key column-key
         :label (column-label column-key)
-        :align :left}
+        :align :left
+        :role nil}
        column))
     {:key column
      :label (column-label column)
-     :align :left}))
+     :align :left
+     :role nil}))
 
 (defn- column-value
   [column row]
@@ -59,17 +70,33 @@
         (assoc column :width (column-width column rows))))
     columns)))
 
-(defn- table-text
+(defn cells-with-separators
+  [cells]
+  (loop [remaining (vec cells)
+         output []]
+    (if (empty? remaining)
+      output
+      (let [cell (first remaining)
+            tail (vec (rest remaining))
+            output (conj output cell)]
+        (recur tail
+               (if (empty? tail)
+                 output
+                 (conj output (common/cell "  "))))))))
+
+(defn table-cells
   [columns row]
-  (str/join
-   "  "
-   (map
-    (fn [column]
-      (common/pad
-       (column-value column row)
-       (:width column)
-       (:align column)))
-    columns)))
+  (cells-with-separators
+   (vec
+    (map
+     (fn [column]
+       (common/cell
+        (common/pad
+         (column-value column row)
+         (:width column)
+         (:align column))
+        (or (:role column) (record-role row))))
+     columns))))
 
 (defn ^{:public true} table-lines
   "Renders a table section into structured, width-aligned lines."
@@ -86,32 +113,37 @@
         rows))
       (let [columns (realised-columns supplied rows)
             header
-            (common/line
-             (str/join
-              "  "
-              (map
-               (fn [column]
-                 (common/pad
-                  (:label column)
-                  (:width column)
-                  (:align column)))
-               columns))
-             :highlight)
+            (assoc
+             (common/line-cells
+              (cells-with-separators
+               (vec
+                (map
+                 (fn [column]
+                   (common/cell
+                    (common/pad
+                     (:label column)
+                     (:width column)
+                     (:align column))
+                    :highlight))
+                 columns))))
+             :line/role :highlight)
             separator
-            (common/line
-             (str/join
-              "  "
-              (map
-               (fn [column]
-                 (str/repeat "-" (:width column)))
-               columns))
-             :muted)]
+            (assoc
+             (common/line-cells
+              (cells-with-separators
+               (vec
+                (map
+                 (fn [column]
+                   (common/cell
+                    (str/repeat "-" (:width column))
+                    :muted))
+                 columns))))
+             :line/role :muted)]
         (vec
          (concat
           [header separator]
           (map
            (fn [row]
-             (common/line
-              (table-text columns row)
-              (record-role row)))
+             (assoc (common/line-cells (table-cells columns row))
+                    :line/role (record-role row)))
            rows)))))))

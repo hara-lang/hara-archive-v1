@@ -4,6 +4,152 @@
 
 (def path [:task])
 
+;; The test profile is deliberately expressed in terms of data supplied by
+;; the test frontend.  `work.flow.task` owns the profile shape and reporting
+;; defaults; the frontend supplies `:test/items` and the namespace runner.
+;; This keeps test execution on the ordinary task engine without making the
+;; Work layer depend on code.test.
+(defn test-item-list
+  [input context]
+  (vec (or (:test/items input) [])))
+
+(defn test-item-run
+  [item context]
+  (let [runner (:test/run item)]
+    {:status :return
+     :data (if runner
+             (runner item context)
+             item)}))
+
+(defn test-number
+  [value]
+  (if (number? value) value 0))
+
+(defn test-item-display
+  [data]
+  (let [data-map (if (map? data) data {})]
+    (or (:test/display data-map) data)))
+
+(defn test-item-output
+  [data]
+  data)
+
+(defn test-result-ignore
+  [data]
+  (let [data (if (map? data) data {})]
+    (and (= 0 (test-number (:test/failed data)))
+         (= 0 (test-number (:test/throw data)))
+         (= 0 (test-number (:test/timeout data))))))
+
+(defn test-report-status
+  [summary bundle]
+  (if (= :passed (:status summary)) :completed :failed))
+
+(defn test-data
+  [record]
+  (if (map? (:data record)) (:data record) {}))
+
+(defn test-total
+  [data key]
+  (reduce
+   (fn [total value]
+     (+ total (test-number (get value key))))
+   0
+   data))
+
+(defn test-count-total
+  [data key]
+  (reduce
+   (fn [total value]
+     (+ total (test-number (get-in value [:counts key]))))
+   0
+   data))
+
+(defn test-check-total
+  [data key]
+  (reduce
+   (fn [total value]
+     (+ total (test-number (get-in value [:check-counts key]))))
+   0
+   data))
+
+(defn test-result-values
+  [data]
+  (reduce
+   (fn [output value]
+     (vec (concat output (or (:results value) []))))
+   []
+   data))
+
+(defn test-summary-finalise
+  [base records results]
+  (let [data (vec (map test-data records))
+        fact-results (test-result-values data)
+        counts {:passed (test-count-total data :passed)
+                :failed (test-count-total data :failed)
+                :error (test-count-total data :error)
+                :timeout (test-count-total data :timeout)
+                :skipped (test-count-total data :skipped)
+                :cancelled (test-count-total data :cancelled)}
+        check-counts {:passed (test-check-total data :passed)
+                      :failed (test-check-total data :failed)
+                      :total (test-total data :checks)}
+        failed (+ (test-total data :failed)
+                  (test-total data :throw)
+                  (test-total data :timeout))
+        status (if (= 0 failed) :passed :failed)]
+    (assoc base
+           :items (:items base)
+           :files (count records)
+           :facts (or (if (= 0 (test-total data :facts))
+                        (count fact-results)
+                        (test-total data :facts))
+                      0)
+           :checks (or (if (= 0 (:total check-counts))
+                        (test-total data :checks)
+                        (:total check-counts))
+                      0)
+           :passed (test-total data :passed)
+           :failed (test-total data :failed)
+           :throw (test-total data :throw)
+           :timeout (test-total data :timeout)
+           :skipped (:skipped counts)
+           :counts counts
+           :check-counts check-counts
+           :results fact-results
+           :status status
+           :test/items (:items base)
+           :test/results (:results base))))
+
+(def test-task-defaults
+  {:main {:argcount 1}
+   :item
+   {:list test-item-list
+    :list-mode :input-context
+    :run test-item-run
+    :output test-item-output
+    :display test-item-display
+    :status? false}
+   :result
+   {:ignore test-result-ignore
+    :keys [[:failed (fn [data] (or (:test/failed data) 0))]
+           [:throw (fn [data] (or (:test/throw data) 0))]
+           [:timeout (fn [data] (or (:test/timeout data) 0))]]
+    :columns [{:key :key :label "NAMESPACE" :role :index}
+              {:key :failed :label "FAILED" :role :error}
+              {:key :throw :label "THROW" :role :warning}
+              {:key :timeout :label "TIMEOUT" :role :timeout}]}
+   :summary
+   {:fields [:files :facts :checks :passed :failed :throw :timeout :skipped]
+    :finalise test-summary-finalise}
+   :report
+   {:title "TEST RESULTS"
+    :sections [:items :results :summary]
+    :labels {:items "TESTS" :results "RESULTS" :summary "SUMMARY"}
+    :strict-summary-fields true
+    :status test-report-status}
+   :return {:select :summary :package :map}})
+
 (defn profile-definition-options
   [profile]
   (let [options (:workflow/options profile)
@@ -45,7 +191,8 @@
   {:flow/path path
    :flow/version 1
    :flow/product :work
-   :flow/defaults {:defaults engine/default-task-options}
+   :flow/defaults {:defaults engine/default-task-options
+                   :test test-task-defaults}
    :flow/merge flow/merge-options
    :flow/normalise normalise
    :flow/compile compile
@@ -53,6 +200,12 @@
    :flow/invoke invoke})
 
 (flow/register +flow+)
+
+;; Make the profile available to direct engine users as well as the registered
+;; flow descriptor.  Installation is idempotent and later frontend options
+;; may extend the profile through the public registration function below.
+(def installed-test-defaults
+  (engine/install-defaults :test test-task-defaults))
 
 (def request engine/request)
 (def invocation engine/invocation)

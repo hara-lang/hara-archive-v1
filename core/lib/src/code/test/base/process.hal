@@ -67,8 +67,9 @@
 (defn timeout-result?
   [value]
   (and (Result/error? value)
-       (= :result/timeout
-          (:code (ex-data (Result/error-value value))))))
+       (let [data (ex-data (Result/error-value value))]
+         (has? #{:result/timeout :hara/timeout}
+               (or (:code data) (:ex/code data))))))
 
 (defn checks-pass?
   [checks]

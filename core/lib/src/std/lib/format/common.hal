@@ -5,7 +5,7 @@
 (def +up+ "\u001b[1A")
 (def +clearline+ "\u001b[2K")
 
-(defn line
+(defn ^{:public true} line
   "Creates one structured output line with an optional semantic role."
   ([text]
    (line text :default))
@@ -20,6 +20,22 @@
     (nil? value) ""
     (string? value) value
     :else (pr-str value)))
+
+(defn ^{:public true} cell
+  "Creates a portable report cell with an optional presentation role."
+  ([text]
+   (cell text :default))
+  ([text role]
+   {:cell/text (value-text text)
+    :cell/role (or role :default)}))
+
+(defn ^{:public true} line-cells
+  "Creates a structured line while retaining per-cell presentation roles."
+  [cells]
+  (let [cells (vec cells)]
+    {:line/text (str/join "" (map (fn [entry] (:cell/text entry)) cells))
+     :line/role :default
+     :line/cells cells}))
 
 (defn truncate
   "Truncates display text to width, using an ellipsis when it fits."

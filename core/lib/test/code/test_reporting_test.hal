@@ -37,47 +37,45 @@
        :data 42}
       :error])
 
-(fact "test reports project facts directly without nested task records"
-  (let [summary
-        {:status :failed
-         :files 1
-         :facts 1
-         :checks 1
-         :passed 0
-         :failed 1
-         :throw 0
-         :timeout 0
-         :skipped 0
-         :results
-         [{:namespace "sample.test"
-           :name "predicate"
-           :status :failed
-           :meta {:test/namespace "sample.test"
-                  :before (fn [] true)}
-           :checks [(compare 41 42)]}]}
-        document (test-work/test-report summary)
-        results (report/section-by-id document :results)
-        summary-section (report/section-by-id document :summary)
-        fact-row (first (:section/entries results))]
-    [(:report/status document)
-     (:name fact-row)
-     (:checks fact-row)
-     (fn? (get-in fact-row [:meta :before]))
-     (:section/entries summary-section)])
+(register "predicate"
+          (fn [options]
+            [(compare 41 42)])
+          {:test/namespace "code.test.reporting-test"})
+
+(def task-summary
+  (test-work/run
+   {:namespace "code.test.reporting-test"
+    :name "predicate"
+    :test/revision 101}))
+
+(def task-report (:report task-summary))
+
+(remove-fact "code.test.reporting-test" "predicate")
+
+(fact "test reports use the shared task document and namespace rows"
+  (let [sections (:report/sections task-report)
+        items (report/section-by-id task-report :items)
+        results (report/section-by-id task-report :results)
+        summary-section (report/section-by-id task-report :summary)
+        item-row (first (:section/entries items))
+        result-row (first (:section/entries results))
+        summary-row (first (:section/entries summary-section))]
+    [(:report/status task-report)
+     (vec (map (fn [section] (:section/id section)) sections))
+     (:item/display item-row)
+     [(:key result-row) (:failed result-row) (:throw result-row) (:timeout result-row)]
+     (select-keys summary-row [:files :facts :checks :passed :failed :throw :timeout :skipped])])
   => [:failed
-      "predicate"
-      [{:status :success
-        :data false
-        :context {:test {:actual 41 :expected 42}
-                  :failures []}}]
-      false
-      [{:files 1
-        :facts 1
-        :checks 1
-        :passed 0
-        :failed 1
-        :throw 0
-        :timeout 0
-        :skipped 0}]])
+      [:items :results :summary]
+      "passed (0), errors: 1"
+      ["code.test.reporting-test" 1 0 0]
+      {:files 1
+       :facts 1
+       :checks 1
+       :passed 0
+       :failed 1
+       :throw 0
+       :timeout 0
+       :skipped 0}])
 
 (pr-str (run {:namespace "code.test.reporting-test"}))

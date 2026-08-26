@@ -16,6 +16,25 @@
    (common/value-text [:alpha 2])]
   => ["" "hello" "[:alpha 2]"])
 
+^{:refer std.lib.format.common/cell}
+(fact "creates portable cells with presentation roles"
+  [(common/cell "hello")
+   (common/cell 42 :success)]
+  => [{:cell/text "hello" :cell/role :default}
+      {:cell/text "42" :cell/role :success}])
+
+^{:refer std.lib.format.common/line-cells}
+(fact "keeps line text and per-cell roles together"
+  (common/line-cells
+   [(common/cell "1/2" :index)
+    (common/cell "  ")
+    (common/cell "passed" :success)])
+  => {:line/text "1/2  passed"
+      :line/role :default
+      :line/cells [{:cell/text "1/2" :cell/role :index}
+                   {:cell/text "  " :cell/role :default}
+                   {:cell/text "passed" :cell/role :success}]})
+
 ^{:refer std.lib.format.common/truncate}
 (fact "keeps short text and applies width-aware ellipses"
   [(common/truncate "abc" 5)

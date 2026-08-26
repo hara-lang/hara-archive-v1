@@ -13,7 +13,7 @@
   #{:progress :diagnostics :table :summary :text})
 
 (def style-roles
-  #{:default :muted :index :success :warning :error :critical :highlight})
+  #{:default :muted :index :success :warning :error :timeout :bold :critical :highlight})
 
 (def default-sections
   [:items :warnings :errors :results :summary])

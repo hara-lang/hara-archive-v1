@@ -204,6 +204,154 @@
      ["alpha.test" "late"]
      ["beta.test" "late"]])
 
+   ^{:refer code.test.work/namespace-facts}
+   (test-check
+    "namespace fact selection preserves the selected namespace"
+    (vec (map :name
+              (test-work/namespace-facts ordering-fixtures "alpha.test")))
+    ["late" "early"])
+
+   ^{:refer code.test.work/namespace-item}
+   (test-check
+    "namespace items carry one namespace and its facts"
+    (let [item (test-work/namespace-item
+                ordering-fixtures
+                "alpha.test"
+                {:fail-fast true})
+          value (:item/value item)]
+      [(:item/id item)
+       (:namespace value)
+       (:test/namespace value)
+       (count (:test/facts value))
+       (:test/options value)])
+    ["alpha.test" "alpha.test" "alpha.test" 2 {:fail-fast true}])
+
+   ^{:refer code.test.work/cancelled-fact-result}
+   (test-check
+    "cancelled namespace facts retain identity and fail-fast reason"
+    (select-keys (test-work/cancelled-fact-result registered-failing)
+                 [:status :checks :reason])
+    {:status :cancelled :checks [] :reason :fail-fast})
+
+   ^{:refer code.test.work/cancel-namespace-facts}
+   (test-check
+    "namespace cancellation emits completed cancelled fact results"
+    (let [events (atom [])
+          values (test-work/cancel-namespace-facts
+                  [registered-failing]
+                  {:work/emit (fn [event data]
+                                (swap! events conj event))})]
+      [(vec (map :status values)) @events])
+    [[:cancelled]
+     [:test/fact-started :test/fact-completed]])
+
+   ^{:refer code.test.work/run-namespace-fact}
+   (test-check
+    "namespace fact execution emits the standard fact lifecycle"
+    (let [events (atom [])
+          value (test-work/run-namespace-fact
+                 registered-failing
+                 {}
+                 {:work/emit (fn [event data]
+                               (swap! events conj event))})]
+      [(:status value) @events])
+    [:failed [:test/fact-started :test/fact-completed]])
+
+   ^{:refer code.test.work/run-namespace-facts}
+   (test-check
+    "namespace fact batches retain ordered domain results"
+    (let [values (test-work/run-namespace-facts
+                  [registered-failing]
+                  {}
+                  {:work/emit (fn [event data] nil)})]
+      (vec (map :status values)))
+    [:failed])
+
+   ^{:refer code.test.work/capture-hook}
+   (test-check
+    "hook capture returns nil on success and an error on failure"
+    [(test-work/capture-hook (fn [] true) {})
+     (ex-message
+      (test-work/capture-hook
+       (fn [] (throw (ex :generic {} :ex/message "hook failed")))
+       {}))]
+    [nil "hook failed"])
+
+   ^{:refer code.test.work/namespace-error-result}
+   (test-check
+    "namespace hook errors become synthetic domain results"
+    (select-keys
+     (test-work/namespace-error-result
+      {:test/namespace "sample.test" :test/path "sample_test.hal"}
+      :before-all
+      (ex :generic {} :ex/message "boom"))
+     [:namespace :name :status :reason])
+    {:namespace "sample.test"
+     :name ":before-all"
+     :status :error
+     :reason :before-all})
+
+   ^{:refer code.test.work/namespace-summary}
+   (test-check
+    "namespace summaries expose passed counts and Foundation display text"
+    (select-keys
+     (test-work/namespace-summary
+      {:test/namespace "sample.test" :test/path "sample_test.hal"}
+      [{:namespace "sample.test"
+        :name "passing"
+        :status :passed
+        :checks [(fact/compare 1 1)]}]
+      [])
+     [:status :files :facts :checks :passed :failed :test/status
+      :test/passed :test/display])
+    {:status :passed
+     :files 1
+     :facts 1
+     :checks 1
+     :passed 1
+     :failed 0
+     :test/status :passed
+     :test/passed 1
+     :test/display "passed (1)"})
+
+   ^{:refer code.test.work/run-namespace-item}
+   (test-check
+    "namespace item execution retains task-facing test status"
+    (let [item (test-work/namespace-item
+                [registered-failing]
+                "code.test-work-test"
+                {})
+          summary (test-work/run-namespace-item
+                   (:item/value item)
+                   {:work/emit (fn [event data] nil)})]
+      (select-keys summary [:test/status :test/passed :test/failed :test/display]))
+    {:test/status :failed
+     :test/passed 0
+     :test/failed 1
+     :test/display "passed (0), errors: 1"})
+
+   ^{:refer code.test.work/namespace-items}
+   (test-check
+    "namespace item listing groups selected facts into one item"
+    (let [items (test-work/namespace-items
+                 {:namespace "code.test-work-test"
+                  :name "work-driven passing fact"})]
+      [(count items)
+       (:item/id (first items))
+       (count (get-in (first items) [:item/value :test/facts]))])
+    [1 "code.test-work-test" 1])
+
+   ^{:refer code.test.work/test-task-input}
+   (test-check
+    "test task input adds the namespace item manifest"
+    (let [input (test-work/test-task-input
+                 {:namespace "code.test-work-test"
+                  :name "work-driven passing fact"})]
+      [(get input :namespace)
+       (count (:test/items input))])
+    ["code.test-work-test" 1])
+
+   ^{:refer code.test.work/start}
    (test-check
     "suite execution uses managed Work while retaining test-domain status"
     [(work/status suite-runtime suite-reference)
@@ -220,7 +368,7 @@
         (:run/id (work/run-record suite-runtime same-suite-reference)))
      (deref execution-count)
      (count (work/checkpoints suite-runtime suite-reference))]
-    [:completed true 1 4])
+    [:completed true 1 2])
 
    (test-check
     "a failed assertion is a completed fact work result"
@@ -236,8 +384,9 @@
      (vec (map (fn [event] (:event event)) reported-events))]
     [:failed [:test/fact-started :test/fact-completed]])
 
+   ^{:refer code.test.work/runner-work}
    (test-check
-    "public code.test/run uses the canonical fact-batch work graph"
+    "public code.test/run uses the Foundation-compatible task graph"
      [(:op (work/work-spec fact/+runner-work+))
      (:status public-result)
      (= (summary-result-view public-result)

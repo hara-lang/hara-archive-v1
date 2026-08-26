@@ -14,6 +14,9 @@
 (def +default-summary-fields+
   [:items :results :warnings :errors :cumulative :elapsed])
 
+(def +field-order-characters+
+  "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz-/:.")
+
 (defn contains-value?
   [values value]
   (reduce
@@ -32,16 +35,75 @@
    []
    (or values [])))
 
+(defn field-order-key
+  [field]
+  (let [text (name field)]
+    (loop [index 0
+           output []]
+      (if (= index (str/length text))
+        output
+        (let [character (str/slice text index (inc index))
+              position (str/index-of +field-order-characters+ character)]
+          (recur
+           (inc index)
+           (conj output (if (< position 0) 1000 position))))))))
+
+(defn field-order-before?
+  [left right]
+  (loop [left (field-order-key left)
+         right (field-order-key right)]
+    (cond
+      (empty? left) false
+      (empty? right) true
+      (< (first left) (first right)) true
+      (> (first left) (first right)) false
+      :else (recur (vec (rest left))
+                   (vec (rest right))))))
+
+(defn insert-field
+  [field fields]
+  (loop [remaining (vec fields)
+         output []]
+    (if (empty? remaining)
+      (conj output field)
+      (if (field-order-before? field (first remaining))
+        (vec (concat output [field] remaining))
+        (recur (vec (rest remaining))
+               (conj output (first remaining)))))))
+
+(defn sort-fields
+  [fields]
+  (loop [remaining (vec fields)
+         output []]
+    (if (empty? remaining)
+      output
+      (recur (vec (rest remaining))
+             (insert-field (first remaining) output)))))
+
 (defn record-role
   [record]
-  (case (:status record)
+  (let [data (:data record)
+        status (or (:test/status record)
+                   (if (map? data) (:test/status data) nil)
+                   (:status record))]
+    (case status
     :return :success
     :passed :success
     :warn :warning
     :error :error
     :failed :error
+    :timeout :timeout
+    :skipped :warning
+    :cancelled :warning
     :critical :critical
-    :default))
+    :default)))
+
+(defn record-status
+  [record]
+  (let [data (:data record)]
+    (or (:test/status record)
+        (if (map? data) (:test/status data) nil)
+        (:status record))))
 
 (defn status-text
   [status]
@@ -51,6 +113,9 @@
     :warn "warn"
     :error "error"
     :failed "failed"
+    :timeout "timeout"
+    :skipped "skipped"
+    :cancelled "cancelled"
     :critical "critical"
     (name (or status :return))))
 
@@ -76,7 +141,10 @@
         id (if (:item/id-width record)
              (common/pad id (:item/id-width record) :left)
              id)
-        status (status-text (:status record))
+        status (if (or (not (has? record :item/status?))
+                       (:item/status? record))
+                 (status-text (record-status record))
+                 "")
         count-text
         (if (has? record :item/count)
           (str " (" (common/value-text (:item/count record)) ")")
@@ -96,36 +164,52 @@
                                     (:item/time-width record)
                                     :left))
               (str "  " value)))
-          "")]
-    (common/line
-     (str index-text
-          "  " id
-          "  "
-          (let [result (str status
-                            count-text
-                            (if (nil? display)
-                              ""
-                              (str "  " (common/value-text display))))]
-            (if (:item/result-width record)
-              (common/pad result (:item/result-width record) :left)
-              result))
-          elapsed)
-     (record-role record))))
+          "")
+        result
+        (let [result (str status
+                          count-text
+                          (if (nil? display)
+                            ""
+                            (str (if (or (not (empty? status))
+                                         (not (empty? count-text)))
+                                      "  "
+                                      "")
+                                 (common/value-text display))))]
+          (if (:item/result-width record)
+            (common/pad result (:item/result-width record) :left)
+            result))
+        result-role (record-role record)
+        cells
+        [(common/cell index-text :index)
+         (common/cell "  ")
+         (common/cell id)
+         (common/cell "  ")
+         (common/cell result result-role)]]
+    (assoc
+     (common/line-cells
+      (if (has? record :elapsed)
+        (conj cells (common/cell elapsed :bold))
+        cells))
+     :line/role result-role)))
 
 (defn diagnostic-line
   [record]
   (let [id (common/value-text (:item/id record))
-        status (status-text (:status record))
+        status (status-text (record-status record))
+        role (record-role record)
         value
         (if (has? record :data)
           (:data record)
           (:error record))]
-    (common/line
-     (str id "  " status
-          (if (nil? value)
-            ""
-            (str "  " (common/value-text value))))
-     (record-role record))))
+    (assoc
+     (common/line-cells
+      [(common/cell id)
+       (common/cell "  ")
+       (common/cell status role)
+       (if (nil? value)
+         (common/cell "")
+         (common/cell (str "  " (common/value-text value)) role))])
+     :line/role role)))
 
 (defn summary-field-label
   [field]
@@ -136,6 +220,14 @@
     :errors "Errors"
     :cumulative "Cumulative"
     :elapsed "Elapsed"
+    :files "Files"
+    :facts "Facts"
+    :checks "Checks"
+    :passed "Passed"
+    :failed "Failed"
+    :throw "Throw"
+    :timeout "Timeout"
+    :skipped "Skipped"
     (name field)))
 
 (defn summary-value-text
@@ -145,6 +237,19 @@
     (time-text value)
     (common/value-text value)))
 
+(defn summary-field-role
+  [field]
+  (case field
+    :passed :success
+    :failed :error
+    :errors :error
+    :throw :warning
+    :warnings :warning
+    :timeout :timeout
+    :cumulative :bold
+    :elapsed :bold
+    :default))
+
 (defn summary-fields
   [section summary]
   (let [configured (:section/fields section)
@@ -153,14 +258,14 @@
           +default-summary-fields+
           configured)
         extras
-        (sort-by
-         (fn [field]
-           (name field))
-         (filter
-          (fn [field]
-            (not (contains-value? base field)))
-          (keys summary)))]
-    (distinct-values (concat base extras))))
+        (if (:section/strict-fields section)
+          []
+          (sort-fields
+           (filter
+            (fn [field]
+              (not (contains-value? base field)))
+            (keys summary))))]
+    (distinct-values (vec (concat base extras)))))
 
 (defn summary-lines
   [section]
@@ -168,12 +273,11 @@
     (vec
     (map
       (fn [field]
-        (common/line
-         (str (summary-field-label field)
-              ": "
-              (summary-value-text
-               field
-               (get summary field)))))
+        (common/line-cells
+         [(common/cell (str (summary-field-label field) ": "))
+          (common/cell
+           (summary-value-text field (get summary field))
+           (summary-field-role field))]))
       (summary-fields section summary)))))
 
 (defn section-role

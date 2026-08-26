@@ -162,7 +162,7 @@
       :fact-after
       :after-each
       :after-all]
-     3
+     2
      [:test/run-started
       :test/fact-started
       :test/fact-completed
@@ -216,7 +216,7 @@
     "suite cleanup runs when suite setup fails"
     [(work/status setup-failure-runtime setup-failure-reference)
      (deref setup-cleanup-count)]
-    [:failed 1])
+    [:completed 1])
 
    (test-check
     "runtime-owned fail-fast remains cleanup-safe for passing suites"

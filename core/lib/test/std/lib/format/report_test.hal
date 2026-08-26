@@ -41,9 +41,20 @@
    (report/record-role {:status :warn})
    (report/record-role {:status :error})
    (report/record-role {:status :failed})
+   (report/record-role {:status :timeout})
+   (report/record-role {:status :skipped})
+   (report/record-role {:data {:test/status :passed}})
    (report/record-role {:status :critical})
    (report/record-role {:status :other})]
-  => [:success :success :warning :error :error :critical :default])
+  => [:success :success :warning :error :error :timeout :warning
+      :success :critical :default])
+
+^{:refer std.lib.format.report/record-status}
+(fact "reads domain status from records or their data"
+  [(report/record-status {:status :return})
+   (report/record-status {:data {:test/status :timeout}})
+   (report/record-status {})]
+  => [:return :timeout nil])
 
 ^{:refer std.lib.format.report/status-text}
 (fact "maps task statuses to stable display text"
@@ -52,9 +63,12 @@
    (report/status-text :warn)
    (report/status-text :error)
    (report/status-text :failed)
+   (report/status-text :timeout)
+   (report/status-text :skipped)
    (report/status-text :critical)
    (report/status-text :other)]
-  => ["ok" "passed" "warn" "error" "failed" "critical" "other"])
+  => ["ok" "passed" "warn" "error" "failed" "timeout" "skipped"
+      "critical" "other"])
 
 ^{:refer std.lib.format.report/time-text}
 (fact "renders optional elapsed values with units"
@@ -77,6 +91,19 @@
   => {:line/text "1/2  :alpha  passed (15)  0.18s"
       :line/role :success})
 
+(fact "progress lines retain index, result, and elapsed cell roles"
+  (vec
+   (map
+    (fn [cell] (:cell/role cell))
+    (:line/cells
+     (report/progress-line
+      {:item/id :alpha
+       :item/index 0
+       :item/total 2
+       :status :timeout
+       :elapsed 4}))))
+  => [:index :default :default :default :timeout :bold])
+
 ^{:refer std.lib.format.report/diagnostic-line}
 (fact "renders diagnostic entries using data or error values"
   (select-keys
@@ -97,18 +124,64 @@
    (report/summary-value-text :elapsed 8)]
   => ["2" "8ms"])
 
+^{:refer std.lib.format.report/summary-field-role}
+(fact "maps summary fields to semantic presentation roles"
+  [(report/summary-field-role :passed)
+   (report/summary-field-role :failed)
+   (report/summary-field-role :warnings)
+   (report/summary-field-role :timeout)
+   (report/summary-field-role :elapsed)
+   (report/summary-field-role :facts)]
+  => [:success :error :warning :timeout :bold :default])
+
 ^{:refer std.lib.format.report/summary-fields}
 (fact "uses configured fields and sorted summary extensions"
   [(report/summary-fields {:section/fields []} +summary+)
-   (report/summary-fields {:section/fields [:errors]} +summary+)]
+   (report/summary-fields {:section/fields [:errors]} +summary+)
+   (report/summary-fields {:section/fields [:files]
+                           :section/strict-fields true}
+                          (assoc +summary+ :files 2))]
   => [[:items :results :warnings :errors :cumulative :elapsed]
-      [:errors :cumulative :elapsed :items :results :warnings]])
+      [:errors :cumulative :elapsed :items :results :warnings]
+      [:files]])
+
+^{:refer std.lib.format.report/field-order-key}
+(fact "creates deterministic character keys for extension fields"
+  [(report/field-order-key :files)
+   (report/field-order-key :timeout)]
+  => [[42 45 48 41 55]
+      [56 45 49 41 51 57 56]])
+
+^{:refer std.lib.format.report/field-order-before?}
+(fact "compares extension fields without relying on host sorting"
+  [(report/field-order-before? :files :timeout)
+   (report/field-order-before? :timeout :files)]
+  => [true false])
+
+^{:refer std.lib.format.report/insert-field}
+(fact "inserts a field in the canonical extension order"
+  (report/insert-field :files [:items :timeout])
+  => [:files :items :timeout])
+
+^{:refer std.lib.format.report/sort-fields}
+(fact "sorts extension fields deterministically"
+  (report/sort-fields [:timeout :files :facts])
+  => [:facts :files :timeout])
 
 ^{:refer std.lib.format.report/summary-lines}
 (fact "renders summary entries as structured lines"
   (map :line/text (report/summary-lines {:section/entries [+summary+]}))
   => ["Items: 2" "Results: 2" "Warnings: 1" "Errors: 0"
       "Cumulative: 7ms" "Elapsed: 8ms"])
+
+(fact "summary timing cells carry the bold presentation role"
+  (vec
+   (map
+    (fn [line]
+      (vec (map (fn [cell] (:cell/role cell)) (:line/cells line))))
+    (report/summary-lines {:section/entries [+summary+]})))
+  => [[:default :default] [:default :default] [:default :warning]
+      [:default :error] [:default :bold] [:default :bold]])
 
 ^{:refer std.lib.format.report/section-role}
 (fact "assigns semantic roles to section ids"

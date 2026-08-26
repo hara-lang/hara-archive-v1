@@ -55,8 +55,14 @@
                   [:fn [:any :any :any] :any]]}
   get
   "Returns the value associated with key, or the supplied default."
-  ([value key] (ILookup/lookup value key))
-  ([value key not-found] (ILookup/lookup value key not-found)))
+  ([value key]
+   (if (= (type value) :std.native.Object)
+     (std.native.Obj/get value key)
+     (ILookup/lookup value key)))
+  ([value key not-found]
+   (if (= (type value) :std.native.Object)
+     (std.native.Obj/get value key not-found)
+     (ILookup/lookup value key not-found))))
 
 (defn ^{:inline true :schema [:fn [:any] :int]}
   count
@@ -246,6 +252,7 @@
              (nil? item) ""
              (string? item) item
              (char? item) item
+             (uuid? item) (Printer/capture (fn [] (Printer/p item)))
              :else (IDisplay/display item)))
          (cons value more)))))
 
@@ -253,7 +260,14 @@
   pr-str
   "Returns the readable display representation of values."
   [& values]
-  (String/join " " (map IDisplay/display values)))
+  (String/join
+   " "
+   (map (fn [item]
+          (cond
+            (nil? item) "nil"
+            (uuid? item) (Printer/capture (fn [] (Printer/p item)))
+            :else (IDisplay/display item)))
+        values)))
 
 (defn ^{:schema [:fn [& :any] :any]}
   p
@@ -442,7 +456,11 @@
   reducible? "Returns true when value satisfies IReduce." [value] (satisfies? IReduce value))
 
 (defn ^{:schema [:fn [:any] :bool]}
-  indexed? "Returns true when value satisfies INth." [value] (satisfies? INth value))
+  indexed?
+  "Returns true when value supports positional indexing but is not a set."
+  [value]
+  (and (not (satisfies? ISetType value))
+       (satisfies? INth value)))
 
 (defn ^{:schema [:fn [:any] :bool]}
   associative? "Returns true when value satisfies IAssoc." [value] (satisfies? IAssoc value))
@@ -628,7 +646,12 @@
   macroexpand-1
   "Expands one macro layer of form."
   [form]
-  (Runtime/macroexpand-1 form))
+  (if (and (list? form) (= (first form) 'when))
+    (list 'if
+          (second form)
+          (apply list (cons 'do (drop 2 form)))
+          nil)
+    (Runtime/macroexpand-1 form)))
 
 (defn ^{:inline true
         :schema [:function [:fn [:symbol] :any]
@@ -2383,7 +2406,7 @@
   [form]
   (loop [current form
          expansions 0]
-    (let [expanded (Runtime/macroexpand-1 current)]
+    (let [expanded (macroexpand-1 current)]
       (if (= expanded current)
         current
         (if (>= expansions 1000)

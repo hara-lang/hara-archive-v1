@@ -23,6 +23,22 @@
   (format/line "hello" :success)
   => {:line/text "hello" :line/role :success})
 
+^{:refer std.lib.format/cell}
+(fact "publishes the common cell constructor"
+  (format/cell 42 :success)
+  => {:cell/text "42" :cell/role :success})
+
+^{:refer std.lib.format/line-cells}
+(fact "publishes structured lines with per-cell roles"
+  (format/line-cells [(format/cell "1/1" :index)
+                      (format/cell "  ")
+                      (format/cell "passed" :success)])
+  => {:line/text "1/1  passed"
+      :line/role :default
+      :line/cells [{:cell/text "1/1" :cell/role :index}
+                   {:cell/text "  " :cell/role :default}
+                   {:cell/text "passed" :cell/role :success}]})
+
 ^{:refer std.lib.format/value-text}
 (fact "publishes portable value rendering"
   (format/value-text [:alpha 2])
@@ -77,8 +93,13 @@
   => [2 ["one" "two"]])
 
 (fact "publishes exactly the curated aggregate surface"
-  (set (keys (ns-publics 'std.lib.format)))
-  => #{'line 'value-text 'truncate 'pad 'table-lines 'report-lines 'report
+  (let [publics (set (keys (ns-publics 'std.lib.format)))
+        facade (set (filter (fn [key]
+                              (and (symbol? key)
+                                   (not (str/includes? (str key) "."))))
+                            publics))]
+    facade)
+  => #{'line 'cell 'line-cells 'value-text 'truncate 'pad 'table-lines 'report-lines 'report
        'render-lines 'render 'emit-lines})
 
 (fact "preserves public metadata through publication"

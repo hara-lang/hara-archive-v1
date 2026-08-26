@@ -7,6 +7,8 @@
 
 (intern-in
  [line common/line]
+ [cell common/cell]
+ [line-cells common/line-cells]
  [value-text common/value-text]
  [truncate common/truncate]
  [pad common/pad]

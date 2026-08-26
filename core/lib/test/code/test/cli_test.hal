@@ -1,6 +1,73 @@
 (ns code.test.cli-test
   (:use code.test)
-  (:require [code.test.cli :as cli]))
+  (:require [code.test.cli :as cli]
+            [work.flow.task :as task]
+            [work.base :as work]))
+
+(fact "code.test CLI file execution uses the shared task item shape"
+  [(cli/cli-task-item-list {:test/files ["one" "two"]} {})
+   (cli/cli-task-item-index {:command/subject {:task/index 2}})
+   (cli/cli-task-item-index {})
+   (cli/cli-task-item-display {:passed 4})]
+  => [["one" "two"] 2 0 "passed (4)"])
+
+(fact "code.test CLI task execution preserves file failures as data"
+  (let [result
+        (cli/cli-task-item-run
+         "core/missing-test-file.hal"
+         {:command/subject {:task/index 1}})]
+    [(get-in result [:data :path])
+     (get-in result [:data :passed])
+     (get-in result [:data :failed])])
+  => ["core/missing-test-file.hal" 0 1])
+
+(fact "code.test CLI task summaries aggregate file results"
+  [(cli/cli-task-summary
+    {:items 2}
+    [{:data {:passed 2 :failed 0}}
+     {:data {:passed 1 :failed 1}}]
+    [])
+   (cli/cli-task-results
+    {:records [{:data {:path "one"}}
+               {:data {:path "two"}}]})]
+  => [{:status :failed
+       :items 2
+       :files 2
+       :passed 3
+       :failed 1
+       :results [{:passed 2 :failed 0}
+                 {:passed 1 :failed 1}]}
+      [{:path "one"} {:path "two"}]])
+
+(fact "code.test CLI task rows retain their domain status"
+  (get-in
+   (cli/cli-task-item-run
+    "core/missing-test-file.hal"
+    {:command/subject {:task/index 1}})
+   [:data :test/status])
+  => :error)
+
+(fact "code.test CLI file batches are task-engine bundles"
+  (let [bundle (cli/run-test-bundle [])]
+    [(task/task-work? cli/+cli-task-work+)
+     (cli/run-test-files [])
+     (get-in bundle [:summary :files])
+     (get-in bundle [:report :report/title])])
+  => [true [] 0 "TEST RESULTS"])
+
+^{:refer code.test.cli/result-messages}
+(fact "code.test CLI messages use the shared report renderer"
+  (let [message
+        (first
+         (cli/result-messages
+          {:report/title "TEST RESULTS"
+           :report/sections []}
+          []
+          {:passed 0 :failed 1}
+          {:no-color true}))]
+    [(:message/stream message)
+     (:message/text message)])
+  => [:stderr "TEST RESULTS\n"])
 
 ^{:refer code.test.cli/handler}
 (fact "the code.test CLI handler reaches its implementation through the default host"
@@ -13,7 +80,7 @@
           (catch Throwable error
             (ex-message error)))]
     [(not= :not-thrown message)
-     (str/includes? message "file/stat failed: file/not-found")])
+     (str/includes? message "work/failed")])
   => [true true])
 
 (pr-str (run '[code.test.cli-test]))

@@ -37,8 +37,125 @@
    :main {:fn lint-project
           :argcount 1}})
 
+(def profile-records
+  [{:data {:facts 2
+           :checks 3
+           :passed 2
+           :failed 0
+           :throw 0
+           :timeout 0
+           :counts {:passed 2 :failed 0 :error 0 :timeout 0
+                    :skipped 0 :cancelled 0}
+           :check-counts {:total 3 :passed 3 :failed 0}
+           :results [{:name :first} {:name :second}]}}])
+
+(def profile-summary
+  (task/test-summary-finalise {:items 1} profile-records []))
+
 (def results
-  [(test-check
+  [^{:refer work.flow.task/test-item-list}
+   (test-check
+    "the test profile lists frontend-supplied namespace items"
+    (task/test-item-list {:test/items [:alpha :beta]} {})
+    [:alpha :beta])
+
+   ^{:refer work.flow.task/test-item-run}
+   (test-check
+    "the test profile delegates namespace execution to the item runner"
+    [(task/test-item-run
+      {:test/run (fn [item context] {:namespace :alpha})}
+      {})
+     (task/test-item-run {:item/id :fallback} {})]
+    [{:status :return :data {:namespace :alpha}}
+     {:status :return :data {:item/id :fallback}}])
+
+   ^{:refer work.flow.task/test-number}
+   (test-check
+    "test counters treat non-numeric values as zero"
+    [(task/test-number 3) (task/test-number "3")]
+    [3 0])
+
+   ^{:refer work.flow.task/test-item-display}
+   (test-check
+    "test item display prefers the frontend display value"
+    [(task/test-item-display {:test/display "passed (2)"})
+     (task/test-item-display :raw)]
+    ["passed (2)" :raw])
+
+   ^{:refer work.flow.task/test-item-output}
+   (test-check
+    "test item output preserves the namespace summary"
+    (task/test-item-output {:status :passed :facts 2})
+    {:status :passed :facts 2})
+
+   ^{:refer work.flow.task/test-result-ignore}
+   (test-check
+    "passing namespace rows are ignored while failure rows remain visible"
+    [(task/test-result-ignore {:test/failed 0 :test/throw 0 :test/timeout 0})
+     (task/test-result-ignore {:test/failed 1 :test/throw 0 :test/timeout 0})]
+    [true false])
+
+   ^{:refer work.flow.task/test-report-status}
+   (test-check
+    "test report status maps the domain summary to task completion"
+    [(task/test-report-status {:status :passed} {})
+     (task/test-report-status {:status :failed} {})]
+    [:completed :failed])
+
+   ^{:refer work.flow.task/test-data}
+   (test-check
+    "test data extracts map-valued item results"
+    [(task/test-data (first profile-records))
+     (task/test-data {:data :not-a-map})]
+    [(first (map :data profile-records)) {}])
+
+   ^{:refer work.flow.task/test-total}
+   (test-check
+    "test totals sum numeric namespace fields"
+    [(task/test-total [(first (map :data profile-records))] :facts)
+     (task/test-total [(first (map :data profile-records))] :missing)]
+    [2 0])
+
+   ^{:refer work.flow.task/test-count-total}
+   (test-check
+    "test count totals sum nested result counts"
+    (task/test-count-total [(first (map :data profile-records))] :passed)
+    2)
+
+   ^{:refer work.flow.task/test-check-total}
+   (test-check
+    "test check totals sum nested assertion counts"
+    (task/test-check-total [(first (map :data profile-records))] :total)
+    3)
+
+   ^{:refer work.flow.task/test-result-values}
+   (test-check
+    "test result values flatten namespace result rows"
+    (task/test-result-values [(first (map :data profile-records))])
+    [{:name :first} {:name :second}])
+
+   ^{:refer work.flow.task/test-summary-finalise}
+   (test-check
+    "test summary finalisation exposes Foundation-compatible counters"
+    (select-keys profile-summary
+                 [:items :files :facts :checks :passed :failed :throw
+                  :timeout :skipped :status :results])
+    {:items 1 :files 1 :facts 2 :checks 3 :passed 2 :failed 0
+     :throw 0 :timeout 0 :skipped 0 :status :passed
+     :results [{:name :first} {:name :second}]})
+
+   ^{:refer work.flow.task/test-task-defaults}
+   (test-check
+    "the test profile installs Foundation-compatible task defaults"
+    [(get-in task/test-task-defaults [:item :list-mode])
+     (get-in task/test-task-defaults [:report :sections])
+     (get-in task/test-task-defaults [:summary :fields])
+     (get-in (task/task-defaults :test) [:return :select])]
+    [:input-context [:items :results :summary]
+     [:files :facts :checks :passed :failed :throw :timeout :skipped]
+     :summary])
+
+   (test-check
     "task flows register themselves for def.work"
     (:flow/path (flow/registered-flow [:task]))
     [:task])
