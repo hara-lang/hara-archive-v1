@@ -1,5 +1,5 @@
 (ns code.query.common
-  (:require [std.foundation.string] [std.foundation :as walk]))
+  (:require [std.foundation.string]))
 
 (defn any
   "returns true for any value\n   (any nil) => true\n   (any '_) => true"
@@ -62,7 +62,7 @@
   "helper function for changing elements eagerly"
   {:added "3.0"}
   [f form]
-  ((wrap-keep-meta walk/walk) (partial prewalk f) identity (f form)))
+  ((wrap-keep-meta std.foundation/walk) (partial prewalk f) identity (f form)))
 
 (defn- remove-null
   [ele]

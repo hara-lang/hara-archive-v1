@@ -1,11 +1,11 @@
 (ns std.block.heal.indent
-  (:require [std.block.heal.parse :as parse] [std.foundation :as env]))
+  (:require [std.block.heal.parse :as parse]))
 
 (defn flag-close-heavy-function
   "flags a function if at a different index"
   {:added "4.0"}
   [current {:keys [depth col index]}]
-  #_(env/prn [:depth  [(:depth current) depth]
+  #_(std.foundation/prn [:depth  [(:depth current) depth]
           :col    [(:col current)   col]
           :idx    index
           :current current])
@@ -71,7 +71,7 @@
   "flags the delimiter if there are any discrepancies"
   {:added "4.0"}
   [current {:keys [depth col index]}]
-  #_(env/prn [:depth  [(:depth current) depth]
+  #_(std.foundation/prn [:depth  [(:depth current) depth]
             :col    [(:col current)   col]
             :idx    index
             :current current])
@@ -255,7 +255,7 @@
   *dlm4*
   (parse/pair-delimiters
    (parse/parse-delimiters
-    (env/sys:resource-content "code/heal/cases/004_shorten.block"))))
+    (std.foundation/sys:resource-content "code/heal/cases/004_shorten.block"))))
  (build-insert-edits *dlm4* (flag-open-heavy *dlm4*))
  (flag-indent-candidates-single
   *dlm4*

@@ -1,8 +1,7 @@
 (ns std.block.layout
   (:require [std.block.construct :as construct]
     [std.block.layout.common :as common]
-    [std.block.layout.estimate :as est]
-    [std.foundation :as walk]))
+    [std.block.layout.estimate :as est]))
 
 (def +bindings+
   '#{if let while ns 
@@ -81,7 +80,7 @@
   {:added "4.0"}
   [args]
   (mapv (fn [v]
-          (walk/postwalk (fn [x]
+          (std.foundation/postwalk (fn [x]
                            (cond (vector? x)
                              (with-meta x
                                (merge-nested (meta x) {:readable-len 10 :spec {:columns 1} :tag :vector}))
@@ -102,7 +101,7 @@
                            (let [migration-argument-0-value migration-argument-0
                                  k                          (first (drop 0 migration-argument-0-value))
                                  v                          (first (drop 1 migration-argument-0-value))]
-                             [(walk/postwalk
+                             [(std.foundation/postwalk
                                (fn
                                 [x]
                                 (cond

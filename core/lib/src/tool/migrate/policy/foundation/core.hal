@@ -9,7 +9,6 @@
             [code.framework :as framework]
             [code.manage.unit.structure :as structure]
             [tool.migrate.policy.foundation.script]
-            [std.foundation :as f]
             [lang.common.grammar :as common-grammar]
             [lang.common.grammar-api :as grammar-api]
             [lang.common.grammar-macro :as grammar-macro]
@@ -19,7 +18,7 @@
             [work.flow.task :as task]
             [work.flow.task.selector :as selector]))
 
-(f/intern-all tool.migrate.policy.foundation.script)
+(std.foundation/intern-all tool.migrate.policy.foundation.script)
 
 (def rule-id :std.task/def-work)
 
@@ -1178,16 +1177,27 @@
   [namespace]
   (str "(pr-str (run {:namespace \"" namespace "\"}))"))
 
+(defn normalize-foundation-source
+  "Normalizes migrated source through the shared Hara dependency boundary."
+  [source]
+  (:output
+   (migrate-rule/analyze-source
+    source
+    {:source/language :clojure
+     :target/language :hara
+     :rules []})))
+
 (defn migrate-foundation-common-test-source
   [source namespace]
   (let [rewritten (replace-routes source +foundation-common-test-rewrites+)
         runner (canonical-test-runner namespace)
-        output (if (str/includes? rewritten runner)
-                 rewritten
-                 (str (if (str/ends-with? rewritten "\n")
-                        rewritten
-                        (str rewritten "\n"))
-                      "\n" runner "\n"))
+        with-runner (if (str/includes? rewritten runner)
+                      rewritten
+                      (str (if (str/ends-with? rewritten "\n")
+                             rewritten
+                             (str rewritten "\n"))
+                           "\n" runner "\n"))
+        output (normalize-foundation-source with-runner)
         fact-count (foundation-common-fact-count source)
         diagnostics (foundation-common-diagnostics output)]
     {:before source
@@ -1447,7 +1457,8 @@
   [source]
   (let [plan (source-plan source)
         rewritten (structure/apply-edits source (:edits plan))
-        output (rewrite-requires rewritten)]
+        rewritten (rewrite-requires rewritten)
+        output (normalize-foundation-source rewritten)]
     (assoc plan
            :before source
            :after output

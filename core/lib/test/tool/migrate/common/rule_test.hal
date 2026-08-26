@@ -1,8 +1,6 @@
 (ns tool.migrate.common.rule-test
   (:use code.test)
-  (:require [tool.migrate.common.rule :as rule]
-            [std.block :as block]
-            [tool.migrate.common.block :as nav]))
+  (:require [tool.migrate.common.rule :as rule]))
 
 (def foundation-source
   "(ns demo.core
@@ -18,98 +16,21 @@
    (defn value [input]
      (alias/value input))")
 
-(def foundation-root
-  (nav/block-input foundation-source))
-
-(def foundation-clause
-  (first (nav/namespace-clause-locations foundation-root)))
-
-(def foundation-entry
-  (first (nav/code-child-locations foundation-clause)))
-
 ^{:refer tool.migrate.common.rule/normalize-dependency-aliases}
-(fact "diagnostic parse"
-  (try
-    (block/tag (nav/block-input foundation-source))
-    (catch Throwable error
-      (pr-str error)))
-  => :root)
-
-^{:refer tool.migrate.common.rule/normalize-dependency-aliases}
-(fact "diagnostic namespace clauses"
-  (try
-    (count (nav/namespace-clause-locations (nav/block-input foundation-source)))
-    (catch Throwable error
-      (pr-str error)))
-  => 1)
-
-^{:refer tool.migrate.common.rule/normalize-dependency-aliases}
-(fact "diagnostic dependency children"
-  (try
-    (count
-     (nav/code-child-locations
-      (first (nav/namespace-clause-locations (nav/block-input foundation-source)))))
-    (catch Throwable error
-      (pr-str error)))
-  => 3)
-
-^{:refer tool.migrate.common.rule/normalize-dependency-aliases}
-(fact "diagnostic dependency path"
-  (try
-    (nav/path
-     (first
-      (nav/code-child-locations
-       (first (nav/namespace-clause-locations (nav/block-input foundation-source))))))
-    (catch Throwable error
-      (pr-str error)))
-  => [0 4 1])
-
-^{:refer tool.migrate.common.rule/normalize-dependency-aliases}
-(fact "diagnostic dependency token"
-  (try
-    (block/string
-     (first
-      (nav/code-children foundation-entry)))
-    (catch Throwable error
-      (pr-str error)))
-  => "std.foundation")
-
-^{:refer tool.migrate.common.rule/normalize-dependency-aliases}
-(fact "diagnostic dependency token operations"
-  (try
-    (let [children (vec (nav/code-children foundation-entry))
-          namespace (block/string (nth children 0))
-          alias (block/string (nth children 2))]
-      [(count children)
-       namespace
-       alias
-       (str/starts-with? namespace ":")
-       (str/length alias)
-       (str/slice "h/apply-with" (str/length alias) 12)])
-    (catch Throwable error
-      (pr-str error)))
-  => [3 "std.foundation" "h" false 1 "/apply-with"])
-
-^{:refer tool.migrate.common.rule/normalize-dependency-aliases}
-(fact "diagnostic dependency walk"
-  (try
-    (> (count (nav/walk-locations foundation-root)) 0)
-    (catch Throwable error
-      (pr-str error)))
-  => true)
-
-^{:refer tool.migrate.common.rule/normalize-dependency-aliases}
-(fact "Hara Foundation aliases become qualified root references"
-  (try
-    (:output
-     (rule/analyze-source
-      foundation-source
-      {:source/language :hara
-       :target/language :hara
-       :rules []}))
-    (catch Throwable error
-      (pr-str error)))
-  => "NO_ERROR")
+(fact "Foundation aliases in Clojure input become qualified root references"
+  (let [output
+        (:output
+         (rule/analyze-source
+          foundation-source
+          {:source/language :clojure
+           :target/language :hara
+           :rules []}))]
+    [(str/includes? output "std.foundation/apply-with")
+     (str/includes? output "std.foundation/prewalk")
+     (not (str/includes? output "[std.foundation :as h]"))
+     (not (str/includes? output "[std.foundation :as walk]"))
+     (not (str/includes? output ":require"))])
+  => [true true true true true])
 
 ^{:refer tool.migrate.common.rule/normalize-dependency-aliases}
 (fact "duplicate dependency aliases keep the first alias and rewrite uses"
@@ -123,7 +44,7 @@
     [(str/includes? output "[demo.local :as local]")
      (not (str/includes? output "[demo.local :as alias]"))
      (str/includes? output "local/value")
-     (not (str/includes? output "alias/value"))]
-    => [true true true true]))
+     (not (str/includes? output "alias/value"))])
+  => [true true true true])
 
 (pr-str (run {:namespace "tool.migrate.common.rule-test"}))

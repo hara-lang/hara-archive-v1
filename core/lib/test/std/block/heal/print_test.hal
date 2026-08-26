@@ -1,7 +1,6 @@
 (ns std.block.heal.print-test
   (:require [std.block.heal.parse :as parse]
     [std.block.heal.print :as print]
-    [std.foundation :as env]
     [std.lib.encode.base64 :as base64]
     [code.test.base.process :as process]
     [code.test.checker.common :as checker]

@@ -1,5 +1,5 @@
 (ns code.query.compile
-  (:require [code.query.common :as common] [std.foundation :as walk]))
+  (:require [code.query.common :as common]))
 
 (defn cursor-info
   "finds the information related to the cursor\n \n   (cursor-info '[(defn ^:?& _ | & _)])\n   => '[0 :form (defn _ | & _)]\n \n   (cursor-info (expand-all-metas '[(defn ^:?& _ | & _)]))\n   => '[0 :form (defn _ | & _)]\n \n   (cursor-info '[defn if])\n   => [nil :cursor]\n \n   (cursor-info '[defn | if])\n   => [1 :cursor]"
@@ -90,7 +90,7 @@
                                 (process-path xs (conj out (merge (assoc xmap :element y) ymeta)))))
                             out))))
 
-(defn compile-section-base "compiles an element section\\n   (compile-section-base '{:element defn})\\n   => '{:form defn}\\n \\n   (compile-section-base '{:element (if & _)})\\n   => '{:pattern (if & _)}\\n \\n   (compile-section-base '{:element _})\\n   => {:is code.query.common/any}" {:added "3.0"} [section] (let [{:keys [element], evaluate? :%} section] (cond evaluate? (compile-section-base (-> section (assoc :element (eval element)) (dissoc :%))) (= (quote _) element) {:is common/any} (and (std.foundation/fn? element) (not (form? element))) {:is element} (map? element) (walk/postwalk (fn [ele] (cond (:% (meta ele)) (eval (with-meta ele (-> (meta ele) (dissoc :%)))) :else ele)) element) (form? element) {:pattern element} (symbol? element) {:form element} :else {:is element})))
+(defn compile-section-base "compiles an element section\\n   (compile-section-base '{:element defn})\\n   => '{:form defn}\\n \\n   (compile-section-base '{:element (if & _)})\\n   => '{:pattern (if & _)}\\n \\n   (compile-section-base '{:element _})\\n   => {:is code.query.common/any}" {:added "3.0"} [section] (let [{:keys [element], evaluate? :%} section] (cond evaluate? (compile-section-base (-> section (assoc :element (eval element)) (dissoc :%))) (= (quote _) element) {:is common/any} (and (std.foundation/fn? element) (not (form? element))) {:is element} (map? element) (std.foundation/postwalk (fn [ele] (cond (:% (meta ele)) (eval (with-meta ele (-> (meta ele) (dissoc :%)))) :else ele)) element) (form? element) {:pattern element} (symbol? element) {:form element} :else {:is element})))
 
 (def moves
   {:step   {:up     :parent

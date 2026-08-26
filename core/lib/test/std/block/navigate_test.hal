@@ -82,7 +82,12 @@
              (let [left-elems [(construct/block [1 2 3]) (construct/newline)]]
                   (-> {:left left-elems :position [1 0]}
                       (update-step-outside left-elems) :position)))
-   :expected [0 7]}]
+   :expected [0 7]}
+  {:name "updates the step position with no left elements"
+   :test (fn []
+             (-> {:left [] :right [(construct/block 1)] :position [0 2]}
+                 (update-step-outside []) :position))
+   :expected [0 2]}]
  migration-test-check)
 
 ^{:refer std.block.navigate/display-navigator

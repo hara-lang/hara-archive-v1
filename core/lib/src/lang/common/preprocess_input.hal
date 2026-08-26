@@ -1,8 +1,6 @@
 (ns lang.common.preprocess-input
   (:require [lang.common.preprocess-base :as preprocess-base]
-            [lang.common.util :as util]
-            [std.foundation :as foundation]
-            ))
+            [lang.common.util :as util]))
 
 (defn to-input-form
   "processes a form"
@@ -36,7 +34,7 @@
                     (apply list
                            (list 'var
                                  (if resolved
-                                   (foundation/var-sym resolved)
+                                   (std.foundation/var-sym resolved)
                                    (throw
                                     (ex :security {:input (second token)} :ex/message "Var not found"))))
                            (if input
@@ -60,7 +58,7 @@
           (list '!:deref
                 (list 'var
                       (if resolved
-                        (foundation/var-sym resolved)
+                        (std.foundation/var-sym resolved)
                         (throw
                          (ex :not-found {:input (second input)} :ex/message "Var not found"))))))
         (list '!:eval input)))))

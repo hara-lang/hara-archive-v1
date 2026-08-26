@@ -1,6 +1,5 @@
 (ns std.block.template
-  (:require [std.foundation :as set]
-    [std.block :as b]
+  (:require [std.block :as b]
     [std.block.navigate :as nav]))
 
 (defn get-template-params
@@ -30,7 +29,7 @@
         params                (get migration-map-value-1 :params)
         input-fn              (get migration-map-value-1 :input-fn)
         input                 (input-fn input)
-        missing               (set/difference (set (map second params)) (set (keys input)))
+        missing               (std.foundation/difference (std.foundation/set (map second params)) (std.foundation/set (keys input)))
         _                     (when (not-empty missing)
                                 (std.foundation/error "Missing params: " {:input input :missing missing}))]
     (nav/root-string (reduce (fn [nav param]

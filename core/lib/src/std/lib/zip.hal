@@ -762,7 +762,7 @@
            opts)))
 
 (defn prewalk
-  "emulates std.lib.walk/prewalk behavior with zipper"
+  "emulates std.foundation/prewalk behavior with zipper"
   {:added "3.0"}
   [{:as zip :keys [context]} f]
   (let [elem (right-element zip) zip (replace-right zip (f elem))]
@@ -777,7 +777,7 @@
       zip)))
 
 (defn postwalk
-  "emulates std.lib.walk/postwalk behavior with zipper"
+  "emulates std.foundation/postwalk behavior with zipper"
   {:added "3.0"}
   [zip f]
   (let [zip (cond

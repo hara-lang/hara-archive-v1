@@ -203,7 +203,7 @@
                          [row
                           (- col
                              (base/block-prefixed (zip/right-element nav))
-                             (apply + (map base/block-width left-blocks)))]
+                             (reduce + 0 (map base/block-width left-blocks)))]
                          :else
                          [(- row lrows) (left-anchor nav)])))))
 

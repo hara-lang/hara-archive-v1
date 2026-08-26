@@ -1160,6 +1160,10 @@
 (defn generate-family-artifacts
   "Generates one complete family from Foundation Git and Hara test sources.
 
+   This is an evidence-generation boundary, not a source migration step. The
+   policy migrator must materialize Hara source before this function reads the
+   target test paths.
+
    The registry root is a host path because the specs repository is a sibling
    checkout, while Hara test sources are always read from the current Hara
    project. No alternate handwritten corpus path is accepted."

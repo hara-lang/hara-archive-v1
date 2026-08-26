@@ -1,8 +1,7 @@
 (ns tool.migrate
   (:config {:role :facade})
-  (:require [std.foundation :as f]
-            [tool.migrate.common.transform]))
+  (:require [tool.migrate.common.transform]))
 
 ;; The public facade keeps the historical task surface while making the
 ;; registry-backed common transform directly available.
-(f/intern-all tool.migrate.common.transform)
+(std.foundation/intern-all tool.migrate.common.transform)

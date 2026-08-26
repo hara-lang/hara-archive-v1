@@ -19,4 +19,56 @@
    [(str/includes? canonical "[work.flow.task :as task]")
     (str/includes? canonical "[work.base :as work :refer [def.work]]")
     (not (str/includes? canonical retired))])
- [true true true])]
+ [true true true])
+
+^{:refer tool.migrate.policy.foundation.core/normalize-foundation-source}
+(test-check
+ "normalize-foundation-source removes redundant intrinsic aliases"
+ (let [source
+       "(ns demo.core
+          (:require [std.foundation :as h]
+                    [std.foundation :as walk]))
+        (defn apply-value [value]
+          (h/apply-with value (walk/prewalk identity)))"
+       output (core/normalize-foundation-source source)]
+   [(str/includes? output "std.foundation/apply-with")
+    (str/includes? output "std.foundation/prewalk")
+    (not (str/includes? output "[std.foundation :as h]"))
+    (not (str/includes? output "[std.foundation :as walk]"))])
+ [true true true true])
+
+^{:refer tool.migrate.policy.foundation.core/migrate-foundation-common-test-source}
+(test-check
+ "migrate-foundation-common-test-source normalizes intrinsic aliases"
+ (let [result
+       (core/migrate-foundation-common-test-source
+        "(ns demo.core
+           (:require [std.foundation :as h]
+                     [std.foundation :as walk]))
+         (fact \"value\" (= 1 (h/apply-with 1 (walk/prewalk identity))))"
+        "demo.core-test")
+       output (:after result)]
+   [(str/includes? output "std.foundation/apply-with")
+    (str/includes? output "std.foundation/prewalk")
+    (str/includes? output "(pr-str (run {:namespace \"demo.core-test\"}))")
+    (not (str/includes? output "[std.foundation :as h]"))
+    (not (str/includes? output "[std.foundation :as walk]"))])
+ [true true true true true])
+
+^{:refer tool.migrate.policy.foundation.core/migrate-source}
+(test-check
+ "migrate-source applies intrinsic alias normalization after policy edits"
+ (let [result
+       (core/migrate-source
+        "(ns demo.core
+           (:require [std.foundation :as h]
+                     [std.foundation :as walk]))
+         (defn apply-value [value]
+           (h/apply-with value (walk/prewalk identity)))")
+       output (:after result)]
+   [(= true (:changed result))
+    (str/includes? output "std.foundation/apply-with")
+    (str/includes? output "std.foundation/prewalk")
+    (not (str/includes? output "[std.foundation :as h]"))
+    (not (str/includes? output "[std.foundation :as walk]"))])
+ [true true true true true])]

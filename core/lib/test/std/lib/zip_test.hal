@@ -554,7 +554,7 @@
 
 ^{:refer std.lib.zip/prewalk :added "3.0" :class [:zip/edit]}
 (Test/run
- [{:name "emulates std.lib.walk/prewalk behavior with zipper"
+ [{:name "emulates std.foundation/prewalk behavior with zipper"
    :test (fn []
              (-> (vector-zip [[1 2] [3 4]])
                  (zip/prewalk (fn [v] (if (vector? v) (conj v 100) (+ v 100)))) root-element))
@@ -563,7 +563,7 @@
 
 ^{:refer std.lib.zip/postwalk :added "3.0" :class [:zip/edit]}
 (Test/run
- [{:name "emulates std.lib.walk/postwalk behavior with zipper"
+ [{:name "emulates std.foundation/postwalk behavior with zipper"
    :test (fn []
              (-> (vector-zip [[1 2] [3 4]])
                  (zip/postwalk (fn [v] (if (vector? v) (conj v 100) (+ v 100)))) root-element))

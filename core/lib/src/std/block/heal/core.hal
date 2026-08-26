@@ -1,7 +1,6 @@
 (ns std.block.heal.core
   (:require [std.block.heal.edit :as edit]
     [std.block.heal.parse :as parse]
-    [std.foundation :as env]
     [std.lib.format.diff :as diff]))
 
 (defn group-min-col
@@ -121,7 +120,7 @@
             end-line   (try (cond-> (get lines (dec end)) end-col (subs 0 end-col))
                          (catch Throwable
                            t
-                           (env/println {:start     start
+                           (std.foundation/println {:start     start
                                          :start-col start-col
                                          :count     (count lines)
                                          :end-col   end-col
@@ -309,7 +308,7 @@
       (and (even? (count errors)) (every? :pair-id errors))
       (edit/create-mismatch-edits errors)
       :else
-      (do (env/println) (env/println info) (throw (ex :generic {:info info} :ex/message "Not Supported"))))))
+      (do (std.foundation/println) (std.foundation/println info) (throw (ex :generic {:info info} :ex/message "Not Supported"))))))
 
 (defn heal-content-single-pass
   "heals the content in a single pass"
@@ -355,7 +354,7 @@
                              (catch Throwable
                                t
                                (mapv (fn [{:as info :keys [at]}]
-                                       (env/println info)
+                                       (std.foundation/println info)
                                        (throw (ex :generic {:info info} :ex/message "Not Supported")))
                                  errored)
                                (throw t)))]
