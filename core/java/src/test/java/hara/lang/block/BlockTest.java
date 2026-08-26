@@ -1,5 +1,6 @@
 package hara.lang.block;
 
+import hara.lang.data.HaraCharacter;
 import hara.lang.data.Vector;
 import org.junit.Test;
 
@@ -35,6 +36,7 @@ public class BlockTest {
     assertEquals("number", Block.tokenTag(123.45));
     assertEquals("boolean", Block.tokenTag(true));
     assertEquals("character", Block.tokenTag('c'));
+    assertEquals("character", Block.tokenTag(HaraCharacter.of('c')));
     assertEquals("object", Block.tokenTag(new Object()));
     assertEquals("object", Block.tokenTag(null)); // null is not a specific token type
   }

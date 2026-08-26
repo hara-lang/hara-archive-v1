@@ -8,6 +8,12 @@
 (ns std.fs.path
   (:config {:override [resolve]}))
 
+(def +ascii-letters+
+  (set "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"))
+(def +windows-separator+ #{\\})
+(def +path-separators+ #{\/ \\})
+(def +dot-character+ #{\.})
+
 (defn- path-error
   [code operation path message]
   (throw
@@ -21,9 +27,7 @@
 
 (defn- ascii-letter?
   [character]
-  (str/includes?
-   "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
-   (str/to-string character)))
+  (has? +ascii-letters+ character))
 
 (defn- windows-drive-path?
   [path]
@@ -47,7 +51,7 @@
                 path
                 "Logical file path must be a string")
 
-    (str/includes? path "\\")
+    (str/includes-any? path +windows-separator+)
     (path-error :file/invalid-path
                 operation
                 path
@@ -269,8 +273,7 @@
                       path
                       "Logical file suffix must be a string")
 
-          (or (str/includes? value "/")
-              (str/includes? value "\\"))
+          (str/includes-any? value +path-separators+)
           (path-error :file/invalid-path
                       operation
                       path
@@ -284,7 +287,7 @@
     (if (or (= value "")
             (= value ".")
             (= value "..")
-            (str/includes? value "."))
+            (str/includes-any? value +dot-character+))
       (path-error :file/invalid-path
                   operation
                   path

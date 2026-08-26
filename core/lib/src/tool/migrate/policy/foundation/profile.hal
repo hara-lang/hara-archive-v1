@@ -78,6 +78,8 @@
   [identifier]
   (get +profiles+ identifier))
 
+(def +hex-characters+ (set "0123456789abcdef"))
+
 (defn sha?
   [value]
   (and
@@ -85,7 +87,7 @@
    (= 40 (count value))
    (every?
     (fn [character]
-      (str/includes? "0123456789abcdef" (str character)))
+      (has? +hex-characters+ character))
     value)))
 
 (defn valid-profile?

@@ -245,7 +245,7 @@
            (cond
              (nil? item) ""
              (string? item) item
-             (char? item) (IStringLike/to-string item)
+             (char? item) item
              :else (IDisplay/display item)))
          (cons value more)))))
 

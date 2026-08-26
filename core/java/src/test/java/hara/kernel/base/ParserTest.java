@@ -65,9 +65,9 @@ public class ParserTest {
 
   @Test
   public void testReadStringChar() {
-    assertEquals('a', Parser.LispReader.readString("\\a", null));
-    assertEquals('\n', Parser.LispReader.readString("\\newline", null));
-    assertEquals(' ', Parser.LispReader.readString("\\space", null));
+    assertEquals(HaraCharacter.of('a'), Parser.LispReader.readString("\\a", null));
+    assertEquals(HaraCharacter.of('\n'), Parser.LispReader.readString("\\newline", null));
+    assertEquals(HaraCharacter.of(' '), Parser.LispReader.readString("\\space", null));
   }
 
   @Test
@@ -311,16 +311,19 @@ public class ParserTest {
 
   @Test
   public void testCharacterReaderExtended() {
-    assertEquals('\u0000', Parser.LispReader.readString("\\u0000", null));
-    assertEquals('\uFFFF', Parser.LispReader.readString("\\uFFFF", null));
-    assertEquals('\t', Parser.LispReader.readString("\\tab", null));
-    assertEquals('\b', Parser.LispReader.readString("\\backspace", null));
-    assertEquals('\f', Parser.LispReader.readString("\\formfeed", null));
-    assertEquals('\r', Parser.LispReader.readString("\\return", null));
+    assertEquals(HaraCharacter.of('\u0000'), Parser.LispReader.readString("\\u0000", null));
+    assertEquals(HaraCharacter.of(0x1F600), Parser.LispReader.readString("\\u01F600", null));
+    assertEquals(HaraCharacter.of(0x1F600), Parser.LispReader.readString("\\😀", null));
+    assertEquals(HaraCharacter.of('\uFFFF'), Parser.LispReader.readString("\\uFFFF", null));
+    assertThrows(RuntimeException.class, () -> Parser.LispReader.readString("\\uD800", null));
+    assertEquals(HaraCharacter.of('\t'), Parser.LispReader.readString("\\tab", null));
+    assertEquals(HaraCharacter.of('\b'), Parser.LispReader.readString("\\backspace", null));
+    assertEquals(HaraCharacter.of('\f'), Parser.LispReader.readString("\\formfeed", null));
+    assertEquals(HaraCharacter.of('\r'), Parser.LispReader.readString("\\return", null));
 
     // Octal
-    assertEquals('\007', Parser.LispReader.readString("\\o007", null));
-    assertEquals('\377', Parser.LispReader.readString("\\o377", null));
+    assertEquals(HaraCharacter.of('\007'), Parser.LispReader.readString("\\o007", null));
+    assertEquals(HaraCharacter.of('\377'), Parser.LispReader.readString("\\o377", null));
   }
 
   @Test

@@ -4,6 +4,7 @@ import hara.kernel.base.RT;
 import hara.kernel.base.Namespace;
 import hara.kernel.base.Var;
 import hara.lang.base.G;
+import hara.lang.data.HaraCharacter;
 import hara.lang.data.Keyword;
 import hara.lang.protocol.ILinearType;
 import hara.lang.protocol.IMapType;
@@ -230,6 +231,8 @@ final class HaraDifferentialRunner {
     if (value == null) return Outcome.value("nil", "nil");
     if (value instanceof Boolean) return Outcome.value("boolean", value.toString());
     if (value instanceof String) return Outcome.value("string", value.toString());
+    if (value instanceof HaraCharacter character)
+      return Outcome.value("character", Integer.toString(character.codePoint()));
     if (value instanceof Character)
       return Outcome.value("character", Integer.toString((Character) value));
     if (isIntegral(value)) return Outcome.value("integer", value.toString());

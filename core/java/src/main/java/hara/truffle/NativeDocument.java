@@ -1,5 +1,6 @@
 package hara.truffle;
 
+import hara.lang.data.HaraCharacter;
 import hara.lang.data.Keyword;
 import hara.lang.protocol.IMapType;
 import hara.lang.protocol.ISequential;
@@ -116,6 +117,7 @@ final class NativeDocument {
     StringBuilder output = new StringBuilder();
     for (Object value : values) {
       if (value instanceof String string) output.append(string);
+      else if (value instanceof HaraCharacter character) output.append(character.text());
       else if (value instanceof Character character) output.append(character);
       else {
         throw new HaraException(

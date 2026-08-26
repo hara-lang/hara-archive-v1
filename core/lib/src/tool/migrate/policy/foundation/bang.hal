@@ -14,6 +14,8 @@
 
 (def +allowed-special-forms+ '#{set!})
 
+(def +bang-character+ #{\!})
+
 (def +embedded-rust-snapshot-ledger+
   [{:source/path "lib/src/code/framework/source.hal"
     :target/path "rust/hal-src/code/framework/source.hal"
@@ -467,7 +469,7 @@
      (vec
       (keep (fn [path]
               (let [source (project/read-text path)]
-                (when (str/includes? source "!")
+                (when (str/includes-any? source +bang-character+)
                   {:path path :source source})))
             paths)))))
 

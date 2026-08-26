@@ -14,21 +14,29 @@
 
 (defn ^{:inline true :schema [:fn [:any] :bool]}
   string-like?
-  "Returns true when value can round-trip through a string representation."
+  "Returns true when value satisfies IStringLike."
   [value]
   (satisfies? IStringLike value))
 
 (defn ^{:inline true :schema [:fn [:any] :str]}
   to-string
-  "Returns the reversible string representation of a string-like value."
+  "Returns the reversible name text of a keyword or symbol."
   [value]
-  (IStringLike/to-string value))
+  (if (or (keyword? value) (symbol? value))
+    (IStringLike/to-string value)
+    (throw (ex :argument {:value value}
+               :ex/message "str/to-string expects a keyword or symbol"
+               :ex/class :ex.class/argument))))
 
 (defn ^{:inline true :schema [:fn [:any :str] :any]}
   from-string
-  "Reconstructs the type of sample from text."
+  "Reconstructs a keyword or symbol from text using sample as its type."
   [sample text]
-  (IStringLike/from-string sample text))
+  (if (or (keyword? sample) (symbol? sample))
+    (IStringLike/from-string sample text)
+    (throw (ex :argument {:sample sample :text text}
+               :ex/message "str/from-string expects a keyword or symbol sample"
+               :ex/class :ex.class/argument))))
 
 ;; ---------------------------------------------------------------------------
 ;; Native string primitives
@@ -39,6 +47,20 @@
   "Returns the portable character count of value."
   [value]
   (String/length value))
+
+(def +digits+ (set "0123456789"))
+
+(defn ^{:schema [:fn [:str :set] :bool]}
+  includes-any?
+  "Returns true when value contains at least one character in characters."
+  [value characters]
+  (let [it (iter value)]
+    (loop [cursor it]
+      (if (iter-next? cursor)
+        (if (has? characters (iter-next cursor))
+          true
+          (recur cursor))
+        false))))
 
 (defn ^{:schema [:fn [:any] :bool]}
   blank?
@@ -261,7 +283,7 @@
     (decode-utf8 value)
 
     (char? value)
-    (to-string value)
+    (str value)
 
     (keyword? value)
     (let [prefix (namespace value)]
@@ -296,7 +318,7 @@
       (let [character (char-at value index)]
         (recur
          (inc index)
-         (let [text (to-string character)]
+         (let [text (str character)]
            (str output
                 (if (has? replacements text)
                   (get replacements text)
@@ -333,11 +355,11 @@
 
 (defn- digit-character?
   [character]
-  (includes? "0123456789" (to-string character)))
+  (has? +digits+ character))
 
 (defn- uppercase-character?
   [character]
-  (let [text (to-string character)]
+  (let [text (str character)]
     (and (not= (lower-case text)
                (upper-case text))
          (= text (upper-case text)))))
@@ -345,7 +367,7 @@
 (defn- lowercase-or-digit-character?
   [character]
   (or (digit-character? character)
-      (let [text (to-string character)]
+      (let [text (str character)]
         (and (not= (lower-case text)
                    (upper-case text))
              (= text (lower-case text))))))
@@ -379,13 +401,13 @@
           hump?
           (recur (inc index)
                  (add-identifier-word words word)
-                 (lower-case (to-string character))
+                 (lower-case (str character))
                  character)
 
           :else
           (recur (inc index)
                  words
-                 (str word (lower-case (to-string character)))
+                 (str word (lower-case (str character)))
                  character))))))
 
 (defn ^{:schema [:fn [:str] :str]}
@@ -445,22 +467,48 @@
      (let [input-sequence? (sequential? input)
            sample (if input-sequence? (first input) input)
            string-input (if input-sequence?
-                          (map to-string input)
-                          (to-string input))
+                          (map (fn [value]
+                                 (cond
+                                   (string? value) value
+                                   (or (keyword? value) (symbol? value)) (to-string value)
+                                   (satisfies? IStringLike value)
+                                   (IStringLike/to-string value)
+                                   :else
+                                   (throw
+                                    (ex :argument {:value value}
+                                        :ex/message "str/wrap expects string-like values"
+                                        :ex/class :ex.class/argument))))
+                               input)
+                          (cond
+                            (string? input) input
+                            (or (keyword? input) (symbol? input)) (to-string input)
+                            (satisfies? IStringLike input) (IStringLike/to-string input)
+                            :else
+                            (throw
+                             (ex :argument {:value input}
+                                 :ex/message "str/wrap expects a string-like value"
+                                 :ex/class :ex.class/argument))))
            output (apply function string-input arguments)]
        (cond
          return-value? output
          (string? sample) output
          (sequential? output) (vec (map (fn [value]
-                                      (from-string sample value))
+                                      (if (or (keyword? sample) (symbol? sample))
+                                        (from-string sample value)
+                                        (IStringLike/from-string sample value)))
                                     output))
-         :else (from-string sample output))))))
+         (or (keyword? sample) (symbol? sample)) (from-string sample output)
+         :else (IStringLike/from-string sample output))))))
 
 (defn wrap-compare
   "Wraps a binary string predicate for StringLike operands."
   [function]
   (fn [left right & arguments]
     (apply function
-           (to-string left)
-           (to-string right)
+           (if (or (keyword? left) (symbol? left))
+             (to-string left)
+             (IStringLike/to-string left))
+           (if (or (keyword? right) (symbol? right))
+             (to-string right)
+             (IStringLike/to-string right))
            arguments)))

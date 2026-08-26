@@ -731,7 +731,8 @@ public final class HalcSchema {
       return new Primitive("int");
     if (form instanceof Float || form instanceof Double) return new Primitive("float");
     if (form instanceof java.math.BigInteger) return new Primitive("int");
-    if (form instanceof Character) return new Primitive("char");
+    if (form instanceof hara.lang.data.HaraCharacter || form instanceof Character)
+      return new Primitive("char");
     if (form instanceof java.util.regex.Pattern) return new Primitive("regex");
     if (form instanceof String) return new Primitive("str");
     if (form instanceof Keyword) return new Primitive("keyword");

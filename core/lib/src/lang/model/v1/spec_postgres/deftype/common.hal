@@ -14,13 +14,13 @@
 
 (defn- letter-upper?
   [value]
-  (let [value (str/to-string value)]
+  (let [value (str value)]
     (and (= value (str/upper value))
          (not (= value (str/lower value))))))
 
 (defn- letter-lower?
   [value]
-  (let [value (str/to-string value)]
+  (let [value (str value)]
     (and (= value (str/lower value))
          (not (= value (str/upper value))))))
 
@@ -49,7 +49,7 @@
           (recur (+ index 1)
                  (str output
                       (if boundary "_" "")
-                      (str/to-string character))))))))
+                      (str character))))))))
 
 (defn identifier-value
   [value]

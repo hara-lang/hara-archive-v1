@@ -5,6 +5,7 @@ import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
 import hara.lang.base.G;
+import hara.lang.data.HaraCharacter;
 import hara.lang.data.Keyword;
 import hara.lang.protocol.IMapType;
 import hara.lang.protocol.IObjType;
@@ -13,7 +14,18 @@ import org.junit.Test;
 public class ReaderPrinterConformanceTest {
   @Test
   public void canonicalCharacterPrintingRoundTripsNamedAndUnicodeValues() {
-    Character[] values = {'\n', ' ', '\t', '\b', '\f', '\r', '\0', 'a', '\u03bb'};
+    HaraCharacter[] values = {
+      HaraCharacter.of('\n'),
+      HaraCharacter.of(' '),
+      HaraCharacter.of('\t'),
+      HaraCharacter.of('\b'),
+      HaraCharacter.of('\f'),
+      HaraCharacter.of('\r'),
+      HaraCharacter.of('\0'),
+      HaraCharacter.of('a'),
+      HaraCharacter.of('\u03bb'),
+      HaraCharacter.of(0x1F600)
+    };
     String[] displays = {
       "\\newline",
       "\\space",
@@ -23,7 +35,8 @@ public class ReaderPrinterConformanceTest {
       "\\return",
       "\\u0000",
       "\\a",
-      "\\λ"
+      "\\λ",
+      "\\😀"
     };
 
     for (int i = 0; i < values.length; i++) {

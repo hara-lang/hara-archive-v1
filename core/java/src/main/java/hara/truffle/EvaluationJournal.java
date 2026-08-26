@@ -237,7 +237,8 @@ public final class EvaluationJournal {
     if (value instanceof BigInteger) return "integer";
     if (value instanceof Byte || value instanceof Short || value instanceof Integer || value instanceof Long) return "integer";
     if (value instanceof Float || value instanceof Double) return "float";
-    if (value instanceof Character) return "character";
+    if (value instanceof hara.lang.data.HaraCharacter || value instanceof Character)
+      return "character";
     if (value instanceof String) return "string";
     if (value instanceof Symbol) return "symbol";
     if (value instanceof Keyword) return "keyword";

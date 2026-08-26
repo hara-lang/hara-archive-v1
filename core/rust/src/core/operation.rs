@@ -168,7 +168,8 @@ fn string_operation(operation: &str, values: Vec<Value>) -> Result<Value, String
                 .into_iter()
                 .map(|value| match value {
                     Value::String(value) => Ok(value),
-                    _ => Err("str/join expects a collection of strings".into()),
+                    Value::Character(value) => Ok(value.to_string()),
+                    _ => Err("str/join expects a collection of strings or characters".into()),
                 })
                 .collect::<Result<Vec<String>, String>>()?;
             Ok(Value::String(parts.join(separator)))
@@ -1384,7 +1385,7 @@ fn collection_get(value: &Value, key: &Value, default: Value) -> Result<Value, S
             Ok(text
                 .chars()
                 .nth(index)
-                .map(|c| Value::String(c.to_string()))
+                .map(Value::Character)
                 .unwrap_or(default))
         }
         value @ (Value::Map(_)
@@ -1477,7 +1478,7 @@ fn collection_nth(value: &Value, key: &Value) -> Result<Value, String> {
         Value::String(text) => text
             .chars()
             .nth(index)
-            .map(|character| Value::String(character.to_string())),
+            .map(Value::Character),
         _ => return Err("nth expects an indexed collection".into()),
     };
     result.ok_or_else(|| "nth index out of bounds".into())

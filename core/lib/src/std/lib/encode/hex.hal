@@ -21,13 +21,13 @@
         (let [byte (bytes/get value index)]
           (recur (inc index)
                  (str output
-                      (str/to-string (str/char-at +digits+ (Bits/shift-right byte 4)))
-                      (str/to-string (str/char-at +digits+ (Bits/and byte 15))))))))))
+                      (str (str/char-at +digits+ (Bits/shift-right byte 4)))
+                      (str (str/char-at +digits+ (Bits/and byte 15))))))))))
 
 (defn digit
   [value index]
   (let [number (str/index-of +digits+
-                             (str/lower-case (str/to-string value)))]
+                             (str/lower-case (str value)))]
     (if (neg? number)
       (throw (ex :serialization {:value value :index index} :ex/message "Invalid hexadecimal digit"))
       number)))

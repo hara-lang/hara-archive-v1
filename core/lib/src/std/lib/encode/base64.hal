@@ -31,18 +31,18 @@
               fourth (Bits/and packed 63)]
           (recur (+ index 3)
                  (str output
-                      (str/to-string (str/char-at +alphabet+ first))
-                      (str/to-string (str/char-at +alphabet+ second))
+                      (str (str/char-at +alphabet+ first))
+                      (str (str/char-at +alphabet+ second))
                       (if (> remaining 1)
-                        (str/to-string (str/char-at +alphabet+ third))
+                        (str (str/char-at +alphabet+ third))
                         "=")
                       (if (> remaining 2)
-                        (str/to-string (str/char-at +alphabet+ fourth))
+                        (str (str/char-at +alphabet+ fourth))
                         "="))))))))
 
 (defn value-of
   [character index]
-  (let [value (str/index-of +alphabet+ (str/to-string character))]
+  (let [value (str/index-of +alphabet+ (str character))]
     (if (neg? value)
       (throw (ex :serialization {:character character :index index} :ex/message "Invalid Base64 character"))
       value)))

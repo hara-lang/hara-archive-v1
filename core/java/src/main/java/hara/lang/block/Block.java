@@ -1,5 +1,6 @@
 package hara.lang.block;
 
+import hara.lang.data.HaraCharacter;
 import hara.lang.data.Vector;
 import hara.lang.protocol.IMetadata;
 import hara.lang.protocol.IObjType;
@@ -36,7 +37,7 @@ public interface Block {
     if (value instanceof String) return "string";
     if (value instanceof Number) return "number";
     if (value instanceof Boolean) return "boolean";
-    if (value instanceof Character) return "character";
+    if (value instanceof HaraCharacter || value instanceof Character) return "character";
     return "object";
   }
 

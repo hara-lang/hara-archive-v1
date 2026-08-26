@@ -4,20 +4,20 @@
             [code.project.production :as production]
             [work.base :as work]))
 
-(def +name-characters+
-  #{"a" "b" "c" "d" "e" "f" "g" "h" "i" "j" "k" "l" "m"
-    "n" "o" "p" "q" "r" "s" "t" "u" "v" "w" "x" "y" "z"
-    "0" "1" "2" "3" "4" "5" "6" "7" "8" "9" "-"})
+(def +namespace-separator+ #{\:})
 
-(def +coordinate-characters+ (conj (conj +name-characters+ "_") "."))
+(def +name-characters+
+  (set "abcdefghijklmnopqrstuvwxyz0123456789-"))
+
+(def +coordinate-characters+ (conj (conj +name-characters+ \_) \.))
 
 (defn valid-name? [value]
   (and
    (not (str/blank? value))
    (loop [index 0]
-     (if (= index (str/length value))
+       (if (= index (str/length value))
        true
-       (if (get +name-characters+ (str/to-string (str/char-at value index)))
+       (if (has? +name-characters+ (str/char-at value index))
          (recur (inc index))
          false)))))
 
@@ -25,9 +25,9 @@
   (and
    (not (str/blank? value))
    (loop [index 0]
-     (if (= index (str/length value))
+       (if (= index (str/length value))
        true
-       (if (get +coordinate-characters+ (str/to-string (str/char-at value index)))
+       (if (has? +coordinate-characters+ (str/char-at value index))
          (recur (inc index))
          false)))))
 
@@ -35,7 +35,7 @@
   (let [qualified (cond
                     (str/starts-with? value "official:")
                     (str "hara:" (str/slice value 9))
-                    (str/includes? value ":") value
+                    (str/includes-any? value +namespace-separator+) value
                     :else (str "hara:" value))
         coordinate-parts (str/split qualified ":")]
     (if (not= 2 (count coordinate-parts))

@@ -330,8 +330,10 @@ public interface BuiltinCollection {
   }
 
   @Module.Fn(name = "nth", option = true)
-  public static Character nth(String s, long idx) {
-    return s.charAt((int) idx);
+  public static hara.lang.data.HaraCharacter nth(String s, long idx) {
+    int index = Math.toIntExact(idx);
+    return hara.lang.data.HaraCharacter.of(
+        s.codePointAt(s.offsetByCodePoints(0, index)));
   }
 
   @Module.Fn(name = "range", complete = true)

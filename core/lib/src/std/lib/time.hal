@@ -312,17 +312,17 @@
          output
          (let [character (str/char-at pattern index)]
            (cond (= character \') (recur (inc index) output (not quoted))
-                 quoted (recur (inc index) (str output (str/to-string character)) quoted)
+                 quoted (recur (inc index) (str output (str character)) quoted)
                  :else (let [token (token-at pattern index)]
                          (if token
                            (recur (+ index (str/length token))
                                   (str output (token-value date-value token)) false)
-                           (recur (inc index) (str output (str/to-string character)) false))))))))))
+                           (recur (inc index) (str output (str character)) false))))))))))
 
 (defn format-iso [value]
   (std.lib.time/format value "yyyy-MM-dd'T'HH:mm:ss.SSSXXX"))
 
-(defn- digit? [character] (not= -1 (str/index-of "0123456789" (str/to-string character))))
+(defn- digit? [character] (not= -1 (str/index-of "0123456789" (str character))))
 
 (defn- parse-digits [source index width field]
   (if (> (+ index width) (str/length source))
@@ -332,7 +332,7 @@
         [(reduce (fn [number position]
                    (+ (* number 10)
                       (str/index-of "0123456789"
-                                    (str/to-string (str/char-at text position)))))
+                                    (str (str/char-at text position)))))
                  0 (range width))
          (+ index width)]
         (fail "time field contains non-digits" {:field field :text text})))))

@@ -23,6 +23,7 @@ import hara.lang.base.primitive.Cast;
 import hara.lang.base.primitive.Num;
 import hara.lang.data.Symbol;
 import hara.lang.data.Keyword;
+import hara.lang.data.HaraCharacter;
 import hara.lang.protocol.ILinearType;
 import hara.lang.protocol.IMapType;
 import hara.lang.protocol.ISetType;
@@ -562,7 +563,7 @@ public final class HaraNodes {
       }
       if (value instanceof java.util.Map<?, ?>) return ((java.util.Map<?, ?>) value).size();
       if (value instanceof java.util.List<?>) return ((java.util.List<?>) value).size();
-      if (value instanceof String) return ((String) value).length();
+      if (value instanceof String) return ((String) value).codePointCount(0, ((String) value).length());
       if (value != null && value.getClass().isArray()) {
         return java.lang.reflect.Array.getLength(value);
       }
@@ -582,7 +583,11 @@ public final class HaraNodes {
         if (target instanceof hara.lang.protocol.ILinearType<?>) {
           return ((hara.lang.protocol.ILinearType<?>) target).nth(indexLong(key));
         }
-        if (target instanceof String) return ((String) target).charAt(index(key, target));
+        if (target instanceof String) {
+          String string = (String) target;
+          int index = index(key, target);
+          return HaraCharacter.of(string.codePointAt(string.offsetByCodePoints(0, index)));
+        }
         if (target != null && target.getClass().isArray()) {
           return java.lang.reflect.Array.get(target, index(key, target));
         }
@@ -688,7 +693,12 @@ public final class HaraNodes {
       if (target instanceof byte[]) {
         return java.util.Arrays.copyOfRange((byte[]) target, (int) start, (int) end);
       }
-      if (target instanceof String) return ((String) target).substring((int) start, (int) end);
+      if (target instanceof String) {
+        String string = (String) target;
+        int startOffset = string.offsetByCodePoints(0, (int) start);
+        int endOffset = string.offsetByCodePoints(0, (int) end);
+        return string.substring(startOffset, endOffset);
+      }
       if (target instanceof java.util.List<?>) {
         return new java.util.ArrayList<>(
             ((java.util.List<?>) target).subList((int) start, (int) end));
@@ -764,10 +774,12 @@ public final class HaraNodes {
         return null;
       }
       if (value instanceof String) {
-        int index = (int) keyIndex();
-        return index < 0 || index >= ((String) value).length()
+        String string = (String) value;
+        long index = keyIndex();
+        return index < 0 || index >= string.codePointCount(0, string.length())
             ? null
-            : ((String) value).charAt(index);
+            : HaraCharacter.of(
+                string.codePointAt(string.offsetByCodePoints(0, Math.toIntExact(index))));
       }
       return lookupGeneric(value);
     }
@@ -875,8 +887,18 @@ public final class HaraNodes {
 
     @TruffleBoundary
     private Object restString(String value) {
-      return BuiltinStruct.vector(
-          value.substring((int) start).chars().mapToObj(c -> (char) c).toArray());
+      int length = value.codePointCount(0, value.length());
+      if (start < 0 || start > length) {
+        throw new HaraException("Destructuring rest index is out of bounds");
+      }
+      int offset = value.offsetByCodePoints(0, (int) start);
+      Object[] values = new Object[length - (int) start];
+      for (int index = 0; index < values.length; index++) {
+        int codePoint = value.codePointAt(offset);
+        values[index] = HaraCharacter.of(codePoint);
+        offset += Character.charCount(codePoint);
+      }
+      return BuiltinStruct.vector(values);
     }
   }
 
@@ -2426,7 +2448,7 @@ public final class HaraNodes {
     /** Mirrors HaraContext.iterValue for the nil and string receivers it special-cases. */
     private static Iterator<?> iteratorFor(Object receiver) {
       if (receiver == null) return Iter.emptyIterator();
-      if (receiver instanceof String) return Iter.chars(((String) receiver).toCharArray());
+      if (receiver instanceof String) return Iter.codePoints((String) receiver);
       return Iter.iter(receiver);
     }
 

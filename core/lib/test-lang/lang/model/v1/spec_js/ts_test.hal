@@ -56,6 +56,16 @@
    (ts/sanitize-ts-ident "123hello-world")]
   => [true true false false "_123hello_world"])
 
+^{:refer lang.model.v1.spec-js.ts/+ts-ident-rest-chars+ :added "4.1"}
+(fact "materializes identifier character strings as direct lookup sets"
+  [(set? ts/+ts-ident-start-chars+)
+   (has? ts/+ts-ident-start-chars+ \A)
+   (has? ts/+ts-ident-start-chars+ \0)
+   (has? ts/+ts-ident-rest-chars+ \0)
+   (has? ts/+ts-ident-rest-chars+ \-)
+   (has? ts/+digits+ \7)]
+  => [true true false true false true])
+
 ^{:refer lang.model.v1.spec-js.ts/emit-ts-type :added "4.1"}
 (fact "emits TypeScript primitives, collections, functions, and records"
   [(ts/emit-ts-type {:kind :array

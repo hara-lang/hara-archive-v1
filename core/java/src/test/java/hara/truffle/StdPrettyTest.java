@@ -22,6 +22,9 @@ public class StdPrettyTest {
           "abc",
           context.eval(HaraLanguage.ID, "(std.foundation.pretty/render \"abc\")").asString());
       assertEquals(
+          "a😀",
+          context.eval(HaraLanguage.ID, "(std.native.Document/text \"a\" \\😀)").asString());
+      assertEquals(
           "a b",
           context
               .eval(

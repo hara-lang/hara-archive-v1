@@ -22,6 +22,7 @@ import hara.lang.base.iter.CloseableIterator;
 import hara.lang.data.Symbol;
 import hara.lang.data.List;
 import hara.lang.data.Keyword;
+import hara.lang.data.HaraCharacter;
 import hara.lang.protocol.IMapType;
 import hara.lang.protocol.ILinearType;
 import hara.lang.protocol.Constant;
@@ -3168,6 +3169,9 @@ public final class HaraContext {
   }
 
   private static String displayText(Object unwrapped) {
+    if (unwrapped instanceof HaraCharacter character) {
+      return character.text();
+    }
     if (unwrapped instanceof Number) {
       return G.display(unwrapped);
     }
@@ -3436,7 +3440,7 @@ public final class HaraContext {
     else if (raw instanceof HaraBigInteger || raw instanceof java.math.BigInteger) type = "Integer";
     else if (raw instanceof Byte || raw instanceof Short || raw instanceof Integer || raw instanceof Long) type = "Integer";
     else if (raw instanceof Float || raw instanceof Double) type = "Float";
-    else if (raw instanceof Character) type = "Character";
+    else if (raw instanceof HaraCharacter || raw instanceof Character) type = "Character";
     else if (raw instanceof java.util.UUID) type = "UUID";
     else if (raw instanceof java.util.regex.Pattern) type = "RegExp";
     else if (raw instanceof hara.lang.data.TaggedLiteral)
@@ -4671,6 +4675,7 @@ public final class HaraContext {
         || input instanceof Boolean
         || input instanceof String
         || input instanceof Number
+        || input instanceof HaraCharacter
         || input instanceof Character
         || input instanceof Keyword
         || input instanceof Symbol) return true;
@@ -5338,7 +5343,7 @@ public final class HaraContext {
     }
     int charIndex = input.offsetByCodePoints(0, index);
     int codePoint = input.codePointAt(charIndex);
-    return new String(Character.toChars(codePoint));
+    return HaraCharacter.of(codePoint);
   }
 
   private Object stringSplit(Object[] values) {
@@ -5402,7 +5407,16 @@ public final class HaraContext {
     StringBuilder output = new StringBuilder();
     while (iterator.hasNext()) {
       if (output.length() > 0) output.append(separator);
-      output.append(stringValue(iterator.next(), "str/join"));
+      Object item = HaraBox.unwrap(iterator.next());
+      if (item instanceof String text) {
+        output.append(text);
+      } else if (item instanceof HaraCharacter character) {
+        output.append(character.text());
+      } else if (item instanceof Character character) {
+        output.append(character);
+      } else {
+        throw new HaraException("str/join expects a collection of strings or characters");
+      }
     }
     return output.toString();
   }
@@ -6564,6 +6578,12 @@ public final class HaraContext {
     if (Eq.eq(left, right)) return 0;
     if (left instanceof Number a && right instanceof Number b) return Num.compare(a, b);
     if (left instanceof String a && right instanceof String b) return a.compareTo(b);
+    if (left instanceof HaraCharacter a && right instanceof HaraCharacter b)
+      return a.compareTo(b);
+    if (left instanceof HaraCharacter a && right instanceof Character b)
+      return Integer.compare(a.codePoint(), b.charValue());
+    if (left instanceof Character a && right instanceof HaraCharacter b)
+      return Integer.compare(a.charValue(), b.codePoint());
     if (left instanceof Character a && right instanceof Character b) return a.compareTo(b);
     if (left instanceof Keyword a && right instanceof Keyword b) return a.compareTo(b);
     if (left instanceof Symbol a && right instanceof Symbol b) {
@@ -7341,7 +7361,7 @@ public final class HaraContext {
     Object target = HaraBox.unwrap(value);
     if (target == null || target == HaraNull.SINGLETON) return Iter.emptyIterator();
     if (target instanceof Iterator<?>) return target;
-    if (target instanceof String) return Iter.chars(((String) target).toCharArray());
+    if (target instanceof String) return Iter.codePoints((String) target);
     try {
       Iterator<?> source = Iter.iter(target);
       return new CloseableIterator<Object>() {

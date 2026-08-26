@@ -12,12 +12,12 @@
    :facet/extension "d.ts"})
 
 (def +ts-ident-start-chars+
-  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$")
+  (set "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$"))
 
 (def +ts-ident-rest-chars+
-  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$0123456789")
+  (set "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$0123456789"))
 
-(def +digits+ "0123456789")
+(def +digits+ (set "0123456789"))
 
 (declare emit-ts-type)
 
@@ -25,13 +25,11 @@
   [s]
   (and (string? s)
        (< 0 (str/length s))
-       (str/includes? +ts-ident-start-chars+
-                         (str/to-string (str/char-at s 0)))
+       (has? +ts-ident-start-chars+ (str/char-at s 0))
        (loop [index 1]
          (if (>= index (str/length s))
            true
-           (if (str/includes? +ts-ident-rest-chars+
-                                 (str/to-string (str/char-at s index)))
+           (if (has? +ts-ident-rest-chars+ (str/char-at s index))
              (recur (+ index 1))
              false)))))
 
@@ -46,11 +44,11 @@
             (let [ch (str/char-at source index)]
               (recur (+ index 1)
                      (str out
-                          (if (str/includes? +ts-ident-rest-chars+ (str/to-string ch))
-                            (str/to-string ch)
+                          (if (has? +ts-ident-rest-chars+ ch)
+                            (str ch)
                             "_"))))))
         mapped (if (str/blank? mapped) "_" mapped)]
-    (if (str/includes? +digits+ (str/to-string (str/char-at mapped 0)))
+    (if (has? +digits+ (str/char-at mapped 0))
       (str "_" mapped)
       mapped)))
 

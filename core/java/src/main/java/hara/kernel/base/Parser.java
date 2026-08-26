@@ -303,7 +303,7 @@ public interface Parser {
         if (d == -1) throw new IllegalArgumentException("Invalid digit: " + token.charAt(i));
         uc = uc * base + d;
       }
-      return (char) uc;
+      return uc;
     }
 
     private static int readUnicodeChar(Reader r, int initch, int base, int length, boolean exact) {
@@ -460,32 +460,33 @@ public interface Parser {
       }
     }
 
-    public static class CharacterReader implements BiFunction<Reader, Map, Character> {
+    public static class CharacterReader implements BiFunction<Reader, Map, HaraCharacter> {
 
       @Override
-      public Character apply(Reader reader, Map opts) {
+      public HaraCharacter apply(Reader reader, Map opts) {
         Reader r = reader;
         int ch = readSingle(r);
         if (ch == -1) throw new Ex.Runtime("EOF while reading character");
         String token = readToken(r, (char) ch, false);
-        if (token.length() == 1) return Character.valueOf(token.charAt(0));
-        else if (token.equals("newline")) return '\n';
-        else if (token.equals("space")) return ' ';
-        else if (token.equals("tab")) return '\t';
-        else if (token.equals("backspace")) return '\b';
-        else if (token.equals("formfeed")) return '\f';
-        else if (token.equals("return")) return '\r';
+        if (token.codePointCount(0, token.length()) == 1)
+          return HaraCharacter.of(token.codePointAt(0));
+        else if (token.equals("newline")) return HaraCharacter.of('\n');
+        else if (token.equals("space")) return HaraCharacter.of(' ');
+        else if (token.equals("tab")) return HaraCharacter.of('\t');
+        else if (token.equals("backspace")) return HaraCharacter.of('\b');
+        else if (token.equals("formfeed")) return HaraCharacter.of('\f');
+        else if (token.equals("return")) return HaraCharacter.of('\r');
         else if (token.startsWith("u")) {
-          char c = (char) readUnicodeChar(token, 1, 4, 16);
-          if (c >= '\uD800' && c <= '\uDFFF') // surrogate code unit?
-          throw new Ex.Runtime("Invalid character constant: \\u" + Integer.toString(c, 16));
-          return c;
+          int length = token.length() - 1;
+          if (length != 4 && length != 6)
+            throw new Ex.Runtime("Invalid unicode character: \\" + token);
+          return HaraCharacter.of(readUnicodeChar(token, 1, length, 16));
         } else if (token.startsWith("o")) {
           int len = token.length() - 1;
           if (len > 3) throw new Ex.Runtime("Invalid octal escape sequence length: " + len);
           int uc = readUnicodeChar(token, 1, len, 8);
           if (uc > 0377) throw new Ex.Runtime("Octal escape sequence must be in range [0, 377].");
-          return (char) uc;
+          return HaraCharacter.of(uc);
         }
         throw new Ex.Runtime("Unsupported character: \\" + token);
       }

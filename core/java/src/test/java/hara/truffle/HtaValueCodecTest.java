@@ -6,6 +6,7 @@ import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
 import hara.kernel.base.Parser;
+import hara.lang.data.HaraCharacter;
 import hara.lang.data.Keyword;
 import hara.lang.protocol.ILinearType;
 import hara.lang.protocol.IMapType;
@@ -54,7 +55,12 @@ public class HtaValueCodecTest {
     assertArrayEquals(
         new byte[] {'H', 'T', 'A', '0', 19, 0, 0, 3, (byte) 0xbb},
         HtaValueCodec.encode('λ'));
-    assertEquals(Character.valueOf('λ'), HtaValueCodec.decode(HtaValueCodec.encode('λ')));
+    assertEquals(
+        HaraCharacter.of('λ'),
+        HtaValueCodec.decode(HtaValueCodec.encode(HaraCharacter.of('λ'))));
+    assertEquals(
+        HaraCharacter.of(0x1F600),
+        HtaValueCodec.decode(HtaValueCodec.encode(HaraCharacter.of(0x1F600))));
 
     assertArrayEquals(
         new byte[] {'H', 'T', 'A', '0', 22, 0, 0, 0, 2, 'a', '+'},
