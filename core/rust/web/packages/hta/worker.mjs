@@ -10,14 +10,19 @@ const requests = new Map();
 const tasks = new Map();
 const hostTasks = new Map();
 const externrefTable = [];
+let activeOperation = null;
 
 const wasmImports = {
   env: {
     hara_random_fill(pointer, length) {
       const memory = instance?.exports.memory;
       if (!memory) throw new Error("hta/memory-unavailable");
-      crypto.getRandomValues(new Uint8Array(memory.buffer, pointer, length));
-      return 0;
+      try {
+        globalThis.crypto.getRandomValues(new Uint8Array(memory.buffer, pointer, length));
+        return 0;
+      } catch {
+        return 1;
+      }
     },
     hara_time_ms() {
       return BigInt(Math.trunc(Date.now()));
@@ -28,6 +33,14 @@ const wasmImports = {
   },
   "__wbindgen_placeholder__": {
     __wbindgen_describe() {},
+    __wbindgen_object_drop_ref(index) {
+      externrefTable[index] = undefined;
+    },
+    __wbg_getRandomValues_eb590f34c5dc8fa0(pointer, length) {
+      const memory = instance?.exports.memory;
+      if (!memory) throw new Error("hta/memory-unavailable");
+      crypto.getRandomValues(new Uint8Array(memory.buffer, pointer, length));
+    },
     __wbg___wbindgen_throw_bb96b2010945f0bc(pointer, length) {
       const bytes = instance ? new Uint8Array(instance.exports.memory.buffer, pointer, length) : [];
       throw new Error(instance ? new TextDecoder().decode(bytes) : "wasm error");
@@ -67,6 +80,7 @@ async function receive(message) {
     if (message.type === "call") {
       const session = requestSession(message.frame);
       const [operation] = decodeHta(message.frame);
+      activeOperation = String(operation);
       const task = Number(callFrame(instance.exports.hta_start, message.frame));
       if (task <= 0) throw new Error("hta/start-failed");
       requests.set(message.id, task);
@@ -131,7 +145,8 @@ async function receive(message) {
       status: "error",
       code: providerErrorCode(error)
     });
-    self.postMessage({ type: "fatal", error: { message: String(error?.message ?? error) } });
+    const operation = activeOperation ? ` (${activeOperation})` : "";
+    self.postMessage({ type: "fatal", error: { message: `${String(error?.message ?? error)}${operation}` } });
   }
 }
 

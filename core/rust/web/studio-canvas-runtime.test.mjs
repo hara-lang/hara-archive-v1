@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { HtaKeyword, HtaObject } from "./packages/hta/index.js";
 import { CanvasRuntime, resolutionUniform } from "./studio/canvas-runtime.js";
 
 function fixture() {
@@ -121,6 +122,24 @@ test("Canvas2D frames execute declared commands without game-specific state", ()
   assert.ok(calls.some(([name]) => name === "arc"));
   assert.ok(calls.some(([name]) => name === "createRadialGradient"));
   assert.equal(calls.filter(([name]) => name === "addColorStop").length, 2);
+});
+
+test("HTA object frames unwrap WebGL fallbacks before dispatch", () => {
+  const { runtime, calls } = fixture();
+  runtime.claim("node/ocean@1", "canvas/background");
+  const keyword = (name) => new HtaKeyword(name);
+  const fallback = new HtaObject([
+    [keyword("type"), keyword("canvas-2d")],
+    [keyword("background"), "#020817"],
+    [keyword("commands"), [[keyword("text"), "OCEAN", 24, 156, "#6ee7ff", 11]]]
+  ]);
+  const frame = new HtaObject([
+    [keyword("type"), keyword("webgl2")],
+    [keyword("fallback"), fallback]
+  ]);
+
+  assert.equal(runtime.render("node/ocean@1", "canvas/background", frame), true);
+  assert.ok(calls.some(([name]) => name === "fillText"));
 });
 
 test("stateful Tron frames retain trails in the canvas host", () => {

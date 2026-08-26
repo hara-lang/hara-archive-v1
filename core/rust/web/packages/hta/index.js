@@ -397,7 +397,7 @@ class Reader {
     if(tag===TAG.exceptionInfo){const message=this.value(depth+1);if(typeof message!=="string")throw new Error("hta/value-malformed: invalid exception message");return new HtaExceptionInfo(message,this.value(depth+1),this.value(depth+1),this.value(depth+1));}
     if(tag===TAG.struct){const name=this.value(depth+1),fields=this.value(depth+1),values=this.value(depth+1);if(typeof name!=="string"||!Array.isArray(fields)||!fields.every(field=>typeof field==="string")||!Array.isArray(values)||fields.length!==values.length)throw new Error("hta/value-malformed: invalid struct");return new HtaStruct(name,fields,values);}
     if(tag===TAG.pointer){const context=this.value(depth+1),fields=this.value(depth+1);if(!(context instanceof HtaKeyword)||!(fields instanceof Map))throw new Error("hta/value-malformed: invalid pointer");return new HtaPointer(context,fields);}
-    throw new Error("hta/value-malformed: unknown value tag");
+    throw new Error(`hta/value-malformed: unknown value tag ${tag}`);
   }
 }
 

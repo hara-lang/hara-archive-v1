@@ -787,10 +787,18 @@ function linkProgram(gl, vertexSource, fragmentSource) {
 }
 
 function plain(value) {
+  if (value === null || typeof value !== "object") return value;
   if (value instanceof Map) {
     return Object.fromEntries([...value].map(([key, entry]) => [keyName(key), plain(entry)]));
   }
   if (Array.isArray(value)) return value.map(plain);
+  const type = value.constructor?.name;
+  if (["HtaObject", "HtaOrderedMap", "HtaSortedMap", "HtaTrie", "HtaPriorityMap"].includes(type)) {
+    return Object.fromEntries(value.entries.map(([key, entry]) => [keyName(key), plain(entry)]));
+  }
+  if (["HtaArray", "HtaTuple", "HtaCons", "HtaQueue", "HtaDeque", "HtaOrderedSet", "HtaSortedSet"].includes(type)) {
+    return value.values.map(plain);
+  }
   return value;
 }
 

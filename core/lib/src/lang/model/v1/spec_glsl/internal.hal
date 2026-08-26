@@ -1,0 +1,130 @@
+(ns lang.model.v1.spec-glsl.internal
+  (:config {:role :internal})
+  (:require [lang.common.book :as book]
+            [lang.common.book-meta :as book-meta]
+            [lang.common.emit :as emit]
+            [lang.common.grammar-api :as grammar]
+            [lang.common.registry :as registry]
+            [lang.model.v1.spec-xtalk :as xtalk]
+            [std.foundation.string :as string]))
+
+^{:public true}
+(def +language+ :glsl)
+^{:public true}
+(def +tag+ :glsl)
+^{:public true}
+(def +version+ 1)
+^{:public true}
+(def +grammar-version+ 1)
+
+(def +types+
+  [:bool :int :float :double :uint
+   :vec2 :vec3 :vec4
+   :dvec2 :dvec3 :dvec4
+   :ivec2 :ivec3 :ivec4
+   :uvec2 :uvec3 :uvec4
+   :bvec2 :bvec3 :bvec4
+   :mat2 :mat3 :mat4
+   :mat2x3 :mat2x4
+   :mat3x2 :mat3x4
+   :mat4x2 :mat4x3
+   :sampler1D :sampler2D :sampler3D :samplerCube
+   :sampler1DShadow :sampler2DShadow :samplerCubeShadow
+   :isampler2D :usampler2D
+   :dmat2 :dmat3 :dmat4
+   :dmat2x3 :dmat2x4
+   :dmat3x2 :dmat3x4
+   :dmat4x2 :dmat4x3])
+
+(def +typeops+
+  (reduce
+   (fn [out k]
+     (assoc out k {:op k :symbol (set [k]) :raw (name k) :emit :invoke}))
+   {}
+   +types+))
+
+(defn glsl-number
+  "Unwraps Hara's typed float print form for GLSL emission."
+  [value _ _]
+  (let [text (pr-str value)]
+    (if (and (string/starts-with? text "(double ")
+             (string/ends-with? text ")"))
+      (string/slice
+       text
+       (inc (string/index-of text " "))
+       (dec (string/length text)))
+      text)))
+
+;; The legacy Foundation grammar merged a default emitter template and then
+;; added type operators. The v1 registry expresses those same operations as
+;; a parent grammar, checked operator customization, and emitter defaults.
+(def +emit+
+  {:defaults
+   {:banned (set [:set :map :regex])
+    :highlight (set [(quote return) (quote break)])
+    :default {:function {:raw ""}}
+    :data {:vector {:start "{" :end "}" :space ""}
+           :tuple {:start "(" :end ")" :space ""}}
+    :block {:for {:parameter {:sep ","}}}
+    :define {:def {:raw ""}}
+    :token {:number {:emit glsl-number}}}})
+
+(def +grammar+
+  (grammar/definition
+   {:grammar/id +tag+
+    :grammar/version +grammar-version+
+    :grammar/release "foundation-v1"
+    :grammar/language +language+
+    :grammar/tag +tag+
+    :grammar/engine {:minimum 1 :maximum 1}
+    :grammar/parent {:grammar/id xtalk/+tag+
+                     :grammar/version xtalk/+grammar-version+}
+    :operators {:exclude (set [:data-shortcuts :control-try-catch :class])
+                :define +typeops+}
+    :emit +emit+}))
+
+(def +meta+
+  (book-meta/book-meta
+   {:module-import
+    (fn [name _ _]
+      (list ':- "#include" name))}))
+
+^{:public true}
+(defn install
+  "Installs the XTalk parent and GLSL grammar into an immutable catalog."
+  [catalog]
+  (let [catalog (xtalk/install catalog)]
+    (if (registry/find catalog (grammar/source-coordinate +grammar+))
+      catalog
+      (registry/install catalog +grammar+))))
+
+^{:public true}
+(defn catalog
+  "Creates a fresh catalog containing the XTalk and GLSL grammar sources."
+  []
+  (install (registry/registry)))
+
+^{:public true}
+(defn select
+  "Resolves the exact GLSL grammar version from a catalog."
+  ([]
+   (select (catalog)))
+  ([catalog]
+   (registry/resolve
+    catalog
+    {:grammar/id +tag+ :grammar/version +grammar-version+})))
+
+^{:public true}
+(def +selection+ (select))
+^{:public true}
+(def +book+
+  (book/book
+   {:lang +language+
+    :parent :xtalk
+    :version +version+
+    :coordinate (:coordinate +selection+)
+    :grammar (:grammar +selection+)
+    :selection +selection+
+    :meta +meta+}))
+^{:public true}
+(def +init+ +book+)

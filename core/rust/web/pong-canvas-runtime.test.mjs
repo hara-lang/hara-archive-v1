@@ -170,7 +170,9 @@ test("Pong restores its captured node before the deferred canvas task runs", {
   await Promise.all([rendered, task]);
 
   assert.ok(calls.some(([name]) => name === "fillRect"));
-  assert.equal(runtime.canvases.get(canvasId).lastFrame instanceof Map, true);
+  const lastFrame = runtime.canvases.get(canvasId).lastFrame;
+  assert.equal(lastFrame?.type?.name, "canvas-2d");
+  assert.equal(Array.isArray(lastFrame?.commands), true);
 
   runtime.discard(nodeId, canvasId);
   broker.discardDocument(candidate);
