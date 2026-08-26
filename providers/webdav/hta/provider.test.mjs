@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   createWebdavFetchHost,
+  createWebdavWasmHost,
   createWebdavProvider,
   normaliseLogicalPath
 } from "./index.mjs";
@@ -90,6 +91,10 @@ function providerContext(host, signal = new AbortController().signal) {
   };
 }
 
+function mapField(value, key) {
+  return value instanceof Map ? value.get(key) : value?.[key];
+}
+
 async function openFixture(fixture, options = {}) {
   const host = createWebdavFetchHost({
     rootUrl: "https://dav.example.test/dav/",
@@ -121,6 +126,30 @@ test("WebDAV HTA provider opens through host authority and redacts root and cred
   assert.equal(JSON.stringify(opened).includes("secret"), false);
   assert.equal(new Headers(fixture.requests[0].init.headers).get("Authorization"), "Bearer secret");
   await provider.call("browser", "close", [opened.id], context);
+  await host.closeAll();
+});
+
+test("WebDAV rich HTA host exposes the Wasm mount and request boundary", async () => {
+  const fixture = createFixture();
+  const host = createWebdavWasmHost({
+    rootUrl: "https://dav.example.test/dav/",
+    fetch: fixture.fetch,
+    headers: { Authorization: "Bearer secret" },
+    capabilities: ["read", "entries", "write", "mkdir", "delete", "copy", "move", "revision-check"]
+  });
+  const describe = await host.hostCalls["filesystem.webdav/describe"]();
+  assert.equal(mapField(describe, "identity"), "hara/filesystem-webdav");
+  const opened = await host.hostCalls["filesystem.webdav/open"]({ display: "Documents" });
+  const mount = mapField(opened, "mount");
+  const descriptor = mapField(opened, "descriptor");
+  assert.equal(mapField(descriptor, "kind"), "webdav");
+  const bytes = await host.hostCalls["filesystem.webdav/request"](
+    mount,
+    "read",
+    ["/docs/alpha.txt"]
+  );
+  assert.deepEqual([...bytes], [0, 255, 1]);
+  await host.hostCalls["filesystem.webdav/close"](mount);
   await host.closeAll();
 });
 

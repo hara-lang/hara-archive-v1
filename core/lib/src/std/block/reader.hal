@@ -78,7 +78,7 @@
        (if (nil? character)
          (if eof? output (throw-reader reader "Unexpected EOF."))
          (if (predicate character)
-           (recur (str output (str/to-string character)))
+           (recur (str output character))
            (do (unread-char reader character) output)))))))
 
 (defn read-until
@@ -115,7 +115,7 @@
 
 (defn slurp
   [reader]
-  (reduce (fn [output character] (str output (str/to-string character)))
+  (reduce (fn [output character] (str output character))
           ""
           (read-repeatedly reader read-char)))
 

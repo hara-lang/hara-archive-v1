@@ -42,7 +42,7 @@
 ^{:refer std.block.reader/step-char :added "3.0"}
 (Test/run
  [{:name "moves reader one char forward"
-   :test (fn [] (-> (create "abc") step-char read-char str/to-string))
+   :test (fn [] (-> (create "abc") step-char read-char str))
    :expected "b"}]
  migration-test-check)
 
@@ -50,7 +50,7 @@
 (Test/run
  [{:name "reads single char and move forward"
    :test (fn [] (->> read-char (read-repeatedly (create "abc")) (take 3)
-                    (map str/to-string) (str/join "")))
+                    (map str) (str/join "")))
    :expected "abc"}]
  migration-test-check)
 
@@ -72,21 +72,21 @@
 (Test/run
  [{:name "returns the current reader char with moving"
    :test (fn [] (->> (read-times (create "abc") peek-char 3)
-                    (map str/to-string) (str/join "")))
+                    (map str) (str/join "")))
    :expected "aaa"}]
  migration-test-check)
 
 ^{:refer std.block.reader/read-while :added "3.0"}
 (Test/run
  [{:name "reads input while the predicate is true"
-   :test (fn [] (read-while (create "abcde") (fn [ch] (not= (str/to-string ch) "d"))))
+   :test (fn [] (read-while (create "abcde") (fn [ch] (not= ch \d))))
    :expected "abc"}]
  migration-test-check)
 
 ^{:refer std.block.reader/read-until :added "3.0"}
 (Test/run
  [{:name "reads inputs until the predicate is reached"
-   :test (fn [] (read-until (create "abcde") (fn [ch] (= (str/to-string ch) "d"))))
+   :test (fn [] (read-until (create "abcde") (fn [ch] (= ch \d))))
    :expected "abc"}]
  migration-test-check)
 
@@ -96,8 +96,8 @@
    :test (fn []
              (->> (read-times (create "abcdefg")
                               (fn [migration-argument-0]
-                                  (str/join "" [(str/to-string (read-char migration-argument-0))
-                                                 (str/to-string (read-char migration-argument-0))])) 2)))
+                                  (str (read-char migration-argument-0)
+                                       (read-char migration-argument-0))) 2)))
    :expected ["ab" "cd"]}]
  migration-test-check)
 
@@ -107,13 +107,8 @@
    :test (fn []
              (->> (read-repeatedly (create "abcdefg")
                                    (fn [migration-argument-0]
-                                       (str/join ""
-                                                 (map (fn [character]
-                                                        (cond
-                                                          (nil? character) ""
-                                                          :else (str/to-string character)))
-                                                      [(read-char migration-argument-0)
-                                                       (read-char migration-argument-0)]))) empty?)
+                                       (str (read-char migration-argument-0)
+                                            (read-char migration-argument-0))) empty?)
                   (take 5)))
    :expected ["ab" "cd" "ef" "g"]}]
  migration-test-check)

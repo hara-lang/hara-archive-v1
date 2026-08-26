@@ -1,5 +1,4 @@
-(ns std.block.heal.parse
-  (:require [std.foundation.string]))
+(ns std.block.heal.parse)
 
 (def lu-close
   {"(" ")"
@@ -63,7 +62,7 @@
                            :col-num (inc col-num)
                            :delimiters
                            (conj (get state :delimiters)
-                                 (merge {:char (str/to-string char)
+                                 (merge {:char (str char)
                                          :col col-num
                                          :line line-num}
                                         info))))
@@ -152,11 +151,11 @@
           pad-width 4}
      :keys [line-numbers
             print-blank-carets]}]]
-  (let [lines              (std.foundation.string/split-lines content)
+  (let [lines              (str/split-lines content)
         delimiters-by-line (group-by :line delimiters)]
     (doseq [[line-idx line-content] (map-indexed vector lines)]
       (let [line-num    (inc line-idx)
-            line-prefix (if line-numbers (std.foundation.string/pad-left (str line-num) 4 " ") "")]
+            line-prefix (if line-numbers (str/pad-left (str line-num) 4 " ") "")]
         (println (str line-prefix line-content))
         (let [line-delimiters (get delimiters-by-line line-num)]
           (when (or line-delimiters print-blank-carets)
@@ -201,7 +200,7 @@
             output
             (let
              [current-line    (first lines)
-              trimmed-line    (std.foundation.string/trim-left current-line)
+             trimmed-line    (str/trim-left current-line)
               indent          (- (count current-line) (count trimmed-line))
               char            (if (empty? trimmed-line)
                                 nil
@@ -215,11 +214,11 @@
                                     (odd? quote-count)                      true
                                     :else                                   false)
               line-type       (cond next-multiline?                                    :string
-                                    (std.foundation.string/blank? current-line)        :blank
-                                    (std.foundation.string/includes? current-line ";") :commented
+                                    (str/blank? current-line)        :blank
+                                    (str/includes? current-line ";") :commented
                                     :else                                              :code)
               has-code        (and (not= char \;) (or (= line-type :code) (= line-type :commented)))
-              last-idx        (let [r-trimmed (std.foundation.string/trim-right current-line)]
+              last-idx        (let [r-trimmed (str/trim-right current-line)]
                                 (if (not-empty r-trimmed) (dec (count r-trimmed))))]
              (parse-lines-raw--loop-1
               (rest lines)
@@ -232,7 +231,7 @@
                 last-idx
                 (assoc :last-idx last-idx)
                 has-code
-                (assoc :col (inc indent) :char (str/to-string char))
+                (assoc :col (inc indent) :char (str char))
                 :then
                 (merge dinfo)))))))]
     (parse-lines-raw--loop-1 lines 1 false [])))
@@ -241,7 +240,7 @@
   "parse lines"
   {:added "4.0"}
   [content]
-  (parse-lines-raw (std.foundation.string/split-lines content)))
+  (parse-lines-raw (str/split-lines content)))
 
 ;; Predicates
 

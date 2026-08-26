@@ -3,6 +3,7 @@ import {
   DEFAULT_MAX_TRANSFER_BYTES,
   DEFAULT_TIMEOUT_MS,
   MAX_DAV_ENTRIES,
+  KNOWN_CAPABILITIES,
   SAFE_REQUEST_HEADERS,
   SAFE_RESPONSE_HEADERS,
   fail,
@@ -13,6 +14,7 @@ import {
   capabilitySet,
   statusFailure
 } from "./common.mjs";
+import { createWebdavProvider } from "./provider.mjs";
 
 const CONTEXT_CLOSE_HOOKS = Symbol.for("hara.hta.close-hooks");
 
@@ -478,6 +480,105 @@ export function createWebdavFetchHost(options = {}) {
       [`${SERVICE}/request`]: invoke,
       [`${SERVICE}/cancel`]: cancel,
       [`${SERVICE}/close`]: close
+    }),
+    closeAll
+  });
+}
+
+/**
+ * Bridges the compatibility WebDAV transport host to the rich HTA provider
+ * contract. The semantic provider remains the single implementation of the
+ * filesystem operations; this adapter only translates the rich host boundary
+ * into the raw DAV requests owned by the trusted host.
+ */
+export function createWebdavWasmHost(options = {}) {
+  const transport = createWebdavFetchHost(options);
+  const provider = createWebdavProvider();
+  const mounts = new Map();
+  const idleSignal = new AbortController().signal;
+
+  function receiverWithSignal(receiver, signal) {
+    return { ...(receiver ?? {}), signal };
+  }
+
+  function providerContext(receiver) {
+    const signal = receiver?.signal ?? idleSignal;
+    return {
+      signal,
+      hostCall(service, method, args = []) {
+        const key = `${service}/${method}`;
+        const handler = transport.hostCalls[key];
+        if (typeof handler !== "function") {
+          return Promise.reject(new Error(`file/host-unavailable: ${key}`));
+        }
+        return Promise.resolve(handler.call(receiverWithSignal(receiver, signal), ...args));
+      }
+    };
+  }
+
+  async function describe() {
+    return wire({
+      provider: "webdav",
+      identity: "hara/filesystem-webdav",
+      abi: "hta.v1",
+      route: "hta-wasm",
+      capabilities: [...KNOWN_CAPABILITIES].sort()
+    });
+  }
+
+  async function open(optionsValue, receiver) {
+    const opened = await provider.call(
+      "browser",
+      "open",
+      [plain(optionsValue ?? new Map())],
+      providerContext(receiver)
+    );
+    mounts.set(String(opened.id), opened.id);
+    return wire({ mount: opened.id, descriptor: opened.descriptor });
+  }
+
+  async function request(mount, operationValue, argsValue = [], receiver) {
+    const result = await provider.call(
+      "browser",
+      String(operationValue),
+      [mount, ...(Array.isArray(argsValue) ? argsValue : [])],
+      providerContext(receiver)
+    );
+    return wire(result);
+  }
+
+  async function cancel(mount, id, receiver) {
+    const hostMount = mounts.get(String(mount));
+    if (hostMount === undefined) return false;
+    const handler = transport.hostCalls[`${SERVICE}/cancel`];
+    if (typeof handler !== "function") return false;
+    return handler.call(receiverWithSignal(receiver, receiver?.signal ?? idleSignal), hostMount, id);
+  }
+
+  async function close(mount, receiver) {
+    const result = await provider.call(
+      "browser",
+      "close",
+      [mount],
+      providerContext(receiver)
+    );
+    mounts.delete(String(mount));
+    return result;
+  }
+
+  async function closeAll() {
+    await provider.closeAll();
+    mounts.clear();
+    await transport.closeAll();
+  }
+
+  return Object.freeze({
+    hostCalls: Object.freeze({
+      [`${SERVICE}/describe`]: describe,
+      [`${SERVICE}/open`]: function (...args) { return open(...args, this); },
+      [`${SERVICE}/request`]: function (...args) { return request(...args, this); },
+      [`${SERVICE}/cancel`]: function (...args) { return cancel(...args, this); },
+      [`${SERVICE}/close`]: function (...args) { return close(...args, this); }
     }),
     closeAll
   });

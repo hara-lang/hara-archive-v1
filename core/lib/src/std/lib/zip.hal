@@ -1,5 +1,4 @@
 (ns std.lib.zip
-  (:require [std.foundation :as h] [std.foundation :as walk])
   (:config {:override [get find prewalk postwalk]}))
 
 (declare display-zipper)
@@ -204,7 +203,7 @@
   [zip]
   (nil? (:parent zip)))
 
-(defonce +base+
+(def +base+
   {:at-inside-most-left? at-inside-most-left?
    :cursor               (quote |)
    :cursor-equal?        =
@@ -322,7 +321,7 @@
            (-> zip
                (assoc :left (rest left))
                (assoc :right (cons elem right))
-               (h/apply-with (:update-step-left context) elem)))))
+               (std.foundation/apply-with (:update-step-left context) elem)))))
   ([zip n]
 
 
@@ -342,7 +341,7 @@
                res (-> zip
                        (assoc :left  (cons elem left))
                        (assoc :right (rest right))
-                       (h/apply-with (:update-step-right context) elem))]
+                       (std.foundation/apply-with (:update-step-right context) elem))]
            res)))
   ([zip n]
    (nth (iterate step-right zip) n)))
@@ -369,7 +368,7 @@
                       :left ()
                       :right children
                       :parent zip)
-               (h/apply-with (:update-step-inside context) elem)))))
+               (std.foundation/apply-with (:update-step-inside context) elem)))))
   ([zip n]
    (nth (iterate step-inside zip) n)))
 
@@ -396,7 +395,7 @@
                              :right (cons (first left) right))]
            (-> zip
                (assoc :depth (inc  depth) :left (reverse children) :right () :parent parent)
-               (h/apply-with (:update-step-inside-left context) elem)))))
+               (std.foundation/apply-with (:update-step-inside-left context) elem)))))
   ([zip n]
    (nth (iterate step-inside-left zip) n)))
 
@@ -416,7 +415,7 @@
                  (:changed? zip)
                  (update-child-elements elements)
                  :then
-                 (h/apply-with (:update-step-outside context) left))))))
+                 (std.foundation/apply-with (:update-step-outside context) left))))))
   ([zip n] (nth (iterate step-outside zip) n)))
 
 (defn step-outside-right
@@ -478,7 +477,7 @@
                                       (-> zip
                                         (update-in [:left] (fn [migration-argument-0] (cons elem migration-argument-0)))
                                         (assoc :changed? true)
-                                        (h/apply-with (:update-insert-left context) elem))))
+                                        (std.foundation/apply-with (:update-insert-left context) elem))))
   ([{:as zip :keys [context]} data & more] (apply insert-left (insert-left zip data) more)))
 
 (defn insert-right
@@ -489,7 +488,7 @@
                                         (update-in [:right]
                                           (fn [migration-argument-0] (cons elem migration-argument-0)))
                                         (assoc :changed? true)
-                                        (h/apply-with (:update-insert-right context) elem))))
+                                        (std.foundation/apply-with (:update-insert-right context) elem))))
   ([{:as zip :keys [context]} data & more] (apply insert-right (insert-right zip data) more)))
 
 (defn delete-left
@@ -506,7 +505,7 @@
            (-> zip
                (update-in [:left] rest)
                (assoc :changed? true)
-               (h/apply-with (:update-delete-left context) elem)))))
+               (std.foundation/apply-with (:update-delete-left context) elem)))))
   ([{:keys [context] :as zip} n]
    (nth (iterate delete-left zip) n)))
 
@@ -524,7 +523,7 @@
            (-> zip
                (update-in [:right] rest)
                (assoc :changed? true)
-               (h/apply-with (:update-delete-right context) elem)))))
+               (std.foundation/apply-with (:update-delete-right context) elem)))))
   ([{:keys [context] :as zip} n]
    (nth (iterate delete-right zip) n)))
 
@@ -572,7 +571,7 @@
       (let [elem (list-fn new-elem)]
         (-> zip
           (assoc :left () :right elem :changed? true)
-          (h/apply-with (:update-step-outside context) left)))
+          (std.foundation/apply-with (:update-step-outside context) left)))
       :else
       (-> (step-outside zip) (replace-right new-elem) step-inside))))
 
@@ -719,13 +718,13 @@
   "wraps nils for the zipper"
   {:added "4.0"}
   [form]
-  (walk/prewalk (fn [x] (if (nil? x) (result :success x) x)) form))
+  (std.foundation/prewalk (fn [x] (if (nil? x) (result :success x) x)) form))
 
 (defn form-zip-unwrap
   "unwraps nils for the zipper"
   {:added "4.0"}
   [form]
-  (walk/prewalk (fn [x] (if (result? x) (deref x) x)) form))
+  (std.foundation/prewalk (fn [x] (if (result? x) (deref x) x)) form))
 
 (defn form-zip
   "creates a form zip"

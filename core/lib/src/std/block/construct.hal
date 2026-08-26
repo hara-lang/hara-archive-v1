@@ -35,7 +35,7 @@
 
      :else
      (let [tag (check/void-tag character)
-           text (str/to-string character)
+           text (str character)
            width (if (= tag :eof)
                    0
                    (if (= tag :linebreak)
@@ -49,7 +49,7 @@
      (raw-block :void tag "" nil [] {:width 0 :height 0})
 
      :else
-     (let [text (str/to-string character)]
+     (let [text (str character)]
        (raw-block :void tag text nil [] {:width (text-width text)
                                           :height (text-height text)})))))
 

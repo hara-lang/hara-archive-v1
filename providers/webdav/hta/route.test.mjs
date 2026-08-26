@@ -13,16 +13,15 @@ function sorted(values) {
 test("WebDAV declares one exact HTA browser route and host authority", async () => {
   const source = await readFile(fileURLToPath(descriptorUrl), "utf8");
   const manifest = parseHtaManifest(source);
-  assert.equal(manifest.namespace, "fs.webdav.wasm.hta");
+  assert.equal(manifest.namespace, "fs.webdav.wasm");
   assert.equal(manifest.identity, "hara/filesystem-webdav");
-  assert.equal(manifest.provider, "hta");
+  assert.equal(manifest.provider, "wasm");
   assert.equal(manifest.abi, "hta.v1");
-  assert.deepEqual(manifest.browserTarget, {
-    provider: "browser/provider.mjs",
-    runtime: "web-worker"
-  });
+  assert.equal(manifest.root, "provider");
+  assert.equal(manifest.module, "provider.wasm");
+  assert.equal(manifest.browserTarget, undefined);
   assert.deepEqual(sorted(manifest.capabilities), ["filesystem", "network"]);
-  assert.deepEqual(manifest.hostCalls["filesystem.webdav"], ["open", "request", "cancel", "close"]);
+  assert.deepEqual(manifest.hostCalls["filesystem.webdav"], ["describe", "open", "request", "cancel", "close"]);
   assert.deepEqual(
     sorted(manifest.exports),
     sorted([

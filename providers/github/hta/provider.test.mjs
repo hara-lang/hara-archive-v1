@@ -4,7 +4,7 @@ import test from "node:test";
 import { decodeHta, encodeHta, HtaKeyword } from "../../../core/rust/web/packages/hta/index.js";
 
 const artifactUrl = new URL(
-  "../../../core/rust/target/wasm32-unknown-unknown/browser-release/hara_wasm_raw.wasm",
+  "./provider/provider.wasm",
   import.meta.url
 );
 

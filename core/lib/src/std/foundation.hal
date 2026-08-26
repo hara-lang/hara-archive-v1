@@ -236,7 +236,7 @@
 (defn ^{:schema [:function [:fn [] :str]
                             [:fn [:any & :any] :str]]}
   str
-  "Concatenates the display text of values, omitting nil values."
+  "Concatenates string text, omitting nil values and rendering characters as text."
   ([] "")
   ([value & more]
    (String/join
@@ -245,14 +245,15 @@
            (cond
              (nil? item) ""
              (string? item) item
+             (char? item) (IStringLike/to-string item)
              :else (IDisplay/display item)))
          (cons value more)))))
 
-(defn ^{:inline true :schema [:fn [:any] :str]}
+(defn ^{:schema [:fn [& :any] :str]}
   pr-str
-  "Returns the display representation of a value."
-  [value]
-  (IDisplay/display value))
+  "Returns the readable display representation of values."
+  [& values]
+  (String/join " " (map IDisplay/display values)))
 
 (defn ^{:schema [:fn [& :any] :any]}
   p
@@ -291,13 +292,77 @@
   boolean "Coerces value to true or false using Hara truthiness." [value] (if value true false))
 
 (defn ^{:schema [:fn [:any :any] :int]}
-  compare "Compares two mutually orderable Hara values." [left right]
-  (cond (= left right)
-        0
-        (< left right)
-        -1
-        :else
-        1))
+  compare
+  "Compares two mutually orderable Hara values using their portable order."
+  [left right]
+  (letfn [(compare-bytes
+            [left-bytes right-bytes]
+            (let [left-count (Bytes/count left-bytes)
+                  right-count (Bytes/count right-bytes)]
+              (loop [index 0]
+                (cond
+                  (= index left-count)
+                  (if (= left-count right-count) 0 -1)
+
+                  (= index right-count)
+                  1
+
+                  :else
+                  (let [ordering (compare (Bytes/get left-bytes index)
+                                          (Bytes/get right-bytes index))]
+                    (if (= ordering 0)
+                      (recur (inc index))
+                      ordering))))))]
+    (cond
+      (= left right)
+      0
+
+      (nil? left)
+      -1
+
+      (nil? right)
+      1
+
+      (and (number? left) (number? right))
+      (if (< left right) -1 1)
+
+      (and (or (string? left)
+               (keyword? left)
+               (symbol? left)
+               (char? left))
+           (or (string? right)
+               (keyword? right)
+               (symbol? right)
+               (char? right)))
+      (compare-bytes (String/encode-utf8 (str left))
+                     (String/encode-utf8 (str right)))
+
+      (and (boolean? left) (boolean? right))
+      (if (= left false) -1 1)
+
+      (and (bytes? left) (bytes? right))
+      (compare-bytes left right)
+
+      (and (sequential? left) (sequential? right))
+      (loop [left left
+             right right]
+        (cond
+          (empty? left)
+          (if (empty? right) 0 -1)
+
+          (empty? right)
+          1
+
+          :else
+          (let [ordering (compare (first left) (first right))]
+            (if (= ordering 0)
+              (recur (rest left) (rest right))
+              ordering))))
+
+      :else
+      (throw
+       (ex :argument {:left left :right right}
+           :ex/message "compare expects two mutually orderable Hara values")))))
 
 (defn ^{:schema [:fn [:any :any] :bool]}
   not=

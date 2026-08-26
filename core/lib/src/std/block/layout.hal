@@ -1,6 +1,5 @@
 (ns std.block.layout
-  (:require [std.foundation.string]
-    [std.block.construct :as construct]
+  (:require [std.block.construct :as construct]
     [std.block.layout.common :as common]
     [std.block.layout.estimate :as est]
     [std.foundation :as walk]))
@@ -33,12 +32,12 @@
 (defn- is-def?
   [x]
   (or (+defs+ x)
-    (and (symbol? x) (std.foundation.string/starts-with? (name x) "def"))))
+    (and (symbol? x) (str/starts-with? (name x) "def"))))
 
 (defn- is-binding?
   [x]
   (or (+bindings+ x)
-    (and (symbol? x) (std.foundation.string/includes? (name x) "with"))))
+    (and (symbol? x) (str/includes? (name x) "with"))))
 
 (defn layout-hiccup-like
   "checks if form is hiccup structure"
@@ -185,7 +184,7 @@
         tag                        (first (drop 0 migration-argument-0-value))
         attrs                      (first (drop 1 migration-argument-0-value))
         more                       (drop 2 migration-argument-0-value)]
-    (let [path (with-meta (std.foundation.string/split (:d attrs) #" ")
+    (let [path (with-meta (str/split (:d attrs) #" ")
                  {:spec {:columns 5} :tag :vector})]
       (apply vector tag (assoc attrs :d path) more))))
 

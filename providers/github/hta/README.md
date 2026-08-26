@@ -39,9 +39,8 @@ fixture is run with:
 npm run test:github-host
 ```
 
-For this source/toolchain build the artifact is 3,318,884 bytes with
-SHA-256
-`3be8f634190c805f08df8c42c077a252325dc14295c683ddb436a5f1757ab22e`.
+The artifact is copied to `provider/provider.wasm`; its checked-in digest is
+recorded in `provider.sha256`.
 Release packaging verifies `provider.sha256` and then builds the archive
 without invoking a compiler during consumer installation:
 

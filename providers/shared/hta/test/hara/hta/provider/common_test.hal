@@ -1,0 +1,159 @@
+(ns hara.hta.provider.common-test
+  (:require [hara.hta.provider.common :as subject]))
+
+^{:refer hara.hta.provider.common/same?}
+(Test/run
+ [{:name "same? compares provider values"
+   :test (fn [] [(subject/same? :ready :ready)
+                 (subject/same? :ready :closed)])
+   :expected [true false]}])
+
+^{:refer hara.hta.provider.common/map-value?}
+(Test/run
+ [{:name "map-value? accepts persistent maps and rejects other values"
+   :test (fn [] [(subject/map-value? {})
+                 (subject/map-value? [])
+                 (subject/map-value? nil)])
+   :expected [true false false]}])
+
+^{:refer hara.hta.provider.common/value-field}
+(Test/run
+ [{:name "value-field reads keyword and wire-string keys"
+   :test (fn [] [(subject/value-field {:id "keyword"} :id "id")
+                 (subject/value-field {"id" "wire"} :id "id")
+                 (subject/value-field [:not-a-map] :id "id")])
+   :expected ["keyword" "wire" nil]}])
+
+^{:refer hara.hta.provider.common/filesystem-id}
+(Test/run
+ [{:name "filesystem-id accepts ids, mounts, and plain provider handles"
+   :test (fn [] [(subject/filesystem-id {:id "id-1"})
+                 (subject/filesystem-id {:mount "mount-1"})
+                 (subject/filesystem-id "handle-1")])
+   :expected ["id-1" "mount-1" "handle-1"]}])
+
+^{:refer hara.hta.provider.common/normalise-path}
+(Test/run
+ [{:name "normalise-path canonicalizes mounted logical paths"
+   :test (fn [] [(subject/normalise-path "")
+                 (subject/normalise-path "docs/./guide")
+                 (subject/normalise-path "docs//guide")
+                 (subject/normalise-path "docs/archive/../guide")])
+   :expected ["/" "/docs/guide" "/docs/guide" "/docs/guide"]}
+  {:name "normalise-path rejects host syntax and root escapes"
+   :test (fn [] [(try (do (subject/normalise-path "../secret") false)
+                      (catch Throwable error true))
+                 (try (do (subject/normalise-path "C:\\secret") false)
+                      (catch Throwable error true))
+                 (try (do (subject/normalise-path 42) false)
+                      (catch Throwable error true))])
+   :expected [true true true]}])
+
+^{:refer hara.hta.provider.common/options}
+(Test/run
+ [{:name "options turns nil into an empty map and preserves maps"
+   :test (fn [] [(subject/options nil)
+                 (subject/options {:recursive true})])
+   :expected [{} {:recursive true}]}
+  {:name "options rejects scalar values"
+   :test (fn [] (try (do (subject/options :invalid) false)
+                     (catch Throwable error true)))
+   :expected true}])
+
+^{:refer hara.hta.provider.common/mutation}
+(Test/run
+ [{:name "mutation turns nil into an empty map and preserves maps"
+   :test (fn [] [(subject/mutation nil)
+                 (subject/mutation {:revision "r1"})])
+   :expected [{} {:revision "r1"}]}
+  {:name "mutation rejects scalar values"
+   :test (fn [] (try (do (subject/mutation :invalid) false)
+                     (catch Throwable error true)))
+   :expected true}])
+
+^{:refer hara.hta.provider.common/annotate-descriptor}
+(Test/run
+ [{:name "annotate-descriptor records the shared transport boundary"
+   :test (fn []
+           (subject/annotate-descriptor
+            (subject/Provider "filesystem.test" "hta-wasm")
+            {:id "mount-1" :extensions {:provider/name "test"}}))
+   :expected {:id "mount-1"
+              :extensions {:provider/name "test"
+                           :provider/route "hta-wasm"
+                           :provider/root-scoped? true
+                           :provider/transport-verified? true}}}])
+
+^{:refer hara.hta.provider.common/descriptor}
+(Test/run
+ [{:name "descriptor unwraps the portable descriptor field"
+   :test (fn [] (subject/descriptor {:descriptor {:id "mount-1"}}))
+   :expected {:id "mount-1"}}
+  {:name "descriptor rejects missing descriptors"
+   :test (fn [] (try (do (subject/descriptor {:id "mount-1"}) false)
+                     (catch Throwable error true)))
+   :expected true}])
+
+^{:refer hara.hta.provider.common/delete}
+(Test/run
+ [{:name "delete rejects the mounted root"
+   :test (fn []
+           (try
+             (do
+               (subject/delete
+                (subject/Provider "filesystem.test" "hta-wasm")
+                {:id "mount-1"}
+                "/"
+                nil
+                nil)
+               false)
+             (catch Throwable error true)))
+   :expected true}])
+
+^{:refer hara.hta.provider.common/move}
+(Test/run
+ [{:name "move rejects moving the mounted root"
+   :test (fn []
+           (try
+             (do
+               (subject/move
+                (subject/Provider "filesystem.test" "hta-wasm")
+                {:id "mount-1"}
+                "/"
+                "/target"
+                nil
+                nil)
+               false)
+             (catch Throwable error true)))
+   :expected true}])
+
+^{:refer hara.hta.provider.common/write}
+(Test/run
+ [{:name "write rejects non-byte payloads before the host boundary"
+   :test (fn []
+           (try
+             (do
+               (subject/write
+                (subject/Provider "filesystem.test" "hta-wasm")
+                {:id "mount-1"}
+                "/file"
+                "not-bytes"
+                nil
+                nil)
+               false)
+             (catch Throwable error true)))
+   :expected true}])
+
+^{:refer hara.hta.provider.common/dispatch}
+(Test/run
+ [{:name "dispatch rejects operations outside the shared export surface"
+   :test (fn []
+           (try
+             (do
+               (subject/dispatch
+                (subject/Provider "filesystem.test" "hta-wasm")
+                "unknown"
+                [])
+               false)
+             (catch Throwable error true)))
+   :expected true}])

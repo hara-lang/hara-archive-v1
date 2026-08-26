@@ -1,0 +1,254 @@
+;; Shared rich HTA filesystem provider contract.
+;;
+;; Provider packages only select a service identity. This namespace owns the
+;; protocol, provider record, filesystem façade, path/options normalization,
+;; and apply-based dispatch used by every standalone provider Wasm artifact.
+(ns hara.hta.provider.common
+  (:config {:role :internal}))
+
+(defprotocol IFilesystemProvider
+  (provider-describe [provider])
+  (provider-open [provider options])
+  (provider-descriptor [provider filesystem])
+  (provider-stat [provider filesystem path])
+  (provider-read [provider filesystem path])
+  (provider-write [provider filesystem path bytes options mutation])
+  (provider-entries-page [provider filesystem path request])
+  (provider-mkdir [provider filesystem path options mutation])
+  (provider-delete [provider filesystem path options mutation])
+  (provider-copy [provider filesystem source target options mutation])
+  (provider-move [provider filesystem source target options mutation]))
+
+(defprotocol IFilesystemProviderLifecycle
+  (provider-close [provider filesystem]))
+
+(defstruct Provider [service route])
+
+(defn same? [left right] (= left right))
+(defn map-value?
+  [value]
+  (let [value-type (Base/type value)]
+    (or (same? value-type :std.native.HashMap)
+        (same? value-type :std.native.OrderedMap)
+        (same? value-type :std.native.SortedMap)
+        (same? value-type :std.native.Trie)
+        (same? value-type :std.native.PriorityMap))))
+
+(defn value-field
+  [value keyword-key string-key]
+  (if (map-value? value)
+    (or (get value keyword-key)
+        (get value string-key))
+    nil))
+
+(defn filesystem-id
+  [filesystem]
+  (if (map-value? filesystem)
+    (or (value-field filesystem :id "id")
+        (value-field filesystem :mount "mount")
+        (throw (ex :file/closed
+                   {:filesystem filesystem}
+                   :ex/message "Filesystem descriptor has no provider id")))
+    filesystem))
+
+(defn normalise-path
+  [value]
+  (if (same? (Base/type value) :std.native.String)
+    nil
+    (throw (ex :file/invalid-path
+               {:path value}
+               :ex/message "Filesystem path must be a string")))
+  (if (or (str/includes? value "\u0000")
+          (str/includes? value "\\")
+          (str/includes? value ":"))
+    (throw (ex :file/invalid-path
+               {:path value}
+               :ex/message "Filesystem path contains host syntax")))
+  (let [segments
+        (reduce
+         (fn [output segment]
+           (cond
+             (or (same? segment "") (same? segment ".")) output
+             (same? segment "..")
+             (if (empty? output)
+               (throw (ex :file/outside-root
+                          {:path value}
+                          :ex/message "Filesystem path escapes the mounted root"))
+               (vec (drop-last output)))
+             :else (conj output segment)))
+         []
+         (str/split value "/"))]
+    (if (empty? segments)
+      "/"
+      (String/join "" ["/" (String/join "/" segments)]))))
+
+(defn options
+  [value]
+  (if (same? value nil)
+    {}
+    (if (map-value? value)
+      value
+      (throw (ex :file/descriptor-invalid
+                 {:options value}
+                 :ex/message "Filesystem options must be a map")))))
+
+(defn mutation
+  [value]
+  (if (same? value nil)
+    {}
+    (if (map-value? value)
+      value
+      (throw (ex :file/descriptor-invalid
+                 {:mutation value}
+                 :ex/message "Filesystem mutation context must be a map")))))
+
+(defn host
+  [provider method arguments]
+  (std.native.Host/call (:service provider) method arguments))
+
+(defn request
+  [provider filesystem operation arguments]
+  (host provider "request" [(filesystem-id filesystem) operation arguments]))
+
+(defn annotate-descriptor
+  [provider value]
+  (if (map-value? value)
+    (let [extensions (or (value-field value :extensions "extensions") {})]
+      (assoc value
+             :extensions
+             (assoc extensions
+                    :provider/route (:route provider)
+                    :provider/root-scoped? true
+                    :provider/transport-verified? true)))
+    value))
+
+(defn describe [provider]
+  (host provider "describe" []))
+
+(defn open
+  [provider value]
+  (promise/then
+   (host provider "open" [(options value)])
+   (fn [opened] (annotate-descriptor provider opened))))
+
+(defn descriptor
+  [filesystem]
+  (or (value-field filesystem :descriptor "descriptor")
+      (throw (ex :file/descriptor-invalid
+                 {:filesystem filesystem}
+                 :ex/message "Filesystem descriptor is missing"))))
+
+(defn stat [provider filesystem path]
+  (request provider filesystem "stat" [(normalise-path path)]))
+
+(defn read [provider filesystem path]
+  (request provider filesystem "read" [(normalise-path path)]))
+
+(defn write
+  [provider filesystem path bytes write-options mutation-context]
+  (if (or (same? (Base/type bytes) :std.native.Bytes)
+          (same? (Base/type bytes) :std.native.ByteBuffer))
+    nil
+    (throw (ex :file/descriptor-invalid
+               {:path path}
+               :ex/message "Filesystem write requires bytes")))
+  (request provider filesystem "write"
+           [(normalise-path path)
+            bytes
+            (options write-options)
+            (mutation mutation-context)]))
+
+(defn entries-page
+  [provider filesystem path page-request]
+  (request provider filesystem "entries-page"
+           [(normalise-path path) (options page-request)]))
+
+(defn mkdir
+  [provider filesystem path mkdir-options mutation-context]
+  (request provider filesystem "mkdir"
+           [(normalise-path path)
+            (options mkdir-options)
+            (mutation mutation-context)]))
+
+(defn delete
+  [provider filesystem path delete-options mutation-context]
+  (let [logical (normalise-path path)]
+    (if (same? "/" logical)
+      (throw (ex :file/denied
+                 {:path path}
+                 :ex/message "Filesystem root cannot be deleted"))
+      (request provider filesystem "delete"
+               [logical
+                (options delete-options)
+                (mutation mutation-context)]))))
+
+(defn copy
+  [provider filesystem source target copy-options mutation-context]
+  (request provider filesystem "copy"
+           [(normalise-path source)
+            (normalise-path target)
+            (options copy-options)
+            (mutation mutation-context)]))
+
+(defn move
+  [provider filesystem source target move-options mutation-context]
+  (let [source-path (normalise-path source)
+        target-path (normalise-path target)]
+    (if (or (same? "/" source-path) (same? "/" target-path))
+      (throw (ex :file/denied
+                 {:source source :target target}
+                 :ex/message "Filesystem root cannot be moved"))
+      (request provider filesystem "move"
+               [source-path
+                target-path
+                (options move-options)
+                (mutation mutation-context)]))))
+
+(defn close
+  [provider filesystem]
+  (if (same? filesystem nil)
+    (promise/from nil)
+    (host provider "close" [(filesystem-id filesystem)])))
+
+(extend-type Provider IFilesystemProvider
+  (provider-describe [provider] (describe provider))
+  (provider-open [provider options] (open provider options))
+  (provider-descriptor [_ filesystem] (descriptor filesystem))
+  (provider-stat [provider filesystem path]
+    (stat provider filesystem path))
+  (provider-read [provider filesystem path]
+    (read provider filesystem path))
+  (provider-write [provider filesystem path bytes options mutation-context]
+    (write provider filesystem path bytes options mutation-context))
+  (provider-entries-page [provider filesystem path request-value]
+    (entries-page provider filesystem path request-value))
+  (provider-mkdir [provider filesystem path options mutation-context]
+    (mkdir provider filesystem path options mutation-context))
+  (provider-delete [provider filesystem path options mutation-context]
+    (delete provider filesystem path options mutation-context))
+  (provider-copy [provider filesystem source target options mutation-context]
+    (copy provider filesystem source target options mutation-context))
+  (provider-move [provider filesystem source target options mutation-context]
+    (move provider filesystem source target options mutation-context)))
+
+(extend-type Provider IFilesystemProviderLifecycle
+  (provider-close [provider filesystem] (close provider filesystem)))
+
+(defn dispatch
+  [provider operation arguments]
+  (cond
+    (same? operation "describe") (provider-describe provider)
+    (same? operation "open") (apply provider-open (cons provider arguments))
+    (same? operation "descriptor") (apply provider-descriptor (cons provider arguments))
+    (same? operation "stat") (apply provider-stat (cons provider arguments))
+    (same? operation "read") (apply provider-read (cons provider arguments))
+    (same? operation "write") (apply provider-write (cons provider arguments))
+    (same? operation "entries-page") (apply provider-entries-page (cons provider arguments))
+    (same? operation "mkdir") (apply provider-mkdir (cons provider arguments))
+    (same? operation "delete") (apply provider-delete (cons provider arguments))
+    (same? operation "copy") (apply provider-copy (cons provider arguments))
+    (same? operation "move") (apply provider-move (cons provider arguments))
+    (same? operation "close") (apply provider-close (cons provider arguments))
+    :else (throw (ex :file/unsupported
+                     {:operation operation}
+                     :ex/message "Filesystem operation is not exported"))))

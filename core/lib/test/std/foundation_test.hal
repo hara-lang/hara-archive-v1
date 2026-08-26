@@ -66,7 +66,30 @@
  [{:name "concatenates multiple values without recursive allocation"
    :test (fn [] [(str "IWork" "Agent" "Driver" nil)
                  (str "answer=" 42)])
-   :expected ["IWorkAgentDriver" "answer=42"]}])
+   :expected ["IWorkAgentDriver" "answer=42"]}
+  {:name "appends character text instead of readable character syntax"
+   :test (fn [] [(str \a)
+                 (str \a \newline "done")
+                 (str :hello)
+                 (str 'hello)
+                 (str [1 "a"])])
+   :expected ["a"
+              "a\ndone"
+              ":hello"
+              "hello"
+              "[1 \"a\"]"]}])
+
+^{:refer std.foundation/pr-str}
+(Test/run
+ [{:name "renders readable values and separates multiple values"
+   :test (fn [] [(pr-str \a)
+                 (pr-str nil)
+                 (pr-str \a :hello)
+                 (pr-str [1 "a"])])
+   :expected ["\\a"
+              "nil"
+              "\\a :hello"
+              "[1 \"a\"]"]}])
 
 ^{:refer std.foundation/apply}
 (Test/run
@@ -456,8 +479,12 @@
  [{:name "orders mutually comparable values"
    :test (fn [] [(std.foundation/compare 1 2)
                  (std.foundation/compare 2 2)
-                 (std.foundation/compare 2 1)])
-   :expected [-1 0 1]}])
+                 (std.foundation/compare 2 1)
+                 (std.foundation/compare "a" "b")
+                 (std.foundation/compare :docs :default)
+                 (std.foundation/compare nil false)
+                 (std.foundation/compare [1 2] [1 3])])
+   :expected [-1 0 1 -1 1 -1 -1]}])
 
 ^{:refer std.foundation/not=}
 (Test/run

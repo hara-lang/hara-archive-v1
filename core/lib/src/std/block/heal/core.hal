@@ -1,6 +1,5 @@
 (ns std.block.heal.core
-  (:require [std.foundation.string]
-    [std.block.heal.edit :as edit]
+  (:require [std.block.heal.edit :as edit]
     [std.block.heal.parse :as parse]
     [std.foundation :as env]
     [std.lib.format.diff :as diff]))
@@ -92,7 +91,7 @@
   {:added "4.0"}
   [content]
   (let [delimiters (parse/parse-delimiters content)
-        lines      (std.foundation.string/split-lines content)
+        lines      (str/split-lines content)
         starts     (parse/parse-lines-raw lines)
         entries    (group-blocks-prep-entries delimiters starts)]
     {:delimiters delimiters :entries entries :lines lines :starts starts}))
@@ -268,7 +267,7 @@
                                         {:errors (mapv (fn [migration-argument-0]
                                                            (update migration-argument-0 (keyword "line") + ((keyword "offset") scan)))
                                                        all-errors)
-                                         :lines  (std.foundation.string/split-lines snippet)
+                                         :lines  (str/split-lines snippet)
                                          :at     (dissoc block :children)})]
     (if is-suspect
       (or child-error block-error)

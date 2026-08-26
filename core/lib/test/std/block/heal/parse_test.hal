@@ -1,7 +1,6 @@
 (ns std.block.heal.parse-test
   (:require [std.block.heal.parse :as parse]
     [std.foundation :as env]
-    [std.foundation.string :as prose]
     [std.lib.encode.base64 :as base64]
     [code.test.base.process :as process]
     [code.test.checker.common :as checker]
@@ -231,8 +230,8 @@
 (Test/run
  [{:name "prints all the parsed carets"
    :test (fn []
-             (with-out-string (parse/print-delimiters (std.foundation.string/decode-utf8 (deref (File/read "test-data/std.block.heal/cases/001_basic.block")))
-                                                      (parse/parse-delimiters (std.foundation.string/decode-utf8 (deref (File/read "test-data/std.block.heal/cases/001_basic.block")))) {:line-numbers true})))
+             (with-out-string (parse/print-delimiters (str/decode-utf8 (deref (File/read "test-data/std.block.heal/cases/001_basic.block")))
+                                                      (parse/parse-delimiters (str/decode-utf8 (deref (File/read "test-data/std.block.heal/cases/001_basic.block")))) {:line-numbers true})))
    :expected (checker/satisfies string?)}]
  migration-test-check)
 
@@ -307,7 +306,7 @@ that acts as a multi-line comment or docstring in other languages but not clojur
  (Test/run
   [{:name "parse lines #1"
     :test (fn []
-              (parse/parse-lines (std.foundation.string/join "
+              (parse/parse-lines (str/join "
 " ["(:? ()" "    ())" "    nil)"])))
     :expected [{:type :code
                 :style :paren
@@ -325,7 +324,7 @@ that acts as a multi-line comment or docstring in other languages but not clojur
                {:char "n" :col 5 :last-idx 7 :line 3 :type :code}]}
    {:name "parse lines #2"
     :test (fn []
-              (parse/parse-lines (std.foundation.string/join "
+              (parse/parse-lines (str/join "
 " ["(:? ()" "    ())" "    nil {})"])))
     :expected [{:type :code
                 :style :paren

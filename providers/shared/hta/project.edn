@@ -1,0 +1,10 @@
+{:hara/type :project
+ :hara/version "1.0.0"
+ :project/id hara/hta-provider-common
+ :project/version "0.1.0"
+ :project/source-paths ["src"]
+ :project/test-paths ["test"]
+ :project/extension-paths []
+ :project/artifact-paths []
+ :project/capabilities #{}
+ :project/dependencies {}}

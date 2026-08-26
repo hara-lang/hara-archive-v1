@@ -1,7 +1,5 @@
 (ns std.block.heal.edit
-  (:require [std.foundation.string]
-    [std.block.heal.parse :as parse]
-    [std.foundation.string :as common]))
+  (:require [std.block.heal.parse :as parse]))
 
 (defn update-content
   "performs the necessary edits to a string"
@@ -10,7 +8,7 @@
   (cond (empty? edits)
     content
     :else
-    (let [lines (std.foundation.string/split-lines content)]
+    (let [lines (str/split-lines content)]
       (apply str
         (interpose "\n"
           (->> edits
@@ -18,9 +16,9 @@
                       (let [{:keys [action new-char]} edit
                             old-line                  (nth lines (dec (:line edit)))
                             new-line                  (case action
-                                                        :replace (common/replace-at old-line (dec (:col edit)) new-char)
-                                                        :insert  (common/insert-at old-line (:col edit) new-char)
-                                                        :remove  (common/replace-at old-line (dec (:col edit)) ""))]
+                                                        :replace (str/replace-at old-line (dec (:col edit)) new-char)
+                                                        :insert  (str/insert-at old-line (:col edit) new-char)
+                                                        :remove  (str/replace-at old-line (dec (:col edit)) ""))]
                         (assoc lines (dec (:line edit)) new-line)))
               lines)))))))
 
@@ -99,5 +97,4 @@
              :line line
              :col  col})
           unopened)))
-
 

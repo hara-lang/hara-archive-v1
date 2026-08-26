@@ -22,3 +22,11 @@ without compiling source or discovering host code dynamically.
 
 The JVM providers remain explicit compatibility routes. Their transport
 adapters are not used as a fallback for the Wasm route.
+
+`src/hara/hta/provider/common.hal` is embedded by the raw rich-HTA runtime
+under `hara.hta.provider.common`. Provider source files only choose the trusted
+host service identity and route; protocol definitions, descriptor handling,
+normalization, host dispatch, and lifecycle behavior live in that shared
+namespace. This keeps each provider interface declaration small while keeping
+the Wasm artifacts self-contained. Its path-matched Hara tests live under
+`test/hara/hta/provider/common_test.hal`.

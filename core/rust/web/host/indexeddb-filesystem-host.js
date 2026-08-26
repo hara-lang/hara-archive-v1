@@ -102,6 +102,8 @@ export function createIndexedDbFilesystemHost({ factory, ...factoryOptions } = {
           }
         case "stat":
           return filesystem.stat(callContext, args[0]);
+        case "entries-page":
+          return filesystem.entriesPage(callContext, args[0], args[1]);
         case "entries":
           return collectEntries(filesystem, callContext, args[0], args[1]);
         case "list":

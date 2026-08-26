@@ -32,7 +32,7 @@
                    (into {}))]
     (do (reduce (fn [[line-num col-num] char]
                   (let [color (get color-map [line-num col-num])
-                        text  (str/to-string char)]
+                        text  (str char)]
                     (if color (Printer/p (str color text +reset-color+)) (Printer/p text))
                     (if (= char \newline)
                       [(inc line-num) 1]

@@ -1,0 +1,14 @@
+;; Rich HTA provider source for hara/filesystem-indexeddb.
+;; IndexedDB handles, transactions, quota, and cancellation remain in the
+;; trusted host. The shared module supplies the portable façade.
+(ns hara.hta.provider
+  (:require [hara.hta.provider.common :as common]))
+
+(def SERVICE "filesystem.indexeddb")
+(def ROUTE "hta-wasm")
+(def provider (common/Provider SERVICE ROUTE))
+
+^{:public true}
+(defn dispatch
+  [operation arguments]
+  (common/dispatch provider operation arguments))

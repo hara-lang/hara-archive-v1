@@ -565,6 +565,117 @@
        (nav/root-block (nav/delete-at current (first paths)))
        (vec (rest paths))))))
 
+(defn normalize-dependency-aliases
+  "Normalizes simple dependency aliases and rewrites their uses.
+
+   A dependency entry with options beyond `:as` is left untouched because
+   removing it could discard an explicit refer, exclude, or rename contract.
+   In Hara output, `std.foundation` is an embedded root namespace, so simple
+   `:require` aliases for it are expanded to fully-qualified symbols and
+   removed."
+  ([root]
+   (normalize-dependency-aliases root {}))
+  ([root options]
+   (let [target-language (or (:target/language options) :hara)]
+     (letfn [(dependency-clause?
+               [location]
+               (has? #{":require" ":use"} (nav/form-head location)))
+             (simple-entry
+               [clause location]
+               (let [children (vec (nav/code-children location))]
+                 (if (and (= 3 (count children))
+                          (= ":as" (block/string (nth children 1)))
+                          (not (str/starts-with?
+                                (block/string (first children)) ":"))
+                          (not (str/starts-with?
+                                (block/string (nth children 2)) ":")))
+                   {:namespace (block/string (first children))
+                    :alias (block/string (nth children 2))
+                    :clause (nav/form-head clause)
+                    :path (nav/path location)}
+                   nil)))
+             (dependency-entries
+               [input]
+               (vec
+                (mapcat
+                 (fn [clause]
+                   (keep
+                    (fn [location] (simple-entry clause location))
+                    (nav/code-child-locations clause)))
+                 (filter dependency-clause?
+                         (nav/namespace-clause-locations input)))))
+             (foundation-entry?
+               [record]
+               (and (= :hara target-language)
+                    (= "std.foundation" (:namespace record))
+                    (= ":require" (:clause record))))
+             (rewrite-uses
+               [input entries]
+               (reduce
+                (fn [current entry]
+                  (let [from (:alias entry)
+                        to (:replacement entry)
+                        prefix (str from "/")]
+                    (reduce
+                     (fn [output location]
+                       (let [value (nav/current location)
+                             text (if (and value (block/token? value))
+                                    (block/string value)
+                                    nil)]
+                         (if (and text (str/starts-with? text prefix))
+                           (nav/root-block
+                            (nav/replace-at
+                             output
+                             (nav/path location)
+                             (str to
+                                  (str/slice text
+                                             (str/length from)
+                                             (str/length text)))))
+                           output)))
+                     current
+                     (nav/walk-locations current))))
+                input
+                entries))]
+       (let [records (dependency-entries root)
+             foundation-records (vec (filter foundation-entry? records))
+             generic-records (vec (filter (fn [record] (not (foundation-entry? record))) records))
+             aliases
+             (reduce
+              (fn [state record]
+                (let [namespace (:namespace record)
+                      primary (get-in state [:primary namespace])]
+                  (if primary
+                    (assoc state
+                           :duplicates
+                           (conj (:duplicates state)
+                                 (assoc record
+                                        :primary-alias (:alias primary))))
+                    (assoc-in state [:primary namespace] record))))
+              {:primary {} :duplicates []}
+              generic-records)
+             rewrites
+             (vec
+              (concat
+               (map (fn [record]
+                      (assoc record :replacement "std.foundation"))
+                    foundation-records)
+               (map (fn [record]
+                      (assoc record :replacement (:primary-alias record)))
+                    (:duplicates aliases))))
+             rewritten (rewrite-uses root rewrites)
+             paths (vec
+                    (reverse
+                     (concat
+                      (map :path foundation-records)
+                      (map :path (:duplicates aliases)))))]
+         (loop [current rewritten
+                remaining paths]
+           (if (empty? remaining)
+             current
+             (recur
+              (nav/root-block (nav/delete-at current (first remaining)))
+              (vec (rest remaining))))))))))
+
 (defn analyze-source
   ([source]
    (analyze-source source {}))
@@ -582,7 +693,11 @@
                             (:root applied-result)
                             options)
                            (:root applied-result))
-         normalized-root (cleanup-empty-dependency-clauses configured-root)
+         normalized-root
+         (cleanup-empty-dependency-clauses
+          (normalize-dependency-aliases
+           (cleanup-empty-dependency-clauses configured-root)
+           options))
          output (nav/render normalized-root)
          diagnostics
          (vec

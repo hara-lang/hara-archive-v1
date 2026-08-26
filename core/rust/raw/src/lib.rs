@@ -56,6 +56,12 @@ const FOUNDATION_RESOURCES: &[(&str, &str)] = &[
     ),
 ];
 
+#[cfg(feature = "rich-hta")]
+const RICH_HTA_RESOURCES: &[(&str, &str)] = &[(
+    "hara.hta.provider.common",
+    include_str!("../../../../providers/shared/hta/src/hara/hta/provider/common.hal"),
+)];
+
 const SUBSTRATE_RESOURCES: &[(&str, &str)] = &[
     (
         "std.substrate.core",
@@ -227,8 +233,14 @@ impl Session {
             FOUNDATION_RESOURCES
                 .iter()
                 .map(|(name, source)| ((*name).into(), (*source).into()))
-                .collect(),
+                .collect::<HashMap<_, _>>(),
         ));
+        #[cfg(feature = "rich-hta")]
+        resources.borrow_mut().extend(
+            RICH_HTA_RESOURCES
+                .iter()
+                .map(|(name, source)| ((*name).into(), (*source).into())),
+        );
         Self::shared("ROOT", resources, Rc::new(RefCell::new(VecDeque::new())))
     }
 
@@ -1169,6 +1181,12 @@ impl SessionKernel {
         let resources = Rc::new(RefCell::new(HashMap::new()));
         resources.borrow_mut().extend(
             FOUNDATION_RESOURCES
+                .iter()
+                .map(|(name, source)| ((*name).into(), (*source).into())),
+        );
+        #[cfg(feature = "rich-hta")]
+        resources.borrow_mut().extend(
+            RICH_HTA_RESOURCES
                 .iter()
                 .map(|(name, source)| ((*name).into(), (*source).into())),
         );

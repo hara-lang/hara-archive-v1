@@ -429,6 +429,7 @@ function ensureBinary(metadata, path) {
     const result = await listChildren(state, metadata.id, null, upstreamToken, limit, receiver, logical);
     const values = (Array.isArray(result?.files) ? result.files : [])
       .sort((left, right) => `${left.name}\0${left.id}`.localeCompare(`${right.name}\0${right.id}`))
+      .slice(0, limit)
       .map(item => entry(logical === "/" ? `/${item.name}` : `${logical}/${item.name}`, item));
     const next = result?.nextPageToken ?? null;
     let nextToken = null;

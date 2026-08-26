@@ -1,6 +1,5 @@
 (ns std.block.layout.common
-  (:require [std.foundation.string]
-    [std.block.base :as base]
+  (:require [std.block.base :as base]
     [std.block.construct :as construct]
     [std.block.layout.estimate :as est]))
 
@@ -34,7 +33,7 @@
   "makes a multiline string into a form"
   {:added "4.0"}
   [s]
-  (list (quote String/join) "\\n" (std.foundation.string/split-lines s)))
+  (list (quote String/join) "\\n" (str/split-lines s)))
 
 (defn layout-single-row
   "layouts a row"
