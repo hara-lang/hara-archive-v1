@@ -53,6 +53,10 @@ async function receive(port, message) {
     } else if (message.type === "cancel") {
       const task = clients.get(port)?.get(message.id);
       if (task !== undefined) {
+        const calls = [...hostCalls.entries()]
+          .filter(([, owner]) => owner.port === port && owner.task === task)
+          .map(([call, owner]) => ({ ...owner, call }));
+        if (calls.length) port.postMessage({ type: "host-cancel", calls });
         clients.get(port).delete(message.id);
         tasks.delete(task);
         try { instance.exports.hta_cancel(BigInt(task)); }
@@ -172,7 +176,14 @@ function pump() {
       const request = tasks.get(Number(event[2]));
       if (request) {
         const call = Number(event[1]);
-        hostCalls.set(call, { port: request.port, task: Number(event[2]) });
+        hostCalls.set(call, {
+          port: request.port,
+          task: Number(event[2]),
+          session: event[3],
+          mount: event[4] ?? null,
+          service: event[5],
+          method: event[6]
+        });
         request.port.postMessage({ type: "host-call", call, task: Number(event[2]), session: event[3], mount: event[4] ?? null, service: event[5], method: event[6], frame: encodeHta(event[7]) });
       }
     } else throw new Error("hta/event-unknown");
@@ -188,6 +199,10 @@ function dropClientTasks(port) {
   const requests = clients.get(port);
   if (!requests) return;
   for (const [id, task] of requests) {
+    const calls = [...hostCalls.entries()]
+      .filter(([, owner]) => owner.port === port && owner.task === task)
+      .map(([call, owner]) => ({ ...owner, call }));
+    if (calls.length) port.postMessage({ type: "host-cancel", calls });
     tasks.delete(task);
     try { instance.exports.hta_cancel(BigInt(task)); } finally { instance.exports.hta_drop_task(BigInt(task)); }
   }

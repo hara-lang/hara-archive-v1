@@ -227,10 +227,22 @@
      (project/project-relative-path descriptor "/project/src/demo/core.hal")])
   [:source :test "src/demo/core.hal"])
 
- (test-check "namespace parsing falls back to the project-relative path"
-  [(project/namespace-from-source "(ns demo.core)" "fallback/core.hal")
-   (project/namespace-from-source "(ns broken.core}" "fallback/core.hal")]
-  ['demo.core 'fallback.core])
+ ^{:refer code.project/namespace-from-source}
+ (test-check "namespace parsing uses the native reader and falls back"
+  [(project/namespace-from-source
+    "(comment before)\n(ns demo.core)\n(def value 1)"
+    "fallback/core.hal")
+   (project/namespace-from-source
+    "(ns+ demo.extension)"
+    "fallback/core.hal")
+   (project/namespace-from-source
+    "(def value 1)"
+    "fallback/core.hal")
+   (project/namespace-from-source
+    "(ns broken.core}"
+    "fallback/core.hal")
+   (project/namespace-from-source "(ns demo.core)" nil)]
+  ['demo.core 'demo.extension 'fallback.core 'fallback.core 'demo.core])
 
  (test-check "project code paths exclude editor lock symlinks"
   [(project/project-code-path? "/project/src/demo/core.hal")

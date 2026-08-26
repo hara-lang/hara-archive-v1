@@ -1,0 +1,11 @@
+;; Generic rich HTA fixture used by the raw runtime tests.
+;;
+;; Provider packages supply their own source through
+;; HARA_HTA_PROVIDER_SOURCE. This fixture keeps the raw runtime tests
+;; provider-neutral while exercising the same Host/call boundary.
+(ns hara.hta.provider
+  (:config {:role :internal}))
+
+(defn dispatch
+  [operation arguments]
+  (std.native.Host/call "fixture.provider" operation arguments))

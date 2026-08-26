@@ -77,8 +77,9 @@ async function receive(message) {
       });
       pump();
     } else if (message.type === "delivery") {
-      const task = hostTasks.get(message.call);
-      if (task === undefined || !tasks.has(task)) {
+      const hostTask = hostTasks.get(message.call);
+      const task = hostTask?.task;
+      if (hostTask === undefined || !tasks.has(task)) {
         hostTasks.delete(message.call);
         pump();
         return;
@@ -93,6 +94,17 @@ async function receive(message) {
       const task = requests.get(message.id);
       if (task !== undefined) {
         const request = tasks.get(task);
+        const calls = [...hostTasks.entries()]
+          .filter(([, hostTask]) => hostTask.task === task)
+          .map(([call, hostTask]) => ({
+            call,
+            task,
+            session: hostTask.session,
+            mount: hostTask.mount,
+            service: hostTask.service,
+            method: hostTask.method
+          }));
+        if (calls.length) self.postMessage({ type: "host-cancel", calls });
         const cancelStatus = instance.exports.hta_cancel(BigInt(task));
         const dropStatus = instance.exports.hta_drop_task(BigInt(task));
         requests.delete(message.id);
@@ -253,7 +265,13 @@ function pump() {
     } else if (kind === 2) {
       const call = Number(event[1]);
       const task = Number(event[2]);
-      hostTasks.set(call, task);
+      hostTasks.set(call, {
+        task,
+        session: event[3],
+        mount: event[4] ?? null,
+        service: String(abiVersion >= 2 ? event[5] : event[3]),
+        method: String(abiVersion >= 2 ? event[6] : event[4])
+      });
       const request = tasks.get(task);
       lifecycle?.emit(HTA_PROVIDER_EVENT.HOST_CALL, {
         request: request?.id,
@@ -283,11 +301,20 @@ function pump() {
 
 function removeHostTasks(task) {
   for (const [call, pendingTask] of hostTasks) {
-    if (pendingTask === task) hostTasks.delete(call);
+    if (pendingTask.task === task) hostTasks.delete(call);
   }
 }
 
 function closeWasm() {
+  const calls = [...hostTasks.entries()].map(([call, hostTask]) => ({
+    call,
+    task: hostTask.task,
+    session: hostTask.session,
+    mount: hostTask.mount,
+    service: hostTask.service,
+    method: hostTask.method
+  }));
+  if (calls.length) self.postMessage({ type: "host-cancel", calls });
   for (const [task] of tasks) {
     instance.exports.hta_cancel(BigInt(task));
     instance.exports.hta_drop_task(BigInt(task));

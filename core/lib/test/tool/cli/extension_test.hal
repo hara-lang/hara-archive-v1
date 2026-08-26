@@ -21,6 +21,19 @@
    :capabilities []
    :assets ["bindings.edn"]})
 
+(def +hta-wasm-manifest+
+  {:identity "hara/filesystem-github"
+   :version "0.1.0"
+   :provider :wasm
+   :module "provider.wasm"
+   :abi :hta.v1
+   :exports {"describe" {:args [] :returns :value :async true}
+             "open" {:args [:options] :returns :value :async true}}
+   :host-calls {"filesystem.github"
+                {:methods ["describe" "open" "request" "cancel" "close"]
+                 :capabilities [:filesystem :network]}}
+   :capabilities [:filesystem :network]})
+
 [(test-check "extension manifests are validated by Hara"
               (select-keys (extension/validate-manifest
                             'demo.fixture +wasm-manifest+ "project.edn")
@@ -34,6 +47,14 @@
               {:namespace "codec.echo"
                :abi :memory.v1
                :declared/files ["bindings.edn" "echo.wasm"]})
+  (test-check "rich HTA Wasm manifests declare an actual module and host boundary"
+              (select-keys (extension/validate-manifest
+                            'fs.github.wasm +hta-wasm-manifest+ "project.edn")
+                           [:namespace :provider :abi :declared/files])
+              {:namespace "fs.github.wasm"
+               :provider :wasm
+               :abi :hta.v1
+               :declared/files ["provider.wasm"]})
   (test-check "HTA manifests declare provider targets"
               (:declared/files
                (extension/validate-manifest

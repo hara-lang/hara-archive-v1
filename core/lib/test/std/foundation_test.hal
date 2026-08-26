@@ -184,6 +184,12 @@
    :test (fn [] (symbol? (std.foundation/env-current)))
    :expected true}])
 
+^{:refer std.foundation/current-namespace}
+(Test/run
+ [{:name "resolves the active caller namespace"
+   :test (fn [] (std.foundation/current-namespace))
+   :expected 'std.foundation-test}])
+
 ^{:refer std.foundation/var-sym}
 (Test/run
  [{:name "returns the qualified symbol naming a Var"
@@ -267,7 +273,24 @@
 (Test/run [])
 
 ^{:refer std.foundation/intern-var}
-(Test/run [])
+(Test/run
+ [{:name "keeps source location metadata ahead of publication metadata"
+   :test (fn []
+           (let [source (var std.foundation/list)
+                 source-meta (meta source)
+                 published (std.foundation/intern-var
+                            'std.foundation
+                            'list
+                            source
+                            {:file "facade.hal" :line 999 :column 4})
+                 published-meta (meta published)]
+             [(= (get published-meta :file)
+                 (get source-meta :file))
+              (= (get published-meta :line)
+                 (get source-meta :line))
+              (= (get published-meta :column)
+                 (get source-meta :column))]))
+   :expected [true true true]}])
 
 ^{:refer std.foundation/eval-in-ns}
 (Test/run
@@ -1475,7 +1498,20 @@
 (Test/run [])
 
 ^{:refer std.foundation/intern-in}
-(Test/run [])
+(Test/run
+ [{:name "retains publication source metadata in generated intern-var forms"
+   :test (fn []
+           (let [form '(intern-in [published source/value])
+                 expanded (std.foundation/macroexpand-1 form)
+                 generated (first expanded)
+                 metadata (nth generated 4)]
+             [(= (get metadata :line)
+                 (get (meta (second form)) :line))
+              (= (get metadata :column)
+                 (get (meta (second form)) :column))
+              (= (get metadata :file)
+                 (get (meta form) :file))]))
+   :expected [true true true]}])
 
 ^{:refer std.foundation/intern-all}
 (Test/run [])

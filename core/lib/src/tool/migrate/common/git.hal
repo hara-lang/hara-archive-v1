@@ -1,4 +1,5 @@
-(ns tool.migrate.common.git)
+(ns tool.migrate.common.git
+  (:config {:role :internal}))
 
 (def +read-only-commands+
   #{"rev-parse" "ls-tree" "cat-file" "hash-object"})

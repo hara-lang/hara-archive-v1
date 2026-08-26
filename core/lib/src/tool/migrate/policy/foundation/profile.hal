@@ -1,4 +1,5 @@
-(ns tool.migrate.policy.foundation.profile)
+(ns tool.migrate.policy.foundation.profile
+  (:config {:role :internal}))
 
 (def +candidate-states+
   #{:exact :moved :similar :reviewed-candidate :unmatched})

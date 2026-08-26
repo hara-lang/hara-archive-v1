@@ -1,9 +1,46 @@
 (ns tool.migrate-test
   (:use code.test)
-  (:require [tool.migrate :as migrate]))
+  (:require [std.foundation.string :as str]
+            [tool.migrate :as migrate]))
+
+(def catalog
+  {:document/id :demo/transform
+   :document/type :code-migration-spec
+   :migration/rules
+   [{:rule/id :demo/rename
+     :rule/languages [:clojure :hara]
+     :rule/phase :expression
+     :rule/priority 1
+     :rule/kind :token
+     :rule/match {:clojure {:text "old"}
+                  :hara {:text "legacy"}}
+     :rule/rewrite {:clojure {:op :replace-token :text "new"}
+                    :hara {:op :replace-token :text "native"}}
+     :rule/safety :safe
+     :rule/evidence {:source/path "src/demo.clj"
+                     :target/spec :hara/foundation}}]})
 
 ^{:refer tool.migrate/transform-code}
 (fact "the root facade publishes the registry-backed transform"
-  (function? migrate/transform-code) => true)
+  ((fn [result]
+     [(:target/path result)
+      (:changed result)
+      (str/includes? (:after result) "new")
+      (count (:rules/applied result))])
+   (migrate/transform-code
+    {:source/path "src/demo.clj"
+     :source/text "(ns demo)\n(def old 1)\n"
+     :target/path "lib/demo.hal"}
+    {:catalog catalog
+     :mode :safe}))
+  => ["lib/demo.hal" true true 1])
+
+^{:refer tool.migrate/transform-code}
+(fact "tool.migrate keeps the implementation owner behind the facade"
+  [(get (Runtime/namespace 'tool.migrate) :namespace/role)
+   (get (Runtime/namespace 'tool.migrate.common.transform) :namespace/role)
+   (nil? (get (ns-publics 'tool.migrate) 'language))
+   (nil? (get (ns-publics 'tool.migrate) 'target-language))]
+  => [:facade :internal false false])
 
 (pr-str (run {:namespace "tool.migrate-test"}))

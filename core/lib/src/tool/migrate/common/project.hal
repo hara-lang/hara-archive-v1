@@ -1,4 +1,5 @@
 (ns tool.migrate.common.project
+  (:config {:role :internal})
   (:require [tool.migrate.common.write :as migrate-write]
             [tool.migrate.common.report :as migrate-report]
             [work.base :as work]

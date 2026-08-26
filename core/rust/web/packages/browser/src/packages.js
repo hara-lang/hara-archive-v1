@@ -306,9 +306,6 @@ async function loadLockedPackageArtifacts(
         const path = archivePath(root, asset);
         if (!files[path]) throw new Error(`Locked package ${coordinate} is missing extension asset: ${path}`);
       }
-      if (parsed.provider !== "hta") {
-        throw new Error(`Locked package ${coordinate} has an unsupported extension provider: ${parsed.provider}`);
-      }
       extensions.push(Object.freeze({
         coordinate,
         namespace,
@@ -417,7 +414,12 @@ async function activateBrowserHtaExtensions(runtime, extensions, options = {}) {
       }
       const hostCalls = extensionHostCalls(extension.manifest, options.hostCalls);
       const root = manifestField(extension.declaration, "root") ?? "";
-      const providerPath = archivePath(root, extension.manifest.browserTarget.provider);
+      const providerPath = archivePath(
+        root,
+        extension.manifest.provider === "wasm"
+          ? extension.manifest.module
+          : extension.manifest.browserTarget.provider
+      );
       const providerBytes = extension.files.get(providerPath);
       if (!providerBytes) throw new Error(`package/extension-asset-missing:${extension.namespace}:${providerPath}`);
       const assetBytes = new Map();
@@ -452,7 +454,15 @@ async function activateBrowserHtaExtensions(runtime, extensions, options = {}) {
         return url;
       };
       for (const path of assetBytes.keys()) assetUrl(path);
-      const providerUrl = assetUrl(providerPath);
+      const providerUrl = extension.manifest.provider === "hta"
+        ? assetUrl(providerPath)
+        : undefined;
+      const libraryPath = extension.manifest.provider === "wasm"
+        ? extension.manifest.assets.find(asset => asset.endsWith(".wasm") && asset !== extension.manifest.module)
+        : undefined;
+      const libraryBytes = libraryPath
+        ? extension.files.get(archivePath(root, libraryPath))
+        : undefined;
       const worker = workerFactory(options.workerUrl ?? HTA_BROWSER_WORKER_URL, {
         type: "module",
         name: `hara-${extension.namespace}`
@@ -463,7 +473,10 @@ async function activateBrowserHtaExtensions(runtime, extensions, options = {}) {
         worker,
         providerUrl,
         descriptor: extension.descriptor,
+        moduleBytes: extension.manifest.provider === "wasm" ? providerBytes : undefined,
+        libraryBytes,
         hostCalls,
+        capabilities: [...supportedCapabilities],
         instrumentation: options.instrumentation === true || typeof options.onProviderEvent === "function",
         onProviderEvent: typeof options.onProviderEvent === "function"
           ? event => options.onProviderEvent(extension.namespace, event)

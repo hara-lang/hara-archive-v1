@@ -176,6 +176,27 @@ test("context enforces manifest export and host-call policy",async()=>{
   assert.equal(worker.sent.at(-1).ok,true);
   await context.close();
 });
+test("context cancellation aborts in-flight Wasm host calls",async()=>{
+  const worker=new FakeWorker();let aborted=false;
+  const context=new HtaContext({worker,moduleUrl:"runtime.wasm",hostCalls:{"store/get":async function(){return new Promise((resolve,reject)=>{this.signal.addEventListener("abort",()=>{aborted=true;reject(new Error("cancelled"));},{once:true});});}}});
+  worker.emit({type:"ready"});
+  worker.emit({type:"host-call",call:11,task:21,service:"store",method:"get",frame:encodeHta([])});
+  await Promise.resolve();
+  worker.emit({type:"host-cancel",calls:[{call:11,task:21}]});
+  await new Promise(resolve=>setTimeout(resolve,0));
+  assert.equal(aborted,true);
+  await context.close();
+});
+test("context close aborts in-flight Wasm host calls",async()=>{
+  const worker=new FakeWorker();let aborted=false;
+  const context=new HtaContext({worker,moduleUrl:"runtime.wasm",hostCalls:{"store/get":async function(){return new Promise((resolve,reject)=>{this.signal.addEventListener("abort",()=>{aborted=true;reject(new Error("closed"));},{once:true});});}}});
+  worker.emit({type:"ready"});
+  worker.emit({type:"host-call",call:12,task:22,service:"store",method:"get",frame:encodeHta([])});
+  await Promise.resolve();
+  await context.close();
+  assert.equal(aborted,true);
+  assert.equal(context.hostCallsInFlight.size,0);
+});
 test("context close rejects pending calls and is idempotent",async()=>{
   const worker=new FakeWorker(),context=new HtaContext({worker,moduleUrl:"runtime.wasm"});
   worker.emit({type:"ready"});

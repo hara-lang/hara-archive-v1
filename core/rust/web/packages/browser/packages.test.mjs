@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { zipSync } from "fflate";
 import {
@@ -76,6 +77,45 @@ async function htaFixture(capabilities = "[]", namespace = "db.sqlite.wasm.hta")
   const registry = `{:registry/packages {"demo:world" {"1.0.0" `
     + `{:archive-sha256 "${archiveDigest}" :identity-revision "${identityRevision}"}}}}`;
   return { archive, lock, registry, registryCommit, worker, asset };
+}
+
+async function wasmHtaFixture(namespace = "fs.github.wasm") {
+  const source = encoder.encode("(ns demo.world) (def world {:title \"Demo\"})");
+  const module = new Uint8Array(await readFile(
+    new URL("../../test-fixtures/hta-adapter/adapter.wasm", import.meta.url)
+  ));
+  const library = new Uint8Array(await readFile(
+    new URL("../../test-fixtures/hta-adapter/library.wasm", import.meta.url)
+  ));
+  const sourceDigest = await digest(source);
+  const moduleDigest = await digest(module);
+  const libraryDigest = await digest(library);
+  const manifest = encoder.encode(
+    `{:files {"src/demo/world.hal" {:size ${source.byteLength} :sha256 "${sourceDigest}"} `
+      + `"provider/provider.wasm" {:size ${module.byteLength} :sha256 "${moduleDigest}"} `
+      + `"provider/library.wasm" {:size ${library.byteLength} :sha256 "${libraryDigest}"}} `
+      + `:resources {"demo.world" "src/demo/world.hal"} `
+      + `:extensions {${namespace} {:root "provider" :provider :wasm :module "provider.wasm" `
+      + `:abi :hta.v1 :assets ["library.wasm"] `
+      + `:exports {"sum" {:args [:i64 :i64] :returns :i64 :async true}} `
+      + `:capabilities [:filesystem :network]}}}`
+  );
+  const archive = zipSync({
+    "package.edn": manifest,
+    "src/demo/world.hal": source,
+    "provider/provider.wasm": module,
+    "provider/library.wasm": library
+  });
+  const archiveDigest = await digest(archive);
+  const registryCommit = "e".repeat(40);
+  const identityRevision = "f".repeat(40);
+  const lock = `{:lock/format "0.0.0-alpha" :packages {"demo:github" `
+    + `{:version "1.0.0" :tap "hara" :registry-commit "${registryCommit}" `
+    + `:identity-revision "${identityRevision}" :archive-sha256 "${archiveDigest}" `
+    + `:namespaces [demo.world]}}}`;
+  const registry = `{:registry/packages {"demo:github" {"1.0.0" `
+    + `{:archive-sha256 "${archiveDigest}" :identity-revision "${identityRevision}"}}}}`;
+  return { archive, lock, registry, module, library };
 }
 
 test("exact locks use the pinned registry and digest object endpoint", async () => {
@@ -232,6 +272,60 @@ test("installation activates only the browser HTA target and publishes a Hara br
   await disposeBrowserPackageProviders(runtime);
   assert.equal(worker.terminated, true);
   assert.deepEqual(revoked, ["blob:sqlite-2", "blob:sqlite-1"]);
+});
+
+test("installation activates a Wasm HTA package with inline module and library bytes", async () => {
+  const { archive, lock, registry, module, library } = await wasmHtaFixture();
+  const registered = [];
+  const workers = [];
+  const blobs = [];
+  const runtime = {
+    registerResource(namespace, source) {
+      registered.push([namespace, source]);
+    },
+    raw: {
+      registerPackageLock() {},
+      install_host_handler(value) {
+        runtime.handler = value;
+      }
+    }
+  };
+  const names = await installLockedPackages(runtime, lock, {
+    origin: "https://packages.example",
+    capabilities: ["filesystem", "network"],
+    fetch: async (url) => new Response(url.includes("/v1/registry") ? registry : archive),
+    workerFactory(url, options) {
+      const worker = new FakeWorker();
+      workers.push({ worker, url, options });
+      return worker;
+    },
+    createObjectURL(blob) {
+      blobs.push(blob);
+      return `blob:wasm-${blobs.length}`;
+    },
+    revokeObjectURL() {}
+  });
+
+  assert.deepEqual(names, ["demo.world", "fs.github.wasm"]);
+  assert.equal(workers.length, 1);
+  const worker = workers[0].worker;
+  const init = worker.sent.find(message => message.type === "init");
+  assert.equal(init.backend, "wasm");
+  assert.equal(init.providerUrl, undefined);
+  assert.deepEqual(init.moduleBytes, module);
+  assert.deepEqual(init.libraryBytes, library);
+  assert.equal(blobs.length, 2);
+
+  worker.emit({ type: "ready" });
+  const result = runtime.handler("fs.github.wasm", "sum", [19, 23]);
+  await Promise.resolve();
+  const call = worker.sent.find(message => message.type === "call");
+  assert.deepEqual(decodeHta(call.frame), ["sum", [19, 23]]);
+  worker.emit({ type: "result", id: call.id, ok: true, frame: encodeHta(42) });
+  assert.equal(await result, 42);
+  assert.match(registered.find(([namespace]) => namespace === "fs.github.wasm")[1], /Host\/call/);
+  await disposeBrowserPackageProviders(runtime);
+  assert.equal(worker.terminated, true);
 });
 
 test("PostgreSQL :require activates only its generated browser HTA provider", async () => {

@@ -1,4 +1,5 @@
 (ns tool.migrate.policy.foundation.transform.lib-core
+  (:config {:role :internal})
   (:require [std.foundation :refer :all]
             [std.block :as block]
             [std.block.parse :as parse]

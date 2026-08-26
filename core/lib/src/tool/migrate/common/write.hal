@@ -1,4 +1,5 @@
-(ns tool.migrate.common.write)
+(ns tool.migrate.common.write
+  (:config {:role :internal}))
 
 (def +blocking-diagnostic-types+
   #{:tool.migrate/ambiguous

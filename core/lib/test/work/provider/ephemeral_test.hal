@@ -1,0 +1,34 @@
+(ns work.provider.ephemeral-test
+  (:use code.test)
+  (:require [work.provider.ephemeral :as subject]))
+
+^{:refer work.provider.ephemeral/default-locator}
+(fact "the ephemeral locator has a stable portable identity"
+  subject/default-locator
+  => {:host/type :ephemeral
+      :host/id "process-default"
+      :host/api :std.work.host/v1})
+
+^{:refer work.provider.ephemeral/provider}
+(fact "the provider installs the native host and portable capabilities"
+  (let [provider (subject/provider)]
+    [(:provider/id provider)
+     (:provider/locator provider)
+     (not (nil? (:provider/native-host provider)))
+     (has? (:provider/capabilities provider) :process-owned)])
+  => [:ephemeral
+      {:host/type :ephemeral
+       :host/id "process-default"
+       :host/api :std.work.host/v1}
+      true
+      true])
+
+^{:refer work.provider.ephemeral/ephemeral-host}
+(fact "the ephemeral host exposes the host protocol"
+  (let [host (subject/ephemeral-host)]
+    [(satisfies? IWorkHost host)
+     (get-in host [:locator :host/id])
+     (IComponent/status host)])
+  => [true "process-default" :started])
+
+(pr-str (run '[work.provider.ephemeral-test]))

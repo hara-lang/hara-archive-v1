@@ -1,0 +1,34 @@
+{:hara/type :project
+ :hara/version "1.0.0"
+ :project/id hara/filesystem-github
+ :project/version "0.1.0"
+ :project/source-paths []
+ :project/test-paths []
+ :project/extension-paths []
+ :project/artifact-paths ["provider"]
+ :project/capabilities #{}
+ :project/dependencies {}
+ :project/extensions
+ {fs.github.wasm
+  {:root "provider"
+   :provider :wasm
+   :module "provider.wasm"
+   :abi :hta.v1
+   :capabilities [:filesystem :network]
+   :host-calls
+   {"filesystem.github"
+    {:methods ["describe" "open" "request" "cancel" "close"]
+     :capabilities [:filesystem :network]}}
+   :exports
+   {"describe" {:args [] :returns :value :async true}
+    "open" {:args [:options] :returns :value :async true}
+    "descriptor" {:args [:filesystem] :returns :value :async false}
+    "stat" {:args [:filesystem :path] :returns :value :async true}
+    "read" {:args [:filesystem :path] :returns :bytes :async true}
+    "write" {:args [:filesystem :path :bytes :options :mutation] :returns :value :async true}
+    "entries-page" {:args [:filesystem :path :request] :returns :value :async true}
+    "mkdir" {:args [:filesystem :path :options :mutation] :returns :value :async true}
+    "delete" {:args [:filesystem :path :options :mutation] :returns :value :async true}
+    "copy" {:args [:filesystem :source :target :options :mutation] :returns :value :async true}
+    "move" {:args [:filesystem :source :target :options :mutation] :returns :value :async true}
+    "close" {:args [:filesystem] :returns :value :async true}}}}}

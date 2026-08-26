@@ -117,6 +117,15 @@ const SANDBOX_FORBIDDEN_NATIVE_TYPES: &[&str] = &[
 ];
 const MAX_SANDBOX_SOURCE_BYTES: usize = 1_048_576;
 
+#[cfg(feature = "rich-hta")]
+mod rich_hta {
+    /// A rich HTA artifact is a normal raw Hara runtime with a provider
+    /// dispatch source embedded at build time.  The source must define the
+    /// stable `hara.hta.provider/dispatch` entrypoint; the runtime supplies
+    /// the operation name and decoded arguments as bindings.
+    pub(crate) const SOURCE: &str = include_str!(env!("HARA_HTA_PROVIDER_SOURCE"));
+}
+
 #[no_mangle]
 pub extern "C" fn version() -> i32 {
     1
@@ -1761,8 +1770,57 @@ fn dispatch(
             }
             _ => Err("hta register-resources expects one vector of string pairs".into()),
         },
-        _ => Err(format!("hta/target-unknown: {target}")),
+        "provider/call" => {
+            #[cfg(feature = "rich-hta")]
+            {
+                match args.as_slice() {
+                    [Value::String(operation), Value::Vector(arguments)] => {
+                        dispatch_rich_hta(kernel, task, operation, arguments.iter().cloned().collect())
+                    }
+                    _ => Err("hta provider/call expects an operation and argument vector".into()),
+                }
+            }
+            #[cfg(not(feature = "rich-hta"))]
+            {
+                let _ = (kernel, task, args);
+                Err("hta/rich-provider-unavailable".into())
+            }
+        }
+        _ => {
+            #[cfg(feature = "rich-hta")]
+            {
+                dispatch_rich_hta(kernel, task, target, args)
+            }
+            #[cfg(not(feature = "rich-hta"))]
+            {
+                let _ = (kernel, task, args);
+                Err(format!("hta/target-unknown: {target}"))
+            }
+        }
     }
+}
+
+#[cfg(feature = "rich-hta")]
+fn dispatch_rich_hta(
+    kernel: &mut SessionKernel,
+    task: u64,
+    operation: &str,
+    arguments: Vec<Value>,
+) -> Result<(), String> {
+    let source = format!(
+        "(do\n{}\n(ns user)\n(hara.hta.provider/dispatch __hta_arg_0 __hta_arg_1))",
+        rich_hta::SOURCE
+    );
+    dispatch_eval_values(
+        kernel,
+        task,
+        "ROOT",
+        &source,
+        Some(vec![
+            Value::String(operation.to_owned()),
+            Value::Vector(arguments.into()),
+        ]),
+    )
 }
 
 fn dispatch_sandbox_eval(
@@ -2418,6 +2476,55 @@ mod tests {
         assert!(matches!(
             result(&mut kernel).as_slice(),
             [Value::Number(0), Value::Number(3), Value::Number(41)]
+        ));
+    }
+
+    #[cfg(feature = "rich-hta")]
+    #[test]
+    fn rich_hta_fixture_crosses_the_host_boundary() {
+        let mut kernel = SessionKernel::new();
+        dispatch(&mut kernel, 1, "describe", Vec::new()).unwrap();
+        let call_event = result(&mut kernel);
+        let call = match call_event.as_slice() {
+            [
+                Value::Number(2),
+                Value::Number(call),
+                Value::Number(1),
+                Value::String(session),
+                Value::Nil,
+                Value::String(service),
+                Value::String(method),
+                Value::Vector(arguments),
+            ] => {
+                assert_eq!(session, "ROOT");
+                assert_eq!(service, "fixture.provider");
+                assert_eq!(method, "describe");
+                assert!(arguments.is_empty());
+                *call as u64
+            }
+            other => panic!("expected rich HTA host call, got {other:?}"),
+        };
+        kernel
+            .session_mut("ROOT")
+            .unwrap()
+            .calls
+            .remove(&call)
+            .unwrap()
+            .1
+            .resolve(Value::Map(
+                vec![(
+                    Value::Keyword("provider".into()),
+                    Value::String("fixture".into()),
+                )]
+                .into_iter()
+                .collect(),
+            ));
+        let response = result(&mut kernel);
+        assert!(matches!(
+            response.as_slice(),
+            [Value::Number(0), Value::Number(1), Value::Map(values)]
+                if values.get(&Value::Keyword("provider".into()))
+                    == Some(&Value::String("fixture".into()))
         ));
     }
 

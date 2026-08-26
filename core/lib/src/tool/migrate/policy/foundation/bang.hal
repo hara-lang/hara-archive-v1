@@ -1,4 +1,5 @@
 (ns tool.migrate.policy.foundation.bang
+  (:config {:role :internal})
   (:require [code.framework :as framework]
             [code.manage.unit.structure :as structure]
             [std.block :as block]

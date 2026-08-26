@@ -4,6 +4,7 @@ version = "0.1.6"
 edition = "2021"
 license = "Apache-2.0"
 rust-version = "1.78"
+build = "build.rs"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -17,6 +18,7 @@ halc-encoder = []
 hir-encoder = ["halc-encoder"]
 bytecode-vm = ["hara-runtime/bytecode-vm"]
 tracing-jit = ["bytecode-vm"]
+rich-hta = []
 
 [dependencies]
 hara-runtime = { path = "../runtime", default-features = false, features = ["raw-wasm"] }

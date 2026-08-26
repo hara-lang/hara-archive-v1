@@ -1,6 +1,5 @@
 (ns code.project
-  (:require [std.block :as block]
-            [code.project.production :as production]))
+  (:require [code.project.production :as production]))
 
 (def +defaults+
   {:root "."
@@ -602,10 +601,13 @@
 (defn namespace-from-source
   [source relative]
   (try
-    (symbol (str (or (block/namespace-name source)
-                     (path-namespace relative))))
-    (catch Throwable error
-      (path-namespace relative))))
+    (let [declared (namespace-from-forms
+                    (Edn/read (str "[" source "]")))]
+      (if declared
+        (symbol declared)
+        (if relative (path-namespace relative) nil)))
+    (catch error
+      (if relative (path-namespace relative) nil))))
 
 (defn project-file-record [project path]
   (let [source (read-text path)

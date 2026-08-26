@@ -1468,6 +1468,7 @@ fn call(f: Rc<Function>, args: Vec<Value>, k: Cont) -> Step {
             Some(
                 "macroexpand"
                     | "env-current"
+                    | "current-namespace"
                     | "env-snapshot"
                     | "env-vars"
                     | "env-namespaces"

@@ -1,4 +1,5 @@
 (ns tool.migrate.common.rule
+  (:config {:role :internal})
   (:require [std.block :as block]
             [tool.migrate.common.block :as nav]
             [tool.migrate.common.rules :as declarations]))

@@ -1,4 +1,5 @@
 (ns tool.migrate.policy.foundation.conformance
+  (:config {:role :internal})
   (:require [tool.migrate.common.corpus :as corpus]
             [tool.migrate.common.git :as migrate-git]
             [tool.migrate.policy.foundation.profile :as profile]

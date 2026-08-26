@@ -7,6 +7,9 @@
 (def +globals+ (atom {}))
 (def +links+ (atom {}))
 (def +flags+ (atom {}))
+;; Native test loading preserves form registration order even when it does not
+;; attach parser spans to macro metadata.
+(def +registration-order+ (atom 0))
 
 (defn fact-registry-key
   [namespace name]
@@ -63,13 +66,19 @@
   ([name function]
    (register name function {}))
   ([name function metadata]
-   (registry-register
-    +registry+
-    {:namespace (or (:test/namespace metadata)
-                    (current-namespace))
-     :name name
-     :function function
-     :meta metadata})))
+   (let [metadata (or metadata {})
+         metadata (if (has? metadata :test/order)
+                    metadata
+                    (assoc metadata
+                           :test/order
+                           (swap! +registration-order+ inc)))]
+     (registry-register
+      +registry+
+      {:namespace (or (:test/namespace metadata)
+                      (current-namespace))
+       :name name
+       :function function
+       :meta metadata}))))
 
 (defn remove-fact
   "Removes a fact from namespace, defaulting to the current namespace."
@@ -92,7 +101,9 @@
 (defn purge-registry
   "Clears the complete fact registry."
   []
-  (registry-clear +registry+ nil))
+  (do
+    (registry-clear +registry+ nil)
+    (reset! +registration-order+ 0)))
 
 (defn tests
   "Returns all registered fact records."

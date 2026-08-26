@@ -1,0 +1,211 @@
+(ns work.base.frame-test
+  (:use code.test)
+  (:require [work.base.frame :as subject]
+            [work.base.model :as model]))
+
+^{:refer work.base.frame/native-runtime?}
+(fact "detects native and portable execution modes"
+  [(subject/native-runtime? {:work/policy {:work/mode :native}})
+   (subject/native-runtime? {:work/policy {:work/mode :portable}})]
+  => [true false])
+
+^{:refer work.base.frame/node-id}
+(fact "uses an explicit node id before the operation or fallback"
+  [(subject/node-id {:id :given :op :step})
+   (subject/node-id {:op :step})
+   (subject/node-id {:op :step} :fallback)]
+  => [:given :step :fallback])
+
+^{:refer work.base.frame/child-frame}
+(fact "extends node paths for relations and slots"
+  [(subject/child-frame {:node/path [:root]} :chain {:op :step :id :child})
+   (subject/child-frame {:node/path [:root]} :chain :second {:op :step :id :child})]
+  => [{:node/path [:root :chain :child]}
+      {:node/path [:root :chain :second :child]}])
+
+^{:refer work.base.frame/item-frame}
+(fact "adds item paths and preserves scalar ids at the root"
+  [(subject/item-frame {:item/path []} :first)
+   (subject/item-frame {:item/path [:parent]} :second)]
+  => [{:item/path [:first] :item/id :first}
+      {:item/path [:parent :second] :item/id [:parent :second]}])
+
+^{:refer work.base.frame/leaf-frame}
+(fact "initialises a leaf path only when the frame is at the root"
+  [(subject/leaf-frame {:node/path []} {:op :step :id :leaf})
+   (subject/leaf-frame {:node/path [:root]} {:op :step :id :leaf})]
+  => [{:node/path [:step :leaf]}
+      {:node/path [:root]}])
+
+^{:refer work.base.frame/checkpoint-key}
+(fact "builds a stable checkpoint key from frame identity"
+  (subject/checkpoint-key
+   {:run/id "run-1"
+    :work/root :root
+    :node/path [:step]
+    :item/id 0})
+  => ["run-1" :root [:step] 0])
+
+^{:refer work.base.frame/event-record}
+(fact "combines frame identity and event data"
+  (subject/event-record
+   {:run/id "run-1"
+    :work/root :root
+    :node/path [:step]
+    :item/id 0}
+   :started
+   {:value 1})
+  => {:event :started
+      :run/id "run-1"
+      :work/root :root
+      :node/path [:step]
+      :item/id 0
+      :value 1})
+
+^{:refer work.base.frame/notify-event}
+(fact "sends one event to the configured observer"
+  (let [observer (model/recording-observer)
+        event {:event :started}
+        runtime {:work/hooks {:work/observer observer}}]
+    [(subject/notify-event runtime event)
+     (model/observer-events observer)])
+  => [{:event :started} [{:event :started}]])
+
+^{:refer work.base.frame/notify-events}
+(fact "returns the number of events sent to the observer"
+  (let [observer (model/recording-observer)
+        events [{:event :started} {:event :completed}]
+        runtime {:work/hooks {:work/observer observer}}]
+    [(subject/notify-events runtime events)
+     (model/observer-events observer)])
+  => [2 [{:event :started} {:event :completed}]])
+
+^{:refer work.base.frame/transact}
+(fact "requires a store provider before committing a transition"
+  (try
+    (subject/transact {:work/store nil} {:run/id "missing"} {})
+    false
+    (catch Throwable error true))
+  => true)
+
+^{:refer work.base.frame/emit}
+(fact "emits portable events through the observer when no store is configured"
+  (let [observer (model/recording-observer)
+        runtime {:work/policy {:work/mode :portable}
+                 :work/hooks {:work/observer observer}}
+        frame {:run/id "run-1"
+               :work/root :root
+               :node/path [:step]
+               :item/id 0}
+        expected {:event :started
+                  :run/id "run-1"
+                  :work/root :root
+                  :node/path [:step]
+                  :item/id 0
+                  :value 1}
+        emitted (subject/emit runtime frame :started {:value 1})]
+    [emitted (model/observer-events observer)])
+  => [{:event :started
+       :run/id "run-1"
+       :work/root :root
+       :node/path [:step]
+       :item/id 0
+       :value 1}
+      [{:event :started
+        :run/id "run-1"
+        :work/root :root
+        :node/path [:step]
+        :item/id 0
+        :value 1}]])
+
+^{:refer work.base.frame/leaf-context}
+(fact "adds frame identity and cleanup state to a leaf context"
+  (subject/leaf-context
+   {:context {:input 4}
+    :run/id "run-1"
+    :work/root :root
+    :work/version 1
+    :node/path [:step]
+    :item/id 0
+    :item/path [:step]
+    :work/cleanup? false
+    :options {:mode :portable}})
+  => {:input 4
+      :run/id "run-1"
+      :work/root :root
+      :work/version 1
+      :node/path [:step]
+      :item/id 0
+      :item/path [:step]
+      :work/cleanup? false
+      :work/options {:mode :portable}})
+
+^{:refer work.base.frame/cancelled?}
+(fact "reports no cancellation for a portable runtime without a store"
+  (subject/cancelled? {:work/policy {:work/mode :portable}} {})
+  => false)
+
+^{:refer work.base.frame/assert-running}
+(fact "allows a portable run without a store to continue"
+  (nil? (subject/assert-running {:work/policy {:work/mode :portable}} {}))
+  => true)
+
+^{:refer work.base.frame/explicit-item?}
+(fact "recognises explicit item records"
+  [(subject/explicit-item? {:item/id :a :item/value 1})
+   (subject/explicit-item? {:item/id :a})
+   (subject/explicit-item? :value)]
+  => [true false false])
+
+^{:refer work.base.frame/asserted-item}
+(fact "returns a canonical item and rejects nil identity"
+  (let [valid (subject/asserted-item :a 1 {:item/id :a :item/value 1} 0)
+        invalid (try
+                  (subject/asserted-item nil 1 {} 0)
+                  false
+                  (catch Throwable error true))]
+    [valid invalid])
+  => [{:item/id :a :item/value 1} true])
+
+^{:refer work.base.frame/normalise-item}
+(fact "normalises indexed, explicit, and keyed collection items"
+  (let [runtime {:work/policy {:work/mode :portable}}]
+    [(subject/normalise-item runtime {} :value 2)
+     (subject/normalise-item runtime {} {:item/id :explicit :item/value 4} 0)
+     (subject/normalise-item runtime
+                             {:item-key (fn [value] (:id value))}
+                             {:id "keyed" :value 5}
+                             0)])
+  => [{:item/id 2 :item/value :value}
+      {:item/id :explicit :item/value 4}
+      {:item/id "keyed" :item/value {:id "keyed" :value 5}}])
+
+^{:refer work.base.frame/manifest-contains-id?}
+(fact "finds an item identity in a manifest"
+  [(subject/manifest-contains-id? [{:item/id :a}] :a)
+   (subject/manifest-contains-id? [{:item/id :a}] :b)]
+  => [true false])
+
+^{:refer work.base.frame/normalise-manifest}
+(fact "normalises a manifest and rejects duplicate identities"
+  (let [runtime {:work/policy {:work/mode :portable}}
+        valid (subject/normalise-manifest runtime {} [:a :b])
+        duplicate (try
+                    (subject/normalise-manifest
+                     runtime
+                     {:item-key (fn [value] (:id value))}
+                     [{:id :same} {:id :same}])
+                    false
+                    (catch Throwable error true))]
+    [valid duplicate])
+  => [[{:item/id 0 :item/value :a}
+       {:item/id 1 :item/value :b}]
+      true])
+
+^{:refer work.base.frame/manifest-values}
+(fact "extracts values from canonical manifest records"
+  (subject/manifest-values [{:item/id :a :item/value 1}
+                            {:item/id :b :item/value 2}])
+  => [1 2])
+
+(pr-str (run '[work.base.frame-test]))

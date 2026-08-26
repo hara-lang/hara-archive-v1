@@ -1,4 +1,5 @@
 (ns tool.migrate.common.corpus
+  (:config {:role :internal})
   (:require [tool.migrate.common.clojure :as clj]
             [tool.migrate.policy.foundation.profile :as profile]))
 

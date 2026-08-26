@@ -1,4 +1,5 @@
 (ns tool.migrate.common.rules
+  (:config {:role :internal})
   (:require [std.fs :as fs]
             [std.foundation.string :as str]))
 

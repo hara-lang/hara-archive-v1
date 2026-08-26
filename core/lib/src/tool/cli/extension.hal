@@ -18,7 +18,7 @@
    :tool.cli.route/extension-test :test})
 
 (def +manifest-fields+
-  #{:root :provider :module :abi :exports
+  #{:root :identity :version :provider :module :abi :exports
     :capabilities :host-calls :handles :targets :assets})
 
 (defn operation-request [request]
@@ -375,15 +375,17 @@
     (cond
       (= provider :wasm)
       (let [memory? (= abi :memory.v1)
+            hta? (= abi :hta.v1)
             bindings? (not (empty? (filter (fn [path] (= path "bindings.edn"))
                                            assets)))]
         (if (and (string? module)
                  (empty? target-paths)
                  (or (= abi :core.v1)
+                     hta?
                      (and memory? (empty? capabilities) bindings?)))
           nil
           (throw (ex :dependency {} :ex/message
-                     "WASM providers require :abi :core.v1 or :memory.v1; memory.v1 requires empty capabilities and a bindings.edn asset"))))
+                     "WASM providers require :abi :core.v1, :hta.v1, or :memory.v1; memory.v1 requires empty capabilities and a bindings.edn asset"))))
       (= provider :hta)
       (if (and (nil? module) (not (empty? target-paths)) (= abi :hta.v1))
         nil

@@ -1,9 +1,16 @@
 (ns code.test-work-test
   (:require [code.test :as fact]
+            [code.test.base.runtime :as runtime]
             [code.test.work :as test-work]
             [work.base :as work]))
 
 (def execution-count (atom 0))
+
+(def ordering-fixtures
+  [{:namespace "alpha.test" :name "late" :meta {:line 30}}
+   {:namespace "beta.test" :name "late" :meta {:line 10}}
+   {:namespace "alpha.test" :name "early" :meta {:line 20}}
+   {:namespace "beta.test" :name "early" :meta {:line 5}}])
 
 (fact/fact "work-driven passing fact"
   (swap! execution-count inc)
@@ -11,6 +18,15 @@
 
 (fact/fact "work-driven failing fact"
   1 => 2)
+
+(def registered-passing
+  (runtime/get-fact
+   "code.test-work-test"
+   "work-driven passing fact"))
+(def registered-failing
+  (runtime/get-fact
+   "code.test-work-test"
+   "work-driven failing fact"))
 
 (def suite-runtime (work/durable-runtime))
 (def suite-reference
@@ -97,7 +113,98 @@
          (vec (map fact-result-view (:results summary)))))
 
 (def results
-  [(test-check
+  [^{:refer code.test.work/fact-source-line}
+   (test-check
+    "fact ordering prefers source lines when available"
+    [(vec (map test-work/fact-source-line ordering-fixtures))
+     (test-work/fact-source-line registered-passing)
+     (number? (test-work/fact-order-position registered-passing))
+     (< (test-work/fact-order-position registered-passing)
+        (test-work/fact-order-position registered-failing))]
+    [[30 10 20 5] nil true true])
+
+   ^{:refer code.test.work/fact-source-line?}
+   (test-check
+    "line ordering ignores missing source locations"
+    [(test-work/fact-source-line? {:meta {:line 17}})
+     (test-work/fact-source-line? {:meta {}})]
+    [true false])
+
+   ^{:refer code.test.work/fact-order-position}
+   (test-check
+    "registration order fills in absent source lines"
+    [(test-work/fact-order-position {:meta {:line 17}})
+     (test-work/fact-order-position {:meta {:test/order 7}})
+     (test-work/fact-order-position? {:meta {:test/order 7}})]
+    [17 7 true])
+
+   ^{:refer code.test.work/fact-order-position?}
+   (test-check
+    "order positions must be numeric"
+    [(test-work/fact-order-position? {:meta {:test/order 7}})
+     (test-work/fact-order-position? {:meta {:test/order "7"}})]
+    [true false])
+
+   ^{:refer code.test.work/fact-before?}
+   (test-check
+    "fact ordering compares only facts in the same namespace"
+    [(test-work/fact-before?
+      (nth ordering-fixtures 2)
+      (nth ordering-fixtures 0))
+     (test-work/fact-before?
+      (nth ordering-fixtures 2)
+      (nth ordering-fixtures 1))]
+    [true false])
+
+   ^{:refer code.test.work/insert-fact}
+   (test-check
+    "fact insertion uses numeric source lines"
+    (vec
+     (map :name
+          (reduce test-work/insert-fact
+                  []
+                  [(nth ordering-fixtures 0)
+                   (nth ordering-fixtures 2)])))
+    ["early" "late"])
+
+   ^{:refer code.test.work/order-namespace-facts}
+   (test-check
+    "namespace ordering sorts only that namespace"
+    (vec
+     (map :name
+          (test-work/order-namespace-facts
+           ordering-fixtures
+           "alpha.test")))
+    ["early" "late"])
+
+   ^{:refer code.test.work/replace-namespace-slots}
+   (test-check
+    "namespace replacement preserves other namespace slots"
+    (vec
+     (map (fn [entry] [(:namespace entry) (:name entry)])
+          (test-work/replace-namespace-slots
+           ordering-fixtures
+           "alpha.test"
+           (test-work/order-namespace-facts
+            ordering-fixtures
+            "alpha.test"))))
+    [["alpha.test" "early"]
+     ["beta.test" "late"]
+     ["alpha.test" "late"]
+     ["beta.test" "early"]])
+
+   ^{:refer code.test.work/order-facts}
+   (test-check
+    "facts are ordered by source line within each namespace"
+    (vec
+     (map (fn [entry] [(:namespace entry) (:name entry)])
+          (test-work/order-facts ordering-fixtures)))
+    [["alpha.test" "early"]
+     ["beta.test" "early"]
+     ["alpha.test" "late"]
+     ["beta.test" "late"]])
+
+   (test-check
     "suite execution uses managed Work while retaining test-domain status"
     [(work/status suite-runtime suite-reference)
      (:status suite-result)

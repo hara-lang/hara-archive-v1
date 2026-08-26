@@ -132,7 +132,7 @@
   ([most-significant-bits least-significant-bits]
    (Base/uuid most-significant-bits least-significant-bits)))
 
-(defn ^{:inline true :schema [:fn [:any] :bool]}
+(defn ^{:schema [:fn [:any] :bool]}
   uuid?
   "Returns true when value has the portable UUID type."
   [value]
@@ -149,7 +149,7 @@
       (recur (IConj/conj output (first remaining))
              (rest remaining)))))
 
-(defn ^{:inline true :schema [:fn [:any :any] :any]}
+(defn ^{:schema [:fn [:any :any] :any]}
   cons
   "Adds a value to the front of a sequence through ICons."
   [value sequence]
@@ -196,7 +196,7 @@
   [function & arguments]
   (apply Stream/generate function arguments))
 
-(defn ^{:inline true :schema [:fn [:any] :bool]}
+(defn ^{:schema [:fn [:any] :bool]}
   stream?
   "Returns true when value is a native stream."
   [value]
@@ -284,13 +284,13 @@
   [function & arguments]
   (Base/apply Base/apply (ICons/cons arguments function)))
 
-(defn ^{:inline true :schema [:fn [:any] :bool]}
+(defn ^{:schema [:fn [:any] :bool]}
   not "Returns true when value is false or nil." [value] (if value false true))
 
-(defn ^{:inline true :schema [:fn [:any] :bool]}
+(defn ^{:schema [:fn [:any] :bool]}
   boolean "Coerces value to true or false using Hara truthiness." [value] (if value true false))
 
-(defn ^{:inline true :schema [:fn [:any :any] :int]}
+(defn ^{:schema [:fn [:any :any] :int]}
   compare "Compares two mutually orderable Hara values." [left right]
   (cond (= left right)
         0
@@ -299,13 +299,13 @@
         :else
         1))
 
-(defn ^{:inline true :schema [:fn [:any :any] :bool]}
+(defn ^{:schema [:fn [:any :any] :bool]}
   not=
   "Returns true when adjacent values are not all equal."
   [a b]
   (not (= a b)))
 
-(defn ^{:inline true :schema [:fn [:any] :bool]}
+(defn ^{:schema [:fn [:any] :bool]}
   reduced? "Returns true when value is a reduced result." [value]
   (= (type value) :std.native.Reduced))
 
@@ -313,13 +313,13 @@
   unreduced "Returns the value carried by a reduced result, or value unchanged." [value]
   (Base/unreduced value))
 
-(defn ^{:inline true :schema [:fn [:any] :bool]}
+(defn ^{:schema [:fn [:any] :bool]}
   nil? "Returns true when value is nil." [value] (= nil value))
 
 (defn ^{:schema [:fn [:any] :bool]}
   not-nil? "Returns true when value is not nil." [value] (not (nil? value)))
 
-(defn ^{:inline true :schema [:fn [:any] :bool]}
+(defn ^{:schema [:fn [:any] :bool]}
   boolean? "Returns true when value is a boolean." [value] (= (type value) :std.native.Boolean))
 
 (defn ^{:schema [:fn [:any] :bool]}
@@ -328,10 +328,10 @@
 (defn ^{:schema [:fn [:any] :bool]}
   true? "Returns true when value is true." [value] (= true value))
 
-(defn ^{:inline true :schema [:fn [:any] :bool]}
+(defn ^{:schema [:fn [:any] :bool]}
   string? "Returns true when value is a string." [value] (= (type value) :std.native.String))
 
-(defn ^{:inline true :schema [:fn [:any] :bool]}
+(defn ^{:schema [:fn [:any] :bool]}
   char? "Returns true when value is a character." [value] (= (type value) :std.native.Character))
 
 (defn ^{:inline true :schema [:fn [:any] :bool]}
@@ -340,128 +340,128 @@
 (defn ^{:inline true :schema [:fn [:any] :bool]}
   long? "Returns true when value is a signed 64-bit integer." [value] (Base/long? value))
 
-(defn ^{:inline true :schema [:fn [:any] :bool]}
+(defn ^{:schema [:fn [:any] :bool]}
   double? "Returns true when value is an IEEE-754 double." [value] (= (type value) :std.native.Float))
 
-(defn ^{:inline true :schema [:fn [:any] :bool]}
+(defn ^{:schema [:fn [:any] :bool]}
   keyword? "Returns true when value is a keyword." [value] (= (type value) :std.native.Keyword))
 
-(defn ^{:inline true :schema [:fn [:any] :bool]}
+(defn ^{:schema [:fn [:any] :bool]}
   symbol? "Returns true when value is a symbol." [value] (= (type value) :std.native.Symbol))
 
-(defn ^{:inline true :schema [:fn [:any] :bool]}
+(defn ^{:schema [:fn [:any] :bool]}
   pointer? "Returns true when value is a context pointer." [value] (= (type value) :std.native.Pointer))
 
-(defn ^{:inline true :schema [:fn [:any] :bool]}
+(defn ^{:schema [:fn [:any] :bool]}
   atom? "Returns true when value is an atom." [value] (= (type value) :std.native.Atom))
 
-(defn ^{:inline true :schema [:fn [:any] :bool]}
+(defn ^{:schema [:fn [:any] :bool]}
   fn? "Returns true when value satisfies IFn." [value] (satisfies? IFn value))
 
-(defn ^{:inline true :schema [:fn [:any] :bool]}
+(defn ^{:schema [:fn [:any] :bool]}
   ex?
   "Returns true when value has the portable Exception type."
   [value]
   (= (type value) :std.native.Exception))
 
-(defn ^{:inline true :schema [:fn [:any] :bool]}
+(defn ^{:schema [:fn [:any] :bool]}
   iterable? "Returns true when value satisfies IIter." [value] (satisfies? IIter value))
 
-(defn ^{:inline true :schema [:fn [:any] :bool]}
+(defn ^{:schema [:fn [:any] :bool]}
   iterator? "Returns true when value satisfies IIterator." [value] (satisfies? IIterator value))
 
-(defn ^{:inline true :schema [:fn [:any] :bool]}
+(defn ^{:schema [:fn [:any] :bool]}
   counted? "Returns true when value satisfies ICount." [value] (satisfies? ICount value))
 
-(defn ^{:inline true :schema [:fn [:any] :bool]}
+(defn ^{:schema [:fn [:any] :bool]}
   reducible? "Returns true when value satisfies IReduce." [value] (satisfies? IReduce value))
 
-(defn ^{:inline true :schema [:fn [:any] :bool]}
+(defn ^{:schema [:fn [:any] :bool]}
   indexed? "Returns true when value satisfies INth." [value] (satisfies? INth value))
 
-(defn ^{:inline true :schema [:fn [:any] :bool]}
+(defn ^{:schema [:fn [:any] :bool]}
   associative? "Returns true when value satisfies IAssoc." [value] (satisfies? IAssoc value))
 
-(defn ^{:inline true :schema [:fn [:any] :bool]}
+(defn ^{:schema [:fn [:any] :bool]}
   findable? "Returns true when value satisfies IFind." [value] (satisfies? IFind value))
 
-(defn ^{:inline true :schema [:fn [:any] :bool]}
+(defn ^{:schema [:fn [:any] :bool]}
   lookupable? "Returns true when value satisfies ILookup." [value] (satisfies? ILookup value))
 
-(defn ^{:inline true :schema [:fn [:any] :bool]}
+(defn ^{:schema [:fn [:any] :bool]}
   derefable? "Returns true when value satisfies IDeref." [value] (satisfies? IDeref value))
 
-(defn ^{:inline true :schema [:fn [:any] :bool]}
+(defn ^{:schema [:fn [:any] :bool]}
   resettable? "Returns true when value satisfies IReset." [value] (satisfies? IReset value))
 
-(defn ^{:inline true :schema [:fn [:any] :bool]}
+(defn ^{:schema [:fn [:any] :bool]}
   casable? "Returns true when value satisfies ICas." [value] (satisfies? ICas value))
 
-(defn ^{:inline true :schema [:fn [:any] :bool]}
+(defn ^{:schema [:fn [:any] :bool]}
   watchable? "Returns true when value satisfies IWatch." [value] (satisfies? IWatch value))
 
-(defn ^{:inline true :schema [:fn [:any] :bool]}
+(defn ^{:schema [:fn [:any] :bool]}
   applicable? "Returns true when value satisfies IApplicable." [value] (satisfies? IApplicable value))
 
-(defn ^{:inline true :schema [:fn [:any] :bool]}
+(defn ^{:schema [:fn [:any] :bool]}
   mutable? "Returns true when value satisfies IMutable." [value] (satisfies? IMutable value))
 
-(defn ^{:inline true :schema [:fn [:any] :bool]}
+(defn ^{:schema [:fn [:any] :bool]}
   persistent? "Returns true when value satisfies IPersistent." [value] (satisfies? IPersistent value))
 
-(defn ^{:inline true :schema [:fn [:any] :bool]}
+(defn ^{:schema [:fn [:any] :bool]}
   function? "Returns true when value is a native function." [value] (= (type value) :std.native.Function))
 
-(defn ^{:inline true :schema [:fn [:any] :bool]}
+(defn ^{:schema [:fn [:any] :bool]}
   bytes? "Returns true when value is a byte buffer." [value]
   (or (= (type value) :std.native.Bytes)
       (= (type value) :std.native.ByteBuffer)))
 
-(defn ^{:inline true :schema [:fn [:any] :bool]}
+(defn ^{:schema [:fn [:any] :bool]}
   array? "Returns true when value is a mutable array." [value] (= (type value) :std.native.Array))
 
-(defn ^{:inline true :schema [:fn [:any] :bool]}
+(defn ^{:schema [:fn [:any] :bool]}
   object? "Returns true when value is a mutable object." [value] (= (type value) :std.native.Object))
 
-(defn ^{:inline true :schema [:fn [:any] :bool]}
+(defn ^{:schema [:fn [:any] :bool]}
   list? "Returns true when value is a persistent list." [value] (= (type value) :std.native.List))
 
-(defn ^{:inline true :schema [:fn [:any] :bool]}
+(defn ^{:schema [:fn [:any] :bool]}
   cons? "Returns true when value is a Cons sequence." [value] (= (type value) :std.native.Cons))
 
-(defn ^{:inline true :schema [:fn [:any] :bool]}
+(defn ^{:schema [:fn [:any] :bool]}
   vector? "Returns true when value is a persistent vector." [value]
   (or (= (type value) :std.native.Vector)
       (= (type value) :std.native.Tuple)))
 
-(defn ^{:inline true :schema [:fn [:any] :bool]}
+(defn ^{:schema [:fn [:any] :bool]}
   tuple? "Returns true when value is a tuple." [value] (= (type value) :std.native.Tuple))
 
-(defn ^{:inline true :schema [:fn [:any] :bool]}
+(defn ^{:schema [:fn [:any] :bool]}
   map? "Returns true when value is a persistent map." [value]
   (satisfies? IMapType value))
 
-(defn ^{:inline true :schema [:fn [:any] :bool]}
+(defn ^{:schema [:fn [:any] :bool]}
   set? "Returns true when value is a persistent set." [value]
   (satisfies? ISetType value))
 
-(defn ^{:inline true :schema [:fn [:any] :bool]}
+(defn ^{:schema [:fn [:any] :bool]}
   sequential? "Returns true when value has sequential collection semantics." [value]
   (satisfies? ISequential value))
 
-(defn ^{:inline true :schema [:fn [:any] :bool]}
+(defn ^{:schema [:fn [:any] :bool]}
   coll? "Returns true when value satisfies the runtime collection capability." [value]
   (satisfies? IColl value))
 
-(defn ^{:inline true :schema [:fn [:any] :bool]}
+(defn ^{:schema [:fn [:any] :bool]}
   seq? "Returns true when value is a realized sequence." [value]
   (= (type value) :std.native.Seq))
 
-(defn ^{:inline true :schema [:fn [:any] :bool]}
+(defn ^{:schema [:fn [:any] :bool]}
   iter? "Returns true when value is an iterator." [value]
   (= (type value) :std.native.Iterator))
 
-(defn ^{:inline true :schema [:fn [:any] :bool]}
+(defn ^{:schema [:fn [:any] :bool]}
   promise? "Returns true when value is a promise." [value]
   (= (type value) :std.native.Promise))
 
@@ -483,7 +483,7 @@
 (defn ^{:inline true :schema [:fn [:any] :any]}
   schema "Compiles schema data into a SchemaType." [value] (Schema/compile value))
 
-(defn ^{:inline true :schema [:fn [:any] :bool]}
+(defn ^{:schema [:fn [:any] :bool]}
   schema? "Returns true when value is a native SchemaType." [value]
   (= (type value) :std.native.SchemaType))
 
@@ -573,7 +573,14 @@
   intern-var
   "Interns a Var root and optional metadata into namespace."
   ([namespace symbol variable] (Runtime/intern-var namespace symbol variable))
-  ([namespace symbol variable metadata] (Runtime/intern-var namespace symbol variable metadata)))
+  ([namespace symbol variable metadata]
+   (Runtime/intern-var
+    namespace
+    symbol
+    variable
+    (merge metadata
+           (select-keys (or (meta variable) {})
+                        [:file :line :column])))))
 
 (defn ^{:inline true :schema [:fn [:any :any] :any]}
   eval-in-ns "Evaluates form values in an existing namespace." [namespace forms] (Runtime/eval-in namespace forms))
@@ -618,7 +625,7 @@
      (Result/synchronize value options)))
   ([status value context] (Result/create status value context)))
 
-(defn ^{:inline true :schema [:fn [:any] :bool]}
+(defn ^{:schema [:fn [:any] :bool]}
   result?
   "Returns true when value is a native Result."
   [value]
@@ -2930,11 +2937,15 @@
      (map
       (fn [entry]
         (let [to (if (vector? entry) (first entry) entry)
-              from (if (vector? entry) (second entry) entry)]
+              from (if (vector? entry) (second entry) entry)
+              metadata (select-keys
+                        (merge (meta &form) (meta entry))
+                        [:file :line :column])]
           (list 'intern-var
                 target
                 (list 'quote (symbol (name to)))
-                (list 'var from))))
+                (list 'var from)
+                metadata)))
       selected-entries))))
 
 (defmacro intern-all

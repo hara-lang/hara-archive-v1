@@ -918,6 +918,7 @@ pub(crate) fn call_function(function: &Function, arguments: Vec<Value>) -> Resul
             Some(
                 "macroexpand"
                     | "env-current"
+                    | "current-namespace"
                     | "env-snapshot"
                     | "env-vars"
                     | "env-namespaces"

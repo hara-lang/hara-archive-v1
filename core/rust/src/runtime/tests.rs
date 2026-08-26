@@ -1815,6 +1815,22 @@ mod tests {
     }
 
     #[test]
+    fn functions_resolve_unqualified_vars_to_full_definition_symbols() {
+        let mut runtime = Runtime::new();
+        assert_eq!(
+            runtime
+                .eval_text(
+                    "(do (ns example.resolver) (def answer 41) \
+                     (defn answer-symbol [] \
+                       (std.foundation/var-sym (std.foundation/env-resolve 'answer))) \
+                     (ns example.caller) (example.resolver/answer-symbol))",
+                )
+                .unwrap(),
+            "example.resolver/answer"
+        );
+    }
+
+    #[test]
     fn namespace_declaration_restores_declared_namespace_after_requires() {
         let mut runtime = Runtime::new();
         runtime.register_resource("example.required", "(ns example.required) (def answer 42)");
@@ -4548,6 +4564,41 @@ mod tests {
             .eval_text("(ns legacy (:refer-clojure :exclude [identity]))")
             .unwrap_err()
             .contains("Unsupported ns clause: :refer-clojure"));
+    }
+
+    #[test]
+    fn foundation_current_namespace_scope_preserves_facade_owners() {
+        let mut runtime = Runtime::new();
+        assert_eq!(runtime.eval_text("(current-namespace)").unwrap(), "user");
+        assert_eq!(
+            runtime
+                .eval_text("(ns example.current-scope) (current-namespace)")
+                .unwrap(),
+            "example.current-scope"
+        );
+
+        runtime.use_namespace("user");
+        runtime.eval_text("(require [std.block])").unwrap();
+
+        let block = runtime
+            .namespace_registry
+            .find("std.block")
+            .expect("std.block must be loaded");
+        let block_type = block
+            .resolve(&crate::lang::data::Symbol::parse("type"))
+            .expect("std.block/type must be published");
+        assert_eq!(block_type.symbol().as_str(), "std.block/type");
+
+        let foundation = runtime
+            .namespace_registry
+            .find("std.foundation")
+            .expect("std.foundation must be loaded");
+        let foundation_type = foundation
+            .resolve(&crate::lang::data::Symbol::parse("type"))
+            .expect("std.foundation/type must remain published");
+        assert_eq!(foundation_type.symbol().as_str(), "std.foundation/type");
+        assert_eq!(runtime.eval_text("(std.foundation/seq? [1])").unwrap(), "false");
+        assert_eq!(runtime.eval_text("(std.foundation/vector? [1])").unwrap(), "true");
     }
 
     #[test]

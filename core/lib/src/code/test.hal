@@ -64,7 +64,7 @@
   [description & body]
   (compile/fact-form description
                      body
-                     (assoc (meta &form)
+                     (assoc (or (meta &form) {})
                             :test/namespace
                             (str (:ns &env)))))
 
@@ -107,7 +107,7 @@
 (defmacro fact:template [description & body]
   (compile/fact-form description
                      body
-                     (assoc (meta &form)
+                     (assoc (or (meta &form) {})
                             :test/namespace
                             (str (:ns &env)))))
 (defmacro fact:global [settings]

@@ -1,4 +1,5 @@
 (ns tool.migrate.policy.foundation.audit
+  (:config {:role :internal})
   (:require [tool.migrate.common.clojure :as clj]
             [tool.migrate.common.corpus :as corpus]
             [tool.migrate.common.git :as migrate-git]

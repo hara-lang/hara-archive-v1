@@ -1,4 +1,5 @@
 (ns tool.migrate.policy.foundation.core
+  (:config {:role :internal})
   (:require [tool.migrate.common.write :as migrate-write]
             [tool.migrate.common.rule :as migrate-rule]
             [tool.migrate.common.project :as migrate-project]

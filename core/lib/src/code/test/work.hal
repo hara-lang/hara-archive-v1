@@ -98,9 +98,32 @@
       (= status :error)
       (= status :timeout)))
 
-(defn fact-order-key
+(defn fact-source-line
+  "Returns the parser-provided source line when a runtime supplies one."
   [fact]
-  (str (:namespace fact) "/" (:name fact)))
+  (:line (or (:meta fact) {})))
+
+(defn fact-source-line?
+  [fact]
+  (number? (fact-source-line fact)))
+
+(defn fact-order-position
+  "Returns source position, falling back to registration order on native loads."
+  [fact]
+  (or (fact-source-line fact)
+      (:test/order (or (:meta fact) {}))))
+
+(defn fact-order-position?
+  [fact]
+  (number? (fact-order-position fact)))
+
+(defn fact-before?
+  [left right]
+  (and (= (:namespace left) (:namespace right))
+       (fact-order-position? left)
+       (fact-order-position? right)
+       (< (fact-order-position left)
+          (fact-order-position right))))
 
 (defn insert-fact
   [facts fact]
@@ -108,9 +131,7 @@
          output []]
     (if (= index (count facts))
       (conj output fact)
-      (if (< (compare (fact-order-key fact)
-                      (fact-order-key (nth facts index)))
-             0)
+      (if (fact-before? fact (nth facts index))
         (loop [remaining index
                inserted (conj output fact)]
           (if (= remaining (count facts))
@@ -119,9 +140,42 @@
                    (conj inserted (nth facts remaining)))))
         (recur (inc index) (conj output (nth facts index)))))))
 
+(defn order-namespace-facts
+  [facts namespace]
+  (let [selected (vec (filter (fn [fact]
+                                (= namespace (:namespace fact)))
+                              facts))]
+    (if (every? fact-order-position? selected)
+      (reduce insert-fact [] selected)
+      selected)))
+
+(defn replace-namespace-slots
+  [facts namespace ordered]
+  (loop [remaining facts
+         sorted ordered
+         output []]
+    (if (empty? remaining)
+      output
+      (let [fact (first remaining)]
+        (if (= namespace (:namespace fact))
+          (recur (vec (rest remaining))
+                 (vec (rest sorted))
+                 (conj output (first sorted)))
+          (recur (vec (rest remaining))
+                 sorted
+                 (conj output fact)))))))
+
 (defn order-facts
   [facts]
-  (reduce insert-fact [] facts))
+  (let [facts (vec facts)]
+    (reduce
+     (fn [output namespace]
+       (replace-namespace-slots
+        output
+        namespace
+        (order-namespace-facts output namespace)))
+     facts
+     (distinct (map (fn [fact] (:namespace fact)) facts)))))
 
 (def +default-revision+ 1)
 (def +default-work-revision+ +default-revision+)

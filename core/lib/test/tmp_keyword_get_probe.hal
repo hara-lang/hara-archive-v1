@@ -1,0 +1,27 @@
+(ns tmp-keyword-get-probe
+  (:require [work.flow.task.selector :as selector]
+            [std.foundation.string :as string]))
+
+(defn attempt
+  [function]
+  (try
+    {:ok true :value (function)}
+    (catch Throwable error
+      {:ok false
+       :message (ex-message error)
+       :data (ex-data error)})))
+
+(def result
+  [(attempt (fn [] (str :fail-fast)))
+   (attempt (fn [] (type (str :fail-fast))))
+   (attempt (fn [] (string? (str :fail-fast))))
+   (attempt (fn [] (string/to-string :fail-fast)))
+   (attempt (fn [] (string/starts-with? "fail-fast" "fail")))
+   (attempt (fn [] (string/starts-with? (str :fail-fast) (str :fail-fast))))
+   (attempt (fn [] (selector/matches? :fail-fast :fail-fast)))])
+
+^{:refer tmp-keyword-get-probe/probe}
+(Test/run
+ [{:name "keyword get probe"
+   :test (fn [] result)
+   :expected :sentinel}])

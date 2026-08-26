@@ -1,4 +1,5 @@
-(ns tool.migrate.common.report)
+(ns tool.migrate.common.report
+  (:config {:role :internal}))
 
 (def +terminal-statuses+
   #{:exact :ported :obsolete})

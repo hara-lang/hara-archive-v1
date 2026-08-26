@@ -1,4 +1,5 @@
 (ns tool.migrate.common.clojure
+  (:config {:role :internal})
   (:require [code.framework :as framework]
             [std.block :as block]
             [tool.migrate.common.block :as nav]

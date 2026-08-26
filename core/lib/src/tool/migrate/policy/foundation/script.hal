@@ -1,4 +1,5 @@
-(ns tool.migrate.policy.foundation.script)
+(ns tool.migrate.policy.foundation.script
+  (:config {:role :internal}))
 
 (def +foundation-script-source+
   {:repository "zcaudate-xyz/foundation-base"
