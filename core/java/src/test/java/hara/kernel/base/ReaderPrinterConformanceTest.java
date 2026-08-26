@@ -23,7 +23,8 @@ public class ReaderPrinterConformanceTest {
       HaraCharacter.of('\r'),
       HaraCharacter.of('\0'),
       HaraCharacter.of('a'),
-      HaraCharacter.of('\u03bb')
+      HaraCharacter.of('\u03bb'),
+      HaraCharacter.of(0x1F600)
     };
     String[] displays = {
       "\\newline",
@@ -34,7 +35,8 @@ public class ReaderPrinterConformanceTest {
       "\\return",
       "\\u0000",
       "\\a",
-      "\\λ"
+      "\\λ",
+      "\\😀"
     };
 
     for (int i = 0; i < values.length; i++) {

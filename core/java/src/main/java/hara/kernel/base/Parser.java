@@ -303,7 +303,7 @@ public interface Parser {
         if (d == -1) throw new IllegalArgumentException("Invalid digit: " + token.charAt(i));
         uc = uc * base + d;
       }
-      return (char) uc;
+      return uc;
     }
 
     private static int readUnicodeChar(Reader r, int initch, int base, int length, boolean exact) {

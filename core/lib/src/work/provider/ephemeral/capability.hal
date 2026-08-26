@@ -288,12 +288,13 @@
             (fn [run]
               (cancel-wait state key)))
            (catch error
-             (cancel-wait state key)
-             (throw
-              (ex :dependency
-                  {:run/id run-id :wait/id (:wait/id wait)}
-                  :ex/message "Work await could not register its run cleanup"
-                  :ex/cause error))))
+             (do
+               (cancel-wait state key)
+               (throw
+                (ex :dependency
+                    {:run/id run-id :wait/id (:wait/id wait)}
+                    :ex/message "Work await could not register its run cleanup"
+                    :ex/cause error)))))
          nil)
        pending))))
 

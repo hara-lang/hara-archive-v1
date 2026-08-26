@@ -10,6 +10,7 @@ code.manage.editor
 code.manage.ns-format
 code.manage.ns-rename
 code.manage.unit
+code.manage.unit.contract
 code.manage.unit.factcheck
 code.manage.unit.import
 code.manage.unit.isolate
@@ -123,8 +124,10 @@ code.project
 code.project.production
 tool.sh
 work.base
+work.base.capability
 work.base.coordinator
 work.base.execution
+work.base.execution.await
 work.base.execution.batch
 work.base.execution.bind
 work.base.execution.collection
@@ -149,6 +152,7 @@ work.flow.task.report
 work.flow.task.result
 work.flow.task.selector
 work.provider.ephemeral
+work.provider.ephemeral.capability
 work.provider.inline
 work.provider.memory
 work.provider.model
