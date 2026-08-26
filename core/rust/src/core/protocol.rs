@@ -297,13 +297,8 @@ fn protocol_namespaced_namespace(arguments: &[Value]) -> Result<Value, String> {
 
 fn protocol_string_like_to_string(arguments: &[Value]) -> Result<Value, String> {
     match arguments {
-        [Value::String(value)] => Ok(Value::String(value.clone())),
-        [Value::Character(value)] => Ok(Value::String(value.to_string())),
         [Value::Keyword(value)] => Ok(Value::String(value.as_str().into())),
         [Value::Symbol(value)] => Ok(Value::String(value.as_str().into())),
-        [Value::Bytes(value)] => String::from_utf8(value.clone())
-            .map(Value::String)
-            .map_err(|error| format!("IStringLike/to-string expects UTF-8 bytes: {error}")),
         [_] => Err("IStringLike/to-string expects a string-like value".into()),
         _ => Err("IStringLike/to-string expects one argument".into()),
     }
@@ -314,10 +309,8 @@ fn protocol_string_like_from_string(arguments: &[Value]) -> Result<Value, String
         return Err("IStringLike/from-string expects a sample and string".into());
     };
     match sample {
-        Value::String(_) => Ok(Value::String(text.clone())),
         Value::Keyword(_) => Keyword::parse(text).map(Value::Keyword),
         Value::Symbol(_) => Ok(Value::Symbol(Symbol::parse(text))),
-        Value::Bytes(_) => Ok(Value::Bytes(text.as_bytes().to_vec())),
         _ => Err("IStringLike/from-string expects a string-like sample".into()),
     }
 }
@@ -1184,6 +1177,13 @@ fn native_base_values(operation: &str, values: &[Value]) -> Result<Value, String
             arguments.extend(iterator_values(values.last().cloned().unwrap())?);
             call_value(function, arguments)
         }
+        "resolve" => match values {
+            [Value::Symbol(symbol)] => Ok(crate::core::namespace_registry()?
+                .resolve(symbol)
+                .map(Value::Var)
+                .unwrap_or(Value::Nil)),
+            _ => Err("Base/resolve expects one symbol".into()),
+        },
         "satisfies?" => match values {
             [Value::Protocol(protocol), value] => {
                 Ok(Value::Bool(protocol_satisfies(protocol, value)))
@@ -2172,11 +2172,7 @@ impl Value {
     fn supports_native_istringlike(value: &Self) -> bool {
         matches!(
             value,
-            Self::String(_)
-                | Self::Character(_)
-                | Self::Keyword(_)
-                | Self::Symbol(_)
-                | Self::Bytes(_)
+            Self::Keyword(_) | Self::Symbol(_)
         )
     }
     fn supports_native_inamespaced(value: &Self) -> bool {

@@ -3406,6 +3406,16 @@ mod tests {
         ));
         runtime.start_fiber(2, "(+ 40 2)").unwrap();
         assert_eq!(completion_value(&mut runtime, 2), Value::Number(42));
+        runtime
+            .start_fiber(
+                3,
+                "(and (nil? (resolve 'Runtime)) \
+                      (nil? (resolve 'std.native.Runtime/resolve)) \
+                      (nil? (resolve 'Host/call)) \
+                      (nil? (Base/resolve 'File/read)))",
+            )
+            .unwrap();
+        assert_eq!(completion_value(&mut runtime, 3), Value::Bool(true));
     }
 
     #[test]

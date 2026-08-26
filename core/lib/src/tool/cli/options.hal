@@ -1,8 +1,8 @@
 (ns tool.cli.options)
 
 (def +defaults+ {:host "127.0.0.1" :port 1311})
-(def +digits+ {"0" 0 "1" 1 "2" 2 "3" 3 "4" 4
-               "5" 5 "6" 6 "7" 7 "8" 8 "9" 9})
+(def +digits+ {\0 0 \1 1 \2 2 \3 3 \4 4
+               \5 5 \6 6 \7 7 \8 8 \9 9})
 
 (defn tail [values] (vec (rest values)))
 
@@ -24,7 +24,7 @@
   (loop [index 0 output 0]
     (if (= index (str/length value))
       output
-      (let [digit (get +digits+ (str/to-string (str/char-at value index)))]
+      (let [digit (get +digits+ (str/char-at value index))]
         (if (nil? digit)
           nil
           (recur (inc index) (+ (* output 10) digit)))))))

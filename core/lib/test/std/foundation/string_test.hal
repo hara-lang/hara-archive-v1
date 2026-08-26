@@ -14,6 +14,12 @@
    (fact "length-unicode"
      (str/length "hé")
      => 2)
+   (fact "character lookups scan strings once against persistent sets"
+     [(str/includes-any? "abc" #{\x \z})
+      (str/includes-any? "abc" #{\x \b})
+      (str/includes-any? "😀" #{\😀})
+      (str/includes-any? "abc" #{})]
+     => [false true true false])
    (fact "blank-is-nil-aware"
      [(str/blank? nil)
       (str/blank? "")
@@ -38,6 +44,12 @@
       (str/char-at " " 0)
       (str/char-at "a😀b" 1)]
      => [\a true \space \😀])
+   (fact "strings expose characters to sequence and lookup operations"
+     [(first "abc")
+      (char? (first "abc"))
+      (get "abc" 1)
+      (str (first "abc"))]
+     => [\a true \b "a"])
    (fact "split"
      (nth (str/split "a,b" ",") 1)
      => "b")
@@ -146,9 +158,18 @@
    (fact "StringLike conversions preserve built-in and custom types"
      [(str/from-string :hello (str/to-string :hello/world))
       (str/from-string 'hello (str/to-string 'hello/world))
-      (str/to-string (WrappedName "hello"))
-      (:value (str/from-string (WrappedName "") "world"))]
+      (IStringLike/to-string (WrappedName "hello"))
+      (:value (IStringLike/from-string (WrappedName "") "world"))]
      => [:hello/world (symbol "hello/world") "hello" "world"])
+   (fact "StringLike membership uses protocol inheritance and extensions"
+     [(str/string-like? :hello)
+      (satisfies? IStringLike :hello)
+      (str/string-like? 'hello)
+      (satisfies? IStringLike 'hello)
+      (str/string-like? (WrappedName "hello"))
+      (satisfies? IStringLike (WrappedName "hello"))
+      (str/string-like? "hello")]
+     => [true true true true true true false])
    (fact "native adapters retain inline metadata across runtimes"
      [(get (meta (var std.foundation.string/string-like?)) :inline)
       (get (meta (var std.foundation.string/to-string)) :inline)

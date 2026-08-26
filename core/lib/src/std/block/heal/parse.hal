@@ -1,5 +1,7 @@
 (ns std.block.heal.parse)
 
+(def +comment-character+ #{\;})
+
 (def lu-close
   {"(" ")"
    "[" "]"
@@ -26,56 +28,83 @@
   "gets all the delimiters in the file"
   {:added "4.0"}
   [content]
-  (let [state (reduce
-               (fn
-                [state char]
-                (let
-                 [line-num    (get state :line-num)
-                  col-num     (get state :col-num)
-                  in-comment? (get state :in-comment?)
-                  in-string?  (get state :in-string?)
-                  escaped?    (get state :escaped?)]
-                 (cond
-                  (= char \newline)
-                  (assoc state
-                         :line-num (inc line-num)
-                         :col-num 1
-                         :in-comment? false
-                         :escaped? false)
-                  escaped?
-                  (assoc state :col-num (inc col-num) :escaped? false)
-                  (= char \\)
-                  (assoc state :col-num (inc col-num) :escaped? true)
-                  in-comment?
-                  (assoc state :col-num (inc col-num))
-                  in-string?
-                  (if (= char \")
-                    (assoc state :col-num (inc col-num) :in-comment? false :in-string? false)
-                    (assoc state :col-num (inc col-num) :in-comment? false :in-string? true))
-                  (= char \;)
-                  (assoc state :col-num (inc col-num) :in-comment? true :in-string? false)
-                  (= char \")
-                  (assoc state :col-num (inc col-num) :in-comment? false :in-string? true)
-                  (delimiter-info char)
-                  (let [info (delimiter-info char)]
-                    (assoc state
-                           :col-num (inc col-num)
-                           :delimiters
-                           (conj (get state :delimiters)
-                                 (merge {:char (str char)
-                                         :col col-num
-                                         :line line-num}
-                                        info))))
-                  :else
-                  (assoc state :col-num (inc col-num)))))
-               {:delimiters  []
-                :in-comment? false
-                :line-num    1
-                :col-num     1
-                :escaped?    false
-                :in-string?  false}
-               (seq content))]
-    (get state :delimiters)))
+  (let [token-pattern (regexp "([\";\\\\()\\[\\]{}\\n])")
+        marker        (loop [candidates ["\u0000" "\u0001" "\u0002" "\u0003"
+                                        "\u0004" "\u0005" "\u0006" "\u0007"]]
+                        (if (empty? candidates)
+                          "\u0000"
+                          (let [candidate (first candidates)]
+                            (if (str/includes? content candidate)
+                              (recur (rest candidates))
+                              candidate))))
+        delimiter-map {"(" {:char "(" :type :open :style :paren}
+                       ")" {:char ")" :type :close :style :paren}
+                       "[" {:char "[" :type :open :style :square}
+                       "]" {:char "]" :type :close :style :square}
+                       "{" {:char "{" :type :open :style :curly}
+                       "}" {:char "}" :type :close :style :curly}}
+        tokens        (str/split (re-replace token-pattern
+                                              content
+                                              (str marker "$1" marker))
+                                 marker)]
+    (loop [remaining   tokens
+           line-num    1
+           col         1
+           in-string?  false
+           escaped?    false
+           in-comment? false
+           delimiters  []]
+      (if (empty? remaining)
+        delimiters
+        (let [token (first remaining)
+              rest  (rest remaining)
+              width (str/length token)
+              info  (get delimiter-map token)]
+          (cond
+            (= width 0)
+            (recur rest line-num col in-string? escaped? in-comment? delimiters)
+
+            (= token "\n")
+            (recur rest (inc line-num) 1 in-string? false false delimiters)
+
+            in-comment?
+            (recur rest line-num (+ col width) in-string? false true delimiters)
+
+            escaped?
+            (recur rest line-num (+ col width) in-string? false false delimiters)
+
+            in-string?
+            (cond
+              (= token "\\")
+              (recur rest line-num (+ col width) true true false delimiters)
+
+              (= token "\"" )
+              (recur rest line-num (+ col width) false false false delimiters)
+
+              :else
+              (recur rest line-num (+ col width) true false false delimiters))
+
+            (= token ";")
+            (recur rest line-num (+ col width) in-string? false true delimiters)
+
+            (= token "\"" )
+            (recur rest line-num (+ col width) true false false delimiters)
+
+            (= token "\\")
+            (recur rest line-num (+ col width) false true false delimiters)
+
+            info
+            (recur rest
+                   line-num
+                   (+ col width)
+                   false
+                   false
+                   false
+                   (conj delimiters
+                         (assoc info :col col :line line-num)))
+
+            :else
+            (recur rest line-num (+ col width) false false false delimiters)))))))
 
 (defn pair-delimiters
   "pairs the delimiters and annotates whether it's erroring"
@@ -173,68 +202,54 @@
   "counting unescaped quotes in a line"
   {:added "4.0"}
   [s]
-  (letfn [(count-unescaped-quotes--loop-1
-           [chars count escaped?]
-           (if-not
-            (seq chars)
-            count
-            (let
-             [char (first chars) rest-chars (rest chars)]
-             (cond
-              escaped?
-              (count-unescaped-quotes--loop-1 rest-chars count false)
-              (= char \\)
-              (count-unescaped-quotes--loop-1 rest-chars count true)
-              (= char \")
-              (count-unescaped-quotes--loop-1 rest-chars (inc count) false)
-              :else
-              (count-unescaped-quotes--loop-1 rest-chars count false)))))]
-    (count-unescaped-quotes--loop-1 (seq s) 0 false)))
+  (let [unescaped (re-replace "\\\\." s "")]
+    (if (empty? unescaped)
+      0
+      (dec (count (str/split unescaped "\""))))))
 
 (defn parse-lines-raw
   [lines]
-  (letfn [(parse-lines-raw--loop-1
-           [lines line-num in-multiline? output]
-           (if
-            (empty? lines)
-            output
-            (let
-             [current-line    (first lines)
-             trimmed-line    (str/trim-left current-line)
-              indent          (- (count current-line) (count trimmed-line))
-              char            (if (empty? trimmed-line)
-                                nil
-                                (str/char-at trimmed-line 0))
-              dinfo           (if (has? #{\( \{ \[} char)
-                                (let [info (delimiter-info char)]
-                                  (assoc (dissoc info :type) :action (:type info))))
-              quote-count     (count-unescaped-quotes current-line)
-              next-multiline? (cond (and (zero? quote-count) in-multiline?) true
-                                    (and (odd? quote-count) in-multiline?)  false
-                                    (odd? quote-count)                      true
-                                    :else                                   false)
-              line-type       (cond next-multiline?                                    :string
-                                    (str/blank? current-line)        :blank
-                                    (str/includes? current-line ";") :commented
-                                    :else                                              :code)
-              has-code        (and (not= char \;) (or (= line-type :code) (= line-type :commented)))
-              last-idx        (let [r-trimmed (str/trim-right current-line)]
-                                (if (not-empty r-trimmed) (dec (count r-trimmed))))]
-             (parse-lines-raw--loop-1
-              (rest lines)
-              (inc line-num)
-              next-multiline?
-              (conj
-               output
-               (cond->
-                {:line line-num :type line-type}
-                last-idx
-                (assoc :last-idx last-idx)
-                has-code
-                (assoc :col (inc indent) :char (str char))
-                :then
-                (merge dinfo)))))))]
-    (parse-lines-raw--loop-1 lines 1 false [])))
+  (loop [remaining       lines
+         line-num        1
+         in-multiline?   false
+         output          []]
+    (if (empty? remaining)
+      output
+      (let [current-line    (first remaining)
+            trimmed-line    (str/trim-left current-line)
+            indent          (- (count current-line) (count trimmed-line))
+            char            (if (empty? trimmed-line)
+                              nil
+                              (str/char-at trimmed-line 0))
+            dinfo           (if (has? #{\( \{ \[} char)
+                              (let [info (delimiter-info char)]
+                                (assoc (dissoc info :type) :action (:type info))))
+            quote-count     (count-unescaped-quotes current-line)
+            next-multiline? (cond (and (zero? quote-count) in-multiline?) true
+                                  (and (odd? quote-count) in-multiline?)  false
+                                  (odd? quote-count)                      true
+                                  :else                                   false)
+            line-type       (cond next-multiline?                       :string
+                                  (str/blank? current-line)        :blank
+                                  (str/includes-any? current-line +comment-character+) :commented
+                                  :else                             :code)
+            has-code        (and (not= char \;) (or (= line-type :code) (= line-type :commented)))
+            last-idx        (let [r-trimmed (str/trim-right current-line)]
+                              (if (not-empty r-trimmed) (dec (count r-trimmed))))]
+        (recur
+         (rest remaining)
+         (inc line-num)
+         next-multiline?
+         (conj
+          output
+          (cond->
+           {:line line-num :type line-type}
+           last-idx
+           (assoc :last-idx last-idx)
+           has-code
+           (assoc :col (inc indent) :char (str char))
+           :then
+           (merge dinfo))))))))
 
 (defn parse-lines
   "parse lines"

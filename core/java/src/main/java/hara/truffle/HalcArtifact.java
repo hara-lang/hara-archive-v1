@@ -2,6 +2,7 @@ package hara.truffle;
 
 import hara.lang.data.Keyword;
 import hara.lang.data.Symbol;
+import hara.lang.data.HaraCharacter;
 import hara.lang.protocol.ILinearType;
 import hara.lang.protocol.IMapType;
 import hara.lang.protocol.ISetType;
@@ -493,6 +494,9 @@ final class HalcArtifact {
     } else if (value instanceof String string) {
       output.writeByte(STRING);
       writeString(output, string);
+    } else if (value instanceof HaraCharacter character) {
+      output.writeByte(CHARACTER);
+      output.writeInt(character.codePoint());
     } else if (value instanceof Character character) {
       output.writeByte(CHARACTER);
       output.writeInt(character);
@@ -556,7 +560,7 @@ final class HalcArtifact {
       case DOUBLE -> input.readDouble();
       case BIG_INTEGER -> hara.lang.base.NumUtils.normalizeInteger(new BigInteger(readString(input)));
       case STRING -> readString(input);
-      case CHARACTER -> (char) input.readInt();
+      case CHARACTER -> HaraCharacter.of(input.readInt());
       case SYMBOL ->
           withMetadata(
               Symbol.create(readNullableString(input), readString(input)), readMetadata(input));

@@ -9,7 +9,11 @@
 
 (defn migration-test-check
   [test expected]
-  (let [result (process/check test expected)]
+  (let [expected (cond
+                  (checker/checker? expected) expected
+                  (fn? expected) (checker/satisfies expected)
+                  :else          expected)
+        result   (process/check test expected)]
     (if (not (Test/passed? result))
       (println :failure
                {:actual (Test/actual result)

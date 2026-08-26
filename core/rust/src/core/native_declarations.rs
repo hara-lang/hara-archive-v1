@@ -196,7 +196,7 @@ pub(crate) mod declarations {
         name = "Base",
         methods = [
             "list", "vector", "vec", "set", "tuple", "hash-map", "hash-set", "atom", "pointer", "symbol",
-            "keyword", "uuid", "reduced", "unreduced", "hash", "apply",
+            "keyword", "uuid", "reduced", "unreduced", "hash", "apply", "resolve",
             "number?", "long?", "satisfies?", "special-symbol?", "type", "instance?"
         ],
         whole_wasm_methods = [("number?", 1)],

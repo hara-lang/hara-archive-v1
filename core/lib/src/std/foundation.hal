@@ -245,7 +245,7 @@
            (cond
              (nil? item) ""
              (string? item) item
-             (char? item) (IStringLike/to-string item)
+             (char? item) item
              :else (IDisplay/display item)))
          (cons value more)))))
 
@@ -590,13 +590,13 @@
   env-module "Returns the loaded module descriptor for path, or nil." [path] (Runtime/module path))
 
 (defn ^{:inline true :schema [:fn [:symbol] :any]}
-  resolve "Resolves symbol without triggering namespace or package loading." [symbol] (Runtime/resolve symbol))
+  resolve "Resolves symbol without triggering namespace or package loading." [symbol] (Base/resolve symbol))
 
 (defn ^{:inline true :schema [:fn [:symbol] :any]}
   env-resolve
   "Compatibility alias for resolve."
   [symbol]
-  (Runtime/resolve symbol))
+  (Base/resolve symbol))
 
 (defn ^{:inline true :schema [:fn [:any] :any]}
   the-ns
@@ -884,6 +884,12 @@
 ;; `regexp?` remains the kernel-installed root predicate. The helpers below are
 ;; portable HAL wrappers over the std.native.RegExp runtime object.
 ;; ---------------------------------------------------------------------------
+
+(defn ^{:schema [:fn [:any] :bool]}
+  regexp?
+  "Returns true when value is a RegExp runtime value."
+  [value]
+  (= (type value) :std.native.RegExp))
 
 (defn ^{:schema [:fn [[:or :str :regex]] :regex]}
   regexp

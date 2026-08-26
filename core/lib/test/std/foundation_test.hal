@@ -61,6 +61,13 @@
                  (std.foundation/uuid? :not-a-uuid)])
    :expected [true false]}])
 
+^{:refer std.foundation/regexp?}
+(Test/run
+ [{:name "recognizes compiled regular expressions"
+   :test (fn [] [(std.foundation/regexp? (std.foundation/regexp "x"))
+                 (std.foundation/regexp? "x")])
+   :expected [true false]}])
+
 ^{:refer std.foundation/str}
 (Test/run
  [{:name "concatenates multiple values without recursive allocation"
@@ -249,9 +256,10 @@
 
 ^{:refer std.foundation/resolve}
 (Test/run
- [{:name "does not load an unresolved symbol"
-   :test (fn [] (std.foundation/resolve 'missing/value))
-   :expected nil}])
+ [{:name "returns only Vars already present in the registry"
+   :test (fn [] [(boolean (std.foundation/resolve 'std.foundation/resolve))
+                 (std.foundation/resolve 'missing/value)])
+   :expected [true nil]}])
 
 ^{:refer std.foundation/env-resolve}
 (Test/run

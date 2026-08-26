@@ -38,7 +38,11 @@
    :expected []}
   {:name "gets all the delimiters in the file #7"
    :test (fn [] (parse/parse-delimiters "\"(\n)\" "))
-   :expected []}]
+   :expected []}
+  {:name "keeps delimiters when the input contains the token marker"
+   :test (fn [] (parse/parse-delimiters "\u0001(a\u0001)"))
+   :expected [{:char "(" :col 2 :line 1 :style :paren :type :open}
+              {:char ")" :col 5 :line 1 :style :paren :type :close}]}]
  migration-test-check)
 
 ^{:refer std.block.heal.parse/pair-delimiters :added "4.0"}

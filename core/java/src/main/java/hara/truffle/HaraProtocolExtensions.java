@@ -9,12 +9,12 @@ import hara.lang.data.types.IVectorType;
 import hara.lang.data.Keyword;
 import hara.lang.data.List;
 import hara.lang.data.Symbol;
+import hara.lang.data.HaraCharacter;
 import hara.lang.data.TaggedLiteral;
 import hara.lang.data.Tuple;
 import hara.lang.protocol.*;
 import hara.lang.declaration.HaraProtocolExtension;
 import hara.lang.declaration.HaraProtocolTarget;
-import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -52,12 +52,6 @@ final class HaraProtocolExtensions {
   }
 
   @HaraProtocolExtension(
-      protocol = IStringLike.class, method = "to-string", receiver = String.class)
-  static Object stringToString(Object receiver, Object[] arguments) {
-    return receiver;
-  }
-
-  @HaraProtocolExtension(
       protocol = IDisplay.class, method = "display", target = HaraProtocolTarget.STRING)
   static Object displayString(Object receiver, Object[] arguments) {
     return hara.lang.base.G.display((String) receiver);
@@ -66,7 +60,7 @@ final class HaraProtocolExtensions {
   @HaraProtocolExtension(
       protocol = IDisplay.class, method = "display", target = HaraProtocolTarget.CHARACTER)
   static Object displayCharacter(Object receiver, Object[] arguments) {
-    return hara.lang.base.G.displayCharacter((Character) receiver);
+    return hara.lang.base.G.displayCharacter(receiver);
   }
 
   @HaraProtocolExtension(
@@ -79,24 +73,6 @@ final class HaraProtocolExtensions {
       protocol = IDisplay.class, method = "display", target = HaraProtocolTarget.FOREIGN)
   static Object displayForeign(Object receiver, Object[] arguments) {
     return hara.lang.base.G.display(receiver);
-  }
-
-  @HaraProtocolExtension(
-      protocol = IStringLike.class, method = "from-string", receiver = String.class)
-  static Object stringFromString(Object receiver, Object[] arguments) {
-    return String.valueOf(arguments[0]);
-  }
-
-  @HaraProtocolExtension(
-      protocol = IStringLike.class, method = "to-string", receiver = byte[].class)
-  static Object bytesToString(Object receiver, Object[] arguments) {
-    return new String((byte[]) receiver, StandardCharsets.UTF_8);
-  }
-
-  @HaraProtocolExtension(
-      protocol = IStringLike.class, method = "from-string", receiver = byte[].class)
-  static Object bytesFromString(Object receiver, Object[] arguments) {
-    return String.valueOf(arguments[0]).getBytes(StandardCharsets.UTF_8);
   }
 
   static Object unwrapArgument(Object value) {
@@ -134,6 +110,23 @@ final class HaraProtocolExtensions {
       intrinsic = true)
   static Object lookupBytesProtocol(Object receiver, Object[] arguments) {
     return lookupBytes(receiver, arguments);
+  }
+
+  @HaraProtocolExtension(
+      protocol = ILookup.class,
+      method = "lookup",
+      receiver = String.class,
+      intrinsic = true)
+  static Object lookupStringProtocol(Object receiver, Object[] arguments) {
+    if (arguments.length < 1 || arguments.length > 2) {
+      throw new HaraException("ILookup/lookup on strings expects an index and optional default");
+    }
+    long index = HaraNumericConversions.toLong(arguments[0], "ILookup/lookup on strings");
+    String value = (String) receiver;
+    if (index < 0 || index >= value.codePointCount(0, value.length())) {
+      return arguments.length == 2 ? arguments[1] : null;
+    }
+    return HaraCharacter.of(value.codePointAt(value.offsetByCodePoints(0, Math.toIntExact(index))));
   }
 
   @HaraProtocolExtension(
@@ -361,7 +354,7 @@ final class HaraProtocolExtensions {
             ? "visit-boolean"
             : receiver instanceof Number
                 ? "visit-number"
-                : receiver instanceof Character
+                : receiver instanceof HaraCharacter || receiver instanceof Character
                     ? "visit-character"
                     : receiver instanceof String
                         ? "visit-string"
@@ -419,7 +412,17 @@ final class HaraProtocolExtensions {
 
   @HaraProtocolExtension(protocol = IIter.class, method = "iter", receiver = String.class)
   static Object iterString(Object receiver, Object[] arguments) {
-    return hara.lang.base.Iter.chars(((String) receiver).toCharArray());
+    return hara.lang.base.Iter.codePoints((String) receiver);
+  }
+
+  @HaraProtocolExtension(protocol = INth.class, method = "nth", receiver = String.class)
+  static Object nthString(Object receiver, Object[] arguments) {
+    long index = HaraNumericConversions.toLong(arguments[0], "INth/nth");
+    String value = (String) receiver;
+    if (index < 0 || index >= value.codePointCount(0, value.length())) {
+      throw new HaraException("nth index out of bounds: " + index);
+    }
+    return HaraCharacter.of(value.codePointAt(value.offsetByCodePoints(0, Math.toIntExact(index))));
   }
 
   @HaraProtocolExtension(protocol = IIter.class, method = "iter", receiver = java.util.Map.class)
@@ -538,7 +541,7 @@ final class HaraProtocolExtensions {
     }
     Iterator<?> iterator =
         receiver instanceof String
-            ? hara.lang.base.Iter.chars(((String) receiver).toCharArray())
+            ? hara.lang.base.Iter.codePoints((String) receiver)
             : hara.lang.base.Iter.iter(receiver);
     try {
       Object accumulator;

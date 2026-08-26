@@ -132,10 +132,7 @@
   [value]
   (let [value (str (or value ""))
         escaped (str/replace value "\"" "\"\"")]
-    (if (or (str/includes? value ",")
-            (str/includes? value "\"")
-            (str/includes? value "\n")
-            (str/includes? value "\r"))
+    (if (str/includes-any? value #{\, \" \newline \return})
       (str "\"" escaped "\"")
       value)))
 

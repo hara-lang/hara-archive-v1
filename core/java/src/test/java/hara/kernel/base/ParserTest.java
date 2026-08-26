@@ -65,9 +65,9 @@ public class ParserTest {
 
   @Test
   public void testReadStringChar() {
-    assertEquals('a', Parser.LispReader.readString("\\a", null));
-    assertEquals('\n', Parser.LispReader.readString("\\newline", null));
-    assertEquals(' ', Parser.LispReader.readString("\\space", null));
+    assertEquals(HaraCharacter.of('a'), Parser.LispReader.readString("\\a", null));
+    assertEquals(HaraCharacter.of('\n'), Parser.LispReader.readString("\\newline", null));
+    assertEquals(HaraCharacter.of(' '), Parser.LispReader.readString("\\space", null));
   }
 
   @Test

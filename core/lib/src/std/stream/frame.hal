@@ -1,5 +1,7 @@
 (ns std.stream.frame)
 
+(def +line-breaks+ #{\newline \return})
+
 (defprotocol IFrameCodec
   (initial-state [codec])
   (encode-frame [codec value])
@@ -40,7 +42,7 @@
     (let [encoded ((:encode-value codec) value)]
       (if (not (string? encoded))
         (throw (ex :io {:value encoded} :ex/message "Frame encoder must return a string")))
-      (if (or (str/includes? encoded "\n") (str/includes? encoded "\r"))
+      (if (str/includes-any? encoded +line-breaks+)
         (throw (ex :io {:value encoded} :ex/message "Line frame contains a newline")))
       (let [payload (str/encode-utf8 encoded)]
         (if (> (bytes/count payload) (:max-frame-bytes codec))

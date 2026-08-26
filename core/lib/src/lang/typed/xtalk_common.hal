@@ -78,7 +78,7 @@
     :else
     (throw (ex :argument {:field field} :ex/message "Invalid record field key"))))
 
-(def +uppercase-letters+ "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+(def +uppercase-letters+ (set "ABCDEFGHIJKLMNOPQRSTUVWXYZ"))
 
 (defn likely-type-symbol?
   [sym]
@@ -86,8 +86,7 @@
     (boolean
      (or (namespace sym)
          (and (< 0 (str/length name-str))
-              (str/includes? +uppercase-letters+
-                                (str/to-string (str/char-at name-str 0))))))))
+              (has? +uppercase-letters+ (str/char-at name-str 0)))))))
 
 (defn resolve-type-symbol
   [sym {:keys [ns aliases]}]

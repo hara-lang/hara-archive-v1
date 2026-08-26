@@ -195,7 +195,11 @@ public class SandboxSubstrateTest {
                   + "(nil? (resolve 'File)) (nil? (resolve 'Socket)) "
                   + "(nil? (resolve 'Process)) (nil? (resolve 'OS)) "
                   + "(nil? (resolve 'Package)) (nil? (resolve 'Host)) "
+                  + "(nil? (resolve 'Runtime/resolve)) "
                   + "(nil? (resolve 'std.native.Runtime/current)) "
+                  + "(nil? (resolve 'std.native.Runtime/resolve)) "
+                  + "(nil? (resolve 'Host/call)) (nil? (resolve 'File/read)) "
+                  + "(nil? (Base/resolve 'std.native.Runtime/resolve)) "
                   + "(nil? (resolve 'std.native.Kernel))])"));
       assertEquals(null, eval(kernel, sandbox, "(the-ns 'std.native.Kernel)"));
       assertEquals(false, eval(kernel, sandbox, "(ns-loaded? 'std.native.Runtime)"));

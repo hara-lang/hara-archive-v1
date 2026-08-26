@@ -221,6 +221,15 @@ impl Runtime {
             })?;
             self.loaded_resources.insert(name.into());
         }
+        // Foundation and its eager dependencies have been evaluated above.
+        // Keep the registry's load state in sync with the runtime resource
+        // state so env-namespace reports the actual bootstrap status.
+        self.namespace_registry
+            .set_load_state("std.foundation", kernel::NamespaceLoadState::Loaded);
+        for &name in EAGER_HAL_RESOURCES {
+            self.namespace_registry
+                .set_load_state(name, kernel::NamespaceLoadState::Loaded);
+        }
         self.use_namespace("std.foundation");
         core::apply_global_aliases(&self.namespace_registry, "user");
         self.use_namespace("user");

@@ -1929,6 +1929,12 @@ mod tests {
         );
         assert_eq!(
             runtime
+                .eval_text("[(boolean (Base/resolve 'std.foundation/resolve)) (Base/resolve 'demo.required/answer)]")
+                .unwrap(),
+            "[true nil]"
+        );
+        assert_eq!(
+            runtime
                 .eval_text(
                     "(ns gate.resolve (:require [demo.required :as required])) required/answer"
                 )

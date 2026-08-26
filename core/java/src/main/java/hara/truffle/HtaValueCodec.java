@@ -2,6 +2,7 @@ package hara.truffle;
 
 import hara.lang.data.Keyword;
 import hara.lang.data.Symbol;
+import hara.lang.data.HaraCharacter;
 import hara.lang.base.NumUtils;
 import hara.lang.protocol.ILinearType;
 import hara.lang.protocol.IMapType;
@@ -106,6 +107,9 @@ public final class HtaValueCodec {
       HaraNumericConversions.requireFinite(((Number) value).doubleValue());
       output.write(F64);
       writeLong(output, Double.doubleToRawLongBits(((Number) value).doubleValue()));
+    } else if (value instanceof HaraCharacter character) {
+      output.write(CHARACTER);
+      writeInt(output, character.codePoint());
     } else if (value instanceof Character) {
       output.write(CHARACTER);
       writeInt(output, (Character) value);
@@ -380,9 +384,7 @@ public final class HtaValueCodec {
               || (codePoint >= Character.MIN_SURROGATE && codePoint <= Character.MAX_SURROGATE)) {
             throw malformed("invalid character scalar");
           }
-          return Character.isBmpCodePoint(codePoint)
-              ? Character.valueOf((char) codePoint)
-              : new String(Character.toChars(codePoint));
+          return HaraCharacter.of(codePoint);
         case BIG_INTEGER:
           return NumUtils.normalizeInteger(new BigInteger(text()));
         case REGEX:

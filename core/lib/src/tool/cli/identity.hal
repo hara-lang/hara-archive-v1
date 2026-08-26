@@ -33,8 +33,10 @@
 (defn option [request name]
   (get (:request/options request) name))
 
+(def +hex-characters+ (set "0123456789abcdef"))
+
 (defn hex-character? [value]
-  (str/includes? "0123456789abcdef" (str/to-string value)))
+  (has? +hex-characters+ value))
 
 (defn valid-hex? [value bytes]
   (and (string? value)

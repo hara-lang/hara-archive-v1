@@ -1,6 +1,7 @@
 package hara.lang.base;
 
 import hara.lang.base.primitive.Array;
+import hara.lang.data.HaraCharacter;
 import hara.lang.protocol.Constant;
 import hara.lang.protocol.IDisplay;
 import hara.lang.protocol.IHash;
@@ -61,6 +62,10 @@ public interface G {
   }
 
   public static String displayCharacter(Character value) {
+    return displayCharacter((int) value.charValue());
+  }
+
+  public static String displayCharacter(int value) {
     switch (value) {
       case '\n':
         return "\\newline";
@@ -75,8 +80,16 @@ public interface G {
       case '\r':
         return "\\return";
       default:
-        return Character.isISOControl(value) ? String.format("\\u%04X", (int) value) : "\\" + value;
+        return Character.isISOControl(value)
+            ? String.format("\\u%04X", value)
+            : "\\" + new String(Character.toChars(value));
     }
+  }
+
+  public static String displayCharacter(Object value) {
+    if (value instanceof HaraCharacter character) return displayCharacter(character.codePoint());
+    if (value instanceof Character character) return displayCharacter(character);
+    throw new IllegalArgumentException("expected a character");
   }
 
 

@@ -54,7 +54,9 @@ public class HtaValueCodecTest {
     assertArrayEquals(
         new byte[] {'H', 'T', 'A', '0', 19, 0, 0, 3, (byte) 0xbb},
         HtaValueCodec.encode('λ'));
-    assertEquals(Character.valueOf('λ'), HtaValueCodec.decode(HtaValueCodec.encode('λ')));
+    assertEquals(
+        hara.lang.data.HaraCharacter.of('λ'),
+        HtaValueCodec.decode(HtaValueCodec.encode(hara.lang.data.HaraCharacter.of('λ'))));
 
     assertArrayEquals(
         new byte[] {'H', 'T', 'A', '0', 22, 0, 0, 0, 2, 'a', '+'},

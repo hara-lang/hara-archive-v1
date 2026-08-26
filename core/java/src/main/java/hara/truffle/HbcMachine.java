@@ -947,9 +947,7 @@ public final class HbcMachine {
       case RESERVED_DECIMAL -> throw new HbcFormatException("reserved decimal metadata in bytecode");
       case CHARACTER -> {
         int codePoint = ((Number) value).intValue();
-        yield Character.isBmpCodePoint(codePoint)
-            ? Character.valueOf((char) codePoint)
-            : new String(Character.toChars(codePoint));
+        yield hara.lang.data.HaraCharacter.of(codePoint);
       }
       case TAGGED -> {
         HbcProgram.TaggedMetadata tagged = (HbcProgram.TaggedMetadata) value;

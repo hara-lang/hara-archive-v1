@@ -22,6 +22,7 @@ import hara.lang.base.iter.CloseableIterator;
 import hara.lang.data.Symbol;
 import hara.lang.data.List;
 import hara.lang.data.Keyword;
+import hara.lang.data.HaraCharacter;
 import hara.lang.protocol.IMapType;
 import hara.lang.protocol.ILinearType;
 import hara.lang.protocol.Constant;
@@ -685,6 +686,11 @@ public final class HaraContext {
         "apply",
         new VariadicBuiltin("std.native.Base/apply", this::applyFunction));
     base.define(
+        "resolve",
+        new UnaryBuiltin(
+            "std.native.Base/resolve",
+            value -> resolveAvailableValue(value, "std.native.Base/resolve")));
+    base.define(
         "special-symbol?",
         new UnaryBuiltin(
             "std.native.Base/special-symbol?",
@@ -807,11 +813,53 @@ public final class HaraContext {
   }
 
   private Object environmentResolve(Object value) {
+    return resolveAvailableValue(value, "std.native.Runtime/resolve");
+  }
+
+  private Object resolveAvailableValue(Object value, String operation) {
     Object raw = HaraBox.unwrap(value);
-    if (!(raw instanceof Symbol symbol)) throw new HaraException("std.native.Runtime/resolve expects a symbol");
-    String owner = symbol.getNamespace();
-    HaraNamespace target = owner == null ? currentNamespace : namespaces.get(owner);
-    return target == null ? null : target.lookup(symbol.getName());
+    if (!(raw instanceof Symbol symbol)) {
+      throw new HaraException(operation + " expects a symbol");
+    }
+    return resolveAvailable(symbol);
+  }
+
+  /** Resolves only Vars already materialized in the registry; this never invokes the loader. */
+  @TruffleBoundary
+  private HaraVar resolveAvailable(Symbol symbol) {
+    if (sandboxRestricted && sandboxForbidden(symbol)) return null;
+    String namespaceName = symbol.getNamespace();
+    if (namespaceName != null) {
+      if ("-".equals(namespaceName)) namespaceName = currentNamespace.name();
+      namespaceName =
+          aliases
+              .getOrDefault(currentNamespace.name(), Map.of())
+              .getOrDefault(namespaceName, namespaceName);
+      if (sandboxRestricted && sandboxForbiddenNamespace(namespaceName)) return null;
+      HaraNamespace target = namespaces.get(namespaceName);
+      return target == null ? null : target.lookup(symbol.getName());
+    }
+    HaraVar variable = currentNamespace.lookup(symbol.getName());
+    if (variable == null) {
+      String canonical = globalImports.get(symbol.getName());
+      if (canonical != null && !canonical.equals(symbol.display())) {
+        variable = resolveAvailable(Symbol.create(canonical));
+      }
+    }
+    if (variable == null && symbol.getName().startsWith(PROTOCOL_NAMESPACE_PREFIX)) {
+      HaraNamespace protocolNamespace = namespaces.get(symbol.getName());
+      if (protocolNamespace != null) {
+        String protocolName =
+            symbol.getName().substring(symbol.getName().lastIndexOf('.') + 1);
+        variable = protocolNamespace.lookup(protocolName);
+      }
+    }
+    if (variable != null
+        && sandboxRestricted
+        && sandboxForbiddenNamespace(variable.namespaceName())) {
+      return null;
+    }
+    return variable;
   }
 
   private void registerBuiltin(
@@ -2911,7 +2959,7 @@ public final class HaraContext {
               if (!(raw instanceof Symbol symbol)) {
                 throw new HaraException("resolve expects a symbol");
               }
-              return resolve(symbol);
+              return resolveAvailable(symbol);
             }));
     target.define(
         "current-namespace",
@@ -3168,6 +3216,9 @@ public final class HaraContext {
   }
 
   private static String displayText(Object unwrapped) {
+    if (unwrapped instanceof HaraCharacter character) {
+      return character.text();
+    }
     if (unwrapped instanceof Number) {
       return G.display(unwrapped);
     }
@@ -3436,7 +3487,7 @@ public final class HaraContext {
     else if (raw instanceof HaraBigInteger || raw instanceof java.math.BigInteger) type = "Integer";
     else if (raw instanceof Byte || raw instanceof Short || raw instanceof Integer || raw instanceof Long) type = "Integer";
     else if (raw instanceof Float || raw instanceof Double) type = "Float";
-    else if (raw instanceof Character) type = "Character";
+    else if (raw instanceof HaraCharacter || raw instanceof Character) type = "Character";
     else if (raw instanceof java.util.UUID) type = "UUID";
     else if (raw instanceof java.util.regex.Pattern) type = "RegExp";
     else if (raw instanceof hara.lang.data.TaggedLiteral)
@@ -4671,6 +4722,7 @@ public final class HaraContext {
         || input instanceof Boolean
         || input instanceof String
         || input instanceof Number
+        || input instanceof HaraCharacter
         || input instanceof Character
         || input instanceof Keyword
         || input instanceof Symbol) return true;
@@ -5338,7 +5390,7 @@ public final class HaraContext {
     }
     int charIndex = input.offsetByCodePoints(0, index);
     int codePoint = input.codePointAt(charIndex);
-    return new String(Character.toChars(codePoint));
+    return HaraCharacter.of(codePoint);
   }
 
   private Object stringSplit(Object[] values) {
@@ -5402,7 +5454,16 @@ public final class HaraContext {
     StringBuilder output = new StringBuilder();
     while (iterator.hasNext()) {
       if (output.length() > 0) output.append(separator);
-      output.append(stringValue(iterator.next(), "str/join"));
+      Object item = HaraBox.unwrap(iterator.next());
+      if (item instanceof String text) {
+        output.append(text);
+      } else if (item instanceof HaraCharacter character) {
+        output.append(character.text());
+      } else if (item instanceof Character character) {
+        output.append(character);
+      } else {
+        throw new HaraException("str/join expects a collection of strings or characters");
+      }
     }
     return output.toString();
   }
@@ -6564,6 +6625,12 @@ public final class HaraContext {
     if (Eq.eq(left, right)) return 0;
     if (left instanceof Number a && right instanceof Number b) return Num.compare(a, b);
     if (left instanceof String a && right instanceof String b) return a.compareTo(b);
+    if (left instanceof HaraCharacter a && right instanceof HaraCharacter b)
+      return a.compareTo(b);
+    if (left instanceof HaraCharacter a && right instanceof Character b)
+      return Integer.compare(a.codePoint(), b.charValue());
+    if (left instanceof Character a && right instanceof HaraCharacter b)
+      return Integer.compare(a.charValue(), b.codePoint());
     if (left instanceof Character a && right instanceof Character b) return a.compareTo(b);
     if (left instanceof Keyword a && right instanceof Keyword b) return a.compareTo(b);
     if (left instanceof Symbol a && right instanceof Symbol b) {
@@ -7341,7 +7408,7 @@ public final class HaraContext {
     Object target = HaraBox.unwrap(value);
     if (target == null || target == HaraNull.SINGLETON) return Iter.emptyIterator();
     if (target instanceof Iterator<?>) return target;
-    if (target instanceof String) return Iter.chars(((String) target).toCharArray());
+    if (target instanceof String) return Iter.codePoints((String) target);
     try {
       Iterator<?> source = Iter.iter(target);
       return new CloseableIterator<Object>() {

@@ -2,6 +2,7 @@ package hara.lang.base;
 
 import hara.lang.base.iter.*;
 import hara.lang.base.primitive.Array;
+import hara.lang.data.HaraCharacter;
 import hara.lang.data.Tuple;
 import hara.lang.protocol.IPair;
 import hara.lang.protocol.IToMutable;
@@ -80,6 +81,10 @@ public interface Iter {
 
   public static Iterator<Character> chars(char... arr) {
     return new CharArrayIterator(arr, 0);
+  }
+
+  public static Iterator<HaraCharacter> codePoints(String value) {
+    return new CodePointIterator(value);
   }
 
   public static Iterator<Short> shorts(short... arr) {

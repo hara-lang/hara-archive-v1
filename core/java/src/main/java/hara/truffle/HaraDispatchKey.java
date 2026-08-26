@@ -1,6 +1,7 @@
 package hara.truffle;
 
 import com.oracle.truffle.api.interop.TruffleObject;
+import hara.lang.data.HaraCharacter;
 import java.util.Objects;
 
 /** Stable registration keys for the language-agnostic protocol ABI. */
@@ -81,7 +82,7 @@ public final class HaraDispatchKey {
     if (value instanceof Number) {
       return PrimitiveCategory.NUMBER;
     }
-    if (value instanceof Character) {
+    if (value instanceof HaraCharacter || value instanceof Character) {
       return PrimitiveCategory.CHARACTER;
     }
     if (value instanceof CharSequence) {
