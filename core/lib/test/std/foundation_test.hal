@@ -411,7 +411,14 @@
              (swap! retained-value inc)
              (std.foundation/defonce retained-value (atom 99))
              (deref retained-value)))
-   :expected 2}])
+   :expected 2}
+  {:name "expands through the non-loading Base resolver"
+   :test (fn []
+           (std.foundation/macroexpand-1
+            '(std.foundation/defonce expanded-value 42)))
+   :expected '(if (Base/resolve (quote std.foundation-test/expanded-value))
+                  (Base/resolve (quote std.foundation-test/expanded-value))
+                  (Runtime/eval (quote (def expanded-value 42))))}])
 
 ^{:refer std.foundation/meta}
 (Test/run

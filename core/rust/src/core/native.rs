@@ -1744,20 +1744,6 @@ fn native_runtime_values(
                 }),
             ))))
         }
-        "resolve" => {
-            if values.len() != 1 {
-                return Err("std.native.Runtime/resolve expects one symbol".into());
-            }
-            let Value::Symbol(symbol) = &values[0] else {
-                return Err("std.native.Runtime/resolve expects a symbol".into());
-            };
-            // Deliberately bypass force_lazy_alias: Runtime inspection must never
-            // load source or invoke a package provider.
-            Ok(registry
-                .resolve(symbol)
-                .map(Value::Var)
-                .unwrap_or(Value::Nil))
-        }
         "eval" => {
             if values.len() != 1 {
                 return Err("std.native.Runtime/eval expects one form".into());

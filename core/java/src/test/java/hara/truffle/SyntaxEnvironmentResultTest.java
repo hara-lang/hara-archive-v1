@@ -26,7 +26,7 @@ public class SyntaxEnvironmentResultTest {
   public void nativeRuntimeAndFoundationEnvironmentContractsAreAvailable() {
     try (Context context = Context.newBuilder(HaraLanguage.ID).build()) {
       assertEquals(
-          "[user 42 42 42 true :loaded nil nil true :success nil]",
+          "[user 42 42 42 true :loaded nil nil nil true :success nil]",
           context
               .eval(
                   HaraLanguage.ID,
@@ -38,6 +38,7 @@ public class SyntaxEnvironmentResultTest {
                       + "(get (Runtime/namespace 'std.native.Runtime) :namespace/state) "
                       + "(Runtime/namespace 'std.native.Env) "
                       + "(std.foundation/resolve 'std.native.Env/current) "
+                      + "(std.foundation/resolve 'std.native.Runtime/resolve) "
                       + "(result? (Result/create :success 1)) "
                       + "(Result/status (Result/create :success 1)) "
                       + "(Result/context (Result/create :success 1))]")

@@ -472,11 +472,11 @@ mod tests {
             runtime
                 .eval_text("(macroexpand-1 '(defonce retained-state (atom 1)))")
                 .unwrap(),
-            "(if (Runtime/resolve (quote user/retained-state)) (Runtime/resolve (quote user/retained-state)) (Runtime/eval (quote (def retained-state (atom 1)))))"
+            "(if (Base/resolve (quote user/retained-state)) (Base/resolve (quote user/retained-state)) (Runtime/eval (quote (def retained-state (atom 1)))))"
         );
         assert_eq!(
             runtime
-                .eval_text("(do (eval '(def eval-defined 1)) [(Runtime/resolve 'user/eval-defined) eval-defined])")
+                .eval_text("(do (eval '(def eval-defined 1)) [(Base/resolve 'user/eval-defined) eval-defined])")
                 .unwrap(),
             "[#'user/eval-defined 1]"
         );
@@ -4991,6 +4991,22 @@ mod tests {
                 "std.native.Base/{name} must remain runtime-owned"
             );
         }
+        let runtime_namespace = runtime
+            .namespace_registry
+            .find("std.native.Runtime")
+            .unwrap();
+        assert!(base
+            .resolve(&crate::lang::data::Symbol::parse("resolve"))
+            .is_some());
+        assert!(base
+            .resolve(&crate::lang::data::Symbol::parse("eval"))
+            .is_none());
+        assert!(runtime_namespace
+            .resolve(&crate::lang::data::Symbol::parse("resolve"))
+            .is_none());
+        assert!(runtime_namespace
+            .resolve(&crate::lang::data::Symbol::parse("eval"))
+            .is_some());
     }
 
     #[test]
@@ -5120,7 +5136,7 @@ mod tests {
         runtime.alias_namespace("lib", "example.lib");
         assert_eq!(
             runtime
-                .eval_text("(deref (Runtime/resolve 'lib/answer))")
+                .eval_text("(deref (Base/resolve 'lib/answer))")
                 .unwrap(),
             "42"
         );
@@ -8078,13 +8094,13 @@ mod tests {
         assert!(kernel.eval(&beta, "local-answer").is_err());
         assert_eq!(
             kernel
-                .eval(&alpha, "(boolean (Runtime/resolve 'user/local-answer))")
+                .eval(&alpha, "(boolean (Base/resolve 'user/local-answer))")
                 .unwrap(),
             "true"
         );
         assert_eq!(
             kernel
-                .eval(&beta, "(boolean (Runtime/resolve 'user/local-answer))")
+                .eval(&beta, "(boolean (Base/resolve 'user/local-answer))")
                 .unwrap(),
             "false"
         );
