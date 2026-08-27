@@ -341,6 +341,14 @@ fn write_instruction(out: &mut Writer, instruction: &Instruction) {
             out.byte(38);
             out.u32(*index);
         }
+        NamespaceValue(index) => {
+            out.byte(53);
+            out.u32(*index);
+        }
+        NamespaceOperation(index) => {
+            out.byte(54);
+            out.u32(*index);
+        }
         DynamicBind(index) => {
             out.byte(39);
             out.u32(*index);
@@ -376,7 +384,11 @@ fn read_instruction(reader: &mut Reader<'_>) -> Result<Instruction, String> {
         4 => Instruction::LoadLocal(reader.u16()?),
         5 => Instruction::StoreLocal(reader.u16()?),
         6 => Instruction::Pop,
-        7 => return Err("bytecode artifact uses retired Primitive opcode 7; rebuild required".into()),
+        7 => {
+            return Err(
+                "bytecode artifact uses retired Primitive opcode 7; rebuild required".into(),
+            )
+        }
         8 => Instruction::Jump(reader.u32()?),
         9 => Instruction::JumpIfFalse(reader.u32()?),
         10 => Instruction::Closure {
@@ -415,7 +427,12 @@ fn read_instruction(reader: &mut Reader<'_>) -> Result<Instruction, String> {
             count: reader.byte()?,
         },
         24 => Instruction::Return,
-        25 => return Err("bytecode artifact uses retired PrimitiveLocalConst opcode 25; rebuild required".into()),
+        25 => {
+            return Err(
+                "bytecode artifact uses retired PrimitiveLocalConst opcode 25; rebuild required"
+                    .into(),
+            )
+        }
         26 => Instruction::Await,
         27 => Instruction::HostCall,
         28 => Instruction::Dup,
@@ -429,7 +446,11 @@ fn read_instruction(reader: &mut Reader<'_>) -> Result<Instruction, String> {
         33 => Instruction::BuildList(reader.u16()?),
         34 => Instruction::ConcatList(reader.u16()?),
         35 => Instruction::ToVector,
-        37 => return Err("bytecode artifact uses retired PrimitiveValue opcode 37; rebuild required".into()),
+        37 => {
+            return Err(
+                "bytecode artifact uses retired PrimitiveValue opcode 37; rebuild required".into(),
+            )
+        }
         38 => Instruction::BuiltinValue(reader.u32()?),
         39 => Instruction::DynamicBind(reader.u32()?),
         40 => Instruction::DynamicUnbind(reader.u32()?),
@@ -457,6 +478,8 @@ fn read_instruction(reader: &mut Reader<'_>) -> Result<Instruction, String> {
             target: reader.u32()?,
             argc: reader.byte()?,
         },
+        53 => Instruction::NamespaceValue(reader.u32()?),
+        54 => Instruction::NamespaceOperation(reader.u32()?),
         _ => return Err("bytecode artifact contains an unknown opcode".into()),
     })
 }

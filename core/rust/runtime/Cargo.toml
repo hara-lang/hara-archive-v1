@@ -39,6 +39,9 @@ code-vm-conformance = ["bytecode-observation", "halc-encoder", "evaluation-journ
 raw-wasm = []
 tracing-jit = ["bytecode-vm"]
 native-jit = ["tracing-jit"]
+# Direct native execution is the opt-in VM plus native-substrate boundary.
+# Cranelift remains available only through the VM's tracing/basic-loop tier.
+direct-native = ["native-jit"]
 whole-wasm = ["bytecode-vm"]
 
 [dependencies]

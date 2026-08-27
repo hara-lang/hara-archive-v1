@@ -1,4 +1,4 @@
-use super::Options;
+use super::{ExecutionBackend, Options};
 use hara_wasm::cli_app;
 use hara_wasm::kernel::{parse, Form};
 use hara_wasm::native_cli::{install_native_kernel, RuntimeBroker};
@@ -22,6 +22,9 @@ fn run_hara(options: &Options, argv: &[String]) -> Result<(), String> {
     let cwd = std::env::current_dir().map_err(|error| format!("cannot read cwd: {error}"))?;
     let root = capability_root(options, &cwd);
     let mut runtime = Runtime::new();
+    runtime
+        .set_execution_backend(options.backend.runtime_name())
+        .map_err(|_| backend_error(options.backend))?;
     runtime.install_native_file_provider(root.to_string_lossy().as_ref());
     for path in [options.lite_project.as_deref(), options.project.as_deref()]
         .into_iter()
@@ -41,11 +44,12 @@ fn run_hara(options: &Options, argv: &[String]) -> Result<(), String> {
     if options.native_sockets {
         runtime.install_native_socket_provider();
     }
-    let broker = RuntimeBroker::start_with(
+    let broker = RuntimeBroker::start_with_backend(
         Some(root.clone()),
         options.native_sockets,
         process_allowed,
         options.allow_postgres,
+        options.backend.runtime_name(),
     )?;
     for path in [options.lite_project.as_deref(), options.project.as_deref()]
         .into_iter()
@@ -78,9 +82,22 @@ fn run_hara(options: &Options, argv: &[String]) -> Result<(), String> {
         project,
         capabilities,
     );
-    match runtime.eval_native_traced(&source) {
+    let result = match options.backend {
+        ExecutionBackend::Native => runtime.eval_native(&source),
+        ExecutionBackend::Interpreter => runtime.eval_native_traced(&source),
+    };
+    match result {
         Ok(rendered) => render_result(&rendered, options),
         Err(error) => render_runtime_error(&error),
+    }
+}
+
+fn backend_error(backend: ExecutionBackend) -> String {
+    match backend {
+        ExecutionBackend::Native => {
+            "native backend requires a native build with the direct-native feature".into()
+        }
+        ExecutionBackend::Interpreter => "cannot configure interpreter backend".into(),
     }
 }
 

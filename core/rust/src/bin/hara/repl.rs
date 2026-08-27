@@ -124,11 +124,12 @@ fn register_project_resources(options: &Options, broker: &RuntimeBroker) -> Resu
 }
 
 pub(crate) fn run_repl(options: &Options, offline: bool) -> Result<(), String> {
-    let broker = RuntimeBroker::start_with(
+    let broker = RuntimeBroker::start_with_backend(
         options.root.clone().or_else(|| options.project.clone()),
         options.native_sockets,
         options.allow_process,
         options.allow_postgres,
+        options.backend.runtime_name(),
     )?;
     register_project_resources(options, &broker)?;
     let mut resp = RespController::new(options.host.clone(), options.port, broker.clone());

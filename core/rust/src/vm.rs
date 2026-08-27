@@ -143,8 +143,10 @@ pub use bundle::{
     BytecodeBundleModule, ModuleSource,
 };
 pub use compiler::{
-    compile_halc_module, compile_source, compile_source_with, compile_source_with_config,
-    source_namespace_config,
+    compile_halc_module, compile_source, compile_source_with,
+    compile_source_with_allow_unbound_globals, compile_source_with_config,
+    compile_source_with_config_allow_unbound_globals, source_namespace_config,
+    source_uses_dynamic_evaluation,
 };
 pub use disassemble::disassemble;
 pub use error::{CompileError, CompileErrorKind, ValidationError, VmError};

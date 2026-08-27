@@ -27,6 +27,20 @@ fn printer_write(text: &str) -> Result<(), String> {
 #[inline(never)]
 pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, String> {
     check_evaluation_interrupt()?;
+    #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+    if direct_native_execution() {
+        let location = current_exception_site().map_or_else(String::new, |site| {
+            format!(
+                " at {}:{}:{}",
+                site.namespace.as_deref().unwrap_or("<source>"),
+                site.line,
+                site.column
+            )
+        });
+        return Err(format!(
+            "direct-native cannot enter the tree evaluator{location}"
+        ));
+    }
     match form {
         Form::Number(v) => Ok(Value::Number(*v)),
         Form::String(v) => Ok(Value::String(v.clone())),
@@ -432,6 +446,13 @@ pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, Stri
                             let (selector, binding_index, body_index) = match parts.as_slice() {
                                 [_, Form::Symbol(name), _]
                                     if name != "Exception" && name != "Throwable" =>
+                                {
+                                    ("Exception".to_owned(), 1, 2)
+                                }
+                                [_, Form::Symbol(name), body, ..]
+                                    if name != "Exception"
+                                        && name != "Throwable"
+                                        && !matches!(body, Form::Symbol(_)) =>
                                 {
                                     ("Exception".to_owned(), 1, 2)
                                 }

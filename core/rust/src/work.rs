@@ -17,8 +17,10 @@ pub use types::{WorkHostStatus, WorkId, WorkOptions, WorkRunState, WorkRunStatus
 
 use scope::{
     cancellation_rejection, deadline_remaining_millis, install_progress_hooks, next_work_id,
-    now_millis, resolve_deadline, with_current_work_context, work_failure,
+    now_millis, resolve_deadline, work_failure,
 };
+
+pub(crate) use scope::with_current_work_context;
 
 type WorkTask = Box<dyn FnOnce(WorkContext) -> Result<Value, PromiseRejection>>;
 type WorkFinalizer = Box<dyn FnOnce(WorkContext) -> Result<(), PromiseRejection>>;

@@ -51,7 +51,12 @@ crate-type = ["cdylib", "rlib"]
 # The shared instrumentation hub is always present. The default native runtime
 # also compiles the copy-only HBC probe seam; ordinary Machine::run still takes
 # the unchanged no-probe path and performs no event or projection work.
-default = ["bytecode-vm", "bytecode-instrumentation", "browser-wasm"]
+default = [
+  "bytecode-vm",
+  "bytecode-instrumentation",
+  "browser-wasm",
+  "direct-native",
+]
 evaluation-journal = ["hara-runtime/evaluation-journal"]
 dev-trace = ["hara-runtime/dev-trace"]
 halc-encoder = ["hara-runtime/halc-encoder"]
@@ -64,6 +69,7 @@ raw-wasm = ["hara-runtime/raw-wasm"]
 browser-wasm = ["hara-runtime/browser-wasm"]
 tracing-jit = ["hara-runtime/tracing-jit"]
 native-jit = ["hara-runtime/native-jit"]
+direct-native = ["hara-runtime/direct-native"]
 whole-wasm = ["hara-runtime/whole-wasm"]
 # Structured Evaluation Journal. Keep this opt-in so embedded and production
 # builds do not carry collectors or journal storage.

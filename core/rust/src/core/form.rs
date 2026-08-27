@@ -685,6 +685,10 @@ fn multi_arity_function(
 pub(crate) fn arity_dispatcher(name: &str, functions: Vec<Rc<Function>>, is_macro: bool) -> Value {
     let dispatch_name = name.to_owned();
     let clauses = functions.clone();
+    #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+    let fiber_functions = functions.clone();
+    #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+    let fiber_dispatch_name = dispatch_name.clone();
     Value::Function(Rc::new(Function {
         params: Vec::new(),
         variadic: Some("arguments".into()),
@@ -704,6 +708,25 @@ pub(crate) fn arity_dispatcher(name: &str, functions: Vec<Rc<Function>>, is_macr
             })?;
             call_function(&function, arguments)
         })),
+        #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+        fiber_native: Some(Rc::new(move |arguments, continuation| {
+            let function = select_clause(&fiber_functions, arguments.len()).ok_or_else(|| {
+                format!(
+                    "{fiber_dispatch_name} has no arity accepting {} arguments",
+                    arguments.len()
+                )
+            });
+            match function {
+                Ok(function) => crate::core::call_direct_native_fiber(
+                    Value::Function(function),
+                    arguments,
+                    continuation,
+                )
+                .unwrap_or_else(|error| Step::Done(Err(error))),
+                Err(error) => Step::Done(Err(error)),
+            }
+        })),
+        #[cfg(not(all(feature = "direct-native", not(target_arch = "wasm32"))))]
         fiber_native: None,
         metadata: None,
         is_macro,
@@ -874,7 +897,112 @@ pub fn invoke_callable(callable: Value, arguments: Vec<Value>) -> Result<Value, 
     call_value(callable, arguments)
 }
 
+/// Invokes a callable without permitting an evaluator-backed Hara function to
+/// cross the direct-native boundary.
+///
+/// Native functions and structural callable values (keywords, maps, sets,
+/// pointers, and named value types) retain their ordinary semantics. A Hara
+/// function whose body still belongs to the tree evaluator is rejected rather
+/// than silently falling back to interpretation.
+#[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+pub(crate) fn call_direct_native_value(
+    callable: Value,
+    arguments: Vec<Value>,
+) -> Result<Value, String> {
+    match &callable {
+        Value::Function(function) if is_direct_native_function(function) => {
+            call_function(function, arguments)
+        }
+        Value::Function(function) => Err(format!(
+            "direct-native cannot call an evaluator-backed Hara function {}; compile the callee first",
+            function
+                .origin_symbol()
+                .map(|symbol| symbol.as_str().to_owned())
+                .unwrap_or_else(|| "<anonymous>".into())
+        )),
+        _ => call_value(callable, arguments),
+    }
+}
+
+#[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+pub(crate) fn call_direct_native_fiber(
+    callable: Value,
+    arguments: Vec<Value>,
+    continuation: Cont,
+) -> Result<Step, String> {
+    match callable {
+        Value::Function(function) if is_direct_native_function(&function) => {
+            if let Some(fiber_native) = &function.fiber_native {
+                return Ok(fiber_native(arguments, continuation));
+            }
+            Ok(Step::Done(call_direct_native_value(
+                Value::Function(function),
+                arguments,
+            )))
+        }
+        Value::Function(function) => Err(format!(
+            "direct-native cannot call an evaluator-backed Hara function {}; compile the callee first",
+            function
+                .origin_symbol()
+                .map(|symbol| symbol.as_str().to_owned())
+                .unwrap_or_else(|| "<anonymous>".into())
+        )),
+        Value::Namespace(namespace) => {
+            let run = namespace
+                .resolve(&crate::lang::data::Symbol::parse("run"))
+                .map(|var| var.deref_value())
+                .ok_or_else(|| {
+                    format!("namespace is not callable: {}", namespace.name().as_str())
+                })?;
+            call_direct_native_fiber(run, arguments, continuation)
+        }
+        value => Ok(Step::Done(call_direct_native_value(value, arguments))),
+    }
+}
+
+/// Invokes a canonical native or built-in protocol target through the direct
+/// fiber boundary. Most targets complete synchronously, but coroutine and
+/// dereference operations retain a continuation when their implementation
+/// yields or waits. Numeric intrinsic names deliberately return `None`: they
+/// are handled by the arithmetic trampoline instead of the callable registry.
+#[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+pub(crate) fn call_direct_native_intrinsic(
+    name: &str,
+    arguments: Vec<Value>,
+    continuation: Cont,
+) -> Result<Option<Step>, String> {
+    if !(name.starts_with("std.native.") || name.starts_with("std.protocol.")) {
+        return Ok(None);
+    }
+    let callable = bytecode_callable_value(name)?;
+    call_direct_native_fiber(callable, arguments, continuation).map(Some)
+}
+
+#[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+pub(crate) fn is_direct_native_function(function: &Function) -> bool {
+    // A direct-native closure also carries a fiber callback so that the
+    // portable coroutine boundary can retain and resume its native frame.
+    // The presence of `native` still distinguishes it from a tree-evaluator
+    // function; fiber-backed native primitives are likewise safe because
+    // their synchronous callback never enters the evaluator.
+    function.native.is_some()
+}
+
 pub(crate) fn call_function(function: &Function, arguments: Vec<Value>) -> Result<Value, String> {
+    #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+    if direct_native_execution() && !is_direct_native_function(function) {
+        return Err(format!(
+            "direct-native cannot call an evaluator- or fiber-backed Hara function {}; compile the callee first",
+            function
+                .origin_symbol()
+                .map(|symbol| symbol.as_str().to_owned())
+            .unwrap_or_else(|| "<anonymous>".into())
+        ));
+    }
+    #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+    if let Some(symbol) = function.origin_symbol() {
+        crate::direct_native::record_native_target(symbol.as_str());
+    }
     #[cfg(feature = "evaluation-journal")]
     let operation = evaluation_journal_enter(function, &arguments);
     if let Some(native) = &function.native {
@@ -897,12 +1025,14 @@ pub(crate) fn call_function(function: &Function, arguments: Vec<Value>) -> Resul
     let tracing = tracing_enabled();
     if tracing {
         TRACE_STACK.with(|stack| {
-            stack.borrow_mut().push(
-                function
+            stack.borrow_mut().push(TraceFrame {
+                name: function
                     .name
                     .clone()
                     .unwrap_or_else(|| "<anonymous>".into()),
-            )
+                namespace: function.namespace.clone(),
+                site: current_exception_site(),
+            })
         });
     }
     let caller_scoped_foundation = function.namespace.as_deref() == Some("std.foundation")

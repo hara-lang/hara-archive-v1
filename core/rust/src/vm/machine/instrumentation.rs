@@ -64,6 +64,8 @@ pub enum Opcode {
     DefMethod,
     IntrinsicValue,
     BuiltinValue,
+    NamespaceValue,
+    NamespaceOperation,
     DynamicBind,
     DynamicUnbind,
     Await,
@@ -75,7 +77,7 @@ pub enum Opcode {
 }
 
 impl Opcode {
-    pub const COUNT: usize = 48;
+    pub const COUNT: usize = 50;
     pub const ALL: [Self; Self::COUNT] = [
         Self::Constant,
         Self::Nil,
@@ -117,6 +119,8 @@ impl Opcode {
         Self::DefMethod,
         Self::IntrinsicValue,
         Self::BuiltinValue,
+        Self::NamespaceValue,
+        Self::NamespaceOperation,
         Self::DynamicBind,
         Self::DynamicUnbind,
         Self::Await,
@@ -173,6 +177,8 @@ impl Opcode {
             Self::DefMethod => "def-method",
             Self::IntrinsicValue => "intrinsic-value",
             Self::BuiltinValue => "builtin-value",
+            Self::NamespaceValue => "namespace-value",
+            Self::NamespaceOperation => "namespace-operation",
             Self::DynamicBind => "dynamic-bind",
             Self::DynamicUnbind => "dynamic-unbind",
             Self::Await => "await",
@@ -226,6 +232,8 @@ impl Opcode {
             Instruction::DefMethod(_) => Self::DefMethod,
             Instruction::IntrinsicValue(_) => Self::IntrinsicValue,
             Instruction::BuiltinValue(_) => Self::BuiltinValue,
+            Instruction::NamespaceValue(_) => Self::NamespaceValue,
+            Instruction::NamespaceOperation(_) => Self::NamespaceOperation,
             Instruction::DynamicBind(_) => Self::DynamicBind,
             Instruction::DynamicUnbind(_) => Self::DynamicUnbind,
             Instruction::Await => Self::Await,

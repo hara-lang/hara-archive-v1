@@ -1917,6 +1917,207 @@ mod tests {
             .contains("schema Var does not exist: MissingSchema"));
     }
 
+    #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+    #[test]
+    fn direct_native_is_an_explicit_runtime_backend() {
+        let mut runtime = Runtime::core();
+        assert_eq!(runtime.execution_backend(), "interpreter");
+        runtime
+            .configure_execution_backend("direct-native")
+            .unwrap();
+        assert_eq!(runtime.execution_backend(), "direct-native");
+        assert_eq!(
+            runtime.eval_native("(let [value 20] (+ value 22))").unwrap(),
+            "42"
+        );
+        runtime
+            .eval_native("(defn add-one [value] (+ value 1))")
+            .unwrap();
+        assert_eq!(runtime.eval_native("(add-one 41)").unwrap(), "42");
+        runtime
+            .configure_execution_backend("interpreter")
+            .unwrap();
+        assert_eq!(runtime.execution_backend(), "interpreter");
+    }
+
+    #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+    #[test]
+    fn direct_native_keeps_interpreter_owned_functions_out_of_the_native_scope() {
+        let mut runtime = Runtime::core();
+        runtime
+            .eval_native("(defn interpreted [value] (+ value 1))")
+            .unwrap();
+        runtime
+            .configure_execution_backend("direct-native")
+            .unwrap();
+        let error = runtime
+            .eval_native("(interpreted 41)")
+            .expect_err("a function created by the interpreter must not cross the native scope");
+        assert!(error.contains("evaluator-backed Hara function"), "{error}");
+    }
+
+    #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+    #[test]
+    fn direct_native_compiles_runtime_eval_without_fallback() {
+        let mut runtime = Runtime::core();
+        runtime
+            .configure_execution_backend("direct-native")
+            .unwrap();
+        assert_eq!(
+            runtime.eval_native("(Runtime/eval '(+ 1 2))").unwrap(),
+            "3"
+        );
+        assert_eq!(
+            runtime
+                .eval_native("(Runtime/load-string \"(+ 19 23)\")")
+                .unwrap(),
+            "42"
+        );
+    }
+
+    #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+    #[test]
+    fn direct_native_async_functions_return_promises_on_the_fast_path() {
+        let mut runtime = Runtime::core();
+        runtime
+            .configure_execution_backend("direct-native")
+            .unwrap();
+        assert_eq!(
+            runtime
+                .eval_native("(do (defn ^:async answer [] 42) (answer))")
+                .unwrap(),
+            "<promise>"
+        );
+        assert_eq!(
+            runtime
+                .eval_native("(std.protocol.ideref.IDeref/deref (answer))")
+                .unwrap(),
+            "42"
+        );
+    }
+
+    #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+    #[test]
+    fn session_kernel_propagates_the_shared_native_backend() {
+        let mut kernel = SessionKernel::new();
+        kernel.set_execution_backend("direct-native").unwrap();
+        let root = SessionId::parse("ROOT").unwrap();
+        assert_eq!(
+            kernel
+                .eval(&root, "(let [value 20] (+ value 22))")
+                .unwrap(),
+            "42"
+        );
+    }
+
+    #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+    #[test]
+    fn direct_native_loads_source_namespaces_through_the_shared_loader() {
+        let mut runtime = Runtime::core();
+        runtime.register_resource(
+            "example.direct-dependency",
+            "(ns example.direct-dependency) (defn increment [value] (+ value 1))",
+        );
+        runtime.register_resource(
+            "example.direct",
+            "(ns example.direct (:require [example.direct-dependency :as dependency])) (defn answer [value] (dependency/increment value))",
+        );
+        runtime
+            .configure_execution_backend("direct-native")
+            .unwrap();
+        assert_eq!(
+            runtime
+                .eval_native("(require [example.direct :as direct]) (direct/answer 41)")
+                .unwrap(),
+            "42"
+        );
+    }
+
+    #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+    #[test]
+    fn direct_native_loads_a_namespace_requested_inside_native_code() {
+        let mut runtime = Runtime::core();
+        runtime.register_resource(
+            "example.direct-late-dependency",
+            "(ns example.direct-late-dependency) (defn increment [value] (+ value 1))",
+        );
+        runtime
+            .configure_execution_backend("direct-native")
+            .unwrap();
+
+        // The lazy alias makes the namespace visible to the compiler without
+        // materializing it. The nested require therefore exercises the native
+        // loader while a native-substrate frame is active; it must not call
+        // core::eval for the loaded namespace declaration.
+        runtime
+            .eval_native(
+                "(require [example.direct-late-dependency :as dependency :lazy true])",
+            )
+            .unwrap();
+        runtime
+            .eval_native(
+                "(defn load-late [value] (require [example.direct-late-dependency]) (dependency/increment value))",
+            )
+            .unwrap();
+        assert_eq!(runtime.eval_native("(load-late 41)").unwrap(), "42");
+    }
+
+    #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+    #[test]
+    fn direct_native_engine_shares_telemetry_without_sharing_runtime_state() {
+        let engine = crate::direct_native::NativeEngine::new();
+        let mut first = Runtime::with_native_engine(engine.clone());
+        first
+            .configure_execution_backend("direct-native")
+            .unwrap();
+        assert_eq!(first.eval_native("(def isolated 41) isolated").unwrap(), "41");
+        let first_telemetry = first.native_execution_telemetry();
+        assert!(first_telemetry.bytecode_functions > 0);
+        assert!(first_telemetry.bytecode_instructions > 0);
+
+        let mut second = Runtime::with_native_engine(engine);
+        second
+            .configure_execution_backend("direct-native")
+            .unwrap();
+        assert_eq!(second.eval_native("(def isolated 42) isolated").unwrap(), "42");
+        let after_definitions = second.native_execution_telemetry();
+        assert_eq!(first.eval_native("isolated").unwrap(), "41");
+        assert_eq!(second.eval_native("isolated").unwrap(), "42");
+        let second_telemetry = second.native_execution_telemetry();
+        assert!(
+            second_telemetry.bytecode_functions > after_definitions.bytecode_functions,
+            "each native entry validates its bytecode unit"
+        );
+        assert!(second_telemetry.native_target_calls > 0);
+        assert!(second_telemetry.invocations > first_telemetry.invocations);
+    }
+
+    #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+    #[test]
+    fn direct_native_loads_bytecode_namespaces_through_the_shared_loader() {
+        let modules = [
+            crate::vm::ModuleSource {
+                resource: "example.direct-artifact",
+                source: "(ns example.direct-artifact (:require [example.direct-artifact-dependency :as dependency])) (defn answer [value] (dependency/increment value))",
+            },
+            crate::vm::ModuleSource {
+                resource: "example.direct-artifact-dependency",
+                source: "(ns example.direct-artifact-dependency) (defn increment [value] (+ value 1))",
+            },
+        ];
+        let bundle = crate::vm::compile_bytecode_bundle(&modules).unwrap();
+        let mut runtime = Runtime::core();
+        runtime
+            .configure_execution_backend("direct-native")
+            .unwrap();
+        crate::vm::eval_bytecode_bundle(&mut runtime, &bundle).unwrap();
+        runtime
+            .eval_native("(require [example.direct-artifact])")
+            .unwrap();
+        assert!(runtime.use_namespace("example.direct-artifact"));
+        assert_eq!(runtime.eval_native("(answer 41)").unwrap(), "42");
+    }
+
     #[test]
     fn resolve_does_not_load_an_unregistered_qualified_resource() {
         let mut runtime = Runtime::new();
@@ -4068,6 +4269,21 @@ mod tests {
                 "{native_type}"
             );
         }
+    }
+
+    #[test]
+    fn startup_completion_omits_canonical_runtime_bindings() {
+        let runtime = Runtime::new();
+        let symbols = runtime.visible_symbols();
+
+        assert!(symbols.iter().any(|symbol| symbol == "co/create"));
+        assert!(symbols.iter().any(|symbol| symbol == "co/resume"));
+        assert!(!symbols.iter().any(|symbol| {
+            symbol.starts_with("std.native.")
+                || symbol.starts_with("std.protocol.")
+                || symbol.starts_with("co/std.native.")
+                || symbol.starts_with("co/std.protocol.")
+        }));
     }
 
     #[test]
@@ -9585,9 +9801,23 @@ mod tests {
             .eval_native_traced("(do (defn inner [] (/ 1 0)) (defn outer [] (inner)) (outer))")
             .unwrap_err();
         assert!(error.contains("[hara stack]"));
-        assert!(error.contains("at inner"));
-        assert!(error.contains("at outer"));
+        assert!(error.contains("at user/inner"));
+        assert!(error.contains("at user/outer"));
         assert_eq!(error.matches("[hara stack]").count(), 1);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn native_error_traces_include_namespace_and_source_location() {
+        let mut runtime = Runtime::new();
+        runtime.register_resource(
+            "trace.source",
+            "(ns trace.source)\n\n(defn inner [] missing)\n\n(inner)",
+        );
+        let error = runtime
+            .eval_native_traced("(require 'trace.source)")
+            .unwrap_err();
+        assert!(error.contains("at trace.source/inner (trace.source:5:1)"));
     }
     #[test]
     fn runtime_metadata_round_trips_through_protocols_and_reader_literals() {
@@ -9704,6 +9934,21 @@ mod tests {
             .eval_native_traced("(std.foundation.coroutine/await (promise (fn [] 1)))")
             .unwrap_err()
             .contains("fiber evaluator"));
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn native_error_traces_preserve_coroutine_frames_across_yield() {
+        let mut runtime = Runtime::new();
+        runtime
+            .eval_native_traced(
+                "(def c (co/create (fn []\n  (co/yield 1)\n  missing)))",
+            )
+            .unwrap();
+        assert_eq!(runtime.eval_native_traced("(co/resume c)").unwrap(), "1");
+        let error = runtime.eval_native_traced("(co/resume c)").unwrap_err();
+        assert!(error.contains("[hara stack]"));
+        assert!(error.contains("at user/<anonymous> (user:1:1)"));
     }
     #[test]
     fn fiber_cli_path_evaluates_coroutine_resume_and_yield() {

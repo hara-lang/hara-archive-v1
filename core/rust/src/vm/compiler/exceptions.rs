@@ -85,9 +85,17 @@ impl Compiler {
                     Some(clause.span.start),
                 ));
             }
-            if clause_children.len() == 3
-                && matches!(clause_children[1].form, Form::Symbol(name) if name != "Exception" && name != "Throwable")
-            {
+            let implicit_catch = match clause_children.get(1).map(|child| &child.form) {
+                Some(Form::Symbol(name)) if !is_exception_class(name) => {
+                    clause_children.len() == 3
+                        || !matches!(
+                            clause_children.get(2).map(|child| &child.form),
+                            Some(Form::Symbol(_))
+                        )
+                }
+                _ => false,
+            };
+            if implicit_catch {
                 let Form::Symbol(name) = clause_children[1].form else {
                     return Err(CompileError::new(
                         CompileErrorKind::Arity,
@@ -292,4 +300,11 @@ impl Compiler {
         self.ctx_mut().fallthrough = false;
         Ok(())
     }
+}
+
+fn is_exception_class(name: &str) -> bool {
+    matches!(
+        name,
+        "Exception" | "Throwable" | "std.native.Exception" | "std.native.Throwable"
+    )
 }

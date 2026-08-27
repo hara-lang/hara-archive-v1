@@ -48,7 +48,6 @@ pub mod native_module;
 #[cfg(not(target_arch = "wasm32"))]
 mod native_process;
 mod numeric;
-pub mod spec_registry;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod package;
 pub mod package_catalog;
@@ -67,6 +66,7 @@ pub mod resp;
 pub mod snapshot;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod snapshot_tool;
+pub mod spec_registry;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod tap;
 pub mod task;
@@ -75,6 +75,8 @@ pub mod work;
 mod work_session;
 // Experimental staged bytecode VM (issue #195). Non-default feature; the
 // default evaluator is untouched.
+#[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+pub mod direct_native;
 #[cfg(feature = "bytecode-vm")]
 #[path = "vm/schema_catalog.rs"]
 pub mod hbc_schema_catalog;

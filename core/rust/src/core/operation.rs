@@ -758,7 +758,7 @@ fn byte_set(value: &Value, index: &Value, item: &Value) -> Result<Value, String>
     Ok(value.clone())
 }
 
-fn iterator_values(value: Value) -> Result<Vec<Value>, String> {
+pub(crate) fn iterator_values(value: Value) -> Result<Vec<Value>, String> {
     match value {
         Value::Seq(values) => values.iter().collect::<Result<Vec<_>, _>>(),
         Value::Extension(receiver) => {

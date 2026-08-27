@@ -1,4 +1,4 @@
-use super::Options;
+use super::{ExecutionBackend, Options};
 use crate::repl;
 #[cfg(feature = "halc-encoder")]
 use hara_wasm::kernel::{halc::encode_halc_module, parse_forms, Form};
@@ -65,6 +65,9 @@ fn project_for(options: &Options, args: &[String]) -> Result<project::Project, S
 
 fn eval_runtime(options: &Options) -> Result<Runtime, String> {
     let mut runtime = Runtime::new();
+    runtime
+        .set_execution_backend(options.backend.runtime_name())
+        .map_err(|_| backend_error(options.backend))?;
     if let Some(path) = options.lite_project.as_deref() {
         let project = project::discover(path)?;
         project::register_sources(&project, &mut runtime)?;
@@ -85,11 +88,12 @@ fn eval_runtime(options: &Options) -> Result<Runtime, String> {
     if options.allow_postgres {
         runtime.install_native_module(hara_db_postgres::module())?;
     }
-    let broker = RuntimeBroker::start_with(
+    let broker = RuntimeBroker::start_with_backend(
         options.root.clone().or_else(|| options.project.clone()),
         options.native_sockets,
         options.allow_process,
         options.allow_postgres,
+        options.backend.runtime_name(),
     )?;
     install_native_kernel(&mut runtime, broker);
     Ok(runtime)
@@ -129,11 +133,12 @@ pub(crate) fn run_headless(options: &Options) -> Result<(), String> {
     if options.offline {
         return Err("--offline cannot be used with headless".into());
     }
-    let broker = RuntimeBroker::start_with(
+    let broker = RuntimeBroker::start_with_backend(
         options.root.clone().or_else(|| options.project.clone()),
         options.native_sockets,
         options.allow_process,
         options.allow_postgres,
+        options.backend.runtime_name(),
     )?;
     for path in [options.lite_project.as_deref(), options.project.as_deref()]
         .into_iter()
@@ -190,6 +195,15 @@ fn response_text(value: RespValue) -> String {
         RespValue::Simple(value) | RespValue::Error(value) => value,
         RespValue::Integer(value) => value.to_string(),
         RespValue::Bulk(None) | RespValue::Array(None) => "nil".into(),
+    }
+}
+
+fn backend_error(backend: ExecutionBackend) -> String {
+    match backend {
+        ExecutionBackend::Native => {
+            "native backend requires a native build with the direct-native feature".into()
+        }
+        ExecutionBackend::Interpreter => "cannot configure interpreter backend".into(),
     }
 }
 

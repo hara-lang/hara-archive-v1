@@ -3,7 +3,7 @@
 /// intentionally absent; canonical protocol values are seeded so Foundation
 /// predicates can resolve them while the source modules load.
 const FOUNDATION_INTRINSICS: &[&str] = &[
-    "+", "-", "*", "/", "=", "<", "<=", ">", ">=", "quot", "rem", "mod",
+    "+", "-", "*", "/", "=", "<", "<=", ">", ">=", "quot", "rem", "mod", "disj",
 ];
 
 /// Installs the small language-level callable substrate needed while loading

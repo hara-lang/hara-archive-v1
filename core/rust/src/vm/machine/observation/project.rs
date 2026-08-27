@@ -174,10 +174,12 @@ pub(super) fn instruction_snapshot(instruction: &Instruction) -> InstructionSnap
         Instruction::ExtendType(index) => ("extend-type", vec![Unsigned(*index as u64)]),
         Instruction::DefMulti(index) => ("def-multi", vec![Unsigned(*index as u64)]),
         Instruction::DefMethod(index) => ("def-method", vec![Unsigned(*index as u64)]),
-        Instruction::IntrinsicValue(target) => {
-            ("intrinsic-value", vec![Unsigned(*target as u64)])
-        }
+        Instruction::IntrinsicValue(target) => ("intrinsic-value", vec![Unsigned(*target as u64)]),
         Instruction::BuiltinValue(index) => ("builtin-value", vec![Unsigned(*index as u64)]),
+        Instruction::NamespaceValue(index) => ("namespace-value", vec![Unsigned(*index as u64)]),
+        Instruction::NamespaceOperation(index) => {
+            ("namespace-operation", vec![Unsigned(*index as u64)])
+        }
         Instruction::DynamicBind(index) => ("dynamic-bind", vec![Unsigned(*index as u64)]),
         Instruction::DynamicUnbind(index) => ("dynamic-unbind", vec![Unsigned(*index as u64)]),
         Instruction::Await => ("await", vec![]),

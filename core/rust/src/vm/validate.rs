@@ -302,6 +302,42 @@ pub(crate) fn stack_heights(
                     at,
                 ));
             }
+            Instruction::NamespaceValue(constant)
+                if !matches!(
+                    program.constants.get(*constant as usize),
+                    Some(Value::String(_))
+                ) =>
+            {
+                return Err(ValidationError::new(
+                    format!("namespace name constant {constant} is invalid"),
+                    at,
+                ));
+            }
+            Instruction::NamespaceOperation(constant) => {
+                let Some(value) = program.constants.get(*constant as usize) else {
+                    return Err(ValidationError::new(
+                        format!("constant index {constant} out of range"),
+                        at,
+                    ));
+                };
+                let valid = crate::core::value_to_form(value).is_ok_and(|form| {
+                    matches!(
+                        crate::core::form_without_metadata(&form),
+                        crate::kernel::Form::List(items)
+                            if matches!(
+                                items.first(),
+                                Some(crate::kernel::Form::Symbol(operator))
+                                    if matches!(operator.as_str(), "ns" | "ns+" | "require")
+                            )
+                    )
+                });
+                if !valid {
+                    return Err(ValidationError::new(
+                        format!("namespace-management constant {constant} is invalid"),
+                        at,
+                    ));
+                }
+            }
             Instruction::DynamicBind(constant) | Instruction::DynamicUnbind(constant)
                 if !matches!(
                     program.constants.get(*constant as usize),

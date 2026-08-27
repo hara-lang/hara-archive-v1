@@ -172,6 +172,22 @@ impl Runtime {
     /// the compiler's two-phase global check (issue #223). The program
     /// is validated but not executed; globals intern only at execution.
     pub fn compile_bytecode(&self, source: &str) -> Result<std::rc::Rc<vm::Program>, String> {
+        self.compile_bytecode_with_policy(source, false)
+    }
+
+    #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+    fn compile_bytecode_for_direct_native(
+        &self,
+        source: &str,
+    ) -> Result<std::rc::Rc<vm::Program>, String> {
+        self.compile_bytecode_with_policy(source, true)
+    }
+
+    fn compile_bytecode_with_policy(
+        &self,
+        source: &str,
+        allow_unbound_globals_for_direct_native: bool,
+    ) -> Result<std::rc::Rc<vm::Program>, String> {
         core::with_macros(self.macros.clone(), || {
             let forms = kernel::read_forms(source).map_err(|error| error.to_string())?;
             let has_namespace_form = forms.iter().any(|form| {
@@ -189,7 +205,22 @@ impl Runtime {
                     .cloned()
                     .unwrap_or_else(kernel::GeneratedNamespaceConfig::defaults)
             };
-            vm::compile_source_with_config(source, &self.namespace_registry, config)
+            #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+            let allow_unbound_globals = self.execution_backend == "direct-native"
+                && (allow_unbound_globals_for_direct_native
+                    || vm::source_uses_dynamic_evaluation(source).unwrap_or(false));
+            #[cfg(not(all(feature = "direct-native", not(target_arch = "wasm32"))))]
+            let allow_unbound_globals = false;
+            let compiled = if allow_unbound_globals {
+                vm::compile_source_with_config_allow_unbound_globals(
+                    source,
+                    &self.namespace_registry,
+                    config,
+                )
+            } else {
+                vm::compile_source_with_config(source, &self.namespace_registry, config)
+            };
+            compiled
                 .map(|mut program| {
                     program.namespace =
                         Some(self.namespace_registry.current().name().as_str().to_owned());
@@ -259,6 +290,105 @@ impl Runtime {
         self.execute_compiled_bytecode(program)
     }
 
+    /// Executes a validated program through the opt-in bytecode VM plus
+    /// native-substrate boundary. Ordinary Hara functions remain VM-owned;
+    /// only the closed native/protocol/evaluator target inventory crosses into
+    /// Rust callouts.
+    #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+    pub fn execute_compiled_direct_native(
+        &mut self,
+        program: std::rc::Rc<vm::Program>,
+    ) -> Result<crate::direct_native::NativeExecutionReport, String> {
+        if let Some(namespace) = &program.namespace {
+            self.namespace_registry.set_current(namespace);
+        }
+        let mut declaration_environment = HashMap::new();
+        let namespace_source = self.namespace_source();
+        let execute = || {
+            core::with_test_runner(&self.test_runner, || {
+                core::with_capability_providers(
+                    self.providers.file(),
+                    self.providers.socket(),
+                    self.providers.process(),
+                    self.providers.kernel(),
+                    || {
+                        core::with_package_catalog(&self.package_catalog, || {
+                            core::with_promise_provider(self.providers.promise(), || {
+                                core::with_macros(self.macros.clone(), || {
+                                    core::with_namespace_registry(&self.namespace_registry, || {
+                                        core::with_namespace_source(namespace_source, || {
+                                            core::with_protocols(&self.protocols, || {
+                                                let loader = Self::direct_native_namespace_loader(
+                                                    self.direct_native.clone(),
+                                                    self.direct_native_multimethods.clone(),
+                                                );
+                                                core::with_direct_native_namespace_loader(
+                                                    loader,
+                                                    || {
+                                                        core::with_declaration_transaction(
+                                                            &mut declaration_environment,
+                                                            |_| self.direct_native.execute_blocking_with_multimethods(
+                                                                program,
+                                                                self.direct_native_multimethods.clone(),
+                                                            ),
+                                                        )
+                                                    },
+                                                )
+                                            })
+                                        })
+                                    })
+                                })
+                            })
+                        })
+                    },
+                )
+            })
+        };
+        #[cfg(not(target_arch = "wasm32"))]
+        let result = if let Some(handler) = self.native_host_handler.clone() {
+            core::with_host_calls(handler, execute)
+        } else {
+            execute()
+        };
+        if result.is_ok() {
+            self.save_namespace();
+            self.refresh_qualified_bindings();
+        }
+        result
+    }
+
+    /// Builds the resource hook used by the shared namespace transaction when
+    /// direct-native execution is selected. The hook compiles source-backed
+    /// namespaces after their namespace declaration has been prepared and
+    /// executes both source and artifact-backed namespaces through the same
+    /// bytecode VM/native-substrate engine.
+    #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+    pub(crate) fn direct_native_namespace_loader(
+        engine: crate::direct_native::NativeEngine,
+        multimethods: core::MultiMethodRegistry,
+    ) -> Rc<
+        dyn Fn(
+            &str,
+            core::NamespaceResource,
+            &mut HashMap<String, core::Value>,
+        ) -> Result<(), String>,
+    > {
+        Rc::new(move |name, resource, environment| {
+            load_direct_native_namespace(&engine, &multimethods, name, resource, environment)
+        })
+    }
+
+    /// Compiles and executes source through the bytecode VM/native-substrate
+    /// backend. Compilation-time namespace preparation and macro expansion
+    /// retain their existing evaluator seam; no evaluator call is permitted
+    /// once the validated program enters the native backend.
+    #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+    pub fn eval_direct_native(&mut self, source: &str) -> Result<String, String> {
+        let program = self.compile_bytecode_for_direct_native(source)?;
+        self.execute_compiled_direct_native(program)
+            .map(|report| report.value.display())
+    }
+
     /// Compiles against this runtime's namespaces and persists the validated
     /// program for later native or browser execution.
     pub fn compile_bytecode_artifact(&self, source: &str) -> Result<Vec<u8>, String> {
@@ -295,6 +425,22 @@ impl Runtime {
     /// Executes a persisted artifact against this runtime's namespaces.
     pub fn eval_bytecode_artifact(&mut self, bytes: &[u8]) -> Result<String, String> {
         let program = std::rc::Rc::new(vm::decode_program(bytes)?);
+        #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+        if self.execution_backend == "direct-native" {
+            let schema_types = program.schema_types.clone();
+            let function_types = program.function_types.clone();
+            let inferred_function_types = program.inferred_function_types.clone();
+            let result = self
+                .execute_compiled_direct_native(program)
+                .map(|report| report.value.display());
+            if result.is_ok() {
+                self.halc_schema_types.extend(schema_types);
+                self.halc_function_types.extend(function_types);
+                self.halc_inferred_function_types
+                    .extend(inferred_function_types);
+            }
+            return result;
+        }
         if let Some(namespace) = &program.namespace {
             self.namespace_registry.set_current(namespace);
         }
@@ -330,4 +476,78 @@ impl Runtime {
         );
         result
     }
+}
+
+#[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+fn load_direct_native_namespace(
+    engine: &crate::direct_native::NativeEngine,
+    multimethods: &core::MultiMethodRegistry,
+    name: &str,
+    resource: core::NamespaceResource,
+    environment: &mut HashMap<String, core::Value>,
+) -> Result<(), String> {
+    let program = match resource {
+        core::NamespaceResource::Source(source) => {
+            let forms = kernel::read_forms(&source).map_err(|error| error.to_string())?;
+            let mut body_offset = 0;
+            if forms.first().is_some_and(|form| {
+                matches!(
+                    core::form_without_metadata(&form.form),
+                    kernel::Form::List(items)
+                        if matches!(items.first(), Some(kernel::Form::Symbol(operator)) if operator == "ns" || operator == "ns+")
+                )
+            }) {
+                let namespace_value = core::form_to_value(&forms[0].form)?;
+                core::eval_bytecode_management_in(&namespace_value, environment)
+                    .map_err(|error| format!("{name}: namespace declaration: {error}"))?;
+                body_offset = forms[0].span.end.offset;
+            }
+            let config = vm::source_namespace_config(&forms)
+                .map_err(|error| format!("{name}: namespace configuration: {error}"))?;
+            let registry = core::namespace_registry()?;
+            registry.set_current(name);
+            let body = source
+                .get(body_offset..)
+                .ok_or_else(|| format!("{name}: namespace form offset is invalid"))?;
+            let allow_unbound_globals = vm::source_uses_dynamic_evaluation(body).unwrap_or(false);
+            let compile = || {
+                if allow_unbound_globals {
+                    vm::compile_source_with_config_allow_unbound_globals(
+                        body,
+                        &registry,
+                        config,
+                    )
+                } else {
+                    vm::compile_source_with_config(body, &registry, config)
+                }
+            };
+            let mut program = core::without_direct_native_execution(compile)
+                .map_err(|error| format!("{name}: direct-native compilation: {error}"))?;
+            program.namespace = Some(name.to_owned());
+            Rc::new(program)
+        }
+        core::NamespaceResource::Bytecode {
+            namespace_form,
+            artifact,
+        } => {
+            for (index, form) in kernel::parse_forms(&namespace_form)?
+                .into_iter()
+                .enumerate()
+            {
+                let namespace_value = core::form_to_value(&form)?;
+                core::eval_bytecode_management_in(&namespace_value, environment)
+                    .map_err(|error| format!("{name}: namespace form {}: {error}", index + 1))?;
+            }
+            let registry = core::namespace_registry()?;
+            registry.set_current(name);
+            let mut program = vm::decode_program(&artifact)
+                .map_err(|error| format!("{name}: direct-native artifact: {error}"))?;
+            program.namespace = Some(name.to_owned());
+            Rc::new(program)
+        }
+    };
+    engine
+        .execute_blocking_with_multimethods(program, multimethods.clone())
+        .map(|_| ())
+        .map_err(|error| format!("{name}: direct-native execution: {error}"))
 }

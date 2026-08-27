@@ -157,6 +157,15 @@ pub enum Instruction {
     IntrinsicValue(u32),
     /// Pushes a first-class callable implemented by the structural runtime.
     BuiltinValue(u32),
+    /// Pushes a namespace value resolved from the current namespace's alias
+    /// table (or from the registry by name), matching the evaluator's bare
+    /// namespace alias form.
+    NamespaceValue(u32),
+    /// Applies a validated `ns`, `ns+`, or `require` form retained in the
+    /// constant pool and pushes its result. This is the bytecode management
+    /// seam used for nested namespace operations; top-level declarations are
+    /// prepared by the runtime before ordinary code is compiled.
+    NamespaceOperation(u32),
     /// Binds a dynamic Var to the value on top of the stack and leaves nil.
     DynamicBind(u32),
     /// Removes the most recent binding for a dynamic Var and leaves nil.
@@ -216,9 +225,7 @@ impl Instruction {
             Instruction::Dup => 1,
             Instruction::IntrinsicCall { argc, .. }
             | Instruction::ProtocolCall { argc, .. }
-            | Instruction::CallStatic { argc, .. } => {
-                1 - i32::from(*argc)
-            }
+            | Instruction::CallStatic { argc, .. } => 1 - i32::from(*argc),
             Instruction::Closure { captures, .. } => 1 - i32::from(*captures),
             Instruction::Call { argc } => -i32::from(*argc),
             Instruction::GetGlobal(_)
@@ -232,6 +239,7 @@ impl Instruction {
             | Instruction::DefMethod(_) => 1,
             Instruction::IntrinsicValue(_) => 1,
             Instruction::BuiltinValue(_) => 1,
+            Instruction::NamespaceValue(_) | Instruction::NamespaceOperation(_) => 1,
             Instruction::DynamicBind(_) => 0,
             Instruction::DynamicUnbind(_) => 1,
             Instruction::Yield => 0,
@@ -327,6 +335,10 @@ impl std::fmt::Display for Instruction {
                 write!(formatter, "IntrinsicValue target {target}")
             }
             Instruction::BuiltinValue(index) => write!(formatter, "BuiltinValue {index}"),
+            Instruction::NamespaceValue(index) => write!(formatter, "NamespaceValue {index}"),
+            Instruction::NamespaceOperation(index) => {
+                write!(formatter, "NamespaceOperation {index}")
+            }
             Instruction::DynamicBind(index) => write!(formatter, "DynamicBind {index}"),
             Instruction::DynamicUnbind(index) => write!(formatter, "DynamicUnbind {index}"),
             Instruction::Await => formatter.write_str("Await"),

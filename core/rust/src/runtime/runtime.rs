@@ -28,10 +28,7 @@ impl Runtime {
         self.namespace_registry
             .current()
             .set_foundation_visibility(None, &HashSet::new(), false);
-        (
-            self.namespace_registry.clone(),
-            HashMap::new(),
-        )
+        (self.namespace_registry.clone(), HashMap::new())
     }
 
     pub(crate) fn instrumentation_handle(
@@ -65,6 +62,7 @@ impl Runtime {
         Runtime {
             execution: RuntimeExecutionState::new(),
             test_runner: "code.test".into(),
+            execution_backend: "interpreter".into(),
             protocols,
             extensions: core::ExtensionRegistry::new(),
             wasm_extensions: HashMap::new(),
@@ -96,6 +94,10 @@ impl Runtime {
             native_host_handler: None,
             #[cfg(not(target_arch = "wasm32"))]
             native_modules: native_module::Registry::default(),
+            #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+            direct_native: crate::direct_native::NativeEngine::new(),
+            #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+            direct_native_multimethods: Rc::new(RefCell::new(HashMap::new())),
             #[cfg(not(target_arch = "wasm32"))]
             extension_roots: native_extension::configured_roots(),
         }
@@ -148,6 +150,28 @@ impl Runtime {
     pub fn set_test_runner(&mut self, runner: &str) -> Result<(), JsValue> {
         self.configure_test_runner(runner)
             .map_err(|error| JsValue::from_str(&error))
+    }
+
+    pub(crate) fn configure_execution_backend(&mut self, backend: &str) -> Result<(), String> {
+        validate_execution_backend(backend)?;
+        if self.execution_backend == backend {
+            return Ok(());
+        }
+        self.execution_backend = backend.into();
+        Ok(())
+    }
+
+    /// Selects the execution backend used by ordinary `eval` and Session
+    /// evaluation. The default is `interpreter`; `direct-native` is an
+    /// explicit native-target opt-in and never falls back to interpretation.
+    pub fn set_execution_backend(&mut self, backend: &str) -> Result<(), JsValue> {
+        self.configure_execution_backend(backend)
+            .map_err(|error| JsValue::from_str(&error))
+    }
+
+    /// Returns the selected ordinary evaluation backend.
+    pub fn execution_backend(&self) -> String {
+        self.execution_backend.clone()
     }
 
     fn bootstrap_foundation(&mut self) -> Result<(), String> {
@@ -361,8 +385,8 @@ impl Runtime {
                             .register_global_alias(alias, &name)?;
                     }
                     for alias in config.declared_global_imports() {
-                        let canonical = core::canonical_native_symbol(alias)
-                            .unwrap_or_else(|| alias.clone());
+                        let canonical =
+                            core::canonical_native_symbol(alias).unwrap_or_else(|| alias.clone());
                         self.namespace_registry
                             .register_global_import(alias, canonical)?;
                     }
@@ -519,6 +543,19 @@ impl Runtime {
     }
 
     fn eval_form(&mut self, form: Form, traced: bool) -> Result<core::Value, String> {
+        #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+        if self.execution_backend == "direct-native" {
+            if traced {
+                return Err("direct-native does not support traced evaluation".into());
+            }
+            if !is_interpreter_management_form(&form) {
+                let source = form.to_string();
+                return self
+                    .compile_bytecode_for_direct_native(&source)
+                    .and_then(|program| self.execute_compiled_direct_native(program))
+                    .map(|report| report.value);
+            }
+        }
         if traced {
             return core::with_stack_trace(|| self.eval_form(form, false));
         }
@@ -536,25 +573,38 @@ impl Runtime {
                                 core::with_namespace_registry(&self.namespace_registry, || {
                                     core::with_namespace_source(namespace_source, || {
                                         core::with_protocols(&self.protocols, || -> Result<(Result<core::Value, String>, core::EvalFiber), String> {
-                                    let mut fiber = self.execution.start_fiber(form)?;
-                                    #[cfg(all(target_arch = "wasm32", not(feature = "raw-wasm")))]
-                                    if let Some(handler) = &self.host_handler {
-                                        let handler = handler.clone();
-                                        let result = core::with_host_calls(
-                                            host_call_bridge(handler),
-                                            || fiber.drive_sync(),
-                                        );
-                                        return Ok((result, fiber));
-                                    }
-                                    #[cfg(not(target_arch = "wasm32"))]
-                                    if let Some(handler) = &self.native_host_handler {
-                                        let result = core::with_host_calls(handler.clone(), || {
-                                            fiber.drive_sync()
-                                        });
-                                        return Ok((result, fiber));
-                                    }
-                                    Ok((fiber.drive_sync(), fiber))
-                                })
+                                            let evaluate = || {
+                                                let mut fiber = self.execution.start_fiber(form)?;
+                                                #[cfg(all(target_arch = "wasm32", not(feature = "raw-wasm")))]
+                                                if let Some(handler) = &self.host_handler {
+                                                    let handler = handler.clone();
+                                                    let result = core::with_host_calls(
+                                                        host_call_bridge(handler),
+                                                        || fiber.drive_sync(),
+                                                    );
+                                                    return Ok((result, fiber));
+                                                }
+                                                #[cfg(not(target_arch = "wasm32"))]
+                                                if let Some(handler) = &self.native_host_handler {
+                                                    let result = core::with_host_calls(handler.clone(), || {
+                                                        fiber.drive_sync()
+                                                    });
+                                                    return Ok((result, fiber));
+                                                }
+                                                Ok((fiber.drive_sync(), fiber))
+                                            };
+                                            #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+                                            if self.execution_backend == "direct-native" {
+                                return core::with_direct_native_namespace_loader(
+                                    Self::direct_native_namespace_loader(
+                                        self.direct_native.clone(),
+                                        self.direct_native_multimethods.clone(),
+                                    ),
+                                                    evaluate,
+                                                );
+                                            }
+                                            evaluate()
+                                        })
                                     })
                                 })
                             })
@@ -1043,6 +1093,22 @@ impl Runtime {
             core::with_namespace_source(namespace_source, || {
                 core::with_protocols(&self.protocols, || {
                     core::with_namespace_registry(&self.namespace_registry, || {
+                        #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+                        if self.execution_backend == "direct-native" {
+                            return core::with_direct_native_namespace_loader(
+                                Self::direct_native_namespace_loader(
+                                    self.direct_native.clone(),
+                                    self.direct_native_multimethods.clone(),
+                                ),
+                                || {
+                                    core::require_namespace(
+                                        &self.namespace_registry,
+                                        self.execution.environment_mut(),
+                                        &name,
+                                    )
+                                },
+                            );
+                        }
                         core::require_namespace(
                             &self.namespace_registry,
                             self.execution.environment_mut(),
@@ -1317,6 +1383,64 @@ impl Runtime {
     pub fn eval_native_traced(&mut self, source: &str) -> Result<String, String> {
         self.eval_text_mode(source, true)
     }
+}
+
+#[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+impl Runtime {
+    /// Creates a Runtime whose native-substrate telemetry is shared with
+    /// another Runtime owner. Namespace registries, providers, and mutable
+    /// Hara state remain owned by each Runtime; bytecode program images remain
+    /// owned by the execution that prepared them.
+    pub fn with_native_engine(engine: crate::direct_native::NativeEngine) -> Self {
+        let mut runtime = Self::new();
+        runtime.direct_native = engine;
+        runtime
+    }
+
+    /// Returns cumulative counters from the Runtime-owned bytecode VM and
+    /// native-substrate boundary. The counters belong to the reusable native
+    /// engine and are not cleared merely by switching the selected backend;
+    /// callers sharing an engine can explicitly call
+    /// [`crate::direct_native::NativeEngine::reset`] at their lifecycle
+    /// boundary.
+    pub fn native_execution_telemetry(&self) -> crate::direct_native::NativeExecutionTelemetry {
+        self.direct_native.telemetry()
+    }
+}
+
+pub(crate) fn validate_execution_backend(backend: &str) -> Result<(), String> {
+    match backend {
+        "interpreter" => Ok(()),
+        "direct-native" => {
+            #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+            {
+                Ok(())
+            }
+            #[cfg(not(all(feature = "direct-native", not(target_arch = "wasm32"))))]
+            {
+                Err(
+                    "direct-native requires a native build with the direct-native Cargo feature"
+                        .into(),
+                )
+            }
+        }
+        _ => Err(format!(
+            "unknown execution backend {backend}; expected interpreter or direct-native"
+        )),
+    }
+}
+
+#[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+fn is_interpreter_management_form(form: &Form) -> bool {
+    matches!(
+        core::form_without_metadata(form),
+        Form::List(items)
+            if matches!(
+                items.first(),
+                Some(Form::Symbol(operator))
+                    if matches!(operator.as_str(), "ns" | "ns+" | "require" | "in-ns")
+            )
+    )
 }
 
 struct ResourceSnapshot {

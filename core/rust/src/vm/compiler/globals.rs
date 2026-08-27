@@ -233,6 +233,13 @@ impl Compiler {
         if self.excluded_foundation_symbol(name) {
             return false;
         }
+        if self.allow_unbound_globals
+            && !crate::core::syntax_symbol(name)
+            && crate::core::IntrinsicOp::from_symbol(name).is_none()
+            && !self.visible_namespace(name)
+        {
+            return true;
+        }
         let declared = name
             .strip_prefix("-/")
             .is_some_and(|local| self.globals.iter().any(|global| global == local))
@@ -262,6 +269,27 @@ impl Compiler {
                         })
                 })
                 .unwrap_or(false)
+    }
+
+    /// Bare namespace aliases are first-class callable values in the
+    /// evaluator (`(promise ...)` means calling the namespace's `run` Var).
+    /// Keep them distinct from Vars: a namespace has no global Var entry, so
+    /// it needs its own validated instruction and runtime lookup.
+    pub(super) fn visible_namespace(&self, name: &str) -> bool {
+        crate::core::namespace_registry()
+            .map(|registry| {
+                let current = registry
+                    .find(&self.namespace)
+                    .unwrap_or_else(|| registry.current());
+                let visible = current.lazy_target(name).is_some()
+                    || current
+                        .aliases()
+                        .into_iter()
+                        .any(|(alias, _)| alias.as_str() == name)
+                    || registry.find(name).is_some();
+                visible
+            })
+            .unwrap_or(false)
     }
 
     /// Canonical native/protocol callables may be emitted before ordinary
@@ -380,24 +408,19 @@ impl Compiler {
         let mut field_values = Vec::with_capacity(fields.len());
         for field in fields {
             let (field_name, field_value) = match field {
-                Form::Symbol(field) if !field.contains('/') => (
-                    field.clone(),
-                    crate::core::Value::String(field.clone()),
-                ),
+                Form::Symbol(field) if !field.contains('/') => {
+                    (field.clone(), crate::core::Value::String(field.clone()))
+                }
                 Form::Vector(_) => {
-                    let named = crate::core::NamedField::from_form(field, kind).map_err(
-                        |message| unsupported(message, children[2].span.start),
-                    )?;
-                    let value = crate::core::form_to_value(field).map_err(|message| {
-                        unsupported(message, children[2].span.start)
-                    })?;
+                    let named = crate::core::NamedField::from_form(field, kind)
+                        .map_err(|message| unsupported(message, children[2].span.start))?;
+                    let value = crate::core::form_to_value(field)
+                        .map_err(|message| unsupported(message, children[2].span.start))?;
                     (named.name, value)
                 }
                 _ => {
                     return Err(unsupported(
-                        format!(
-                            "{kind} fields must be symbols or [name schema] vectors"
-                        ),
+                        format!("{kind} fields must be symbols or [name schema] vectors"),
                         children[2].span.start,
                     ))
                 }
@@ -537,24 +560,19 @@ impl Compiler {
 
     /// `(defn name ...)` / `(defn- name ...)`: interns a real var holding
     /// the function (single arity) or arity dispatcher (multiple
-    /// clauses) and evaluates to the var, matching the evaluator.
-    /// Top-level statements only; the name is visible before the bodies
-    /// compile, so self- and mutual-recursion within the form resolve
-    /// through the var (late binding). Referred Vars remain owned by their
-    /// defining namespace and must be omitted before a local definition.
+    /// clauses) and evaluates to the var, matching the evaluator. Definitions
+    /// may occur inside a function body as well as in a top-level sequence:
+    /// the name is visible before the bodies compile, so self-recursion within
+    /// the form resolves through the var (late binding). Referred Vars remain
+    /// owned by their defining namespace and must be omitted before a local
+    /// definition.
     pub(super) fn compile_defn(
         &mut self,
         children: &[Child<'_>],
         span: &Span,
-        top: bool,
+        _top: bool,
         private: bool,
     ) -> Result<(), CompileError> {
-        if !top {
-            return Err(unsupported(
-                "defn is only supported as a top-level statement",
-                span.start,
-            ));
-        }
         if children.len() < 4 {
             return Err(CompileError::new(
                 CompileErrorKind::Arity,
