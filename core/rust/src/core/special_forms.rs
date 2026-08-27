@@ -984,7 +984,6 @@ pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, Stri
                         .collect::<Result<Vec<_>, _>>()?;
                     call_value(function, arguments)
                 }
-                Form::Symbol(n) if n.starts_with("ns:") => eval_namespace_operation(n, fs, env),
                 Form::Symbol(n) if n == "." => {
                     if fs.len() != 3 {
                         return Err("dot expects a receiver and method".into());

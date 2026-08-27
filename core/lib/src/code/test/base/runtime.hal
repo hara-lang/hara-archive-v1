@@ -75,7 +75,7 @@
      (registry-register
       +registry+
       {:namespace (or (:test/namespace metadata)
-                      (current-namespace))
+                      (ns-current))
        :name name
        :function function
        :meta metadata}))))
@@ -83,13 +83,13 @@
 (defn remove-fact
   "Removes a fact from namespace, defaulting to the current namespace."
   ([name]
-   (remove-fact (current-namespace) name))
+   (remove-fact (ns-current) name))
   ([namespace name]
    (registry-remove +registry+ namespace name)))
 
 (defn purge-facts
   "Clears facts from namespace, defaulting to the current namespace."
-  ([] (purge-facts (current-namespace)))
+  ([] (purge-facts (ns-current)))
   ([namespace]
    (registry-clear +registry+ namespace)))
 
@@ -117,7 +117,7 @@
 
 (defn get-fact
   "Returns a fact by namespace and name."
-  ([name] (get-fact (current-namespace) name))
+  ([name] (get-fact (ns-current) name))
   ([namespace name]
    (registry-find +registry+ namespace name)))
 
@@ -132,11 +132,11 @@
            (tests))))
 
 (defn list-facts
-  ([] (keys (all-facts (current-namespace))))
+  ([] (keys (all-facts (ns-current))))
   ([namespace] (keys (all-facts namespace))))
 
 (defn get-global
-  ([] (get-global (current-namespace)))
+  ([] (get-global (ns-current)))
   ([namespace] (get (deref +globals+) namespace))
   ([namespace key & more]
    (let [path
@@ -149,36 +149,36 @@
      (get-in (get-global namespace) path))))
 
 (defn set-global
-  ([value] (set-global (current-namespace) value))
+  ([value] (set-global (ns-current) value))
   ([namespace value]
    (swap! +globals+ assoc namespace value)
    value))
 
 (defn update-global
-  ([function] (update-global (current-namespace) function))
+  ([function] (update-global (ns-current) function))
   ([namespace function & arguments]
    (apply swap! +globals+ update namespace function arguments)
    (get-global namespace)))
 
 (defn list-links
-  ([] (list-links (current-namespace)))
+  ([] (list-links (ns-current)))
   ([namespace] (get (deref +links+) namespace)))
 
 (defn clear-links
-  ([] (clear-links (current-namespace)))
+  ([] (clear-links (ns-current)))
   ([namespace]
    (swap! +links+ assoc namespace nil)
    nil))
 
 (defn add-link
-  ([link] (add-link (current-namespace) link))
+  ([link] (add-link (ns-current) link))
   ([namespace link]
    (swap! +links+ update namespace
           (fn [links] (conj (or links #{}) link)))
    (list-links namespace)))
 
 (defn remove-link
-  ([link] (remove-link (current-namespace) link))
+  ([link] (remove-link (ns-current) link))
   ([namespace link]
    (swap! +links+ update namespace
           (fn [links] (disj (or links #{}) link)))
@@ -189,30 +189,30 @@
   [namespace id (conj (vec more) argument)])
 
 (defn set-fact
-  ([id data] (set-fact (current-namespace) id data))
+  ([id data] (set-fact (ns-current) id data))
   ([namespace id data]
    (swap! +registry+ assoc (fact-registry-key namespace id) data)
    [namespace id]))
 
 (defn set-in-fact
-  ([id path data] (set-in-fact (current-namespace) id path data))
+  ([id path data] (set-in-fact (ns-current) id path data))
   ([namespace id path data]
    (let [fact (get-fact namespace id)]
      (set-fact namespace id (assoc-in fact path data)))))
 
 (defn get-flag
-  ([id flag] (get-flag (current-namespace) id flag))
+  ([id flag] (get-flag (ns-current) id flag))
   ([namespace id flag]
    (if (get-in (deref +flags+) [namespace id flag]) true false)))
 
 (defn set-flag
-  ([id flag value] (set-flag (current-namespace) id flag value))
+  ([id flag value] (set-flag (ns-current) id flag value))
   ([namespace id flag value]
    (swap! +flags+ assoc-in [namespace id flag] value)
    value))
 
 (defn update-fact
-  ([id function] (update-fact (current-namespace) id function))
+  ([id function] (update-fact (ns-current) id function))
   ([namespace id function & arguments]
    (let [value (apply function
                       (get-fact namespace id)

@@ -1099,7 +1099,7 @@ final class SessionKernel implements AutoCloseable {
     }
 
     synchronized String currentNamespace() {
-      Value value = eval("(current-namespace)");
+      Value value = eval("(ns-current)");
       return value.isString() ? value.asString() : value.toString();
     }
 

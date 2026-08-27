@@ -9,7 +9,7 @@
             [std.lib.component :as component]))
 
 (defn report-data [outcome] (Result/data outcome))
-(defn current-module [] (symbol (str (current-namespace))))
+(defn current-module [] (symbol (str (ns-current))))
 
 (def results
   [(fact "the complete pinned script family has no hidden public gaps"

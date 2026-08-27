@@ -11,7 +11,7 @@
   [& args]
   (let [module (first args)]
     (first (get-in (deref l/script-modules)
-                   [(or module (current-namespace)) :static :application]))))
+                   [(or module (ns-current)) :static :application]))))
 
 (defn default-ns-str
   [& args]
@@ -22,7 +22,7 @@
   [& args]
   (let [application (first args)
         ns-str (second args)
-        ns-str (or ns-str (name (current-namespace)))
+        ns-str (or ns-str (name (ns-current)))
         application (or application (default-application))]
     (if application
       (swap! +app+ assoc application ns-str))))
@@ -197,4 +197,3 @@
            [0 []]
            arr)
    1))
-

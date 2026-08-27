@@ -52,7 +52,13 @@
    :test (fn [] [(long? (std.foundation/hash [1 2]))
                  (= (std.foundation/hash [1 2])
                     (std.foundation/hash (std.foundation/list 1 2)))])
-   :expected [true true]}])
+   :expected [true true]}
+  {:name "rejects zero-arity hashing"
+   :test (fn []
+           (try
+             (do (std.foundation/hash) false)
+             (catch Throwable error true)))
+   :expected true}])
 
 ^{:refer std.foundation/uuid?}
 (Test/run
@@ -208,17 +214,29 @@
               (std.foundation/schema? nil)]))
    :expected [true false]}])
 
-^{:refer std.foundation/env-current}
+^{:refer std.foundation/ns-current}
 (Test/run
- [{:name "returns the active namespace symbol"
-   :test (fn [] (symbol? (std.foundation/env-current)))
-   :expected true}])
-
-^{:refer std.foundation/current-namespace}
-(Test/run
- [{:name "resolves the active caller namespace"
-   :test (fn [] (std.foundation/current-namespace))
-   :expected 'std.foundation-test}])
+ [{:name "returns the active caller namespace"
+   :test (fn [] (std.foundation/ns-current))
+   :expected 'std.foundation-test}
+  {:name "does not publish removed namespace aliases"
+   :test (fn []
+           (mapv nil?
+                 [(std.foundation/resolve 'std.foundation/env-current)
+                  (std.foundation/resolve 'std.foundation/current-namespace)
+                  (std.foundation/resolve 'std.foundation/the-ns)
+                  (std.foundation/resolve 'std.foundation/env-vars)
+                  (std.foundation/resolve 'std.foundation/env-namespaces)
+                  (std.foundation/resolve 'std.foundation/env-namespace)
+                  (std.foundation/resolve 'std.foundation/env-resolve)
+                  (std.foundation/resolve 'ns:create)
+                  (std.foundation/resolve 'ns:list)
+                  (std.foundation/resolve 'ns:map)
+                  (std.foundation/resolve 'ns:find)
+                  (std.foundation/resolve 'ns:name)
+                  (std.foundation/resolve 'ns:aliases)
+                  (std.foundation/resolve 'ns:imports)]))
+   :expected [true true true true true true true true true true true true true true]}])
 
 ^{:refer std.foundation/var-sym}
 (Test/run
@@ -230,29 +248,48 @@
 ^{:refer std.foundation/env-snapshot}
 (Test/run
  [{:name "returns the environment descriptor"
-   :test (fn [] (map? (std.foundation/env-snapshot)))
+   :test (fn []
+           (let [snapshot (std.foundation/env-snapshot)]
+             [(:env/current snapshot)
+              (vector? (:env/namespaces snapshot))]))
+   :expected ['std.foundation-test true]}])
+
+^{:refer std.foundation/ns-list}
+(Test/run
+ [{:name "lists a descriptor for the Foundation namespace"
+   :test (fn []
+           (boolean
+            (some (fn [descriptor]
+                    (= (get descriptor :namespace/name) 'std.foundation))
+                  (std.foundation/ns-list))))
    :expected true}])
 
-^{:refer std.foundation/env-vars}
+^{:refer std.foundation/ns-info}
 (Test/run
- [{:name "returns the active namespace Vars"
-   :test (fn [] (map? (std.foundation/env-vars)))
-   :expected true}])
+ [{:name "describes a known loaded namespace"
+   :test (fn []
+           (let [info (std.foundation/ns-info 'std.foundation)]
+             [(get info :namespace/name)
+              (get info :namespace/state)]))
+   :expected ['std.foundation :loaded]}])
 
-^{:refer std.foundation/env-namespaces}
+^{:refer std.foundation/ns-vars}
 (Test/run
- [{:name "returns known namespace descriptors"
-   :test (fn [] (vector? (std.foundation/env-namespaces)))
+ [{:name "returns owned Vars for an explicit namespace"
+   :test (fn []
+           (std.foundation/var-sym
+            (get (std.foundation/ns-vars 'std.foundation) 'list)))
+   :expected 'std.foundation/list}
+  {:name "returns owned Vars for the active namespace by default"
+   :test (fn []
+           (map? (std.foundation/ns-vars)))
    :expected true}])
-
-^{:refer std.foundation/env-namespace}
-(Test/run
- [{:name "looks up a known namespace descriptor"
-   :test (fn [] (get (std.foundation/env-namespace 'std.foundation) :namespace/state))
-   :expected :loaded}])
 
 ^{:refer std.foundation/env-module}
-(Test/run [])
+(Test/run
+ [{:name "returns nil for an unknown module path"
+   :test (fn [] (nil? (std.foundation/env-module "missing/module.hal")))
+   :expected true}])
 
 ^{:refer std.foundation/resolve}
 (Test/run
@@ -261,12 +298,6 @@
                  (std.foundation/resolve 'missing/value)])
    :expected [true nil]}])
 
-^{:refer std.foundation/env-resolve}
-(Test/run
- [{:name "retains the environment compatibility alias"
-   :test (fn [] (std.foundation/env-resolve 'missing/value))
-   :expected nil}])
-
 ^{:refer std.foundation/special-symbol?}
 (Test/run
  [{:name "recognizes language special symbols"
@@ -274,22 +305,51 @@
                  (std.foundation/special-symbol? 'ordinary)])
    :expected [true false]}])
 
-^{:refer std.foundation/the-ns}
+^{:refer std.foundation/ns-find}
 (Test/run
- [{:name "returns a loaded namespace"
-   :test (fn [] (std.foundation/ns-name (std.foundation/the-ns 'std.foundation)))
-   :expected 'std.foundation}])
+ [{:name "returns a loaded namespace handle"
+   :test (fn []
+           (let [namespace (std.foundation/ns-find 'std.foundation)]
+             [(std.foundation/type namespace)
+              (std.foundation/ns-name namespace)
+              (nil? (std.foundation/ns-find 'missing.namespace))]))
+   :expected [:std.native.Namespace 'std.foundation true]}])
+
+^{:refer std.foundation/ns-create}
+(Test/run
+ [{:name "returns the handle for an unqualified namespace symbol"
+   :test (fn []
+           (let [namespace (std.foundation/ns-create 'std.foundation-test)]
+             [(std.foundation/type namespace)
+              (std.foundation/ns-name namespace)]))
+   :expected [:std.native.Namespace 'std.foundation-test]}
+  {:name "rejects qualified namespace symbols"
+   :test (fn []
+           (try
+             (do (std.foundation/ns-create 'other/name) false)
+             (catch Throwable error true)))
+   :expected true}])
 
 ^{:refer std.foundation/ns-name}
 (Test/run
  [{:name "returns the symbol naming a loaded namespace"
-   :test (fn [] (std.foundation/ns-name 'std.foundation))
-   :expected 'std.foundation}])
+   :test (fn []
+           [(std.foundation/ns-name 'std.foundation)
+            (std.foundation/ns-name (std.foundation/ns-find 'std.foundation))])
+   :expected ['std.foundation 'std.foundation]}])
 
 ^{:refer std.foundation/ns-publics}
 (Test/run
  [{:name "returns public Vars for a loaded namespace"
-   :test (fn [] (not (nil? (get (std.foundation/ns-publics 'std.foundation) 'assoc))))
+   :test (fn []
+           (std.foundation/var-sym
+            (get (std.foundation/ns-publics 'std.foundation) 'assoc)))
+   :expected 'std.foundation/assoc}])
+
+^{:refer std.foundation/ns-aliases}
+(Test/run
+ [{:name "returns an alias map for a loaded namespace"
+   :test (fn [] (map? (std.foundation/ns-aliases 'std.foundation-test)))
    :expected true}])
 
 ^{:refer std.foundation/gensym}

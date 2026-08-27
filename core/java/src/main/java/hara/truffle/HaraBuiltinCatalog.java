@@ -42,7 +42,7 @@ import java.util.Set;
 @HaraNativeBinding(namespace = "std.native", name = "Stream", methods = {"create", "generate", "next"})
 @HaraNativeBinding(namespace = "std.native", name = "Arr", methods = {"new", "get", "set", "push-first", "push-last", "pop-first", "pop-last", "insert", "remove", "clone", "slice", "map", "filter", "fold-left", "fold-right"})
 @HaraNativeBinding(namespace = "std.native", name = "Obj", methods = {"new", "get", "set", "has?", "delete", "clone", "assign", "keys", "vals", "pairs"})
-@HaraNativeBinding(namespace = "std.native", name = "Runtime", methods = {"load-string", "macroexpand-1", "gensym", "ns-publics", "the-ns", "ns-name", "var-sym", "current", "snapshot", "vars", "namespaces", "namespace", "module", "resolve", "alias-state", "intern-var", "eval-in", "eval"})
+@HaraNativeBinding(namespace = "std.native", name = "Runtime", methods = {"load-string", "macroexpand-1", "gensym", "ns-publics", "ns-aliases", "ns-find", "ns-create", "ns-name", "var-sym", "current", "snapshot", "vars", "namespaces", "namespace", "module", "resolve", "alias-state", "intern-var", "eval-in", "eval"})
 @HaraNativeBinding(namespace = "std.native", name = "Printer", methods = {"p", "println", "capture"})
 @HaraNativeBinding(namespace = "std.native", name = "Document", methods = {"element", "text", "fragment", "annotate", "pass", "escaped", "group", "line", "break", "nest", "align", "normalize", "valid?", "render"})
 @HaraNativeBinding(namespace = "std.native", name = "Edn", methods = {"read", "read-forms", "write", "pretty"})

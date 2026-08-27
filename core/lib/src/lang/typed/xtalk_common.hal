@@ -118,6 +118,27 @@
     (resolve-type-symbol target ctx)
     target))
 
+(defn normalize-fn-inputs
+  [input-form ctx]
+  (loop [remaining (seq input-form)
+         output []]
+    (if (empty? remaining)
+      output
+      (let [item (first remaining)
+            more (rest remaining)]
+        (if (= '& item)
+          (if (or (empty? more)
+                  (not (empty? (rest more))))
+            (throw
+             (ex :syntax {:form input-form}
+                 :ex/message "Function rest type must be the final pair"))
+            (conj output
+                  {:kind :array
+                   :item (normalize-type (first more) ctx)
+                   :rest true}))
+          (recur more
+                 (conj output (normalize-type item ctx))))))))
+
 (defn normalize-type
   [form ctx]
   (cond
@@ -200,12 +221,12 @@
 
         :fn
         {:kind :fn
-         :inputs (mapv #(normalize-type % ctx) (first args))
+         :inputs (normalize-fn-inputs (first args) ctx)
          :output (normalize-type (second args) ctx)}
 
         :xt/fn
         {:kind :fn
-         :inputs (mapv #(normalize-type % ctx) (first args))
+         :inputs (normalize-fn-inputs (first args) ctx)
          :output (normalize-type (second args) ctx)}
 
         :>

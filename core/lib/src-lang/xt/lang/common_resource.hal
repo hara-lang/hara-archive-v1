@@ -437,7 +437,7 @@
   {:added "4.0"}
   [&form tag sym-id doc? attrs? more]
   (let [sym-ns (or (get (meta sym-id) :ns)
-                   (str (current-namespace)))
+                   (str (ns-current)))
         sym-id (if (vector? sym-id)
                  (first sym-id)
                  sym-id)

@@ -67,7 +67,7 @@
    :value "linked"})
 
 (defn current-module []
-  (symbol (str (current-namespace))))
+  (symbol (str (ns-current))))
 
 (defn index-of
   [values target]
@@ -298,4 +298,3 @@
      => true)])
 
 (pr-str (run '[lang.model.v1.spec-postgres-const-test]))
-

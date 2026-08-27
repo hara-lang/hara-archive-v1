@@ -48,11 +48,11 @@ public class NamespaceTest {
     Namespace foundNs = BuiltinNamespace.nsFind(rt, Symbol.create("new.ns"));
     assertEquals(newNs, foundNs);
 
-    // Check ns:map (mappings)
+    // Check namespace mappings
     IMapType mappings = BuiltinNamespace.nsMap(newNs);
     assertNotNull(mappings);
 
-    // Check ns:list
+    // Check namespace iteration
     java.util.Iterator<Namespace> it = BuiltinNamespace.nsList(rt);
     int count = 0;
     while (it.hasNext()) {

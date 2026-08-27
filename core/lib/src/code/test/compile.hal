@@ -16,7 +16,7 @@
 
 (defn create-fact
   [description function metadata]
-  {:namespace (current-namespace)
+  {:namespace (ns-current)
    :name description
    :function function
    :meta metadata})

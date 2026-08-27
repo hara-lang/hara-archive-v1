@@ -45,8 +45,9 @@
       abs acos acosh asin asinh atan atan2 atanh ceil cos cosh exp floor pow
       sin sinh sqrt tan tanh
       eval read-forms load-string macroexpand macroexpand-all
-      apply-in apply-as invoke-as current-namespace current-symbols ns-state
-      ns-loaded? ns-alias-state ns-name ns-publics ns-aliases resolve
+      apply-in apply-as invoke-as ns-current current-symbols ns-state
+      ns-loaded? ns-alias-state ns-list ns-info ns-vars ns-find ns-create
+      ns-name ns-publics ns-aliases resolve
       var-sym
       ex-info ex-data ex-message Throwable
       protocol-call field instance? identical? type? satisfies?

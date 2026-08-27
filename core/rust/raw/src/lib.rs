@@ -2818,7 +2818,7 @@ mod tests {
             "(if (= (type []) :std.native.Tuple) 42 0)",
             "(if (= (type (vector)) :std.native.Vector) 42 0)",
             "(if (= (type {}) :std.native.HashMap) 42 0)",
-            "(if (= (type (ns:create (quote example))) :std.native.Namespace) 42 0)",
+            "(if (= (type (ns-create (quote example))) :std.native.Namespace) 42 0)",
             "(if (= [(tuple? []) (tuple? [1 2 3 4 5 6 7 8 9])] [true false]) 42 0)",
         ] {
             assert_eq!(evaluate(source), Ok(42), "{source}");

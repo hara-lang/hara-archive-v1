@@ -425,7 +425,7 @@ public class HbcCodecTest {
           context
               .eval(
                   HaraLanguage.ID,
-                  "(do (require 'code.vm.model) (the-ns 'code.vm.model))")
+                  "(do (require 'code.vm.model) (ns-find 'code.vm.model))")
               .isNull());
     }
   }

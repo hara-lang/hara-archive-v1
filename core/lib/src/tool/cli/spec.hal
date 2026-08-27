@@ -57,7 +57,7 @@
      :arguments (:request/arguments request)}))
 
 (defn read-document [path]
-  (let [document (edn/read (project/read-text path))]
+  (let [document (Edn/read (project/read-text path))]
     (if (map? document)
       document
       (throw (ex :io {:path path} :ex/message "meta-spec root must be an EDN map")))))

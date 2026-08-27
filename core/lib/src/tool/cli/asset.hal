@@ -57,7 +57,7 @@
 
 (defn read-collection [input]
   (let [descriptor (descriptor-path input)
-        document (edn/read (project/read-text descriptor))]
+        document (Edn/read (project/read-text descriptor))]
     (if (not (map? document))
       (throw (ex :io {:path descriptor} :ex/message "asset.edn must be an EDN map"))
       nil)

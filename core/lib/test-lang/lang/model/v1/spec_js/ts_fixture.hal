@@ -4,28 +4,24 @@
 (l/script :xtalk
   {:require [[lang.model.v1.spec-js.ts-shared-fixture :as shared]]})
 
-(defspec.xt User
-  [:xt/record
-   ["id" :xt/str]
-   ["display-name" [:xt/maybe :xt/str]]])
+(def.xt ^{:schema
+          [:xt/record
+           ["id" :xt/str]
+           ["display-name" [:xt/maybe :xt/str]]]} User
+  nil)
 
-(defspec.xt UserMap
-  [:xt/dict :xt/str User])
+(def.xt ^{:schema [:xt/dict :xt/str User]} UserMap
+  nil)
 
-(defspec.xt TokenBox
-  [:xt/record
-   ["token" shared/Token]])
+(def.xt ^{:schema
+          [:xt/record
+           ["token" shared/Token]]} TokenBox
+  nil)
 
-(defspec.xt find-user
-  [:fn [UserMap :xt/str]
-   [:xt/maybe User]])
-
-(defn.xt find-user
+(defn.xt ^{:schema [:fn [UserMap :xt/str]
+                    [:xt/maybe User]]} find-user
   [users id]
   (return nil))
 
-(defspec.xt DEFAULT-USER
-  User)
-
-(def.xt DEFAULT-USER
+(def.xt ^{:schema User} DEFAULT-USER
   {:id "anonymous"})

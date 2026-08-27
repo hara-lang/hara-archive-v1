@@ -247,7 +247,7 @@ impl Runtime {
         }
         // Foundation and its eager dependencies have been evaluated above.
         // Keep the registry's load state in sync with the runtime resource
-        // state so env-namespace reports the actual bootstrap status.
+        // state so ns-info reports the actual bootstrap status.
         self.namespace_registry
             .set_load_state("std.foundation", kernel::NamespaceLoadState::Loaded);
         for &name in EAGER_HAL_RESOURCES {

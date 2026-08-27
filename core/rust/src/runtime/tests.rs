@@ -255,7 +255,7 @@ mod tests {
         }
         let sandbox = kernel.open_sandbox(SandboxSpec::in_process()).unwrap();
         assert_eq!(
-            sandbox_eval(&mut kernel, sandbox, "(the-ns 'std.native.Kernel)").unwrap(),
+            sandbox_eval(&mut kernel, sandbox, "(ns-find 'std.native.Kernel)").unwrap(),
             "nil"
         );
         assert_eq!(
@@ -514,7 +514,7 @@ mod tests {
                       (map? (std.foundation/env-snapshot)) \
                       (get (Runtime/namespace 'std.native.Runtime) :namespace/state) \
                       (Runtime/namespace 'std.native.Env) \
-                      (std.foundation/env-resolve 'std.native.Env/current)]",
+                      (std.foundation/resolve 'std.native.Env/current)]",
                 )
                 .unwrap(),
             "[nil true :std.native.Result :error nil :success 42 nil {:source :test} user 42 42 true :loaded nil nil]"
@@ -1822,7 +1822,7 @@ mod tests {
                 .eval_text(
                     "(do (ns example.resolver) (def answer 41) \
                      (defn answer-symbol [] \
-                       (std.foundation/var-sym (std.foundation/env-resolve 'answer))) \
+                       (std.foundation/var-sym (std.foundation/resolve 'answer))) \
                      (ns example.caller) (example.resolver/answer-symbol))",
                 )
                 .unwrap(),
@@ -4791,10 +4791,10 @@ mod tests {
     #[test]
     fn foundation_current_namespace_scope_preserves_facade_owners() {
         let mut runtime = Runtime::new();
-        assert_eq!(runtime.eval_text("(current-namespace)").unwrap(), "user");
+        assert_eq!(runtime.eval_text("(ns-current)").unwrap(), "user");
         assert_eq!(
             runtime
-                .eval_text("(ns example.current-scope) (current-namespace)")
+                .eval_text("(ns example.current-scope) (ns-current)")
                 .unwrap(),
             "example.current-scope"
         );
@@ -5099,6 +5099,24 @@ mod tests {
                 .unwrap(),
             "nil"
         );
+        assert_eq!(
+            runtime
+                .eval_text("(type (Runtime/ns-create 'example.created))")
+                .unwrap(),
+            ":std.native.Namespace"
+        );
+        assert_eq!(
+            runtime
+                .eval_text("(Runtime/ns-name (Runtime/ns-find 'example.created))")
+                .unwrap(),
+            "example.created"
+        );
+        assert_eq!(
+            runtime
+                .eval_text("(Runtime/ns-find 'missing.lib)")
+                .unwrap(),
+            "nil"
+        );
         runtime.alias_namespace("lib", "example.lib");
         assert_eq!(
             runtime
@@ -5106,10 +5124,31 @@ mod tests {
                 .unwrap(),
             "42"
         );
-        assert!(runtime
-            .eval_text("(ns bad/name)")
-            .unwrap_err()
-            .contains("ns expects a namespace symbol"));
+        assert_eq!(
+            runtime
+                .eval_text("(Runtime/ns-name (get (Runtime/ns-aliases 'user) 'lib))")
+                .unwrap(),
+            "example.lib"
+        );
+        for legacy in [
+            "ns:create",
+            "ns:list",
+            "ns:map",
+            "ns:find",
+            "ns:name",
+            "ns:aliases",
+            "ns:imports",
+        ] {
+            assert_eq!(
+                runtime
+                    .eval_text(&format!("(resolve '{legacy})"))
+                    .unwrap(),
+                "nil",
+                "legacy namespace operation must be absent: {legacy}"
+            );
+        }
+        let error = runtime.eval_text("(ns bad/name)").unwrap_err();
+        assert!(error.contains("ns expects an unqualified namespace symbol"), "{error}");
     }
 
     #[test]
@@ -5588,10 +5627,10 @@ mod tests {
                 .unwrap(),
             "nil"
         );
-        assert_eq!(
-            runtime.eval_text("(hash)").unwrap_err(),
-            "hash expects one value"
-        );
+        assert!(runtime
+            .eval_text("(hash)")
+            .unwrap_err()
+            .contains("function expects 1 arguments"));
     }
 
     #[test]
@@ -6927,7 +6966,7 @@ mod tests {
             ("(array)", ":std.native.Array"),
             ("(object)", ":std.native.Object"),
             ("(atom 0)", ":std.native.Atom"),
-            ("(ns:create (quote example))", ":std.native.Namespace"),
+            ("(ns-create (quote example))", ":std.native.Namespace"),
             ("#\"x\"", ":std.native.RegExp"),
         ] {
             assert_eq!(
@@ -10150,23 +10189,25 @@ mod tests {
         assert_eq!(
             runtime
                 .eval_native(
-                    "(get (std.foundation/env-namespace 'example.unloaded) :namespace/state)",
+                    "(get (std.foundation/ns-info 'example.unloaded) :namespace/state)",
                 )
                 .unwrap(),
             ":unloaded"
         );
         assert_eq!(
             runtime
-                .eval_native("(std.foundation/env-resolve 'example.unloaded/answer)")
+                .eval_native("(std.foundation/resolve 'example.unloaded/answer)")
                 .unwrap(),
             "nil"
         );
         assert!(runtime
-            .eval_native("(std.foundation/env-vars)")
+            .eval_native("(std.foundation/ns-vars)")
             .unwrap()
             .contains("local-value"));
         assert_eq!(
-            runtime.eval_native("(ns-state 'example.unloaded)").unwrap(),
+            runtime
+                .eval_native("(get (std.foundation/ns-info 'example.unloaded) :namespace/state)")
+                .unwrap(),
             ":unloaded"
         );
         assert_eq!(

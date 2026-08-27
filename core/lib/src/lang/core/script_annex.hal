@@ -10,7 +10,7 @@
 
 (defn current-namespace-symbol
   []
-  (symbol (str (current-namespace))))
+  (symbol (str (ns-current))))
 
 (defn coordinate
   [namespace tag]

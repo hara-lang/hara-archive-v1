@@ -5,6 +5,8 @@
             [tool.migrate.common.rule :as rule]
             [tool.migrate.common.rules :as catalog]))
 
+(declare migrate-defspec)
+
 (defn language
   [unit options]
   (or (:source/language options)
@@ -38,13 +40,29 @@
                   {:source/language source-language
                    :target/language target-language
                    :rules rules}
-                  options))]
+                  options))
+         schema-result
+         (if (and (= :hara target-language)
+                  (not= false (:migrate-defspec options)))
+           (migrate-defspec (:output result))
+           nil)
+         output (if schema-result (:output schema-result) (:output result))]
      ;; Parsing the target is part of the transform contract. It catches a
      ;; function rule that returned non-Hara text before a writer sees it.
-     (nav/block-input (:output result))
+     (nav/block-input output)
      (assoc result
+            :output output
+            :changed (not= source output)
+            :schema/moved (if schema-result (:moved schema-result) 0)
+            :schema/removed (if schema-result (:removed schema-result) 0)
             :source/language source-language
-            :target/language target-language))))
+            :target/language target-language
+            :diagnostics
+            (vec
+             (concat (:diagnostics result)
+                     (if schema-result
+                       (:diagnostics schema-result)
+                       [])))))))
 
 (defn transform-code
   "Applies the registry-backed transform through code.framework/transform-code."
@@ -180,6 +198,190 @@
                         :moved (inc (:moved state))))))))))
          {:edits [] :diagnostics [] :moved 0}
          (:definitions analysis))
+        output (framework/apply-edits source (:edits state))]
+    (assoc state
+           :output output
+           :changed (not= source output))))
+
+(defn legacy-defspec?
+  [record]
+  (let [form (:value record)]
+    (and (list? form)
+         (= 'defspec.xt (first form))
+         (symbol? (second form)))))
+
+(defn legacy-defspec-type-record
+  [source record]
+  (let [children (framework/semantic-children source record)]
+    (loop [index 2]
+      (if (>= index (count children))
+        nil
+        (let [candidate (nth children index)
+              value (:value candidate)]
+          (if (or (string? value)
+                  (map? value))
+            (recur (inc index))
+            candidate))))))
+
+(defn definition-for
+  [definitions name head]
+  (first
+   (filter
+    (fn [definition]
+      (and (= name (:name definition))
+           (if (set? head)
+             (has? head (:head definition))
+             (= head (:head definition)))))
+    definitions)))
+
+(defn schema-binding-edit
+  [source definition type-value type-text]
+  (let [form (:form definition)
+        name-record (:name-record definition)
+        binding (framework/binding-metadata source form name-record)]
+    (if (has? binding :schema)
+      (if (= type-value (:schema binding))
+        {:status :present}
+        {:status :conflict
+         :diagnostic
+         {:type :tool.migrate/schema-metadata-conflict
+          :level :error
+          :message (str "cannot move schema onto " (:name definition)
+                        "; the binding already declares a different :schema")
+          :definition/var (:name definition)
+          :definition/form (:head definition)}})
+      (let [metadata-record
+            (first
+             (filter
+              (fn [record]
+                (= (:end record) (:name-end definition)))
+              (framework/inline-metadata-records source form)))
+            metadata-info
+            (if metadata-record
+              (framework/metadata-info source metadata-record)
+              nil)
+            map-record (if metadata-info (:map-record metadata-info) nil)
+            edit
+            (cond
+              map-record
+              {:start (inc (:start map-record))
+               :end (inc (:start map-record))
+               :text (str ":schema " type-text " ")}
+
+              metadata-record
+              (let [other-metadata (dissoc binding :schema)
+                    metadata-text (if (empty? other-metadata)
+                                    ""
+                                    (let [printed (pr-str other-metadata)]
+                                      (str " "
+                                           (str/slice printed
+                                                      1
+                                                      (dec (str/length printed))))))]
+                {:start (:start metadata-record)
+                 :end (:end metadata-record)
+                 :text (str "^{:schema " type-text metadata-text "} ")})
+
+              :else
+              {:start (:name-start definition)
+               :end (:name-start definition)
+               :text (str "^{:schema " type-text "} ")})]
+        {:status :insert
+         :edit edit}))))
+
+(defn generated-schema-declaration
+  [source record type-record]
+  (let [name-record (nth (framework/semantic-children source record) 1)
+        name-text (:text name-record)
+        type-text (str/slice source (:start type-record) (:end type-record))]
+    (str "(def.xt ^{:schema " type-text "} " name-text " nil)")))
+
+(defn ^{:public true} migrate-defspec
+  "Moves legacy defspec.xt schemas onto owning XTalk declarations.
+
+   Callable schemas move to a matching defn.xt, defmacro.xt, or defgen.xt
+   binding. Named schemas move to a matching def.xt binding, or become an
+   explicit schema-only def.xt declaration. A legacy nil schema is removed
+   because it carries no declaration contract. An unpaired schema becomes an
+   explicit schema-only def.xt declaration so the migration has no residual
+   defspec.xt forms."
+  [source]
+  (let [analysis (framework/analyse-structure source)
+        definitions (:definitions analysis)
+        records (:form-records analysis)
+        state
+        (reduce
+         (fn [state record]
+           (if (not (legacy-defspec? record))
+             state
+             (let [form (:value record)
+                   spec-name (name (second form))
+                   type-record (legacy-defspec-type-record source record)
+                   type-value (if type-record (:value type-record) nil)
+                   type-text (if type-record
+                               (str/slice source
+                                          (:start type-record)
+                                          (:end type-record))
+                               "nil")
+                   callable? (and (vector? type-value)
+                                  (#{:fn :xt/fn} (first type-value)))
+                   target (definition-for definitions
+                                           spec-name
+                                           (if callable?
+                                             #{"defn.xt" "defmacro.xt" "defgen.xt"}
+                                             "def.xt"))]
+               (cond
+                 (nil? type-record)
+                 (assoc state
+                        :diagnostics
+                        (conj (:diagnostics state)
+                              {:type :tool.migrate/malformed-defspec
+                               :level :error
+                               :message "defspec.xt requires a schema form"
+                               :definition/var spec-name
+                               :definition/form "defspec.xt"}))
+
+                 (nil? type-value)
+                 (assoc state
+                        :edits
+                        (conj (:edits state)
+                              {:start (:full-start record)
+                               :end (:end record)
+                               :text ""})
+                        :removed (inc (:removed state)))
+
+                 (nil? target)
+                 (assoc state
+                        :edits
+                        (conj (:edits state)
+                              {:start (:full-start record)
+                               :end (:end record)
+                               :text (generated-schema-declaration
+                                      source record type-record)})
+                        :moved (inc (:moved state))
+                        :removed (inc (:removed state)))
+
+                 :else
+                 (let [binding-result
+                       (schema-binding-edit source target type-value type-text)]
+                   (if (= :conflict (:status binding-result))
+                     (assoc state
+                            :diagnostics
+                            (conj (:diagnostics state)
+                                  (:diagnostic binding-result)))
+                     (assoc state
+                            :edits
+                            (into (:edits state)
+                                  (concat
+                                   (if (= :insert (:status binding-result))
+                                     [(:edit binding-result)]
+                                     [])
+                                   [{:start (:full-start record)
+                                     :end (:end record)
+                                     :text ""}]))
+                            :moved (inc (:moved state))
+                            :removed (inc (:removed state)))))))))
+         {:edits [] :diagnostics [] :moved 0 :removed 0}
+         records)
         output (framework/apply-edits source (:edits state))]
     (assoc state
            :output output
