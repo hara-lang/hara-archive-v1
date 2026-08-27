@@ -1184,7 +1184,7 @@ fn native_base_values(operation: &str, values: &[Value]) -> Result<Value, String
                 .unwrap_or(Value::Nil)),
             _ => Err("Base/resolve expects one symbol".into()),
         },
-        "satisfies?" => match values.as_slice() {
+        "satisfies?" => match values {
             [protocol, value] => {
                 let protocol = match protocol {
                     Value::Protocol(protocol) => protocol.clone(),
