@@ -1,0 +1,113 @@
+(ns lang.model.v1.spec-xtalk.fn-lua-test
+  (:use code.test)
+  (:require [lang.model.v1.spec-xtalk.fn-lua :as subject]))
+
+^{:refer lang.model.v1.spec-xtalk.fn-lua/+lua-core+}
+(fact "Lua core XTalk group has the print operator"
+  [(count subject/+lua-core+)
+   (boolean (get subject/+lua-core+ :x-print))]
+  => [15 true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-lua/+lua-global+}
+(fact "Lua global XTalk group is empty"
+  subject/+lua-global+ => {})
+
+^{:refer lang.model.v1.spec-xtalk.fn-lua/+lua-custom+}
+(fact "Lua custom XTalk group contains key access"
+  [(count subject/+lua-custom+)
+   (boolean (get subject/+lua-custom+ :x-has-key?))]
+  => [1 true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-lua/+lua-math+}
+(fact "Lua math XTalk group preserves its operator count"
+  (count subject/+lua-math+) => 21)
+
+^{:refer lang.model.v1.spec-xtalk.fn-lua/+lua-type+}
+(fact "Lua type XTalk group preserves its operator count"
+  (count subject/+lua-type+) => 10)
+
+^{:refer lang.model.v1.spec-xtalk.fn-lua/+lua-lu+}
+(fact "Lua lookup XTalk group preserves its operators"
+  [(count subject/+lua-lu+)
+   (boolean (get subject/+lua-lu+ :x-lu-get))]
+  => [4 true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-lua/+lua-bit+}
+(fact "Lua bit XTalk group exposes xor"
+  [(count subject/+lua-bit+)
+   (boolean (get subject/+lua-bit+ :x-bit-xor))]
+  => [6 true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-lua/+lua-obj+}
+(fact "Lua object XTalk group is empty"
+  subject/+lua-obj+ => {})
+
+^{:refer lang.model.v1.spec-xtalk.fn-lua/+lua-arr+}
+(fact "Lua array XTalk group exposes push"
+  [(count subject/+lua-arr+)
+   (boolean (get subject/+lua-arr+ :x-arr-push))]
+  => [6 true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-lua/+lua-str+}
+(fact "Lua string XTalk group preserves its operator count"
+  (count subject/+lua-str+) => 15)
+
+^{:refer lang.model.v1.spec-xtalk.fn-lua/+lua-bytes+}
+(fact "Lua bytes XTalk group preserves its operator count"
+  (count subject/+lua-bytes+) => 7)
+
+^{:refer lang.model.v1.spec-xtalk.fn-lua/+lua-js+}
+(fact "Lua JavaScript interop XTalk group preserves its operators"
+  [(count subject/+lua-js+)
+   (boolean (get subject/+lua-js+ :x-json-encode))]
+  => [2 true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-lua/+lua-return+}
+(fact "Lua return XTalk group preserves its operator count"
+  (count subject/+lua-return+) => 3)
+
+^{:refer lang.model.v1.spec-xtalk.fn-lua/+lua-iter+}
+(fact "Lua iterator XTalk group preserves its operator count"
+  (count subject/+lua-iter+) => 8)
+
+^{:refer lang.model.v1.spec-xtalk.fn-lua/+lua-promise+}
+(fact "Lua promise XTalk group exposes async execution"
+  [(count subject/+lua-promise+)
+   (boolean (get subject/+lua-promise+ :x-async-run))]
+  => [1 true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-lua/+lua-file+}
+(fact "Lua file XTalk group exposes file reads"
+  [(count subject/+lua-file+)
+   (boolean (get subject/+lua-file+ :x-file-read))]
+  => [3 true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-lua/+lua-shell+}
+(fact "Lua shell XTalk group exposes shell execution"
+  [(count subject/+lua-shell+)
+   (boolean (get subject/+lua-shell+ :x-shell))]
+  => [2 true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-lua/+lua+}
+(fact "Lua XTalk operators flatten all explicit groups"
+  [(= subject/+lua+
+      (merge subject/+lua-core+
+             subject/+lua-global+
+             subject/+lua-custom+
+             subject/+lua-math+
+             subject/+lua-type+
+             subject/+lua-lu+
+             subject/+lua-bit+
+             subject/+lua-obj+
+             subject/+lua-arr+
+             subject/+lua-str+
+             subject/+lua-bytes+
+             subject/+lua-js+
+             subject/+lua-return+
+             subject/+lua-iter+
+             subject/+lua-promise+
+             subject/+lua-file+
+             subject/+lua-shell+))
+   (boolean (get subject/+lua+ :x-print))
+   (boolean (get subject/+lua+ :x-file-write))]
+  => [true true true])

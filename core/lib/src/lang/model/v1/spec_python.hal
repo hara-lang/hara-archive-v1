@@ -1,8 +1,7 @@
 (ns lang.model.v1.spec-python
   (:require [lang.common.book :as book]
-            [lang.common.grammar-api :as grammar]
-            [lang.common.registry :as registry]
-            [lang.model.v1.spec-xtalk :as xtalk]
+            [lang.common.book-meta :as book-meta]
+            [lang.common.grammar-api :as grammar-api]
             [lang.model.v1.spec-python.python-grammar :as model]))
 
 (def +language+ :python)
@@ -11,16 +10,31 @@
 (def +grammar-version+ model/+grammar-version+)
 (def +grammar+ model/+grammar+)
 
-(defn- install-source [catalog source]
-  (if (registry/find catalog (grammar/source-coordinate source)) catalog
-      (registry/install catalog source)))
-(defn install [catalog] (install-source (xtalk/install catalog) +grammar+))
-(defn catalog [] (install (registry/registry)))
-(defn select
-  ([] (select (catalog)))
-  ([catalog] (registry/resolve catalog {:grammar/id +tag+ :grammar/version +grammar-version+})))
-(def +selection+ (select))
-(def +book+ (book/book {:lang +language+ :parent :xtalk :version +version+
-                        :coordinate (:coordinate +selection+)
-                        :grammar (:grammar +selection+) :selection +selection+}))
+(def +coordinate+
+  {:grammar/id +tag+
+   :grammar/version +grammar-version+
+   :grammar/release "alpha"
+   :grammar/facets []})
+
+(def +selection+
+  {:coordinate +coordinate+
+   :grammar +grammar+
+   :rewrite {}
+   :rewrite/source {}
+   :extensions {}
+   :provenance []
+   :fingerprint (grammar-api/fingerprint +grammar+)})
+
+(defn select [] +selection+)
+
+(def +meta+ (book-meta/book-meta {}))
+
+(def +book+
+  (book/book {:lang +language+
+              :meta +meta+
+              :parent :xtalk
+              :version +version+
+              :coordinate +coordinate+
+              :grammar +grammar+
+              :selection +selection+}))
 (def +init+ +book+)

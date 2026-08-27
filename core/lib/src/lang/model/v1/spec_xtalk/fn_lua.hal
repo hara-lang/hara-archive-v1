@@ -176,15 +176,3 @@
          +lua-promise+
          +lua-file+
          +lua-shell+))
-
-(def +operator-group-names+
-  [:core :global :custom :math :type :lu :bit :obj :arr :str :bytes :js :return :iter :promise :file :shell])
-
-(def +operator-groups+
-  (mapv (fn [name entries] {:name name :entries entries})
-        +operator-group-names+
-        [+lua-core+ +lua-global+ +lua-custom+ +lua-math+ +lua-type+ +lua-lu+ +lua-bit+ +lua-obj+ +lua-arr+ +lua-str+ +lua-bytes+ +lua-js+ +lua-return+ +lua-iter+ +lua-promise+ +lua-file+ +lua-shell+]))
-
-(def +operator-source+ {:override +lua+})
-
-(def +operators+ +operator-source+)

@@ -1,6 +1,7 @@
 (ns tool.migrate.common.rule
   (:config {:role :internal})
   (:require [std.block :as block]
+            [std.foundation.string :as str]
             [tool.migrate.common.block :as nav]
             [tool.migrate.common.rules :as declarations]))
 
@@ -279,7 +280,9 @@
   (if (= :dependency-entry (:kind rule))
     nil
     (let [text (:text (:match rule))
-          separator (str/index-of text "/")]
+          separator (if (string? text)
+                      (str/index-of text "/")
+                      nil)]
       (if (or (nil? separator) (< separator 0))
         (let [alias (get aliases text)]
           (if alias

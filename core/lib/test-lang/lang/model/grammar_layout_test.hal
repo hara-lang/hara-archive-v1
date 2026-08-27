@@ -1,93 +1,135 @@
 (ns lang.model.grammar-layout-test
   (:use code.test)
-  (:require [lang.model.v1.spec-js.js-native :as js-native]
+  (:require [lang.common.grammar :as common-grammar]
+            [lang.model.v1.spec-js.js-grammar :as js-grammar]
+            [lang.model.v1.spec-python.python-grammar :as python-grammar]
+            [lang.model.v1.spec-lua.lua-grammar :as lua-grammar]
+            [lang.model.v1.spec-js.js-native :as js-native]
             [lang.model.v1.spec-xtalk.fn-js :as js-xtalk]
             [lang.model.v1.spec-python.python-native :as python-native]
             [lang.model.v1.spec-xtalk.fn-python :as python-xtalk]
             [lang.model.v1.spec-lua.lua-native :as lua-native]
             [lang.model.v1.spec-xtalk.fn-lua :as lua-xtalk]))
 
-(defn xtalk-layer-valid?
-  [native xtalk]
-  (let [native-operators (get native :override)
-        xtalk-operators (get xtalk :override)
-        xtalk-keys (keys xtalk-operators)]
-    (and (every? (fn [operator]
-                   (str/starts-with? (name operator) "x-"))
-                 xtalk-keys)
-         (every? (fn [operator]
-                   (nil? (get native-operators operator)))
-                 xtalk-keys))))
-
-(defn grouped-xtalk-valid?
-  [source operators groups]
-  (and (= (get source :override) (get operators :override))
-       (= (count (get source :override))
-          (reduce + (map (fn [group] (count (:entries group))) groups)))))
-
-(defn grouped-native-valid?
-  [source operators groups]
-  (and (= source operators)
-       (= (+ (count (get source :override)) (count (get source :define)))
-          (reduce + (map (fn [group]
-                           (+ (count (:override group))
-                              (count (:define group))))
-                         groups)))))
-
-(fact "language XTalk layers contain only portable x-* overrides"
-  [(xtalk-layer-valid? js-native/+operators+ js-xtalk/+operators+)
-   (xtalk-layer-valid? python-native/+operators+ python-xtalk/+operators+)
-   (xtalk-layer-valid? lua-native/+operators+ lua-xtalk/+operators+)]
+(fact "XTalk groups flatten into explicit target surfaces"
+  [(= js-xtalk/+js+
+      (merge js-xtalk/+js-core+
+             js-xtalk/+js-global+
+             js-xtalk/+js-custom+
+             js-xtalk/+js-math+
+             js-xtalk/+js-type+
+             js-xtalk/+js-lu+
+             js-xtalk/+js-obj+
+             js-xtalk/+js-arr+
+             js-xtalk/+js-arr-functional+
+             js-xtalk/+js-str+
+             js-xtalk/+js-bytes+
+             js-xtalk/+js-js+
+             js-xtalk/+js-return+
+             js-xtalk/+js-iter+
+             js-xtalk/+js-promise+
+             js-xtalk/+js-shell+
+             js-xtalk/+js-file+))
+   (= python-xtalk/+python+
+      (merge python-xtalk/+python-core+
+             python-xtalk/+python-global+
+             python-xtalk/+python-custom+
+             python-xtalk/+python-math+
+             python-xtalk/+python-type+
+             python-xtalk/+python-lu+
+             python-xtalk/+python-obj+
+             python-xtalk/+python-arr+
+             python-xtalk/+python-fn+
+             python-xtalk/+python-str+
+             python-xtalk/+python-bytes+
+             python-xtalk/+python-js+
+             python-xtalk/+python-return+
+             python-xtalk/+python-iter+
+             python-xtalk/+python-promise+
+             python-xtalk/+python-shell+
+             python-xtalk/+python-file+))
+   (= lua-xtalk/+lua+
+      (merge lua-xtalk/+lua-core+
+             lua-xtalk/+lua-global+
+             lua-xtalk/+lua-custom+
+             lua-xtalk/+lua-math+
+             lua-xtalk/+lua-type+
+             lua-xtalk/+lua-lu+
+             lua-xtalk/+lua-bit+
+             lua-xtalk/+lua-obj+
+             lua-xtalk/+lua-arr+
+             lua-xtalk/+lua-str+
+             lua-xtalk/+lua-bytes+
+             lua-xtalk/+lua-js+
+             lua-xtalk/+lua-return+
+             lua-xtalk/+lua-iter+
+             lua-xtalk/+lua-promise+
+             lua-xtalk/+lua-file+
+             lua-xtalk/+lua-shell+))]
   => [true true true])
 
-(fact "native layers retain target-specific operators"
-  [(boolean (get-in js-native/+operators+ [:override :eq]))
-   (boolean (get-in python-native/+operators+ [:override :with-global]))
-   (boolean (get-in lua-native/+operators+ [:override :with-global]))]
+(fact "native groups flatten into explicit target surfaces"
+  [(= js-native/+js-native+
+      (merge js-native/+js-native-core+
+             js-native/+js-native-vars+
+             js-native/+js-native-for+
+             js-native/+js-native-prototype+))
+   (= python-native/+python-native+
+      (merge python-native/+python-native-core+
+             python-native/+python-native-vars+
+             python-native/+python-native-fn+
+             python-native/+python-native-for+
+             python-native/+python-native-prototype+))
+   (= lua-native/+lua-native+
+      (merge lua-native/+lua-native-core+
+             lua-native/+lua-native-counter+
+             lua-native/+lua-native-vars+
+             lua-native/+lua-native-for+
+             lua-native/+lua-native-prototype+
+             lua-native/+lua-native-coroutine+))]
   => [true true true])
 
-(fact "XTalk targets preserve the original named group vocabulary"
-  [js-xtalk/+operator-group-names+
-   lua-xtalk/+operator-group-names+
-   python-xtalk/+operator-group-names+]
-  => [[:core :global :custom :math :type :lu :obj :arr :arr-functional
-       :str :bytes :js :return :iter :promise :shell :file]
-      [:core :global :custom :math :type :lu :bit :obj :arr :str :bytes :js
-       :return :iter :promise :file :shell]
-      [:core :global :custom :math :type :lu :obj :arr :fn :str :bytes :js
-       :return :iter :promise :shell :file]])
-
-(fact "group composition is lossless for XTalk and native target specs"
-  [(grouped-xtalk-valid? js-xtalk/+operator-source+ js-xtalk/+operators+
-                         js-xtalk/+operator-groups+)
-   (grouped-xtalk-valid? lua-xtalk/+operator-source+ lua-xtalk/+operators+
-                         lua-xtalk/+operator-groups+)
-   (grouped-xtalk-valid? python-xtalk/+operator-source+ python-xtalk/+operators+
-                         python-xtalk/+operator-groups+)
-   (grouped-native-valid? js-native/+operator-source+ js-native/+operators+
-                          js-native/+operator-groups+)
-   (grouped-native-valid? lua-native/+operator-source+ lua-native/+operators+
-                          lua-native/+operator-groups+)
-   (grouped-native-valid? python-native/+operator-source+ python-native/+operators+
-                          python-native/+operator-groups+)]
+(fact "target groups retain representative operator ownership"
+  [(= (get js-xtalk/+js-math+ :x-m-sqrt)
+      (get js-xtalk/+js+ :x-m-sqrt))
+   (= (get python-xtalk/+python-fn+ :x-fn)
+      (get python-xtalk/+python+ :x-fn))
+   (= (get lua-xtalk/+lua-bit+ :x-bit-xor)
+      (get lua-xtalk/+lua+ :x-bit-xor))
+   (= (get js-native/+js-native-definitions+ :typeof)
+      (get js-grammar/+features+ :typeof))
+   (= (get python-native/+python-native-definitions+ :index-native)
+      (get python-grammar/+features+ :index-native))
+   (= (get lua-native/+lua-native-definitions+ :cat)
+      (get lua-grammar/+features+ :cat))]
   => [true true true true true true])
 
-(fact "XTalk group vars expose the original semantic boundaries"
-  [(boolean (get js-xtalk/+js-math+ :x-m-sqrt))
-   (boolean (get js-xtalk/+js-arr-functional+ :x-arr-foldl))
-   (boolean (get lua-xtalk/+lua-bit+ :x-bit-xor))
-   (boolean (get lua-xtalk/+lua-file+ :x-file-read))
-   (boolean (get python-xtalk/+python-custom+ :x-get-key))
-   (boolean (get python-xtalk/+python-promise+ :x-async-run))]
-  => [true true true true true true])
+(fact "all target grammars use the same build layers"
+  [(= js-grammar/+features+
+      (-> js-grammar/+baseline+
+          (common-grammar/build:override js-xtalk/+js+)
+          (common-grammar/build:override js-native/+js-native+)
+          (common-grammar/build:extend js-native/+js-native-definitions+)))
+   (= python-grammar/+features+
+      (-> python-grammar/+baseline+
+          (common-grammar/build:override python-xtalk/+python+)
+          (common-grammar/build:override python-native/+python-native+)
+          (common-grammar/build:extend python-native/+python-native-definitions+)))
+   (= lua-grammar/+features+
+      (-> lua-grammar/+baseline+
+          (common-grammar/build:override lua-xtalk/+lua+)
+          (common-grammar/build:override lua-native/+lua-native+)
+          (common-grammar/build:extend lua-native/+lua-native-definitions+)))]
+  => [true true true])
 
-(fact "native group vars expose target grammar boundaries"
-  [(boolean (get js-native/+js-native-for+ :for-array))
-   (boolean (get js-native/+js-native-definitions+ :typeof))
-   (boolean (get lua-native/+lua-native-counter+ :incby))
-   (boolean (get lua-native/+lua-native-coroutine+ :yield))
-   (boolean (get python-native/+python-native-fn+ :fn))
-   (boolean (get python-native/+python-native-definitions+ :index-native))]
-  => [true true true true true true])
-
-(run {:namespace "lang.model.grammar-layout-test"})
+(fact "target grammars are direct tagged values without composition maps"
+  [(get js-grammar/+grammar+ :tag)
+   (get python-grammar/+grammar+ :tag)
+   (get lua-grammar/+grammar+ :tag)
+   (= nil (get js-grammar/+grammar+ :operators))
+   (= nil (get python-grammar/+grammar+ :operators))
+   (= nil (get lua-grammar/+grammar+ :operators))
+   (= nil (get js-grammar/+grammar+ :emit))
+   (= nil (get python-grammar/+grammar+ :emit))
+   (= nil (get lua-grammar/+grammar+ :emit))]
+  => [:js :py :lua true true true true true true])

@@ -1,0 +1,460 @@
+(ns lang.model.v1.spec-js.js-native-test
+  (:use code.test)
+  (:require [lang.model.v1.spec-js.js-native :as subject]))
+
+^{:refer lang.model.v1.spec-js.js-native/js-set}
+(fact "JavaScript sets have an object representation"
+  (subject/js-set [] {} {}) => "{}")
+
+^{:refer lang.model.v1.spec-js.js-native/js-math-quot}
+(fact "JavaScript quotient floors the division"
+  (subject/js-math-quot '(quot a b)) => '(Math.floor (/ a b)))
+
+^{:refer lang.model.v1.spec-js.js-native/js-array-is-array}
+(fact "JavaScript array checks use Array.isArray"
+  (subject/js-array-is-array 'value) => '(. Array (isArray value)))
+
+^{:refer lang.model.v1.spec-js.js-native/js-json-stringify}
+(fact "JavaScript JSON encoding uses JSON.stringify"
+  (subject/js-json-stringify 'value) => '(. JSON (stringify value)))
+
+^{:refer lang.model.v1.spec-js.js-native/js-async-run}
+(fact "JavaScript async execution resolves and then calls its thunk"
+  (subject/js-async-run '(async-run thunk))
+  => '(. (. Promise (resolve)) (then thunk)))
+
+^{:refer lang.model.v1.spec-js.js-native/js-prototype-create}
+(fact "JavaScript prototype creation emits a copying loop"
+  (let [out (subject/js-prototype-create '(prototype-create methods))]
+    [(first out) (first (nth out 2)) (first (nth out 3))]
+    => ['do 'for:object 'return]))
+
+^{:refer lang.model.v1.spec-js.js-native/js-prototype-method}
+(fact "JavaScript prototype methods read the direct method first"
+  (let [out (subject/js-prototype-method '(prototype-method object key))]
+    [(first (first out)) (second out)]
+    => ['fn '(x:get-key object key nil)]))
+
+^{:refer lang.model.v1.spec-js.js-native/js-x-construct}
+(fact "JavaScript construction delegates to Reflect.construct"
+  (subject/js-x-construct '(x:construct C args))
+  => '(. Reflect (construct C args)))
+
+^{:refer lang.model.v1.spec-js.js-native/js-promise}
+(fact "JavaScript promise wraps a thunk in a resolved promise"
+  (subject/js-promise '(x:promise thunk))
+  => '(. (. Promise (resolve)) (then thunk)))
+
+^{:refer lang.model.v1.spec-js.js-native/js-promise-then}
+(fact "JavaScript promise then attaches a callback"
+  (subject/js-promise-then '(x:promise-then promise callback))
+  => '(. promise (then callback)))
+
+^{:refer lang.model.v1.spec-js.js-native/js-promise-new}
+(fact "JavaScript promise-new constructs a Promise"
+  (subject/js-promise-new '(x:promise-new executor))
+  => '(new Promise executor))
+
+^{:refer lang.model.v1.spec-js.js-native/js-promise-all}
+(fact "JavaScript promise-all calls Promise.all"
+  (subject/js-promise-all '(x:promise-all promises))
+  => '(. Promise (all promises)))
+
+^{:refer lang.model.v1.spec-js.js-native/js-promise-catch}
+(fact "JavaScript promise catch attaches an error callback"
+  (subject/js-promise-catch '(x:promise-catch promise callback))
+  => '(. promise (catch callback)))
+
+^{:refer lang.model.v1.spec-js.js-native/js-promise-finally}
+(fact "JavaScript promise finally attaches cleanup"
+  (subject/js-promise-finally '(x:promise-finally promise cleanup))
+  => '(. promise (finally cleanup)))
+
+^{:refer lang.model.v1.spec-js.js-native/js-promise-native}
+(fact "JavaScript native promise checks Promise instances"
+  (subject/js-promise-native '(x:promise-native value))
+  => '(instanceof value Promise))
+
+^{:refer lang.model.v1.spec-js.js-native/js-type-native}
+(fact "JavaScript native type distinguishes arrays and objects"
+  (subject/js-type-native '(x:type-native value))
+  => '(do
+       (when (== value nil) (return nil))
+       (var native-type := (typeof value))
+       (if (== native-type "object")
+         (if (. Array (isArray value))
+           (return "array")
+           (return "object"))
+         (return native-type))))
+
+^{:refer lang.model.v1.spec-js.js-native/js-ex-native}
+(fact "JavaScript native exceptions are Error instances"
+  (subject/js-ex-native '(x:ex-native? error))
+  => '(instanceof error Error))
+
+^{:refer lang.model.v1.spec-js.js-native/js-ex-new}
+(fact "JavaScript exceptions preserve optional data"
+  [(subject/js-ex-new '(x:ex-new message))
+   (subject/js-ex-new '(x:ex-new message data))]
+  => ['(new Error message)
+      '(Object.assign (new Error message) {"data" data})])
+
+^{:refer lang.model.v1.spec-js.js-native/js-ex-message}
+(fact "JavaScript exception messages are guarded native reads"
+  (subject/js-ex-message '(x:ex-message error))
+  => '(:? (instanceof error Error) (. error ["message"]) nil))
+
+^{:refer lang.model.v1.spec-js.js-native/js-ex-data}
+(fact "JavaScript exception data are guarded native reads"
+  (subject/js-ex-data '(x:ex-data error))
+  => '(:? (instanceof error Error) (. error ["data"]) nil))
+
+^{:refer lang.model.v1.spec-js.js-native/js-typeof-predicate}
+(fact "JavaScript type predicates compare typeof"
+  (subject/js-typeof-predicate "number" '(typeof? value))
+  => '(== "number" (typeof value)))
+
+^{:refer lang.model.v1.spec-js.js-native/js-is-object}
+(fact "JavaScript object checks exclude arrays and nil"
+  (subject/js-is-object '(x:is-object? value))
+  => '(and (not= nil value)
+           (== "object" (typeof value))
+           (not (. Array (isArray value)))))
+
+^{:refer lang.model.v1.spec-js.js-native/js-apply}
+(fact "JavaScript apply spreads its argument collection"
+  (subject/js-apply '(x:apply function args))
+  => '(function (:.. args)))
+
+^{:refer lang.model.v1.spec-js.js-native/js-return-encode}
+(fact "JavaScript return encoding records type and value"
+  (let [out (subject/js-return-encode '(x:return-encode value id key))]
+    [(first out) (first (nth out 2)) (first (nth out 3))]
+    => ['do 'var 'return]))
+
+^{:refer lang.model.v1.spec-js.js-native/js-return-wrap}
+(fact "JavaScript return wrapping catches and serializes errors"
+  (let [out (subject/js-return-wrap '(x:return-wrap function encode))]
+    [(first out) (first (nth out 1)) (first (nth out 3))]
+    => ['try 'var 'catch]))
+
+^{:refer lang.model.v1.spec-js.js-native/js-return-eval}
+(fact "JavaScript return evaluation runs source through a wrapper"
+  (subject/js-return-eval '(x:return-eval source wrap))
+  => '(return (wrap (fn [] (return (eval source))))))
+
+^{:refer lang.model.v1.spec-js.js-native/js-var}
+(fact "JavaScript vars support declarations with and without values"
+  [(subject/js-var '(var x))
+   (subject/js-var '(var x value))]
+  => ['(var* :let x) '(var* :let x := value)])
+
+^{:refer lang.model.v1.spec-js.js-native/js-for-index}
+(fact "JavaScript index loops expand into a three-clause for"
+  (subject/js-for-index '(for [i [0 3 2]] body))
+  => '(for [(var* :let i := 0)
+            (< i 3)
+            (:= i (+ i 2))]
+           body))
+
+^{:refer lang.model.v1.spec-js.js-native/js-for-object}
+(fact "JavaScript object loops use Object.entries"
+  (subject/js-for-object '(for [[k v] object] body))
+  => '(for [(var* :let [k v]) :of (Object.entries object)] body))
+
+^{:refer lang.model.v1.spec-js.js-native/js-for-array}
+(fact "JavaScript array loops support element and index bindings"
+  [(subject/js-for-array '(for [value array] body))
+   (subject/js-for-array '(for [[index value] array] body))]
+  => ['(for [(var* :let value) :of (% array)] body)
+      '(for [(var* :let index := 0)
+             (< index (. array length))
+             (:++ index)]
+            (var* :let value (. array [index]))
+            body)])
+
+^{:refer lang.model.v1.spec-js.js-native/js-for-iter}
+(fact "JavaScript iterator loops use the iterable protocol"
+  (subject/js-for-iter '(for [entry iterator] body))
+  => '(for [(var* :let entry) :of (% iterator)] body))
+
+^{:refer lang.model.v1.spec-js.js-native/js-x-str-comp}
+(fact "JavaScript string comparison is locale-aware"
+  (subject/js-x-str-comp '(x:str-comp left right))
+  => '(> 0 (. left (localeCompare right))))
+
+^{:refer lang.model.v1.spec-js.js-native/js-x-len}
+(fact "JavaScript length reads the length property"
+  (subject/js-x-len '(x:len value)) => '(. value length))
+
+^{:refer lang.model.v1.spec-js.js-native/js-x-cat}
+(fact "JavaScript concatenation uses plus"
+  (subject/js-x-cat '(x:cat a b c)) => '(+ a b c))
+
+^{:refer lang.model.v1.spec-js.js-native/js-x-unpack}
+(fact "JavaScript unpack uses spread"
+  (subject/js-x-unpack '(x:unpack values)) => '(:.. values))
+
+^{:refer lang.model.v1.spec-js.js-native/js-x-has-key}
+(fact "JavaScript key checks support default and exact values"
+  [(subject/js-x-has-key '(x:has-key? object key))
+   (subject/js-x-has-key '(x:has-key? object key expected))]
+  => ['(not= nil (. object [key]))
+      '(== expected (x:get-key object key nil))])
+
+^{:refer lang.model.v1.spec-js.js-native/js-x-lu-get}
+(fact "JavaScript lookup reads a Map only when it has the key"
+  (subject/js-x-lu-get '(x:lu-get lookup key))
+  => '(:? (. lookup (has key)) (. lookup (get key)) nil))
+
+^{:refer lang.model.v1.spec-js.js-native/js-x-lu-set}
+(fact "JavaScript lookup assignment calls Map.set"
+  (subject/js-x-lu-set '(x:lu-set lookup key value))
+  => '(. lookup (set key value)))
+
+^{:refer lang.model.v1.spec-js.js-native/js-x-lu-del}
+(fact "JavaScript lookup deletion calls Map.delete"
+  (subject/js-x-lu-del '(x:lu-del lookup key))
+  => '(. lookup (delete key)))
+
+^{:refer lang.model.v1.spec-js.js-native/js-x-obj-keys}
+(fact "JavaScript object keys use Object.keys"
+  (subject/js-x-obj-keys '(x:obj-keys object))
+  => '(Object.keys object))
+
+^{:refer lang.model.v1.spec-js.js-native/js-x-obj-clone}
+(fact "JavaScript object cloning uses Object.assign"
+  (subject/js-x-obj-clone '(x:obj-clone object))
+  => '(Object.assign {} object))
+
+^{:refer lang.model.v1.spec-js.js-native/js-x-arr-method}
+(fact "JavaScript array methods preserve their receiver"
+  (subject/js-x-arr-method 'push '(x:arr-push array value))
+  => '(. array (push value)))
+
+^{:refer lang.model.v1.spec-js.js-native/js-x-arr-clone}
+(fact "JavaScript array cloning uses slice"
+  (subject/js-x-arr-clone '(x:arr-clone array))
+  => '(. array (slice)))
+
+^{:refer lang.model.v1.spec-js.js-native/js-string-method}
+(fact "JavaScript string methods preserve method arguments"
+  (subject/js-string-method 'slice '(x:slice value start stop))
+  => '(. value (slice start stop)))
+
+^{:refer lang.model.v1.spec-js.js-native/js-x-str-char}
+(fact "JavaScript string char access uses charCodeAt"
+  (subject/js-x-str-char '(x:str-char value index))
+  => '(. value (charCodeAt index)))
+
+^{:refer lang.model.v1.spec-js.js-native/js-x-str-split}
+(fact "JavaScript string split delegates to split"
+  (subject/js-x-str-split '(x:str-split value token))
+  => '(. value (split token)))
+
+^{:refer lang.model.v1.spec-js.js-native/js-x-str-join}
+(fact "JavaScript string join uses the separator as receiver"
+  (subject/js-x-str-join '(x:str-join separator values))
+  => '(. values (join separator)))
+
+^{:refer lang.model.v1.spec-js.js-native/js-x-str-index-of}
+(fact "JavaScript string index lookup uses indexOf"
+  (subject/js-x-str-index-of '(x:str-index-of value token))
+  => '(. value (indexOf token)))
+
+^{:refer lang.model.v1.spec-js.js-native/js-x-str-substring}
+(fact "JavaScript string substring delegates to substring"
+  (subject/js-x-str-substring '(x:str-substring value start stop))
+  => '(. value (substring start stop)))
+
+^{:refer lang.model.v1.spec-js.js-native/js-x-str-to-upper}
+(fact "JavaScript strings can be uppercased"
+  (subject/js-x-str-to-upper '(x:str-to-upper value))
+  => '(. value (toUpperCase)))
+
+^{:refer lang.model.v1.spec-js.js-native/js-x-str-to-lower}
+(fact "JavaScript strings can be lowercased"
+  (subject/js-x-str-to-lower '(x:str-to-lower value))
+  => '(. value (toLowerCase)))
+
+^{:refer lang.model.v1.spec-js.js-native/js-x-str-to-fixed}
+(fact "JavaScript numbers use toFixed"
+  (subject/js-x-str-to-fixed '(x:str-to-fixed value digits))
+  => '(. value (toFixed digits)))
+
+^{:refer lang.model.v1.spec-js.js-native/js-x-str-replace}
+(fact "JavaScript replacement uses a global regular expression"
+  (subject/js-x-str-replace '(x:str-replace value token replacement))
+  => '(. value (replace (RegExp token "g") replacement)))
+
+^{:refer lang.model.v1.spec-js.js-native/js-x-str-trim}
+(fact "JavaScript strings can be trimmed"
+  (subject/js-x-str-trim '(x:str-trim value)) => '(. value (trim)))
+
+^{:refer lang.model.v1.spec-js.js-native/js-x-str-trim-left}
+(fact "JavaScript strings can be left-trimmed"
+  (subject/js-x-str-trim-left '(x:str-trim-left value))
+  => '(. value (trimLeft)))
+
+^{:refer lang.model.v1.spec-js.js-native/js-x-str-trim-right}
+(fact "JavaScript strings can be right-trimmed"
+  (subject/js-x-str-trim-right '(x:str-trim-right value))
+  => '(. value (trimRight)))
+
+^{:refer lang.model.v1.spec-js.js-native/js-x-str-pad-left}
+(fact "JavaScript strings can be left-padded"
+  (subject/js-x-str-pad-left '(x:str-pad-left value length token))
+  => '(. value (padStart length token)))
+
+^{:refer lang.model.v1.spec-js.js-native/js-x-str-pad-right}
+(fact "JavaScript strings can be right-padded"
+  (subject/js-x-str-pad-right '(x:str-pad-right value length token))
+  => '(. value (padEnd length token)))
+
+^{:refer lang.model.v1.spec-js.js-native/js-x-str-starts-with}
+(fact "JavaScript strings support startsWith"
+  (subject/js-x-str-starts-with '(x:str-starts-with value token))
+  => '(. value (startsWith token)))
+
+^{:refer lang.model.v1.spec-js.js-native/js-x-str-ends-with}
+(fact "JavaScript strings support endsWith"
+  (subject/js-x-str-ends-with '(x:str-ends-with value token))
+  => '(. value (endsWith token)))
+
+^{:refer lang.model.v1.spec-js.js-native/js-x-bytes-new}
+(fact "JavaScript byte arrays are built from Uint8Array"
+  (subject/js-x-bytes-new '(x:bytes-new values))
+  => '(. Uint8Array (from values)))
+
+^{:refer lang.model.v1.spec-js.js-native/js-x-bytes-set}
+(fact "JavaScript byte setting returns the mutated value"
+  (subject/js-x-bytes-set '(x:bytes-set values index byte))
+  => '((fn [] (x:set-idx values index byte) (return values))))
+
+^{:refer lang.model.v1.spec-js.js-native/js-x-bytes-copy}
+(fact "JavaScript byte copying uses Uint8Array.from"
+  (subject/js-x-bytes-copy '(x:bytes-copy values))
+  => '(. Uint8Array (from values)))
+
+^{:refer lang.model.v1.spec-js.js-native/js-x-bytes-slice}
+(fact "JavaScript byte slicing supports an optional end"
+  [(subject/js-x-bytes-slice '(x:bytes-slice values start))
+   (subject/js-x-bytes-slice '(x:bytes-slice values start end))]
+  => ['(. values (slice start)) '(. values (slice start end))])
+
+^{:refer lang.model.v1.spec-js.js-native/js-x-bytes-u8}
+(fact "JavaScript unsigned bytes are masked to eight bits"
+  (subject/js-x-bytes-u8 '(x:bytes-u8 value)) => '(b:& value 255))
+
+^{:refer lang.model.v1.spec-js.js-native/js-x-bytes-s8}
+(fact "JavaScript signed bytes subtract 256 above 127"
+  (subject/js-x-bytes-s8 '(x:bytes-s8 value))
+  => '(:? (> value 127) (- value 256) value))
+
+^{:refer lang.model.v1.spec-js.js-native/js-x-str-encode}
+(fact "JavaScript string encoding uses TextEncoder"
+  (subject/js-x-str-encode '(x:str-encode value))
+  => '(. (new TextEncoder) (encode value)))
+
+^{:refer lang.model.v1.spec-js.js-native/js-x-str-decode}
+(fact "JavaScript string decoding uses TextDecoder"
+  (subject/js-x-str-decode '(x:str-decode value))
+  => '(. (new TextDecoder) (decode value)))
+
+^{:refer lang.model.v1.spec-js.js-native/js-x-bit-not}
+(fact "JavaScript bitwise not is xor with negative one"
+  (subject/js-x-bit-not '(x:bit-not value)) => '(b:xor value -1))
+
+^{:refer lang.model.v1.spec-js.js-native/js-x-pwd}
+(fact "JavaScript process paths fall back to process.cwd"
+  (subject/js-x-pwd '(x:pwd))
+  => '(or (. process env ["PWD"]) (. process (cwd))))
+
+^{:refer lang.model.v1.spec-js.js-native/js-x-shell}
+(fact "JavaScript shell execution creates a Promise"
+  (let [out (subject/js-x-shell '(x:shell command root callback))]
+    [(first out) (first (nth out 2))]
+    => ['new 'fn]))
+
+^{:refer lang.model.v1.spec-js.js-native/js-x-file-resolve}
+(fact "JavaScript file resolution uses the path module"
+  (subject/js-x-file-resolve '(x:file-resolve root path))
+  => '(. (require "path") (resolve root path)))
+
+^{:refer lang.model.v1.spec-js.js-native/js-x-file-read}
+(fact "JavaScript file reads use fs promises"
+  (subject/js-x-file-read '(x:file-read path))
+  => '(. (. (require "fs") ["promises"]) (readFile path)))
+
+^{:refer lang.model.v1.spec-js.js-native/js-x-file-write}
+(fact "JavaScript file writes use fs promises"
+  (subject/js-x-file-write '(x:file-write path content))
+  => '(. (. (require "fs") ["promises"]) (writeFile path content)))
+
+^{:refer lang.model.v1.spec-js.js-native/js-x-iter-from-obj}
+(fact "JavaScript object iterators use Object.entries"
+  (subject/js-x-iter-from-obj '(x:iter-from-obj object))
+  => '((. (Object.entries object) [Symbol.iterator])))
+
+^{:refer lang.model.v1.spec-js.js-native/js-x-iter-from-arr}
+(fact "JavaScript array iterators use Symbol.iterator"
+  (subject/js-x-iter-from-arr '(x:iter-from-arr array))
+  => '((. array [Symbol.iterator])))
+
+^{:refer lang.model.v1.spec-js.js-native/js-x-iter-from}
+(fact "JavaScript generic iterators use array iterator lowering"
+  (subject/js-x-iter-from '(x:iter-from value))
+  => '((. value [Symbol.iterator])))
+
+^{:refer lang.model.v1.spec-js.js-native/js-x-iter-eq}
+(fact "JavaScript iterator equality checks values until completion"
+  (let [out (subject/js-x-iter-eq '(x:iter-eq left right equal?))]
+    [(first out) (first (nth out 1)) (first (nth out 2))]
+    => ['do 'for:iter 'return]))
+
+^{:refer lang.model.v1.spec-js.js-native/js-x-iter-next}
+(fact "JavaScript iterators advance with next"
+  (subject/js-x-iter-next '(x:iter-next iterator))
+  => '(. iterator (next)))
+
+^{:refer lang.model.v1.spec-js.js-native/js-x-iter-has}
+(fact "JavaScript iterator detection checks Symbol.iterator"
+  (subject/js-x-iter-has '(x:iter-has value))
+  => '(not= nil (. value [Symbol.iterator])))
+
+^{:refer lang.model.v1.spec-js.js-native/js-x-iter-native}
+(fact "JavaScript native iterator detection checks next"
+  (subject/js-x-iter-native '(x:iter-native value))
+  => '(== "function" (typeof (. value ["next"]))))
+
+^{:refer lang.model.v1.spec-js.js-native/+js-native-core+}
+(fact "JavaScript native core publishes comparison and global entries"
+  [(get-in subject/+js-native-core+ [:eq :raw])
+   (get-in subject/+js-native-core+ [:with-global :raw])]
+  => ["===" "globalThis"])
+
+^{:refer lang.model.v1.spec-js.js-native/+js-native-vars+}
+(fact "JavaScript native vars map var*"
+  (get-in subject/+js-native-vars+ [:var :symbol]) => #{'var*})
+
+^{:refer lang.model.v1.spec-js.js-native/+js-native-for+}
+(fact "JavaScript native loops publish all four loop macros"
+  (set (keys subject/+js-native-for+))
+  => #{:for-object :for-array :for-iter :for-index})
+
+^{:refer lang.model.v1.spec-js.js-native/+js-native-prototype+}
+(fact "JavaScript native prototypes publish get set create method and tostring"
+  (set (keys subject/+js-native-prototype+))
+  => #{:prototype-get :prototype-set :prototype-create :prototype-method :prototype-tostring})
+
+^{:refer lang.model.v1.spec-js.js-native/+js-native-definitions+}
+(fact "JavaScript native definitions publish var type and instance operators"
+  (set (keys subject/+js-native-definitions+))
+  => #{:var-let :typeof :instof})
+
+^{:refer lang.model.v1.spec-js.js-native/+js-native+}
+(fact "JavaScript native operators flatten the explicit native groups"
+  (set (keys subject/+js-native+))
+  => #{:eq :neq :with-global :pow :var :for-object :for-array :for-iter
+       :for-index :prototype-get :prototype-set :prototype-create
+       :prototype-method :prototype-tostring})

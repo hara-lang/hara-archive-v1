@@ -1,0 +1,93 @@
+(ns lang.model.v1.spec-xtalk.fn-python-test
+  (:use code.test)
+  (:require [lang.model.v1.spec-xtalk.fn-python :as subject]))
+
+^{:refer lang.model.v1.spec-xtalk.fn-python/+python-core+}
+(fact "Python core XTalk group preserves its operator count"
+  (count subject/+python-core+) => 15)
+
+^{:refer lang.model.v1.spec-xtalk.fn-python/+python-global+}
+(fact "Python global XTalk group is empty"
+  subject/+python-global+ => {})
+
+^{:refer lang.model.v1.spec-xtalk.fn-python/+python-custom+}
+(fact "Python custom XTalk group preserves its operator count"
+  (count subject/+python-custom+) => 3)
+
+^{:refer lang.model.v1.spec-xtalk.fn-python/+python-math+}
+(fact "Python math XTalk group preserves its operator count"
+  (count subject/+python-math+) => 21)
+
+^{:refer lang.model.v1.spec-xtalk.fn-python/+python-type+}
+(fact "Python type XTalk group preserves its operator count"
+  (count subject/+python-type+) => 10)
+
+^{:refer lang.model.v1.spec-xtalk.fn-python/+python-lu+}
+(fact "Python lookup XTalk group preserves its operator count"
+  (count subject/+python-lu+) => 5)
+
+^{:refer lang.model.v1.spec-xtalk.fn-python/+python-obj+}
+(fact "Python object XTalk group preserves its operator count"
+  (count subject/+python-obj+) => 2)
+
+^{:refer lang.model.v1.spec-xtalk.fn-python/+python-arr+}
+(fact "Python array XTalk group preserves its operator count"
+  (count subject/+python-arr+) => 7)
+
+^{:refer lang.model.v1.spec-xtalk.fn-python/+python-fn+}
+(fact "Python function XTalk group preserves its operator count"
+  (count subject/+python-fn+) => 1)
+
+^{:refer lang.model.v1.spec-xtalk.fn-python/+python-str+}
+(fact "Python string XTalk group preserves its operator count"
+  (count subject/+python-str+) => 17)
+
+^{:refer lang.model.v1.spec-xtalk.fn-python/+python-bytes+}
+(fact "Python bytes XTalk group preserves its operator count"
+  (count subject/+python-bytes+) => 6)
+
+^{:refer lang.model.v1.spec-xtalk.fn-python/+python-js+}
+(fact "Python JavaScript interop XTalk group preserves its operator count"
+  (count subject/+python-js+) => 2)
+
+^{:refer lang.model.v1.spec-xtalk.fn-python/+python-return+}
+(fact "Python return XTalk group preserves its operator count"
+  (count subject/+python-return+) => 3)
+
+^{:refer lang.model.v1.spec-xtalk.fn-python/+python-iter+}
+(fact "Python iterator XTalk group preserves its operator count"
+  (count subject/+python-iter+) => 8)
+
+^{:refer lang.model.v1.spec-xtalk.fn-python/+python-promise+}
+(fact "Python promise XTalk group preserves its operator count"
+  (count subject/+python-promise+) => 1)
+
+^{:refer lang.model.v1.spec-xtalk.fn-python/+python-shell+}
+(fact "Python shell XTalk group preserves its operator count"
+  (count subject/+python-shell+) => 2)
+
+^{:refer lang.model.v1.spec-xtalk.fn-python/+python-file+}
+(fact "Python file XTalk group preserves its operator count"
+  (count subject/+python-file+) => 3)
+
+^{:refer lang.model.v1.spec-xtalk.fn-python/+python+}
+(fact "Python XTalk operators flatten all explicit groups"
+  (= subject/+python+
+     (merge subject/+python-core+
+            subject/+python-global+
+            subject/+python-custom+
+            subject/+python-math+
+            subject/+python-type+
+            subject/+python-lu+
+            subject/+python-obj+
+            subject/+python-arr+
+            subject/+python-fn+
+            subject/+python-str+
+            subject/+python-bytes+
+            subject/+python-js+
+            subject/+python-return+
+            subject/+python-iter+
+            subject/+python-promise+
+            subject/+python-shell+
+            subject/+python-file+))
+  => true)

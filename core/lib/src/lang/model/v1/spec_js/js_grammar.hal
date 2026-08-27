@@ -1,31 +1,54 @@
 (ns lang.model.v1.spec-js.js-grammar
   (:require [lang.base.v1.grammar-spec :as spec]
+            [lang.common.emit :as emit]
             [lang.common.grammar :as grammar]
-            [lang.common.grammar-api :as grammar-api]
-            [lang.model.v1.spec-xtalk :as xtalk]
             [lang.model.v1.spec-js.js-native :as native]
-            [lang.model.v1.spec-xtalk.fn-js :as xtalk-ops]))
+            [lang.model.v1.spec-xtalk.fn-js :as xtalk-ops]
+            [std.lib.collection :as collection]))
 
 (def +language+ :js)
 (def +tag+ :js)
 (def +grammar-version+ spec/+version+)
 
+(def +baseline+
+  (merge (grammar/build)
+         (grammar/build-xtalk)))
+
 (def +features+
-  (-> (grammar/build)
-      (grammar/build:override
-       (merge native/+js-native+ xtalk-ops/+js+))
+  (-> +baseline+
+      (grammar/build:override xtalk-ops/+js+)
+      (grammar/build:override native/+js-native+)
       (grammar/build:extend native/+js-native-definitions+)))
 
+(def +template+
+  (-> (emit/default-grammar)
+      (collection/merge-nested
+       {:banned #{:keyword}
+        :allow {:assign #{:symbol :vector :set :map}}
+        :default {:comment {:prefix "//"}
+                  :common {:start "(" :end ")" :space " " :assign "=" :sep ","
+                           :statement ";" :namespace "." :newline "\n" :indent 2}
+                  :invoke {:start "(" :end ")" :sep "," :space " "}
+                  :block {:parameter {:start "(" :end ")"}
+                          :body {:start "{" :end "}"}
+                          :space-before-body " "}
+                  :function {:raw "function" :space ""
+                             :args {:start "(" :end ")" :sep "," :space ""}
+                             :body {:start "{" :end "}"}
+                             :space-before-body " "}}
+        :token {:nil "null" :true "true" :false "false"
+                :string {:quote :double}
+                :symbol {:namespace "."
+                         :replace {"-" "_" "?" "_p" "!" "_bang"}}}
+        :data {:vector {:start "[" :end "]" :sep "," :space " "}
+               :set {:start "{" :end "}" :sep "," :space " " :custom native/js-set}
+               :map {:start "{" :end "}" :sep "," :space " "}
+               :map-entry {:assign ":" :space " "}}
+        :function {:defgen {:raw "function*"}}
+        :define {:defglobal {:raw ""} :def {:raw "const"} :declare {:raw "let"}}
+        :block {:for {:parameter {:sep ";"}}}})))
+
 (def +grammar+
-  (grammar-api/definition
-   {:grammar/id +tag+
-    :grammar/version +grammar-version+
-    :grammar/release "alpha"
-    :grammar/language +language+
-    :grammar/tag +tag+
-    :grammar/engine {:minimum 1 :maximum 1}
-    :grammar/parent {:grammar/id xtalk/+tag+
-                     :grammar/version xtalk/+grammar-version+}
-    :operators {:override (merge native/+js-native+ xtalk-ops/+js+)
-                :define native/+js-native-definitions+}
-    :emit native/+emit+}))
+  (grammar/grammar +tag+
+                   (grammar/to-reserved +features+)
+                   +template+))

@@ -1,17 +1,7 @@
 (ns lang.model.v1.spec-lua.lua-native
   (:require
-            [lang.base.v1.grammar-spec :as spec]
             [lang.common.emit-common :as common]
-            [lang.common.emit-data :as data]
-            [lang.common.grammar-api :as grammar]
-            [lang.common.registry :as registry]
-            [lang.model.v1.spec-lua.lua-rewrite :as rewrite]
-            [lang.model.v1.spec-xtalk :as xtalk]))
-
-(def +language+ :lua)
-(def +tag+ :lua)
-(def +version+ "alpha")
-(def +grammar-version+ spec/+version+)
+            [lang.common.emit-data :as data]))
 
 (defn lua-string
   [value _grammar]
@@ -656,75 +646,3 @@
 (def +lua-native+
   (merge +lua-native-core+ +lua-native-counter+ +lua-native-vars+
          +lua-native-for+ +lua-native-prototype+ +lua-native-coroutine+))
-
-(def +operator-group-names+
-  [:core :counter :vars :for :prototype :coroutine :definitions])
-(def +operator-groups+
-  [{:name :core :override +lua-native-core+ :define {}}
-   {:name :counter :override +lua-native-counter+ :define {}}
-   {:name :vars :override +lua-native-vars+ :define {}}
-   {:name :for :override +lua-native-for+ :define {}}
-   {:name :prototype :override +lua-native-prototype+ :define {}}
-   {:name :coroutine :override +lua-native-coroutine+ :define {}}
-   {:name :definitions :override {} :define +lua-native-definitions+}])
-
-(def +operator-source+
-  {:override +lua-native+ :define +lua-native-definitions+})
-
-(def +operators+ +operator-source+)
-
-(def +emit+
-  {:defaults
-     {:allow {:assign #{:symbol :quote}}
-      :default
-      {:comment {:prefix "--"}
-       :index {:offset 1 :end-inclusive true :wrap-object true}
-       :common {:apply ":"
-                :start "("
-                :end ")"
-                :space " "
-                :assign "="
-                :sep ","
-                :statement ""
-                :namespace "."
-                :newline "\n"
-                :indent 2}
-       :invoke {:start "(" :end ")" :sep "," :space " "}
-       :infix {:if {:check "and" :then "or"}}
-       :block {:parameter {:start " " :end " "}
-               :body {:start "" :end ""}
-               :space-before-body ""}
-       :function {:raw "function"
-                  :space ""
-                  :args {:start "(" :end ")" :sep "," :space ""}
-                  :body {:start "" :end "end"}
-                  :space-before-body " "}}
-      :token
-      {:nil "nil"
-       :true "true"
-       :false "false"
-       :string {:quote :single :custom lua-string}
-       :symbol {:namespace "."
-                :replace {"-" "_"
-                          "?" "_p"
-                          "!" "_bang"}}}
-      :data
-      {:tuple {:start "" :end "" :sep "," :space ""}
-       :vector {:start "{" :end "}" :sep "," :space " " :custom lua-vector}
-       :set {:start "{" :end "}" :sep "," :space " "}
-       :map {:start "{" :end "}" :sep "," :space " "}
-       :map-entry {:assign "=" :space " " :key-fn lua-map-key}}
-      :define
-      {:defglobal {:raw ""}
-       :def {:raw "local"}
-       :declare {:raw "local"}}
-      :function {:defn {:raw "local function"}}
-      :block
-      {:for {:body {:start "do" :end "end"}}
-       :while {:body {:start "do" :end "end"}}
-       :branch {:wrap {:start "" :end "end"}
-                :control {:default {:parameter {:start " " :end " then"}
-                                    :body {:append true}}
-                          :if {:raw "if"}
-                          :elseif {:raw "elseif"}
-                          :else {:raw "else"}}}}}})

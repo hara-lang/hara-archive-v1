@@ -10,7 +10,7 @@
   ([source write-fn] (create source write-fn nil nil))
   ([source write-fn close-fn] (create source write-fn close-fn nil))
   ([source write-fn close-fn abort-fn]
-   (if (not (satisfies? std.protocol.istream.IStream source))
+   (if (not (satisfies? IStream source))
      (throw (ex :io {:error/type :stream.duplex/invalid-source
                       :source source} :ex/message "Duplex source must satisfy IStream")))
    (if (not (fn? write-fn))
@@ -19,7 +19,7 @@
            (atom {:closed false :error nil}))))
 
 (defn duplex? [value]
-  (satisfies? std.protocol.istreamduplex.IStreamDuplex value))
+  (satisfies? IStreamDuplex value))
 
 (defn state [duplex]
   (deref (:state duplex)))
@@ -34,7 +34,7 @@
       (:closed current) (promise/from nil)
       :else
       (promise/then
-       (std.protocol.istream.IStream/next (:source duplex))
+       (IStream/next (:source duplex))
        (fn [value] value)))))
 
 (defn write-value [duplex value]
@@ -52,7 +52,7 @@
         duplex
         (if (cas! (:state duplex) current (assoc current :closed true))
           (do
-            (try (std.protocol.iclose.IClose/close (:source duplex))
+            (try (IClose/close (:source duplex))
                  (catch Throwable ignored nil))
             (if (:close-fn duplex) ((:close-fn duplex)) nil)
             duplex)
@@ -68,9 +68,9 @@
           (if (cas! (:state duplex) current {:closed true :error error})
             (do
               (try
-                (if (satisfies? std.protocol.iabort.IAbort (:source duplex))
-                  (std.protocol.iabort.IAbort/abort (:source duplex) error)
-                  (std.protocol.iclose.IClose/close (:source duplex)))
+                (if (satisfies? IAbort (:source duplex))
+                  (IAbort/abort (:source duplex) error)
+                  (IClose/close (:source duplex)))
                 (catch Throwable ignored nil))
               (if (:abort-fn duplex)
                 ((:abort-fn duplex) error)
@@ -92,17 +92,17 @@
    (fn [] (Socket/close socket))
    (fn [_] (Socket/close socket))))
 
-(extend-type Duplex std.protocol.istream.IStream
+(extend-type Duplex IStream
   (next [duplex] (next-value duplex)))
 
-(extend-type Duplex std.protocol.istreamwrite.IStreamWrite
+(extend-type Duplex IStreamWrite
   (write [duplex value] (write-value duplex value)))
 
-(extend-type Duplex std.protocol.iclose.IClose
+(extend-type Duplex IClose
   (close [duplex] (std.stream.duplex/close duplex)))
 
-(extend-type Duplex std.protocol.iabort.IAbort
+(extend-type Duplex IAbort
   (abort [duplex error] (std.stream.duplex/abort duplex error)))
 
-(extend-type Duplex std.protocol.iclosed.IClosed
+(extend-type Duplex IClosed
   (closed? [duplex] (std.stream.duplex/closed? duplex)))

@@ -1,0 +1,49 @@
+(ns lang.model.v1.spec-js.js-grammar-test
+  (:use code.test)
+  (:require [lang.common.grammar :as common-grammar]
+            [lang.model.v1.spec-js.js-native :as native]
+            [lang.model.v1.spec-xtalk.fn-js :as xtalk]
+            [lang.model.v1.spec-js.js-grammar :as subject]))
+
+^{:refer lang.model.v1.spec-js.js-grammar/+language+}
+(fact "JavaScript grammar declares its language"
+  subject/+language+ => :js)
+
+^{:refer lang.model.v1.spec-js.js-grammar/+tag+}
+(fact "JavaScript grammar uses the JavaScript tag"
+  subject/+tag+ => :js)
+
+^{:refer lang.model.v1.spec-js.js-grammar/+grammar-version+}
+(fact "JavaScript grammar exposes the Foundation grammar version"
+  subject/+grammar-version+ => 1)
+
+^{:refer lang.model.v1.spec-js.js-grammar/+baseline+}
+(fact "JavaScript baseline combines the common and XTalk grammars"
+  subject/+baseline+
+  => (merge (common-grammar/build)
+            (common-grammar/build-xtalk)))
+
+^{:refer lang.model.v1.spec-js.js-grammar/+features+}
+(fact "JavaScript features apply XTalk, native, and definition layers"
+  subject/+features+
+  => (-> subject/+baseline+
+          (common-grammar/build:override xtalk/+js+)
+          (common-grammar/build:override native/+js-native+)
+          (common-grammar/build:extend native/+js-native-definitions+)))
+
+^{:refer lang.model.v1.spec-js.js-grammar/+template+}
+(fact "JavaScript template preserves target formatting"
+  [(get-in subject/+template+ [:default :comment :prefix])
+   (get-in subject/+template+ [:token :nil])
+   (get-in subject/+template+ [:data :set :custom])
+   (get-in subject/+template+ [:define :def :raw])
+   (get-in subject/+template+ [:block :for :parameter :sep])]
+  => ["//" "null" native/js-set "const" ";"])
+
+^{:refer lang.model.v1.spec-js.js-grammar/+grammar+}
+(fact "JavaScript grammar is a direct tagged grammar"
+  [(get subject/+grammar+ :tag)
+   (not= nil (get subject/+grammar+ :reserved))
+   (= nil (get subject/+grammar+ :operators))
+   (= nil (get subject/+grammar+ :emit))]
+  => [:js true true true])

@@ -1,0 +1,83 @@
+(ns lang.model.v1.spec-js-test
+  (:use code.test)
+  (:require [lang.common.book :as book]
+            [lang.common.book-meta :as book-meta]
+            [lang.common.grammar-api :as grammar-api]
+            [lang.model.v1.spec-js.js-grammar :as model]
+            [lang.model.v1.spec-js.ts :as ts]
+            [lang.model.v1.spec-js :as subject]))
+
+^{:refer lang.model.v1.spec-js/+language+}
+(fact "JavaScript language identity"
+  subject/+language+ => :js)
+
+^{:refer lang.model.v1.spec-js/+tag+}
+(fact "JavaScript grammar tag"
+  subject/+tag+ => :js)
+
+^{:refer lang.model.v1.spec-js/+version+}
+(fact "JavaScript book version"
+  subject/+version+ => 1)
+
+^{:refer lang.model.v1.spec-js/+grammar-version+}
+(fact "JavaScript grammar version"
+  subject/+grammar-version+ => 1)
+
+^{:refer lang.model.v1.spec-js/+grammar+}
+(fact "JavaScript spec exposes the native grammar"
+  subject/+grammar+ => model/+grammar+)
+
+^{:refer lang.model.v1.spec-js.ts/+facet+}
+(fact "TypeScript is a declaration-sidecar facet on JavaScript"
+  ts/+facet+
+  => {:facet/id :typescript
+      :facet/version 1
+      :facet/parent {:grammar/id :js
+                     :grammar/variant :default
+                     :grammar/version 1}
+      :facet/output :declaration-sidecar
+      :facet/extension "d.ts"})
+
+^{:refer lang.model.v1.spec-js/+coordinate+}
+(fact "JavaScript spec pins its grammar coordinate"
+  subject/+coordinate+
+  => {:grammar/id :js
+      :grammar/version 1
+      :grammar/release "alpha"
+      :grammar/facets []})
+
+^{:refer lang.model.v1.spec-js/+selection+}
+(fact "JavaScript selection is a direct immutable grammar selection"
+  [(= (:coordinate subject/+selection+) subject/+coordinate+)
+   (= (:grammar subject/+selection+) subject/+grammar+)
+   (:rewrite subject/+selection+)
+   (:rewrite/source subject/+selection+)
+   (:extensions subject/+selection+)
+   (:provenance subject/+selection+)
+   (:fingerprint subject/+selection+)]
+  => [true true {} {} {} [] (grammar-api/fingerprint subject/+grammar+)])
+
+^{:refer lang.model.v1.spec-js/select}
+(fact "JavaScript select returns the pinned selection"
+  (subject/select) => subject/+selection+)
+
+^{:refer lang.model.v1.spec-js/+meta+}
+(fact "JavaScript metadata is a native BookMeta value"
+  (book-meta/book-meta? subject/+meta+) => true)
+
+^{:refer lang.model.v1.spec-js/+book+}
+(fact "JavaScript book carries its grammar and selection"
+  [(book/book? subject/+book+)
+   (:lang subject/+book+)
+   (:parent subject/+book+)
+   (:version subject/+book+)
+   (:coordinate subject/+book+)
+   (:grammar-coordinate subject/+book+)
+   (= (:grammar subject/+book+) subject/+grammar+)
+   (= (:selection subject/+book+) subject/+selection+)
+   (book-meta/book-meta? (:meta subject/+book+))]
+  => [true :js :xtalk 1 subject/+coordinate+ subject/+coordinate+ true true true])
+
+^{:refer lang.model.v1.spec-js/+init+}
+(fact "JavaScript initialization is the immutable book value"
+  subject/+init+ => subject/+book+)

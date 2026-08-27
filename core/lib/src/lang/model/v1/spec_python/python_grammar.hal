@@ -1,31 +1,57 @@
 (ns lang.model.v1.spec-python.python-grammar
   (:require [lang.base.v1.grammar-spec :as spec]
+            [lang.common.emit :as emit]
+            [lang.common.emit-data :as data]
             [lang.common.grammar :as grammar]
-            [lang.common.grammar-api :as grammar-api]
-            [lang.model.v1.spec-xtalk :as xtalk]
             [lang.model.v1.spec-python.python-native :as native]
-            [lang.model.v1.spec-xtalk.fn-python :as xtalk-ops]))
+            [lang.model.v1.spec-xtalk.fn-python :as xtalk-ops]
+            [std.lib.collection :as collection]))
 
 (def +language+ :python)
 (def +tag+ :py)
 (def +grammar-version+ spec/+version+)
 
+(def +baseline+
+  (merge (grammar/build)
+         (grammar/build-xtalk)))
+
 (def +features+
-  (-> (grammar/build)
-      (grammar/build:override
-       (merge native/+python-native+ xtalk-ops/+python+))
+  (-> +baseline+
+      (grammar/build:override xtalk-ops/+python+)
+      (grammar/build:override native/+python-native+)
       (grammar/build:extend native/+python-native-definitions+)))
 
+(def +template+
+  (-> (emit/default-grammar)
+      (collection/merge-nested
+       {:banned #{:keyword}
+        :allow {:assign #{:symbol :quote}}
+        :default {:comment {:prefix "#"}
+                  :common {:start "(" :end ")" :space " " :assign "=" :sep ","
+                           :statement "" :namespace "." :newline "\n" :indent 4}
+                  :invoke {:start "(" :end ")" :sep "," :space " "}
+                  :infix {:if {:check "and" :then "or"}}
+                  :block {:parameter {:start " " :end ""}
+                          :body {:start ":" :end ""}
+                          :space-before-body ""}
+                  :function {:raw "def" :space ""
+                             :args {:start "(" :end ")" :sep "," :space ""}
+                             :body {:start ":" :end ""}
+                             :space-before-body ""}}
+        :token {:nil "None" :true "True" :false "False"
+                :string {:quote :double}
+                :symbol {:namespace "."
+                         :replace {"-" "_" "?" "_p" "!" "_bang"}}}
+        :data {:vector {:start "[" :end "]" :sep "," :space " "}
+               :set {:start "{" :end "}" :sep "," :space " "}
+               :map {:start "{" :end "}" :sep "," :space " "}
+               :map-entry {:assign ":" :space " " :key-fn data/default-map-key}}
+        :define {:defglobal {:raw ""} :def {:raw ""}}
+        :block {:try {:control {:catch {:raw "except"
+                                        :args {:start "" :end ":" :space ""}}}}
+                :branch {:control {:elseif {:raw "elif"}}}}})))
+
 (def +grammar+
-  (grammar-api/definition
-   {:grammar/id +tag+
-    :grammar/version +grammar-version+
-    :grammar/release "alpha"
-    :grammar/language +language+
-    :grammar/tag +tag+
-    :grammar/engine {:minimum 1 :maximum 1}
-    :grammar/parent {:grammar/id xtalk/+tag+
-                     :grammar/version xtalk/+grammar-version+}
-    :operators {:override (merge native/+python-native+ xtalk-ops/+python+)
-                :define native/+python-native-definitions+}
-    :emit native/+emit+}))
+  (grammar/grammar +tag+
+                   (grammar/to-reserved +features+)
+                   +template+))

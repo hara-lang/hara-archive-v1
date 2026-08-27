@@ -186,15 +186,3 @@
          +js-promise+
          +js-shell+
          +js-file+))
-
-(def +operator-group-names+
-  [:core :global :custom :math :type :lu :obj :arr :arr-functional :str :bytes :js :return :iter :promise :shell :file])
-
-(def +operator-groups+
-  (mapv (fn [name entries] {:name name :entries entries})
-        +operator-group-names+
-        [+js-core+ +js-global+ +js-custom+ +js-math+ +js-type+ +js-lu+ +js-obj+ +js-arr+ +js-arr-functional+ +js-str+ +js-bytes+ +js-js+ +js-return+ +js-iter+ +js-promise+ +js-shell+ +js-file+]))
-
-(def +operator-source+ {:override +js+})
-
-(def +operators+ +operator-source+)

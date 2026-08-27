@@ -1,31 +1,63 @@
 (ns lang.model.v1.spec-lua.lua-grammar
   (:require [lang.base.v1.grammar-spec :as spec]
+            [lang.common.emit :as emit]
             [lang.common.grammar :as grammar]
-            [lang.common.grammar-api :as grammar-api]
-            [lang.model.v1.spec-xtalk :as xtalk]
             [lang.model.v1.spec-lua.lua-native :as native]
-            [lang.model.v1.spec-xtalk.fn-lua :as xtalk-ops]))
+            [lang.model.v1.spec-xtalk.fn-lua :as xtalk-ops]
+            [std.lib.collection :as collection]))
 
 (def +language+ :lua)
 (def +tag+ :lua)
 (def +grammar-version+ spec/+version+)
 
+(def +baseline+
+  (merge (grammar/build)
+         (grammar/build-xtalk)))
+
 (def +features+
-  (-> (grammar/build)
-      (grammar/build:override
-       (merge native/+lua-native+ xtalk-ops/+lua+))
+  (-> +baseline+
+      (grammar/build:override xtalk-ops/+lua+)
+      (grammar/build:override native/+lua-native+)
       (grammar/build:extend native/+lua-native-definitions+)))
 
+(def +template+
+  (-> (emit/default-grammar)
+      (collection/merge-nested
+       {:allow {:assign #{:symbol :quote}}
+        :default {:comment {:prefix "--"}
+                  :index {:offset 1 :end-inclusive true :wrap-object true}
+                  :common {:apply ":" :start "(" :end ")" :space " " :assign "=" :sep ","
+                           :statement "" :namespace "." :newline "\n" :indent 2}
+                  :invoke {:start "(" :end ")" :sep "," :space " "}
+                  :infix {:if {:check "and" :then "or"}}
+                  :block {:parameter {:start " " :end " "}
+                          :body {:start "" :end ""}
+                          :space-before-body ""}
+                  :function {:raw "function" :space ""
+                             :args {:start "(" :end ")" :sep "," :space ""}
+                             :body {:start "" :end "end"}
+                             :space-before-body " "}}
+        :token {:nil "nil" :true "true" :false "false"
+                :string {:quote :single :custom native/lua-string}
+                :symbol {:namespace "."
+                         :replace {"-" "_" "?" "_p" "!" "_bang"}}}
+        :data {:tuple {:start "" :end "" :sep "," :space ""}
+               :vector {:start "{" :end "}" :sep "," :space "" :custom native/lua-vector}
+               :set {:start "{" :end "}" :sep "," :space " "}
+               :map {:start "{" :end "}" :sep "," :space " "}
+               :map-entry {:assign "=" :space " " :key-fn native/lua-map-key}}
+        :define {:defglobal {:raw ""} :def {:raw "local"} :declare {:raw "local"}}
+        :function {:defn {:raw "local function"}}
+        :block {:for {:body {:start "do" :end "end"}}
+                :while {:body {:start "do" :end "end"}}
+                :branch {:wrap {:start "" :end "end"}
+                         :control {:default {:parameter {:start " " :end " then"}
+                                             :body {:append true}}
+                                   :if {:raw "if"}
+                                   :elseif {:raw "elseif"}
+                                   :else {:raw "else"}}}}})))
+
 (def +grammar+
-  (grammar-api/definition
-   {:grammar/id +tag+
-    :grammar/version +grammar-version+
-    :grammar/release "alpha"
-    :grammar/language +language+
-    :grammar/tag +tag+
-    :grammar/engine {:minimum 1 :maximum 1}
-    :grammar/parent {:grammar/id xtalk/+tag+
-                     :grammar/version xtalk/+grammar-version+}
-    :operators {:override (merge native/+lua-native+ xtalk-ops/+lua+)
-                :define native/+lua-native-definitions+}
-    :emit native/+emit+}))
+  (grammar/grammar +tag+
+                   (grammar/to-reserved +features+)
+                   +template+))

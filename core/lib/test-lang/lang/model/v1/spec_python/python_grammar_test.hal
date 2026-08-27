@@ -1,0 +1,50 @@
+(ns lang.model.v1.spec-python.python-grammar-test
+  (:use code.test)
+  (:require [lang.common.grammar :as common-grammar]
+            [lang.common.emit-data :as data]
+            [lang.model.v1.spec-python.python-native :as native]
+            [lang.model.v1.spec-xtalk.fn-python :as xtalk]
+            [lang.model.v1.spec-python.python-grammar :as subject]))
+
+^{:refer lang.model.v1.spec-python.python-grammar/+language+}
+(fact "Python grammar declares its language"
+  subject/+language+ => :python)
+
+^{:refer lang.model.v1.spec-python.python-grammar/+tag+}
+(fact "Python grammar uses the Python tag"
+  subject/+tag+ => :py)
+
+^{:refer lang.model.v1.spec-python.python-grammar/+grammar-version+}
+(fact "Python grammar exposes the Foundation grammar version"
+  subject/+grammar-version+ => 1)
+
+^{:refer lang.model.v1.spec-python.python-grammar/+baseline+}
+(fact "Python baseline combines the common and XTalk grammars"
+  subject/+baseline+
+  => (merge (common-grammar/build)
+            (common-grammar/build-xtalk)))
+
+^{:refer lang.model.v1.spec-python.python-grammar/+features+}
+(fact "Python features apply XTalk, native, and definition layers"
+  subject/+features+
+  => (-> subject/+baseline+
+          (common-grammar/build:override xtalk/+python+)
+          (common-grammar/build:override native/+python-native+)
+          (common-grammar/build:extend native/+python-native-definitions+)))
+
+^{:refer lang.model.v1.spec-python.python-grammar/+template+}
+(fact "Python template preserves target formatting"
+  [(get-in subject/+template+ [:default :comment :prefix])
+   (get-in subject/+template+ [:token :nil])
+   (get-in subject/+template+ [:data :map-entry :key-fn])
+   (get-in subject/+template+ [:define :def :raw])
+   (get-in subject/+template+ [:block :try :control :catch :raw])]
+  => ["#" "None" data/default-map-key "" "except"])
+
+^{:refer lang.model.v1.spec-python.python-grammar/+grammar+}
+(fact "Python grammar is a direct tagged grammar"
+  [(get subject/+grammar+ :tag)
+   (not= nil (get subject/+grammar+ :reserved))
+   (= nil (get subject/+grammar+ :operators))
+   (= nil (get subject/+grammar+ :emit))]
+  => [:py true true true])

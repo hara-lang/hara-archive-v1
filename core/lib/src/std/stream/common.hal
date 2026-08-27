@@ -5,7 +5,7 @@
 
 (defn close-value [value]
   (try
-    (std.protocol.iclose.IClose/close value)
+    (IClose/close value)
     (catch Throwable error nil)))
 
 (defn close-values [values]
@@ -17,7 +17,7 @@
 
 (defn own [inner sources]
   (Stream/create
-   (fn [] (std.protocol.istream.IStream/next inner))
+   (fn [] (IStream/next inner))
    (fn []
      (close-value inner)
      (close-values sources))))
@@ -26,13 +26,13 @@
   next
   "Pulls the next stream item as a promise; nil marks end of stream."
   [stream]
-  (std.protocol.istream.IStream/next stream))
+  (IStream/next stream))
 
 (defn ^{:inline true :schema [:fn [:any] :any]}
   close
   "Idempotently closes stream and any source owned by it."
   [stream]
-  (std.protocol.iclose.IClose/close stream))
+  (IClose/close stream))
 
 (defn unfold
   "Creates an asynchronous stream from step and seed. Step returns nil,

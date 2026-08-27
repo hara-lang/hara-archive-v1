@@ -1,0 +1,456 @@
+(ns lang.model.v1.spec-lua.lua-native-test
+  (:use code.test)
+  (:require [lang.model.v1.spec-lua.lua-grammar :as grammar]
+            [lang.model.v1.spec-lua.lua-native :as subject]))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-string}
+(fact "Lua strings use escaped single-quoted literals"
+  (subject/lua-string "a\n" {}) => "'a\\n'")
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-map-key}
+(fact "Lua map keys use bracketed string keys"
+  [(subject/lua-map-key "field" {} {})
+   (subject/lua-map-key :field {} {})]
+  => ["['field']" "['field']"])
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-vector}
+(fact "Lua vectors carry the cjson array metatable"
+  (subject/lua-vector [1 2] grammar/+grammar+ {})
+  => "setmetatable({1,2}, cjson.array_mt)")
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-math-quot}
+(fact "Lua quotient floors the division"
+  (subject/lua-math-quot '(quot a b)) => '(math.floor (/ a b)))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-throw}
+(fact "Lua throw calls error with a zero level"
+  (subject/lua-throw '(throw error)) => '(error error 0))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-async-run}
+(fact "Lua async execution returns a thunk"
+  (subject/lua-async-run '(async-run thunk))
+  => '((fn [] (return (thunk)))))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-prototype-create}
+(fact "Lua prototype creation assigns __index"
+  (let [out (subject/lua-prototype-create '(prototype-create methods))]
+    [(first (first out)) (first (nth (first out) 2)) (second out)]
+    => ['fn := 'methods]))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-prototype-method}
+(fact "Lua prototype methods fall back to the prototype"
+  (subject/lua-prototype-method '(prototype-method object key))
+  => '(:? (not= nil (x:get-key object key nil))
+           (x:get-key object key nil)
+           (x:get-key (proto:get object) key nil)))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-x-eval}
+(fact "Lua evaluation loads a return expression"
+  (subject/lua-x-eval '(x:eval source))
+  => '((loadstring (cat "return " source))))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-x-construct}
+(fact "Lua construction unpacks constructor arguments"
+  (subject/lua-x-construct '(x:construct C args)) => '(C (unpack args)))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-type-native}
+(fact "Lua native type dispatch distinguishes table shapes"
+  (let [out (subject/lua-type-native '(x:type-native value))]
+    [(first out) (first (nth out 1)) (first (nth out 2))]
+    => ['do 'var 'if]))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-ex-native}
+(fact "Lua native exceptions are tagged tables"
+  (subject/lua-ex-native '(x:ex-native? error))
+  => '(and (== "table" (type error))
+           (== "xt.exception" (. error ["__type__"]))))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-ex-new}
+(fact "Lua exception construction always supplies type and data"
+  [(pr-str (subject/lua-ex-new '(x:ex-new message)))
+   (pr-str (subject/lua-ex-new '(x:ex-new message data)))]
+  => ["((fn [] (return {\"message\" message \"data\" nil \"__type__\" \"xt.exception\"})))"
+      "((fn [] (return {\"message\" message \"data\" data \"__type__\" \"xt.exception\"})))"])
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-ex-message}
+(fact "Lua exception messages are guarded table reads"
+  (pr-str (subject/lua-ex-message '(x:ex-message error)))
+  => "(:? (and (== \"table\" (type error)) (== \"xt.exception\" (. error [\"__type__\"]))) (. error [\"message\"]) nil)")
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-ex-data}
+(fact "Lua exception data are guarded table reads"
+  (pr-str (subject/lua-ex-data '(x:ex-data error)))
+  => "(:? (and (== \"table\" (type error)) (== \"xt.exception\" (. error [\"__type__\"]))) (. error [\"data\"]) nil)")
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-type-predicate}
+(fact "Lua type predicates compare type"
+  (subject/lua-type-predicate 'string '(typeof? value))
+  => '(== string (type value)))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-is-integer}
+(fact "Lua integer checks use modulo one"
+  (subject/lua-is-integer '(x:is-integer? value))
+  => '(== 0 (mod value 1)))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-is-object}
+(fact "Lua object checks reject array metatables and numeric entries"
+  (let [out (subject/lua-is-object '(x:is-object? value))]
+    [(first out) (first (nth out 1)) (first (nth out 2))]
+    => ['and '== 'not=]))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-is-array}
+(fact "Lua array checks accept array metatables or entries"
+  (let [out (subject/lua-is-array '(x:is-array? value))]
+    [(first out) (first (nth out 1)) (first (nth out 2))]
+    => ['and '== 'or]))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-apply}
+(fact "Lua apply spreads arguments with unpack"
+  (subject/lua-apply '(x:apply function args)) => '(function (unpack args)))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-json-encode}
+(fact "Lua JSON encoding uses the canonical XTalk operation"
+  (subject/lua-json-encode 'value) => '(x:json-encode value))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-return-encode}
+(fact "Lua return encoding records type and value"
+  (let [out (subject/lua-return-encode '(x:return-encode value id key))]
+    [(first out) (first (nth out 1)) (first (nth out 2))]
+    => ['do 'var 'return]))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-return-wrap}
+(fact "Lua return wrapping protects calls with pcall"
+  (let [out (subject/lua-return-wrap '(x:return-wrap function encode))]
+    [(first out) (first (nth out 2)) (first (nth out 3))]
+    => ['do 'var 'if]))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-return-eval}
+(fact "Lua return evaluation compiles and invokes source"
+  (let [out (subject/lua-return-eval '(x:return-eval source wrap))]
+    [(first out) (first (nth out 1)) (first (nth (nth out 1) 1))]
+    => ['return 'wrap 'fn]))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-var}
+(fact "Lua vars support direct and destructuring bindings"
+  [(subject/lua-var '(var x value))
+   (subject/lua-var '(var [a b] values))]
+  => ['(var* :local x := value)
+      '(var* :local (quote [a b]) := (unpack values))])
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-for-object}
+(fact "Lua object loops use pairs"
+  (subject/lua-for-object '(for [[k v] object] body))
+  => '(for [[k v] :in (pairs object)] body))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-for-array}
+(fact "Lua array loops use ipairs"
+  [(subject/lua-for-array '(for [value array] body))
+   (subject/lua-for-array '(for [[index value] array] body))]
+  => ['(for [[_ value] :in (ipairs array)] body)
+      '(for [[index value] :in (ipairs array)] body)])
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-for-iter}
+(fact "Lua iterator loops preserve the iterator expression"
+  (subject/lua-for-iter '(for [entry iterator] body))
+  => '(for [entry :in iterator] body))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-for-index}
+(fact "Lua index loops keep their range as a quoted vector"
+  (subject/lua-for-index '(for [index [0 3 2]] body))
+  => '(for [index := (quote [0 3 2])] body))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-assign-by}
+(fact "Lua compound assignment lowers to plain assignment"
+  (subject/lua-assign-by '+ '(+= target value))
+  => '(:= target (+ target value)))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-x-del}
+(fact "Lua deletion assigns nil"
+  (subject/lua-x-del '(x:del target)) => '(:= target nil))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-x-str-comp}
+(fact "Lua string comparison uses less-than"
+  (subject/lua-x-str-comp '(x:str-comp left right)) => '(< left right))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-x-cat}
+(fact "Lua concatenation uses cat"
+  (subject/lua-x-cat '(x:cat a b)) => '(cat a b))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-x-len}
+(fact "Lua length uses len"
+  (subject/lua-x-len '(x:len value)) => '(len value))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-x-apply}
+(fact "Lua XTalk apply uses unpack"
+  (subject/lua-x-apply '(x:apply function args)) => '(function (unpack args)))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-x-has-key}
+(fact "Lua key checks use a nil comparison"
+  (subject/lua-x-has-key '(x:has-key? object key))
+  => '(not= nil (. object [key])))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-x-lu-create}
+(fact "Lua lookup creation uses weak keys"
+  (subject/lua-x-lu-create '(x:lu-create))
+  => '(setmetatable {} {"__mode" "k"}))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-x-lu-get}
+(fact "Lua lookup reads stringified keys"
+  (subject/lua-x-lu-get '(x:lu-get lookup key))
+  => '(. lookup [(tostring key)]))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-x-lu-set}
+(fact "Lua lookup assignment writes stringified keys"
+  (subject/lua-x-lu-set '(x:lu-set lookup key value))
+  => '(:= (. lookup [(tostring key)]) value))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-x-lu-del}
+(fact "Lua lookup deletion writes nil to stringified keys"
+  (subject/lua-x-lu-del '(x:lu-del lookup key))
+  => '(:= (. lookup [(tostring key)]) nil))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-x-arr-push-first}
+(fact "Lua arrays insert at the first position"
+  (subject/lua-x-arr-push-first '(x:arr-push-first array value))
+  => '(table.insert array 1 value))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-x-arr-pop-first}
+(fact "Lua arrays remove their first position"
+  (subject/lua-x-arr-pop-first '(x:arr-pop-first array))
+  => '(table.remove array 1))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-x-arr-remove}
+(fact "Lua array removal applies the canonical offset"
+  (subject/lua-x-arr-remove '(x:arr-remove array index))
+  => '(table.remove array (x:offset index)))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-x-arr-insert}
+(fact "Lua array insertion uses table.insert"
+  (subject/lua-x-arr-insert '(x:arr-insert array index value))
+  => '(table.insert array index value))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-x-str-split}
+(fact "Lua string splitting builds an output table"
+  (let [out (subject/lua-x-str-split '(x:str-split value token))]
+    [(first out) (first (first out)) (first (nth (first out) 2))]
+    => ['fn 'source 'var]))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-x-str-join}
+(fact "Lua string joining uses table.concat"
+  (subject/lua-x-str-join '(x:str-join separator values))
+  => '(table.concat values separator))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-x-str-index-of}
+(fact "Lua string index lookup falls back to negative one"
+  (subject/lua-x-str-index-of '(x:str-index-of value token))
+  => '(or (string.find value token) -1))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-x-str-to-fixed}
+(fact "Lua fixed formatting builds a precision string"
+  (subject/lua-x-str-to-fixed '(x:str-to-fixed value digits))
+  => '(string.format (cat "%." digits "f") value))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-x-str-replace}
+(fact "Lua replacement uses string.gsub"
+  (subject/lua-x-str-replace '(x:str-replace value token replacement))
+  => '(string.gsub value token replacement))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-x-str-trim}
+(fact "Lua trim removes whitespace at both ends"
+  (subject/lua-x-str-trim '(x:str-trim value))
+  => '(string.gsub value "^%s*(.-)%s*$" "%1"))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-x-str-trim-left}
+(fact "Lua left trim removes leading whitespace"
+  (subject/lua-x-str-trim-left '(x:str-trim-left value))
+  => '(string.gsub value "^%s*" ""))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-x-str-trim-right}
+(fact "Lua right trim removes trailing whitespace"
+  (subject/lua-x-str-trim-right '(x:str-trim-right value))
+  => '(string.gsub value "^(%s*.-)%s*$" "%1"))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-x-bytes-new}
+(fact "Lua byte construction unpacks its values"
+  (subject/lua-x-bytes-new '(x:bytes-new values))
+  => '[(unpack values)])
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-x-bytes-get}
+(fact "Lua byte reads apply the canonical offset"
+  (subject/lua-x-bytes-get '(x:bytes-get values index))
+  => '(x:get-idx values (x:offset index)))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-x-bytes-set}
+(fact "Lua byte writes use rawset with an offset"
+  (subject/lua-x-bytes-set '(x:bytes-set values index byte))
+  => '(rawset values (x:offset index) byte))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-x-bytes-copy}
+(fact "Lua byte copying unpacks its values"
+  (subject/lua-x-bytes-copy '(x:bytes-copy values))
+  => '[(unpack values)])
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-x-bytes-slice}
+(fact "Lua byte slices offset their start"
+  (subject/lua-x-bytes-slice '(x:bytes-slice values start stop))
+  => '[(unpack values (x:offset start) stop)])
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-x-bytes-u8}
+(fact "Lua unsigned bytes use modulo 256"
+  (subject/lua-x-bytes-u8 '(x:bytes-u8 value)) => '(mod value 256))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-x-bytes-s8}
+(fact "Lua signed bytes subtract 256 above 127"
+  (subject/lua-x-bytes-s8 '(x:bytes-s8 value))
+  => '(:? (> value 127) (- value 256) value))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-x-str-encode}
+(fact "Lua string encoding collects byte values"
+  (let [out (subject/lua-x-str-encode '(x:str-encode value))]
+    [(first out) (first (first out)) (first (nth (first out) 2))]
+    => ['fn 's 'var]))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-x-str-decode}
+(fact "Lua string decoding calls string.char on unpacked data"
+  (subject/lua-x-str-decode '(x:str-decode value))
+  => '(string.char (x:unpack value)))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-x-bit-not}
+(fact "Lua bitwise not subtracts the value from negative one"
+  (subject/lua-x-bit-not '(x:bit-not value)) => '(- -1 value))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-x-bit-binary}
+(fact "Lua binary bit operations build a two-argument function"
+  (let [out (subject/lua-x-bit-binary :and '(x:bit-and left right))]
+    [(first (first out)) (second (first out)) (nth out 1) (nth out 2)]
+    => ['fn ['left 'right] 'left 'right]))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-x-bit-lshift}
+(fact "Lua left shift uses a bounded power-of-two product"
+  (let [out (subject/lua-x-bit-lshift '(x:bit-lshift value shift))]
+    [(first out) (first (nth out 1)) (first (nth out 2))]
+    => [':? '>= '-]))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-x-bit-rshift}
+(fact "Lua right shift floors division by a power of two"
+  (subject/lua-x-bit-rshift '(x:bit-rshift value shift))
+  => '(math.floor (/ value (math.pow 2 shift))))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-x-pwd}
+(fact "Lua process paths read PWD"
+  (subject/lua-x-pwd '(x:pwd)) => '(os.getenv "PWD"))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-x-shell}
+(fact "Lua shell execution opens a protected process"
+  (let [out (subject/lua-x-shell '(x:shell source root callback))]
+    [(first out) (first (nth out 1)) (first (nth out 2))]
+    => ['do* 'var 'var]))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-x-file-resolve}
+(fact "Lua file resolution preserves absolute paths"
+  (subject/lua-x-file-resolve '(x:file-resolve root path))
+  => '(:? (or (== nil root) (== "/" (string.sub path 1 1)))
+           path
+           (cat root "/" path)))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-x-file-read}
+(fact "Lua file reads return a resolved promise thunk"
+  (let [out (subject/lua-x-file-read '(x:file-read path))]
+    [(first out) (first (first out)) (first (nth (first out) 2))]
+    => ['fn 'var 'if]))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-x-file-write}
+(fact "Lua file writes return a resolved promise thunk"
+  (let [out (subject/lua-x-file-write '(x:file-write path content))]
+    [(first out) (first (first out)) (first (nth (first out) 2))]
+    => ['fn 'var 'var]))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-yield}
+(fact "Lua yield delegates to coroutine.yield"
+  (subject/lua-yield '(yield value)) => '(coroutine.yield value))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-defgen}
+(fact "Lua generators define a coroutine-wrapped function"
+  (subject/lua-defgen '(defgen task [x] body))
+  => '(defn task [x] (return (coroutine.wrap (fn [] body)))))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-x-iter-from-obj}
+(fact "Lua object iterators yield key-value pairs"
+  (let [out (subject/lua-x-iter-from-obj '(x:iter-from-obj object))]
+    [(first out) (first (nth out 1)) (first (nth (nth out 1) 2))]
+    => ['coroutine.wrap 'fn 'for:object]))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-x-iter-from-arr}
+(fact "Lua array iterators yield values"
+  (let [out (subject/lua-x-iter-from-arr '(x:iter-from-arr array))]
+    [(first out) (first (nth out 1)) (first (nth (nth out 1) 2))]
+    => ['coroutine.wrap 'fn 'for:array]))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-x-iter-from}
+(fact "Lua generic iterators read an iterator property"
+  (let [out (subject/lua-x-iter-from '(x:iter-from value))]
+    [(first out) (first (nth out 1)) (first (nth (nth out 1) 2))]
+    => ['coroutine.wrap 'fn 'for:iter]))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-x-iter-eq}
+(fact "Lua iterator equality stops on a mismatched value"
+  (let [out (subject/lua-x-iter-eq '(x:iter-eq left right equal?))]
+    [(first out) (first (nth out 1)) (first (nth out 2))]
+    => ['do 'for:iter 'return]))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-x-iter-next}
+(fact "Lua iterators advance by invoking the iterator"
+  (subject/lua-x-iter-next '(x:iter-next iterator)) => '(iterator))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-x-iter-has}
+(fact "Lua iterator detection checks table and iterator types"
+  (subject/lua-x-iter-has '(x:iter-has iterator))
+  => '(and (== "table" (type iterator))
+           (== "function" (type (. iterator ["iterator"])))))
+
+^{:refer lang.model.v1.spec-lua.lua-native/lua-x-iter-native}
+(fact "Lua native iterator detection checks function type"
+  (subject/lua-x-iter-native '(x:iter-native iterator))
+  => '(== "function" (type iterator)))
+
+^{:refer lang.model.v1.spec-lua.lua-native/+lua-native-core+}
+(fact "Lua native core publishes global, control, and indexing entries"
+  [(get-in subject/+lua-native-core+ [:with-global :raw])
+   (get-in subject/+lua-native-core+ [:not :raw])
+   (get-in subject/+lua-native-core+ [:index :emit])]
+  => ["_G" "not " :index])
+
+^{:refer lang.model.v1.spec-lua.lua-native/+lua-native-counter+}
+(fact "Lua native counters publish compound assignment macros"
+  (set (keys subject/+lua-native-counter+)) => #{:incby :decby :mulby})
+
+^{:refer lang.model.v1.spec-lua.lua-native/+lua-native-vars+}
+(fact "Lua native vars map var* to the local declaration"
+  (get-in subject/+lua-native-vars+ [:var :symbol]) => #{'var*})
+
+^{:refer lang.model.v1.spec-lua.lua-native/+lua-native-for+}
+(fact "Lua native loops publish all four loop macros"
+  (set (keys subject/+lua-native-for+))
+  => #{:for-object :for-array :for-iter :for-index})
+
+^{:refer lang.model.v1.spec-lua.lua-native/+lua-native-prototype+}
+(fact "Lua native prototypes publish metatable operations"
+  (set (keys subject/+lua-native-prototype+))
+  => #{:prototype-get :prototype-set :prototype-create :prototype-method :prototype-tostring})
+
+^{:refer lang.model.v1.spec-lua.lua-native/+lua-native-coroutine+}
+(fact "Lua native coroutines publish generators and yield"
+  (set (keys subject/+lua-native-coroutine+)) => #{:defgen :yield})
+
+^{:refer lang.model.v1.spec-lua.lua-native/+lua-native-definitions+}
+(fact "Lua native definitions publish local type cat and len"
+  (set (keys subject/+lua-native-definitions+))
+  => #{:local :native-type :cat :len})
+
+^{:refer lang.model.v1.spec-lua.lua-native/+lua-native+}
+(fact "Lua native operators flatten the explicit native groups"
+  (set (keys subject/+lua-native+))
+  => #{:with-global :pow :not :and :or :neq :throw :index :incby :decby
+       :mulby :var :for-object :for-array :for-iter :for-index
+       :prototype-get :prototype-set :prototype-create :prototype-method
+       :prototype-tostring :defgen :yield})

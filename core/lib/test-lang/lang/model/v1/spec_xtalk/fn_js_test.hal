@@ -1,0 +1,93 @@
+(ns lang.model.v1.spec-xtalk.fn-js-test
+  (:use code.test)
+  (:require [lang.model.v1.spec-xtalk.fn-js :as subject]))
+
+^{:refer lang.model.v1.spec-xtalk.fn-js/+js-core+}
+(fact "JavaScript core XTalk group preserves its operator count"
+  (count subject/+js-core+) => 16)
+
+^{:refer lang.model.v1.spec-xtalk.fn-js/+js-global+}
+(fact "JavaScript global XTalk group is empty"
+  subject/+js-global+ => {})
+
+^{:refer lang.model.v1.spec-xtalk.fn-js/+js-custom+}
+(fact "JavaScript custom XTalk group preserves its operator count"
+  (count subject/+js-custom+) => 1)
+
+^{:refer lang.model.v1.spec-xtalk.fn-js/+js-math+}
+(fact "JavaScript math XTalk group preserves its operator count"
+  (count subject/+js-math+) => 21)
+
+^{:refer lang.model.v1.spec-xtalk.fn-js/+js-type+}
+(fact "JavaScript type XTalk group preserves its operator count"
+  (count subject/+js-type+) => 10)
+
+^{:refer lang.model.v1.spec-xtalk.fn-js/+js-lu+}
+(fact "JavaScript lookup XTalk group preserves its operator count"
+  (count subject/+js-lu+) => 4)
+
+^{:refer lang.model.v1.spec-xtalk.fn-js/+js-obj+}
+(fact "JavaScript object XTalk group preserves its operator count"
+  (count subject/+js-obj+) => 2)
+
+^{:refer lang.model.v1.spec-xtalk.fn-js/+js-arr+}
+(fact "JavaScript array XTalk group preserves its operator count"
+  (count subject/+js-arr+) => 7)
+
+^{:refer lang.model.v1.spec-xtalk.fn-js/+js-arr-functional+}
+(fact "JavaScript functional array XTalk group preserves its operator count"
+  (count subject/+js-arr-functional+) => 3)
+
+^{:refer lang.model.v1.spec-xtalk.fn-js/+js-str+}
+(fact "JavaScript string XTalk group preserves its operator count"
+  (count subject/+js-str+) => 19)
+
+^{:refer lang.model.v1.spec-xtalk.fn-js/+js-bytes+}
+(fact "JavaScript bytes XTalk group preserves its operator count"
+  (count subject/+js-bytes+) => 6)
+
+^{:refer lang.model.v1.spec-xtalk.fn-js/+js-js+}
+(fact "JavaScript interop XTalk group preserves its operator count"
+  (count subject/+js-js+) => 2)
+
+^{:refer lang.model.v1.spec-xtalk.fn-js/+js-return+}
+(fact "JavaScript return XTalk group preserves its operator count"
+  (count subject/+js-return+) => 3)
+
+^{:refer lang.model.v1.spec-xtalk.fn-js/+js-iter+}
+(fact "JavaScript iterator XTalk group preserves its operator count"
+  (count subject/+js-iter+) => 8)
+
+^{:refer lang.model.v1.spec-xtalk.fn-js/+js-promise+}
+(fact "JavaScript promise XTalk group preserves its operator count"
+  (count subject/+js-promise+) => 8)
+
+^{:refer lang.model.v1.spec-xtalk.fn-js/+js-shell+}
+(fact "JavaScript shell XTalk group preserves its operator count"
+  (count subject/+js-shell+) => 2)
+
+^{:refer lang.model.v1.spec-xtalk.fn-js/+js-file+}
+(fact "JavaScript file XTalk group preserves its operator count"
+  (count subject/+js-file+) => 3)
+
+^{:refer lang.model.v1.spec-xtalk.fn-js/+js+}
+(fact "JavaScript XTalk operators flatten all explicit groups"
+  (= subject/+js+
+     (merge subject/+js-core+
+            subject/+js-global+
+            subject/+js-custom+
+            subject/+js-math+
+            subject/+js-type+
+            subject/+js-lu+
+            subject/+js-obj+
+            subject/+js-arr+
+            subject/+js-arr-functional+
+            subject/+js-str+
+            subject/+js-bytes+
+            subject/+js-js+
+            subject/+js-return+
+            subject/+js-iter+
+            subject/+js-promise+
+            subject/+js-shell+
+            subject/+js-file+))
+  => true)

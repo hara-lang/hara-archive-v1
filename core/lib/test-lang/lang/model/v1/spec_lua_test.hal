@@ -1,0 +1,71 @@
+(ns lang.model.v1.spec-lua-test
+  (:use code.test)
+  (:require [lang.common.book :as book]
+            [lang.common.book-meta :as book-meta]
+            [lang.common.grammar-api :as grammar-api]
+            [lang.model.v1.spec-lua.lua-grammar :as model]
+            [lang.model.v1.spec-lua :as subject]))
+
+^{:refer lang.model.v1.spec-lua/+language+}
+(fact "Lua language identity"
+  subject/+language+ => :lua)
+
+^{:refer lang.model.v1.spec-lua/+tag+}
+(fact "Lua grammar tag"
+  subject/+tag+ => :lua)
+
+^{:refer lang.model.v1.spec-lua/+version+}
+(fact "Lua book version"
+  subject/+version+ => 1)
+
+^{:refer lang.model.v1.spec-lua/+grammar-version+}
+(fact "Lua grammar version"
+  subject/+grammar-version+ => 1)
+
+^{:refer lang.model.v1.spec-lua/+grammar+}
+(fact "Lua spec exposes the native grammar"
+  subject/+grammar+ => model/+grammar+)
+
+^{:refer lang.model.v1.spec-lua/+coordinate+}
+(fact "Lua spec pins its grammar coordinate"
+  subject/+coordinate+
+  => {:grammar/id :lua
+      :grammar/version 1
+      :grammar/release "alpha"
+      :grammar/facets []})
+
+^{:refer lang.model.v1.spec-lua/+selection+}
+(fact "Lua selection is a direct immutable grammar selection"
+  [(= (:coordinate subject/+selection+) subject/+coordinate+)
+   (= (:grammar subject/+selection+) subject/+grammar+)
+   (:rewrite subject/+selection+)
+   (:rewrite/source subject/+selection+)
+   (:extensions subject/+selection+)
+   (:provenance subject/+selection+)
+   (:fingerprint subject/+selection+)]
+  => [true true {} {} {} [] (grammar-api/fingerprint subject/+grammar+)])
+
+^{:refer lang.model.v1.spec-lua/select}
+(fact "Lua select returns the pinned selection"
+  (subject/select) => subject/+selection+)
+
+^{:refer lang.model.v1.spec-lua/+meta+}
+(fact "Lua metadata is a native BookMeta value"
+  (book-meta/book-meta? subject/+meta+) => true)
+
+^{:refer lang.model.v1.spec-lua/+book+}
+(fact "Lua book carries its grammar and selection"
+  [(book/book? subject/+book+)
+   (:lang subject/+book+)
+   (:parent subject/+book+)
+   (:version subject/+book+)
+   (:coordinate subject/+book+)
+   (:grammar-coordinate subject/+book+)
+   (= (:grammar subject/+book+) subject/+grammar+)
+   (= (:selection subject/+book+) subject/+selection+)
+   (book-meta/book-meta? (:meta subject/+book+))]
+  => [true :lua :xtalk 1 subject/+coordinate+ subject/+coordinate+ true true true])
+
+^{:refer lang.model.v1.spec-lua/+init+}
+(fact "Lua initialization is the immutable book value"
+  subject/+init+ => subject/+book+)

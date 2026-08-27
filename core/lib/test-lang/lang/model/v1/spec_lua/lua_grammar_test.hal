@@ -1,0 +1,51 @@
+(ns lang.model.v1.spec-lua.lua-grammar-test
+  (:use code.test)
+  (:require [lang.common.grammar :as common-grammar]
+            [lang.model.v1.spec-lua.lua-native :as native]
+            [lang.model.v1.spec-xtalk.fn-lua :as xtalk]
+            [lang.model.v1.spec-lua.lua-grammar :as subject]))
+
+^{:refer lang.model.v1.spec-lua.lua-grammar/+language+}
+(fact "Lua grammar declares its language"
+  subject/+language+ => :lua)
+
+^{:refer lang.model.v1.spec-lua.lua-grammar/+tag+}
+(fact "Lua grammar uses the Lua tag"
+  subject/+tag+ => :lua)
+
+^{:refer lang.model.v1.spec-lua.lua-grammar/+grammar-version+}
+(fact "Lua grammar exposes the Foundation grammar version"
+  subject/+grammar-version+ => 1)
+
+^{:refer lang.model.v1.spec-lua.lua-grammar/+baseline+}
+(fact "Lua baseline combines the common and XTalk grammars"
+  subject/+baseline+
+  => (merge (common-grammar/build)
+            (common-grammar/build-xtalk)))
+
+^{:refer lang.model.v1.spec-lua.lua-grammar/+features+}
+(fact "Lua features apply XTalk, native, and definition layers"
+  subject/+features+
+  => (-> subject/+baseline+
+          (common-grammar/build:override xtalk/+lua+)
+          (common-grammar/build:override native/+lua-native+)
+          (common-grammar/build:extend native/+lua-native-definitions+)))
+
+^{:refer lang.model.v1.spec-lua.lua-grammar/+template+}
+(fact "Lua template preserves target formatting"
+  [(get-in subject/+template+ [:default :comment :prefix])
+   (get-in subject/+template+ [:token :nil])
+   (get-in subject/+template+ [:token :string :quote])
+   (get-in subject/+template+ [:data :vector :custom])
+   (get-in subject/+template+ [:data :map-entry :key-fn])
+   (get-in subject/+template+ [:define :def :raw])
+   (get-in subject/+template+ [:block :branch :control :if :raw])]
+  => ["--" "nil" :single native/lua-vector native/lua-map-key "local" "if"])
+
+^{:refer lang.model.v1.spec-lua.lua-grammar/+grammar+}
+(fact "Lua grammar is a direct tagged grammar"
+  [(get subject/+grammar+ :tag)
+   (not= nil (get subject/+grammar+ :reserved))
+   (= nil (get subject/+grammar+ :operators))
+   (= nil (get subject/+grammar+ :emit))]
+  => [:lua true true true])

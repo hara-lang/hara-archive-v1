@@ -1,15 +1,6 @@
 (ns lang.model.v1.spec-js.js-native
-  (:require [lang.base.v1.grammar-spec :as spec]
-            [lang.common.emit-common :as common]
-            [lang.common.emit-data :as data]
-            [lang.common.grammar-api :as grammar]
-            [lang.common.registry :as registry]
-            [lang.model.v1.spec-xtalk :as xtalk]))
-
-(def +language+ :js)
-(def +tag+ :js)
-(def +version+ "alpha")
-(def +grammar-version+ spec/+version+)
+  (:require [lang.common.emit-common :as common]
+            [lang.common.emit-data :as data]))
 
 (defn js-set
   "Emits JavaScript object destructuring and object-set forms."
@@ -556,61 +547,3 @@
 (def +js-native+
   (merge +js-native-core+ +js-native-vars+ +js-native-for+
          +js-native-prototype+))
-
-(def +operator-group-names+ [:core :vars :for :prototype :definitions])
-(def +operator-groups+
-  [{:name :core :override +js-native-core+ :define {}}
-   {:name :vars :override +js-native-vars+ :define {}}
-   {:name :for :override +js-native-for+ :define {}}
-   {:name :prototype :override +js-native-prototype+ :define {}}
-   {:name :definitions :override {} :define +js-native-definitions+}])
-
-(def +operator-source+
-  {:override +js-native+ :define +js-native-definitions+})
-
-(def +operators+ +operator-source+)
-
-(def +emit+
-  {:defaults
-     {:banned #{:keyword}
-      :allow {:assign #{:symbol :vector :set :map}}
-      :default
-      {:comment {:prefix "//"}
-       :common {:start "("
-                :end ")"
-                :space " "
-                :assign "="
-                :sep ","
-                :statement ";"
-                :namespace "."
-                :newline "\n"
-                :indent 2}
-       :invoke {:start "(" :end ")" :sep "," :space " "}
-       :block {:parameter {:start "(" :end ")"}
-               :body {:start "{" :end "}"}
-               :space-before-body " "}
-       :function {:raw "function"
-                  :space ""
-                  :args {:start "(" :end ")" :sep "," :space ""}
-                  :body {:start "{" :end "}"}
-                  :space-before-body " "}}
-      :token
-      {:nil "null"
-       :true "true"
-       :false "false"
-       :string {:quote :double}
-       :symbol {:namespace "."
-                :replace {"-" "_"
-                          "?" "_p"
-                          "!" "_bang"}}}
-      :data
-      {:vector {:start "[" :end "]" :sep "," :space " "}
-       :set {:start "{" :end "}" :sep "," :space " " :custom js-set}
-       :map {:start "{" :end "}" :sep "," :space " "}
-       :map-entry {:assign ":" :space " "}}
-      :function {:defgen {:raw "function*"}}
-      :define
-      {:defglobal {:raw ""}
-       :def {:raw "const"}
-       :declare {:raw "let"}}
-      :block {:for {:parameter {:sep ";"}}}}})

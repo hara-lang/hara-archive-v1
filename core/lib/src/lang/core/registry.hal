@@ -91,18 +91,16 @@
 
 ;; Grammars and books have distinct identities and registries. A Book pins one
 ;; materialized grammar selection; this catalog owns the independently
-;; versioned grammar definitions from which selections are resolved.
+;; versioned source-backed grammar definitions from which selections are
+;; resolved. Direct-book targets remain available through +book-registry+.
 (def +grammar-registry+
   (atom
    (spec-c/install
     (spec-glsl/install
      (spec-postgres/install
-      (spec-lua/install
-       (spec-python/install
-        (spec-js/install
-         (spec-hara/install
-          (spec-xtalk/install
-           (grammar-registry/registry)))))))))))
+      (spec-hara/install
+       (spec-xtalk/install
+        (grammar-registry/registry))))))))
 
 (defn- atom-value [reference]
   (deref (identity reference)))

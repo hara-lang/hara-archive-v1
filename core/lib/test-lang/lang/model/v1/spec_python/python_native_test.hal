@@ -1,0 +1,480 @@
+(ns lang.model.v1.spec-python.python-native-test
+  (:use code.test)
+  (:require [lang.model.v1.spec-python.python-native :as subject]))
+
+^{:refer lang.model.v1.spec-python.python-native/python-async-run}
+(fact "Python async execution returns a thunk result"
+  (subject/python-async-run '(async-run thunk))
+  => '((fn [] (return (thunk)))))
+
+^{:refer lang.model.v1.spec-python.python-native/python-prototype-create}
+(fact "Python prototype creation preserves its method map"
+  (subject/python-prototype-create '(prototype-create methods)) => 'methods)
+
+^{:refer lang.model.v1.spec-python.python-native/python-prototype-get}
+(fact "Python prototype reads the reserved prototype key"
+  (subject/python-prototype-get '(prototype-get object))
+  => '(x:get-key object "_xt_proto" nil))
+
+^{:refer lang.model.v1.spec-python.python-native/python-prototype-set}
+(fact "Python prototype setting writes the reserved prototype key"
+  (subject/python-prototype-set '(prototype-set object proto))
+  => '(or (. object (__setitem__ "_xt_proto" proto)) object))
+
+^{:refer lang.model.v1.spec-python.python-native/python-prototype-method}
+(fact "Python prototype methods fall back from direct to prototype lookup"
+  (subject/python-prototype-method '(prototype-method object key))
+  => '(:? (not= nil (x:get-key object key nil))
+           (x:get-key object key nil)
+           (x:get-key (or (proto:get object) {}) key nil)))
+
+^{:refer lang.model.v1.spec-python.python-native/python-x-eval}
+(fact "Python evaluation delegates to eval"
+  (subject/python-x-eval '(x:eval source)) => '(eval source))
+
+^{:refer lang.model.v1.spec-python.python-native/python-x-construct}
+(fact "Python construction spreads constructor arguments"
+  (subject/python-x-construct '(x:construct C args)) => '(C (:* args)))
+
+^{:refer lang.model.v1.spec-python.python-native/python-lambda-assignment}
+(fact "Python lambda assignment lowers object assignment"
+  [(subject/python-lambda-assignment '(:= (. object [key]) value))
+   (subject/python-lambda-assignment '(:+= (. object [key]) value))]
+  => ['(. object (__setitem__ key value))
+      '(. object (__setitem__ key (+ (. object [key]) value)))])
+
+^{:refer lang.model.v1.spec-python.python-native/python-lambda-body}
+(fact "Python lambda bodies quote literal values and unwrap return"
+  [(subject/python-lambda-body '(return value))
+   (subject/python-lambda-body "hello")]
+  => ['value '(quote "hello")])
+
+^{:refer lang.model.v1.spec-python.python-native/python-fn}
+(fact "Python functions lower to lambda expressions"
+  (map pr-str
+       [(subject/python-fn '(fn [x] (return x)))
+        (subject/python-fn '(fn [] body1 body2))])
+  => ["(:- lambda (quote [x]) : x)"
+      "(:- lambda (quote [(:* __args)]) : (. [body1 body2] [-1]))"])
+
+^{:refer lang.model.v1.spec-python.python-native/python-var}
+(fact "Python vars lower to var.inner"
+  (subject/python-var '(var x value)) => '(var.inner x := value))
+
+^{:refer lang.model.v1.spec-python.python-native/python-dot}
+(fact "Python dot access uses index for one bracket key and index* otherwise"
+  [(subject/python-dot '(. object [key]))
+   (subject/python-dot '(. object a b))]
+  => ['(index* object [key]) '(index* object a b)])
+
+^{:refer lang.model.v1.spec-python.python-native/python-get-key}
+(fact "Python key reads preserve optional defaults"
+  [(subject/python-get-key '(x:get-key object key))
+   (subject/python-get-key '(x:get-key object key default))]
+  => ['(. object (get key)) '(. object (get key default))])
+
+^{:refer lang.model.v1.spec-python.python-native/python-ex-native}
+(fact "Python native exceptions are BaseException instances"
+  (subject/python-ex-native '(x:ex-native? error))
+  => '(isinstance error BaseException))
+
+^{:refer lang.model.v1.spec-python.python-native/python-ex-new}
+(fact "Python exception construction preserves optional data"
+  [(subject/python-ex-new '(x:ex-new message))
+   (subject/python-ex-new '(x:ex-new message data))]
+  => ['(Exception message) '(Exception message data)])
+
+^{:refer lang.model.v1.spec-python.python-native/python-ex-message}
+(fact "Python exception messages read the first argument when present"
+  (pr-str (subject/python-ex-message '(x:ex-message error)))
+  => "(:? (isinstance error BaseException) (:? (> (len (. error args)) 0) (. (. error args) [0]) nil) nil)")
+
+^{:refer lang.model.v1.spec-python.python-native/python-ex-data}
+(fact "Python exception data read the second argument when present"
+  (pr-str (subject/python-ex-data '(x:ex-data error)))
+  => "(:? (isinstance error BaseException) (:? (> (len (. error args)) 1) (. (. error args) [1]) nil) nil)")
+
+^{:refer lang.model.v1.spec-python.python-native/python-type-native}
+(fact "Python native type dispatch covers its ordered cases"
+  (let [out (subject/python-type-native '(x:type-native value))]
+    [(first out) (nth out 1) (last out)]
+    => ['cond '(isinstance value (quote (dict)))
+        '(return (str (type value)))]))
+
+^{:refer lang.model.v1.spec-python.python-native/python-type-predicate}
+(fact "Python type predicates use isinstance"
+  (subject/python-type-predicate '(quote bool) '(typeof? value))
+  => '(isinstance value (quote bool)))
+
+^{:refer lang.model.v1.spec-python.python-native/python-apply}
+(fact "Python apply spreads positional arguments"
+  (subject/python-apply '(x:apply function args)) => '(function (:* args)))
+
+^{:refer lang.model.v1.spec-python.python-native/python-json-encode}
+(fact "Python JSON encoding imports json.dumps"
+  (subject/python-json-encode '(x:json-encode value))
+  => '(. (__import__ "json") (dumps value)))
+
+^{:refer lang.model.v1.spec-python.python-native/python-json-decode}
+(fact "Python JSON decoding imports json.loads"
+  (subject/python-json-decode '(x:json-decode value))
+  => '(. (__import__ "json") (loads value)))
+
+^{:refer lang.model.v1.spec-python.python-native/python-type-native-expression}
+(fact "Python type expressions start with dictionary detection"
+  (let [out (subject/python-type-native-expression 'value)]
+    [(first out) (first (nth out 1)) (nth out 2)]
+    => [':? 'isinstance "object"]))
+
+^{:refer lang.model.v1.spec-python.python-native/python-return-encode}
+(fact "Python return encoding records type and JSON payload"
+  (let [out (subject/python-return-encode '(x:return-encode value id key))]
+    [(first out) (first (nth out 1)) (first (nth out 2))]
+    => ['do 'var 'return]))
+
+^{:refer lang.model.v1.spec-python.python-native/python-return-wrap}
+(fact "Python return wrapping catches Exception and calls the encoder"
+  (let [out (subject/python-return-wrap '(x:return-wrap function encode))]
+    [(first out) (first (nth out 1)) (first (nth out 2))]
+    => ['do 'try 'return]))
+
+^{:refer lang.model.v1.spec-python.python-native/python-return-eval}
+(fact "Python return evaluation executes source in a scope"
+  (let [out (subject/python-return-eval '(x:return-eval source wrap))]
+    [(first out) (first (nth out 1)) (first (last out))]
+    => ['do 'fn 'return]))
+
+^{:refer lang.model.v1.spec-python.python-native/python-loop-body}
+(fact "Python empty loops receive a pass body"
+  [(subject/python-loop-body '(for [x xs]))
+   (subject/python-loop-body '(for [x xs] body))]
+  => ['(pass) '[body]])
+
+^{:refer lang.model.v1.spec-python.python-native/python-for-object}
+(fact "Python object loops choose items values or keys"
+  [(subject/python-for-object '(for [[k v] object] body))
+   (subject/python-for-object '(for [[_ v] object] body))
+   (subject/python-for-object '(for [[k _] object] body))]
+  => ['(for [[k v] :in (. object (items))] body)
+      '(for [v :in (. object (values))] body)
+      '(for [k :in (. object (keys))] body)])
+
+^{:refer lang.model.v1.spec-python.python-native/python-for-array}
+(fact "Python array loops support element and index bindings"
+  [(subject/python-for-array '(for [value array] body))
+   (subject/python-for-array '(for [[index value] array] body))]
+  => ['(for [value :in array] body)
+      '(for [index :in (range (len array))]
+            (var value (. array [index]))
+            body)])
+
+^{:refer lang.model.v1.spec-python.python-native/python-for-iter}
+(fact "Python iterator loops use in"
+  (subject/python-for-iter '(for [entry iterator]))
+  => '(for [entry :in iterator] pass))
+
+^{:refer lang.model.v1.spec-python.python-native/python-for-index}
+(fact "Python index loops use range and omit nil bounds"
+  (subject/python-for-index '(for [index [0 3 nil]] body))
+  => '(for [index :in (range 0 3)] body))
+
+^{:refer lang.model.v1.spec-python.python-native/python-x-del}
+(fact "Python deletion lowers indexed and direct targets"
+  [(subject/python-x-del '(x:del (. object [key])))
+   (subject/python-x-del '(x:del target))]
+  => ['(index* object (pop key nil)) '(del target)])
+
+^{:refer lang.model.v1.spec-python.python-native/python-x-set-key}
+(fact "Python key setting returns the object after __setitem__"
+  (subject/python-x-set-key '(x:set-key object key value))
+  => '(or (index* object (__setitem__ key value)) object))
+
+^{:refer lang.model.v1.spec-python.python-native/python-x-unpack}
+(fact "Python unpack uses starred arguments"
+  (subject/python-x-unpack '(x:unpack values)) => '(:* values))
+
+^{:refer lang.model.v1.spec-python.python-native/python-x-str-comp}
+(fact "Python string comparison uses less-than"
+  (subject/python-x-str-comp '(x:str-comp left right)) => '(< left right))
+
+^{:refer lang.model.v1.spec-python.python-native/python-x-cat}
+(fact "Python concatenation uses plus"
+  (subject/python-x-cat '(x:cat a b)) => '(+ a b))
+
+^{:refer lang.model.v1.spec-python.python-native/python-x-has-key}
+(fact "Python key checks preserve optional exact values"
+  [(subject/python-x-has-key '(x:has-key? object key))
+   (subject/python-x-has-key '(x:has-key? object key expected))]
+  => ['(not= nil (. object (get key)))
+      '(== expected (x:get-key object key nil))])
+
+^{:refer lang.model.v1.spec-python.python-native/python-x-lu-get}
+(fact "Python lookup reads an id-normalized key"
+  (subject/python-x-lu-get '(x:lu-get lookup key))
+  => '(. lookup (get (id key))))
+
+^{:refer lang.model.v1.spec-python.python-native/python-x-lu-set}
+(fact "Python lookup assignment writes an id-normalized key"
+  (subject/python-x-lu-set '(x:lu-set lookup key value))
+  => '(:= (. lookup [(id key)]) value))
+
+^{:refer lang.model.v1.spec-python.python-native/python-x-lu-del}
+(fact "Python lookup deletion pops an id-normalized key"
+  (subject/python-x-lu-del '(x:lu-del lookup key))
+  => '(. lookup (pop (id key) nil)))
+
+^{:refer lang.model.v1.spec-python.python-native/python-x-lu-eq}
+(fact "Python lookup equality compares normalized ids"
+  (subject/python-x-lu-eq '(x:lu-eq left right))
+  => '(== (id left) (id right)))
+
+^{:refer lang.model.v1.spec-python.python-native/python-x-obj-keys}
+(fact "Python object keys materialize a list"
+  (subject/python-x-obj-keys '(x:obj-keys object))
+  => '(list (. object (keys))))
+
+^{:refer lang.model.v1.spec-python.python-native/python-x-obj-clone}
+(fact "Python object cloning uses copy"
+  (subject/python-x-obj-clone '(x:obj-clone object))
+  => '(. object (copy)))
+
+^{:refer lang.model.v1.spec-python.python-native/python-x-arr-method}
+(fact "Python array methods preserve their receiver"
+  (subject/python-x-arr-method 'push '(x:arr-push array value))
+  => '(. array (push value)))
+
+^{:refer lang.model.v1.spec-python.python-native/python-x-arr-clone}
+(fact "Python array cloning materializes a list"
+  (subject/python-x-arr-clone '(x:arr-clone array)) => '(list array))
+
+^{:refer lang.model.v1.spec-python.python-native/python-x-arr-insert}
+(fact "Python array insertion calls insert"
+  (subject/python-x-arr-insert '(x:arr-insert array index value))
+  => '(. array (insert index value)))
+
+^{:refer lang.model.v1.spec-python.python-native/python-x-arr-remove}
+(fact "Python array removal calls pop"
+  (subject/python-x-arr-remove '(x:arr-remove array index))
+  => '(. array (pop index)))
+
+^{:refer lang.model.v1.spec-python.python-native/python-string-method}
+(fact "Python string methods preserve method arguments"
+  (subject/python-string-method 'slice '(x:slice value start stop))
+  => '(. value (slice start stop)))
+
+^{:refer lang.model.v1.spec-python.python-native/python-x-str-char}
+(fact "Python string character access calls ord"
+  (subject/python-x-str-char '(x:str-char value index))
+  => '(ord (. value [index])))
+
+^{:refer lang.model.v1.spec-python.python-native/python-x-str-split}
+(fact "Python string split delegates to split"
+  (subject/python-x-str-split '(x:str-split value token))
+  => '(. value (split token)))
+
+^{:refer lang.model.v1.spec-python.python-native/python-x-str-join}
+(fact "Python string join uses the separator receiver"
+  (subject/python-x-str-join '(x:str-join separator values))
+  => '(. separator (join values)))
+
+^{:refer lang.model.v1.spec-python.python-native/python-x-str-index-of}
+(fact "Python string index lookup uses find"
+  (subject/python-x-str-index-of '(x:str-index-of value token start))
+  => '(. value (find token start)))
+
+^{:refer lang.model.v1.spec-python.python-native/python-x-str-substring}
+(fact "Python substring uses a slice index"
+  (subject/python-x-str-substring '(x:str-substring value start stop))
+  => '(. value [(slice start stop)]))
+
+^{:refer lang.model.v1.spec-python.python-native/python-x-str-to-upper}
+(fact "Python strings can be uppercased"
+  (subject/python-x-str-to-upper '(x:str-to-upper value))
+  => '(. value (upper)))
+
+^{:refer lang.model.v1.spec-python.python-native/python-x-str-to-lower}
+(fact "Python strings can be lowercased"
+  (subject/python-x-str-to-lower '(x:str-to-lower value))
+  => '(. value (lower)))
+
+^{:refer lang.model.v1.spec-python.python-native/python-x-str-to-fixed}
+(fact "Python fixed formatting builds a precision format string"
+  (subject/python-x-str-to-fixed '(x:str-to-fixed value digits))
+  => '(. (x:cat "{:." (str digits) "f}") (format value)))
+
+^{:refer lang.model.v1.spec-python.python-native/python-x-str-replace}
+(fact "Python replacement delegates to replace"
+  (subject/python-x-str-replace '(x:str-replace value old new))
+  => '(. value (replace old new)))
+
+^{:refer lang.model.v1.spec-python.python-native/python-x-str-trim}
+(fact "Python strings can be stripped"
+  (subject/python-x-str-trim '(x:str-trim value)) => '(. value (strip)))
+
+^{:refer lang.model.v1.spec-python.python-native/python-x-str-trim-left}
+(fact "Python strings can be left-stripped"
+  (subject/python-x-str-trim-left '(x:str-trim-left value))
+  => '(. value (lstrip)))
+
+^{:refer lang.model.v1.spec-python.python-native/python-x-str-trim-right}
+(fact "Python strings can be right-stripped"
+  (subject/python-x-str-trim-right '(x:str-trim-right value))
+  => '(. value (rstrip)))
+
+^{:refer lang.model.v1.spec-python.python-native/python-x-str-pad-left}
+(fact "Python strings can be left-padded"
+  (subject/python-x-str-pad-left '(x:str-pad-left value width pad))
+  => '(. value (rjust width pad)))
+
+^{:refer lang.model.v1.spec-python.python-native/python-x-str-pad-right}
+(fact "Python strings can be right-padded"
+  (subject/python-x-str-pad-right '(x:str-pad-right value width pad))
+  => '(. value (ljust width pad)))
+
+^{:refer lang.model.v1.spec-python.python-native/python-x-bytes-new}
+(fact "Python byte arrays use bytearray"
+  (subject/python-x-bytes-new '(x:bytes-new values)) => '(bytearray values))
+
+^{:refer lang.model.v1.spec-python.python-native/python-x-bytes-set}
+(fact "Python byte setting uses operator.setitem and returns the value"
+  (subject/python-x-bytes-set '(x:bytes-set values index byte))
+  => '(or (. (__import__ "operator") (setitem values index byte)) values))
+
+^{:refer lang.model.v1.spec-python.python-native/python-x-bytes-copy}
+(fact "Python byte copying uses bytearray"
+  (subject/python-x-bytes-copy '(x:bytes-copy values)) => '(bytearray values))
+
+^{:refer lang.model.v1.spec-python.python-native/python-x-bytes-slice}
+(fact "Python byte slicing uses builtins.slice"
+  (subject/python-x-bytes-slice '(x:bytes-slice values start stop))
+  => '(. values [(. (__import__ "builtins") (slice start stop))]))
+
+^{:refer lang.model.v1.spec-python.python-native/python-x-bytes-u8}
+(fact "Python unsigned bytes are masked to eight bits"
+  (subject/python-x-bytes-u8 '(x:bytes-u8 value)) => '(b:& value 255))
+
+^{:refer lang.model.v1.spec-python.python-native/python-x-bytes-s8}
+(fact "Python signed bytes subtract 256 above 127"
+  (subject/python-x-bytes-s8 '(x:bytes-s8 value))
+  => '(:? (> value 127) (- value 256) value))
+
+^{:refer lang.model.v1.spec-python.python-native/python-x-str-encode}
+(fact "Python string encoding returns a bytearray"
+  (subject/python-x-str-encode '(x:str-encode value))
+  => '(bytearray (. value (encode "utf-8"))))
+
+^{:refer lang.model.v1.spec-python.python-native/python-x-str-decode}
+(fact "Python string decoding converts bytes with utf-8"
+  (subject/python-x-str-decode '(x:str-decode value))
+  => '(. (bytes value) (decode "utf-8")))
+
+^{:refer lang.model.v1.spec-python.python-native/python-x-bit-not}
+(fact "Python bitwise not is xor with negative one"
+  (subject/python-x-bit-not '(x:bit-not value)) => '(b:xor value -1))
+
+^{:refer lang.model.v1.spec-python.python-native/python-x-pwd}
+(fact "Python process paths fall back to os.getcwd"
+  (subject/python-x-pwd '(x:pwd))
+  => '(or (. (__import__ "os") environ (get "PWD"))
+          (. (__import__ "os") (getcwd))))
+
+^{:refer lang.model.v1.spec-python.python-native/python-x-shell}
+(fact "Python shell execution is wrapped in try/catch"
+  (let [out (subject/python-x-shell '(x:shell source root callback))]
+    [(first out) (first (nth out 1)) (first (nth (nth out 1) 4))]
+    => ['do 'try 'catch]))
+
+^{:refer lang.model.v1.spec-python.python-native/python-x-file-resolve}
+(fact "Python file resolution uses os.path.abspath"
+  (subject/python-x-file-resolve '(x:file-resolve root path))
+  => '(. (__import__ "os") path
+          (abspath (. (__import__ "os") path (join root path)))))
+
+^{:refer lang.model.v1.spec-python.python-native/python-x-file-read}
+(fact "Python file reads resolve pathlib bytes"
+  (let [out (subject/python-x-file-read '(x:file-read path))]
+    [(first out) (first (nth (first out) 2))]
+    => ['fn 'return]))
+
+^{:refer lang.model.v1.spec-python.python-native/python-x-file-write}
+(fact "Python file writes pathlib bytes and resolves a promise"
+  (let [out (subject/python-x-file-write '(x:file-write path content))]
+    [(first out) (first (nth (first out) 2))]
+    => ['fn 'return]))
+
+^{:refer lang.model.v1.spec-python.python-native/python-builtin-iter}
+(fact "Python builtin iter imports iter"
+  (subject/python-builtin-iter 'values)
+  => '(. (__import__ "builtins") (iter values)))
+
+^{:refer lang.model.v1.spec-python.python-native/python-x-iter-from-obj}
+(fact "Python object iterators iterate object items"
+  (subject/python-x-iter-from-obj '(x:iter-from-obj object))
+  => '(. (__import__ "builtins") (iter (. object (items)))))
+
+^{:refer lang.model.v1.spec-python.python-native/python-x-iter-from-arr}
+(fact "Python array iterators use builtin iter"
+  (subject/python-x-iter-from-arr '(x:iter-from-arr array))
+  => '(. (__import__ "builtins") (iter array)))
+
+^{:refer lang.model.v1.spec-python.python-native/python-x-iter-from}
+(fact "Python generic iterators use array iterator lowering"
+  (subject/python-x-iter-from '(x:iter-from value))
+  => '(. (__import__ "builtins") (iter value)))
+
+^{:refer lang.model.v1.spec-python.python-native/python-x-iter-eq}
+(fact "Python iterator equality handles StopIteration"
+  (let [out (subject/python-x-iter-eq '(x:iter-eq left right equal?))]
+    [(first out) (first (nth out 1)) (first (last out))]
+    => ['do 'for:iter 'try]))
+
+^{:refer lang.model.v1.spec-python.python-native/python-x-iter-next}
+(fact "Python iterators advance with next"
+  (subject/python-x-iter-next '(x:iter-next iterator)) => '(next iterator))
+
+^{:refer lang.model.v1.spec-python.python-native/python-x-iter-has}
+(fact "Python iterator detection checks __iter__"
+  (subject/python-x-iter-has '(x:iter-has value))
+  => '(hasattr value "__iter__"))
+
+^{:refer lang.model.v1.spec-python.python-native/python-x-iter-native}
+(fact "Python native iterator detection checks __next__"
+  (subject/python-x-iter-native '(x:iter-native value))
+  => '(hasattr value "__next__"))
+
+^{:refer lang.model.v1.spec-python.python-native/+python-native-core+}
+(fact "Python native core publishes globals and control operators"
+  [(get-in subject/+python-native-core+ [:with-global :raw])
+   (get-in subject/+python-native-core+ [:pow :raw])
+   (get-in subject/+python-native-core+ [:throw :raw])]
+  => ["globals()" "**" "raise"])
+
+^{:refer lang.model.v1.spec-python.python-native/+python-native-vars+}
+(fact "Python native vars publish the var macro"
+  (set (keys subject/+python-native-vars+)) => #{:var})
+
+^{:refer lang.model.v1.spec-python.python-native/+python-native-fn+}
+(fact "Python native functions publish the fn macro"
+  (set (keys subject/+python-native-fn+)) => #{:fn})
+
+^{:refer lang.model.v1.spec-python.python-native/+python-native-for+}
+(fact "Python native loops publish all four loop macros"
+  (set (keys subject/+python-native-for+))
+  => #{:for-object :for-array :for-iter :for-index})
+
+^{:refer lang.model.v1.spec-python.python-native/+python-native-prototype+}
+(fact "Python native prototypes publish all prototype operations"
+  (set (keys subject/+python-native-prototype+))
+  => #{:prototype-get :prototype-set :prototype-create :prototype-method :prototype-tostring})
+
+^{:refer lang.model.v1.spec-python.python-native/+python-native-definitions+}
+(fact "Python native definitions publish delete type and index"
+  (set (keys subject/+python-native-definitions+))
+  => #{:delete :native-type :index-native})
+
+^{:refer lang.model.v1.spec-python.python-native/+python-native+}
+(fact "Python native operators flatten the explicit native groups"
+  (set (keys subject/+python-native+))
+  => #{:with-global :pow :and :or :not :throw :index :var :fn
+       :for-object :for-array :for-iter :for-index :prototype-get
+       :prototype-set :prototype-create :prototype-method :prototype-tostring})

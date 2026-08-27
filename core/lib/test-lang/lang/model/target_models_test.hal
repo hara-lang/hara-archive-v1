@@ -29,27 +29,24 @@
       [:lua :lua :lua :lua]
       [:postgres :postgres :postgres :postgres]])
 
-(fact "target models inherit the alpha XTalk/common model"
+(fact "JavaScript, Python, and Lua models are direct Book selections"
+  [(= js spec-js/+selection+)
+   (= py spec-python/+selection+)
+   (= lua spec-lua/+selection+)
+   (:provenance js)
+   (:provenance py)
+   (:provenance lua)]
+  => [true true true [] [] []])
+
+(fact "target models retain explicit selection provenance only where required"
   [(:provenance js)
    (:provenance py)
    (:provenance lua)
    (:provenance pg)]
-  => [[[:emit-template :xtalk 1]
-       [:profile :xtalk 1]
-       [:grammar :xtalk 1]
-       [:grammar :js 1]]
-      [[:emit-template :xtalk 1]
-       [:profile :xtalk 1]
-       [:grammar :xtalk 1]
-       [:grammar :py 1]]
-      [[:emit-template :xtalk 1]
-       [:profile :xtalk 1]
-       [:grammar :xtalk 1]
-       [:grammar :lua 1]]
-      [[:emit-template :xtalk 1]
-       [:profile :xtalk 1]
-       [:grammar :xtalk 1]
-       [:grammar :postgres 1]]])
+  => [[] [] [] [[:emit-template :xtalk 1]
+                [:profile :xtalk 1]
+                [:grammar :xtalk 1]
+                [:grammar :postgres 1]]])
 
 (fact "dynamic target grammars emit executable forms"
   [(emit/emit '(console.log (+ 19 23)) js)
@@ -86,6 +83,3 @@
                     (return v))
              py)
   => "if v < min:\n    return min\n\nelse:\n    return v\n")
-
-(run {:namespace "lang.model.target-models-test"})
-

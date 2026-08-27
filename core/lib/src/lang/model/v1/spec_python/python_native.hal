@@ -1,16 +1,4 @@
-(ns lang.model.v1.spec-python.python-native
-  (:require [lang.base.v1.grammar-spec :as spec]
-            [lang.common.emit-data :as data]
-            [lang.common.grammar-api :as grammar]
-            [lang.common.registry :as registry]
-            [lang.model.v1.spec-xtalk :as xtalk]
-            [lang.model.v1.spec-python.python-rewrite :as rewrite]
-            ))
-
-(def +language+ :python)
-(def +tag+ :py)
-(def +version+ "alpha")
-(def +grammar-version+ spec/+version+)
+(ns lang.model.v1.spec-python.python-native)
 
 (defn python-async-run
   [form]
@@ -649,64 +637,3 @@
 (def +python-native+
   (merge +python-native-core+ +python-native-vars+ +python-native-fn+
          +python-native-for+ +python-native-prototype+))
-
-(def +operator-group-names+ [:core :vars :fn :for :prototype :definitions])
-(def +operator-groups+
-  [{:name :core :override +python-native-core+ :define {}}
-   {:name :vars :override +python-native-vars+ :define {}}
-   {:name :fn :override +python-native-fn+ :define {}}
-   {:name :for :override +python-native-for+ :define {}}
-   {:name :prototype :override +python-native-prototype+ :define {}}
-   {:name :definitions :override {} :define +python-native-definitions+}])
-
-(def +operator-source+
-  {:override +python-native+ :define +python-native-definitions+})
-
-(def +operators+ +operator-source+)
-
-(def +emit+
-  {:defaults
-     {:banned #{:keyword}
-      :allow {:assign #{:symbol :quote}}
-      :default
-      {:comment {:prefix "#"}
-       :common {:start "("
-                :end ")"
-                :space " "
-                :assign "="
-                :sep ","
-                :statement ""
-                :namespace "."
-                :newline "\n"
-                :indent 4}
-       :invoke {:start "(" :end ")" :sep "," :space " "}
-       :infix {:if {:check "and" :then "or"}}
-       :block {:parameter {:start " " :end ""}
-               :body {:start ":" :end ""}
-               :space-before-body ""}
-       :function {:raw "def"
-                  :space ""
-                  :args {:start "(" :end ")" :sep "," :space ""}
-                  :body {:start ":" :end ""}
-                  :space-before-body ""}}
-      :token
-      {:nil "None"
-       :true "True"
-       :false "False"
-       :string {:quote :double}
-       :symbol {:namespace "."
-                :replace {"-" "_"
-                          "?" "_p"
-                          "!" "_bang"}}}
-      :data
-      {:vector {:start "[" :end "]" :sep "," :space " "}
-       :set {:start "{" :end "}" :sep "," :space " "}
-       :map {:start "{" :end "}" :sep "," :space " "}
-       :map-entry {:assign ":" :space " " :key-fn data/default-map-key}}
-      :define
-      {:defglobal {:raw ""}
-       :def {:raw ""}}
-      :block
-      {:try {:control {:catch {:raw "except"
-                               :args {:start "" :end ":" :space ""}}}}
-      :branch {:control {:elseif {:raw "elif"}}}}}})

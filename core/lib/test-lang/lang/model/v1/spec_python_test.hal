@@ -1,0 +1,71 @@
+(ns lang.model.v1.spec-python-test
+  (:use code.test)
+  (:require [lang.common.book :as book]
+            [lang.common.book-meta :as book-meta]
+            [lang.common.grammar-api :as grammar-api]
+            [lang.model.v1.spec-python.python-grammar :as model]
+            [lang.model.v1.spec-python :as subject]))
+
+^{:refer lang.model.v1.spec-python/+language+}
+(fact "Python language identity"
+  subject/+language+ => :python)
+
+^{:refer lang.model.v1.spec-python/+tag+}
+(fact "Python grammar tag"
+  subject/+tag+ => :py)
+
+^{:refer lang.model.v1.spec-python/+version+}
+(fact "Python book version"
+  subject/+version+ => 1)
+
+^{:refer lang.model.v1.spec-python/+grammar-version+}
+(fact "Python grammar version"
+  subject/+grammar-version+ => 1)
+
+^{:refer lang.model.v1.spec-python/+grammar+}
+(fact "Python spec exposes the native grammar"
+  subject/+grammar+ => model/+grammar+)
+
+^{:refer lang.model.v1.spec-python/+coordinate+}
+(fact "Python spec pins its grammar coordinate"
+  subject/+coordinate+
+  => {:grammar/id :py
+      :grammar/version 1
+      :grammar/release "alpha"
+      :grammar/facets []})
+
+^{:refer lang.model.v1.spec-python/+selection+}
+(fact "Python selection is a direct immutable grammar selection"
+  [(= (:coordinate subject/+selection+) subject/+coordinate+)
+   (= (:grammar subject/+selection+) subject/+grammar+)
+   (:rewrite subject/+selection+)
+   (:rewrite/source subject/+selection+)
+   (:extensions subject/+selection+)
+   (:provenance subject/+selection+)
+   (:fingerprint subject/+selection+)]
+  => [true true {} {} {} [] (grammar-api/fingerprint subject/+grammar+)])
+
+^{:refer lang.model.v1.spec-python/select}
+(fact "Python select returns the pinned selection"
+  (subject/select) => subject/+selection+)
+
+^{:refer lang.model.v1.spec-python/+meta+}
+(fact "Python metadata is a native BookMeta value"
+  (book-meta/book-meta? subject/+meta+) => true)
+
+^{:refer lang.model.v1.spec-python/+book+}
+(fact "Python book carries its grammar and selection"
+  [(book/book? subject/+book+)
+   (:lang subject/+book+)
+   (:parent subject/+book+)
+   (:version subject/+book+)
+   (:coordinate subject/+book+)
+   (:grammar-coordinate subject/+book+)
+   (= (:grammar subject/+book+) subject/+grammar+)
+   (= (:selection subject/+book+) subject/+selection+)
+   (book-meta/book-meta? (:meta subject/+book+))]
+  => [true :python :xtalk 1 subject/+coordinate+ subject/+coordinate+ true true true])
+
+^{:refer lang.model.v1.spec-python/+init+}
+(fact "Python initialization is the immutable book value"
+  subject/+init+ => subject/+book+)
