@@ -1,0 +1,948 @@
+(ns lang.model.v1.spec-xtalk.fn-elisp-test
+  (:require [std.foundation.string :as string]
+            [lang.model.v1.spec-xtalk.fn-elisp :refer :all])
+  (:use code.test))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-begin :added "4.1"}
+(fact "wraps one or many expressions"
+  [(elisp-begin '(x))
+   (elisp-begin '(x y))]
+  => ['x '(progn x y)])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-vector-subseq :added "4.1"}
+(fact "builds vector subsequence calls"
+  [(elisp-vector-subseq 'arr 1)
+   (elisp-vector-subseq 'arr 1 3)]
+  => ['(seq-subseq arr 1) '(seq-subseq arr 1 3)])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-vector->list :added "4.1"}
+(fact "converts vectors to lists"
+  (elisp-vector->list 'arr) => '(append arr nil))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-del :added "4.1"}
+(fact "deletes symbols and property forms"
+  [(elisp-tf-x-del '[_ obj])
+   (elisp-tf-x-del '[_ (. obj [key])])]
+  => ['(setq obj nil) '(x:del-key obj key)])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-print :added "4.1"}
+(fact "prints values and preserves the final nil"
+  (elisp-tf-x-print '(x:print "hello"))
+  => '(progn (princ "hello") nil))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-len :added "4.1"}
+(fact "selects vector hash-table and sequence length"
+  (elisp-tf-x-len '(x:len arr))
+  => '(if (vectorp arr)
+        (length arr)
+        (if (hash-table-p arr)
+          (hash-table-count arr)
+          (length arr))))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-cat :added "4.1"}
+(fact "concatenates strings"
+  (elisp-tf-x-cat '(x:cat "a" "b"))
+  => '(concat "a" "b"))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-apply :added "4.1"}
+(fact "applies arguments converted from a vector"
+  (elisp-tf-x-apply '(x:apply f args))
+  => '(apply f (append args nil)))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-div :added "4.1"}
+(fact "divides with floating-point promotion"
+  (elisp-tf-x-div '(x:div a b c))
+  => '(/ (/ (float a) b) c))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-err :added "4.1"}
+(fact "builds error and signal forms"
+  [(elisp-tf-x-err '(x:err message))
+   (elisp-tf-x-err '(x:err message data))]
+  => ['(error "%s" message)
+      '(signal (intern "error") (list message data))])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-eval :added "4.1"}
+(fact "evaluates and converts numeric results"
+  (let [out (pr-str (elisp-tf-x-eval '(x:eval source)))]
+    [(string/includes? out "calc-eval")
+     (string/includes? out "string-to-number")
+     (string/includes? out "string-match-p")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-random :added "4.1"}
+(fact "builds a normalized random expression"
+  (elisp-tf-x-random '[_]) => '(/ (float (random 1000000)) 1000000.0))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-now-ms :added "4.1"}
+(fact "builds a millisecond clock expression"
+  (elisp-tf-x-now-ms '[_]) => '(floor (* 1000 (float-time))))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-ex-native? :added "4.1"}
+(fact "checks vector and condition-list exception shapes"
+  (let [out (pr-str (elisp-tf-x-ex-native? '(x:ex-native? err)))]
+    [(string/includes? out "vectorp")
+     (string/includes? out "consp")
+     (string/includes? out "__xt_error__")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-ex-new :added "4.1"}
+(fact "creates the portable exception vector"
+  (elisp-tf-x-ex-new '(x:ex-new message data))
+  => '(vector "__xt_error__" message data))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-ex-message :added "4.1"}
+(fact "extracts exception messages"
+  (let [out (pr-str (elisp-tf-x-ex-message '(x:ex-message err)))]
+    [(string/includes? out "aref")
+     (string/includes? out "x:ex-native?")])
+  => [true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-ex-data :added "4.1"}
+(fact "extracts exception data"
+  (let [out (pr-str (elisp-tf-x-ex-data '(x:ex-data err)))]
+    [(string/includes? out "aref")
+     (string/includes? out "x:ex-native?")])
+  => [true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-type-native :added "4.1"}
+(fact "builds the native type branch chain"
+  (let [out (elisp-tf-x-type-native '(x:type-native obj))]
+    [(first out) (count out) (string/includes? (pr-str out) "hash-table-p")])
+  => ['br* 11 true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/+elisp-core+ :added "4.1"}
+(fact "registers Elisp core operators"
+  [(get-in +elisp-core+ [:x-print :emit])
+   (get-in +elisp-core+ [:x-print :value])
+   (boolean (get-in +elisp-core+ [:x-print :macro]))]
+  => [:macro true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-global-set :added "4.1"}
+(fact "sets a global value"
+  (elisp-tf-x-global-set '(x:global-set answer value))
+  => '(progn (puthash "answer" value __xt_globals__) value))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-global-del :added "4.1"}
+(fact "deletes a global value"
+  (elisp-tf-x-global-del '(x:global-del answer))
+  => '(progn (remhash "answer" __xt_globals__) nil))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-global-has? :added "4.1"}
+(fact "checks a global value through a sentinel"
+  (let [out (pr-str (elisp-tf-x-global-has? '(x:global-has? answer)))]
+    [(string/includes? out "gethash")
+     (string/includes? out "__xt_globals__")
+     (string/includes? out "__xt_missing")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/+elisp-global+ :added "4.1"}
+(fact "registers Elisp global operators"
+  [(get-in +elisp-global+ [:x-global-set :emit])
+   (get-in +elisp-global+ [:x-global-has? :value])]
+  => [:macro true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-to-string :added "4.1"}
+(fact "converts a value to a formatted string"
+  (elisp-tf-x-to-string '(x:to-string value))
+  => '(format "%s" value))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-to-number :added "4.1"}
+(fact "keeps numbers and parses strings"
+  (elisp-tf-x-to-number '(x:to-number value))
+  => '(if (numberp value) value (string-to-number value)))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-is-string? :added "4.1"}
+(fact "checks strings"
+  (elisp-tf-x-is-string? '(x:is-string? value)) => '(stringp value))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-is-number? :added "4.1"}
+(fact "checks numbers"
+  (elisp-tf-x-is-number? '(x:is-number? value)) => '(numberp value))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-is-integer? :added "4.1"}
+(fact "checks integers"
+  (elisp-tf-x-is-integer? '(x:is-integer? value)) => '(integerp value))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-is-boolean? :added "4.1"}
+(fact "checks true and nil"
+  (elisp-tf-x-is-boolean? '(x:is-boolean? value))
+  => '(or (eq value t) (null value)))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-is-function? :added "4.1"}
+(fact "checks functions"
+  (elisp-tf-x-is-function? '(x:is-function? value)) => '(functionp value))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-is-object? :added "4.1"}
+(fact "checks hash tables"
+  (elisp-tf-x-is-object? '(x:is-object? value)) => '(hash-table-p value))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-is-array? :added "4.1"}
+(fact "checks arrays"
+  (elisp-tf-x-is-array? '(x:is-array? value)) => '(vectorp value))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/+elisp-type+ :added "4.1"}
+(fact "registers Elisp type operators"
+  [(get-in +elisp-type+ [:x-to-string :emit])
+   (get-in +elisp-type+ [:x-is-array? :value])]
+  => [:macro true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-lu-create :added "4.1"}
+(fact "creates an equality hash table"
+  (elisp-tf-x-lu-create '[_])
+  => '(make-hash-table :test (intern "equal")))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-lu-eq :added "4.1"}
+(fact "compares lookup keys"
+  (elisp-tf-x-lu-eq '(x:lu-eq a b)) => '(eq a b))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-lu-get :added "4.1"}
+(fact "gets a lookup value"
+  (elisp-tf-x-lu-get '(x:lu-get lu key)) => '(gethash key lu))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-lu-set :added "4.1"}
+(fact "sets a lookup value and returns the table"
+  (elisp-tf-x-lu-set '(x:lu-set lu key value))
+  => '(progn (puthash key value lu) lu))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-lu-del :added "4.1"}
+(fact "deletes a lookup value and returns the table"
+  (elisp-tf-x-lu-del '(x:lu-del lu key))
+  => '(progn (remhash key lu) lu))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/+elisp-lu+ :added "4.1"}
+(fact "registers Elisp lookup operators"
+  [(get-in +elisp-lu+ [:x-lu-create :value])
+   (get-in +elisp-lu+ [:x-lu-del :emit])]
+  => [true :macro])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-get-key :added "4.1"}
+(fact "gets object keys with optional defaults"
+  [(elisp-tf-x-get-key '(x:get-key obj key))
+   (elisp-tf-x-get-key '(x:get-key obj key fallback))]
+  => ['(gethash key obj) '(gethash key obj fallback)])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-get-path :added "4.1"}
+(fact "walks object paths"
+  (let [out (pr-str (elisp-tf-x-get-path '(x:get-path obj [a b] fallback)))]
+    [(string/includes? out "x:get-key")
+     (string/includes? out "a")
+     (string/includes? out "b")
+     (string/includes? out "fallback")])
+  => [true true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-has-key? :added "4.1"}
+(fact "checks object keys with and without expected values"
+  (let [checked (pr-str (elisp-tf-x-has-key? '(x:has-key? obj key expected)))
+        present (pr-str (elisp-tf-x-has-key? '(x:has-key? obj key)))]
+    [(string/includes? checked "equal")
+     (string/includes? checked "__xt_missing")
+     (not (string/includes? present "equal"))])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-del-key :added "4.1"}
+(fact "deletes an object key"
+  (elisp-tf-x-del-key '(x:del-key obj key))
+  => '(progn (remhash key obj) obj))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-set-key :added "4.1"}
+(fact "sets an object key"
+  (elisp-tf-x-set-key '(x:set-key obj key value))
+  => '(progn (puthash key value obj) obj))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-copy-key :added "4.1"}
+(fact "copies scalar and indexed object keys"
+  [(elisp-tf-x-copy-key '(x:copy-key dst src key))
+   (string/includes? (pr-str (elisp-tf-x-copy-key '(x:copy-key dst src [key idx]))) "x:get-idx")]
+  => ['(x:set-key dst key (x:get-key src key nil)) true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-obj-keys :added "4.1"}
+(fact "lists object keys"
+  (elisp-tf-x-obj-keys '(x:obj-keys obj))
+  => '(vconcat (hash-table-keys obj)))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-obj-vals :added "4.1"}
+(fact "lists object values"
+  (let [out (pr-str (elisp-tf-x-obj-vals '(x:obj-vals obj)))]
+    [(string/includes? out "mapcar")
+     (string/includes? out "gethash")])
+  => [true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-obj-pairs :added "4.1"}
+(fact "lists object pairs"
+  (let [out (pr-str (elisp-tf-x-obj-pairs '(x:obj-pairs obj)))]
+    [(string/includes? out "mapcar")
+     (string/includes? out "vector")])
+  => [true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-obj-clone :added "4.1"}
+(fact "clones objects into a new hash table"
+  (let [out (pr-str (elisp-tf-x-obj-clone '(x:obj-clone obj)))]
+    [(string/includes? out "make-hash-table")
+     (string/includes? out "maphash")
+     (string/includes? out "out")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-obj-assign :added "4.1"}
+(fact "assigns object entries into symbol and expression targets"
+  (let [symbol-out (pr-str (elisp-tf-x-obj-assign '(x:obj-assign obj other)))
+        expression-out (pr-str (elisp-tf-x-obj-assign '(x:obj-assign (make-object) other)))]
+    [(string/includes? symbol-out "progn")
+     (string/includes? expression-out "let")
+     (string/includes? expression-out "maphash")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/+elisp-object+ :added "4.1"}
+(fact "registers Elisp object operators"
+  [(get-in +elisp-object+ [:x-get-key :value])
+   (get-in +elisp-object+ [:x-obj-clone :value])
+   (get-in +elisp-object+ [:x-del-key :emit])]
+  => [true true :macro])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-get-idx :added "4.1"}
+(fact "gets indexed values with optional bounds"
+  [(elisp-tf-x-get-idx '(x:get-idx arr idx))
+   (string/includes? (pr-str (elisp-tf-x-get-idx '(x:get-idx arr idx fallback))) "aref")]
+  => ['(aref arr idx) true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-set-idx :added "4.1"}
+(fact "sets an indexed value"
+  (elisp-tf-x-set-idx '(x:set-idx arr idx value))
+  => '(progn (aset arr idx value) arr))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-arr-clone :added "4.1"}
+(fact "clones arrays"
+  (elisp-tf-x-arr-clone '(x:arr-clone arr))
+  => '(seq-subseq arr 0))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-arr-slice :added "4.1"}
+(fact "slices arrays"
+  (elisp-tf-x-arr-slice '(x:arr-slice arr start end))
+  => '(seq-subseq arr start end))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-arr-reverse :added "4.1"}
+(fact "reverses arrays"
+  (let [out (pr-str (elisp-tf-x-arr-reverse '(x:arr-reverse arr)))]
+    [(string/includes? out "reverse")
+     (string/includes? out "vconcat")])
+  => [true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-arr-concat :added "4.1"}
+(fact "concatenates arrays"
+  (elisp-tf-x-arr-concat '(x:arr-concat arr other))
+  => '(vconcat arr other))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-arr-push :added "4.1"}
+(fact "pushes values into symbols and expressions"
+  [(elisp-tf-x-arr-push '(x:arr-push arr value))
+   (elisp-tf-x-arr-push '(x:arr-push [1 2] value))]
+  => ['(progn (setq arr (vconcat arr (vector value))) arr)
+      '(vconcat [1 2] (vector value))])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-arr-pop :added "4.1"}
+(fact "pops from symbol arrays"
+  (let [out (pr-str (elisp-tf-x-arr-pop '(x:arr-pop arr)))]
+    [(string/includes? out "aref")
+     (string/includes? out "seq-subseq")
+     (string/includes? out "idx")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-arr-push-first :added "4.1"}
+(fact "prepends array values"
+  [(elisp-tf-x-arr-push-first '(x:arr-push-first arr value))
+   (elisp-tf-x-arr-push-first '(x:arr-push-first [1 2] value))]
+  => ['(progn (setq arr (vconcat (vector value) arr)) arr)
+      '(vconcat (vector value) [1 2])])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-arr-pop-first :added "4.1"}
+(fact "removes the first array value"
+  [(elisp-tf-x-arr-pop-first '(x:arr-pop-first arr))
+   (elisp-tf-x-arr-pop-first '(x:arr-pop-first [1 2]))]
+  => ['(do (var value (aref arr 0)) (:= arr (seq-subseq arr 1)) value)
+      '(aref [1 2] 0)])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-arr-insert :added "4.1"}
+(fact "inserts array values"
+  (let [out (pr-str (elisp-tf-x-arr-insert '(x:arr-insert arr idx value)))]
+    [(string/includes? out "vconcat")
+     (string/includes? out "setq")
+     (string/includes? out "seq-subseq")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-arr-remove :added "4.1"}
+(fact "removes array values"
+  (let [out (pr-str (elisp-tf-x-arr-remove '(x:arr-remove arr idx)))]
+    [(string/includes? out "vconcat")
+     (string/includes? out "setq")
+     (string/includes? out "idx")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-arr-assign :added "4.1"}
+(fact "assigns arrays"
+  [(elisp-tf-x-arr-assign '(x:arr-assign arr other))
+   (elisp-tf-x-arr-assign '(x:arr-assign [1] other))]
+  => ['(progn (setq arr (vconcat arr other)) arr)
+      '(vconcat [1] other)])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-arr-some :added "4.1"}
+(fact "tests whether an array has a matching value"
+  (let [out (pr-str (elisp-tf-x-arr-some '(x:arr-some arr pred)))]
+    [(string/includes? out "seq-some")
+     (string/includes? out "append")
+     (string/includes? out "t")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-arr-each :added "4.1"}
+(fact "iterates over array values"
+  (let [out (pr-str (elisp-tf-x-arr-each '(x:arr-each arr f)))]
+    [(string/includes? out "mapc")
+     (string/includes? out "funcall")
+     (string/includes? out "append")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-arr-every :added "4.1"}
+(fact "tests every array value"
+  (let [out (pr-str (elisp-tf-x-arr-every '(x:arr-every arr pred)))]
+    [(string/includes? out "seq-every-p")
+     (string/includes? out "funcall")
+     (string/includes? out "t")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-arr-map :added "4.1"}
+(fact "maps array values"
+  (let [out (pr-str (elisp-tf-x-arr-map '(x:arr-map arr f)))]
+    [(string/includes? out "mapcar")
+     (string/includes? out "vconcat")
+     (string/includes? out "funcall")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-arr-filter :added "4.1"}
+(fact "filters array values"
+  (let [out (pr-str (elisp-tf-x-arr-filter '(x:arr-filter arr pred)))]
+    [(string/includes? out "seq-filter")
+     (string/includes? out "vconcat")
+     (string/includes? out "funcall")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-arr-foldl :added "4.1"}
+(fact "folds arrays from the left"
+  (let [out (pr-str (elisp-tf-x-arr-foldl '(x:arr-foldl arr f init)))]
+    [(string/includes? out "seq-reduce")
+     (string/includes? out "init")
+     (string/includes? out "funcall")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-arr-foldr :added "4.1"}
+(fact "folds arrays from the right"
+  (let [out (pr-str (elisp-tf-x-arr-foldr '(x:arr-foldr arr f init)))]
+    [(string/includes? out "reverse")
+     (string/includes? out "seq-reduce")
+     (string/includes? out "init")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-arr-sort :added "4.1"}
+(fact "sorts arrays by key and comparator"
+  (let [out (pr-str (elisp-tf-x-arr-sort '(x:arr-sort arr key-fn comp-fn)))]
+    [(string/includes? out "sort")
+     (string/includes? out "key-fn")
+     (string/includes? out "comp-fn")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/+elisp-array+ :added "4.1"}
+(fact "registers Elisp array operators"
+  [(get-in +elisp-array+ [:x-arr-map :value])
+   (get-in +elisp-array+ [:x-arr-sort :emit])
+   (boolean (get-in +elisp-array+ [:x-arr-map :macro]))]
+  => [true :macro true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-str-comp :added "4.1"}
+(fact "compares strings"
+  (elisp-tf-x-str-comp '(x:str-comp a b)) => '(string-lessp a b))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-str-char :added "4.1"}
+(fact "gets a string character"
+  (elisp-tf-x-str-char '(x:str-char s i)) => '(aref s i))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-str-split :added "4.1"}
+(fact "splits strings"
+  (let [out (pr-str (elisp-tf-x-str-split '(x:str-split s sep)))]
+    [(string/includes? out "vconcat")
+     (string/includes? out "split-string")])
+  => [true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-str-len :added "4.1"}
+(fact "gets string length"
+  (elisp-tf-x-str-len '(x:str-len s)) => '(length s))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-str-join :added "4.1"}
+(fact "joins strings"
+  (elisp-tf-x-str-join '(x:str-join sep coll))
+  => '(mapconcat (lambda (x) x) (append coll nil) sep))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-str-index-of :added "4.1"}
+(fact "finds a substring with a start position"
+  (let [out (pr-str (elisp-tf-x-str-index-of '(x:str-index-of s tok start)))]
+    [(string/includes? out "string-match-p")
+     (string/includes? out "regexp-quote")
+     (string/includes? out "-1")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-str-substring :added "4.1"}
+(fact "extracts substrings with optional ends"
+  [(elisp-tf-x-str-substring '(x:str-substring s start))
+   (elisp-tf-x-str-substring '(x:str-substring s start end))]
+  => ['(substring-no-properties s start)
+      '(substring-no-properties s start end)])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-str-to-upper :added "4.1"}
+(fact "uppercases strings"
+  (elisp-tf-x-str-to-upper '(x:str-to-upper s)) => '(upcase s))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-str-to-lower :added "4.1"}
+(fact "lowercases strings"
+  (elisp-tf-x-str-to-lower '(x:str-to-lower s)) => '(downcase s))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-str-to-fixed :added "4.1"}
+(fact "formats fixed precision numbers"
+  (let [out (pr-str (elisp-tf-x-str-to-fixed '(x:str-to-fixed num digits)))]
+    [(string/includes? out "number-to-string")
+     (string/includes? out "%.")
+     (string/includes? out "format")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-str-replace :added "4.1"}
+(fact "replaces literal substrings"
+  (let [out (pr-str (elisp-tf-x-str-replace '(x:str-replace s tok replacement)))]
+    [(string/includes? out "replace-regexp-in-string")
+     (string/includes? out "regexp-quote")
+     (string/includes? out "replacement")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-str-trim :added "4.1"}
+(fact "trims strings"
+  (elisp-tf-x-str-trim '(x:str-trim s)) => '(string-trim s))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-str-trim-left :added "4.1"}
+(fact "trims strings on the left"
+  (elisp-tf-x-str-trim-left '(x:str-trim-left s)) => '(string-trim-left s))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-str-trim-right :added "4.1"}
+(fact "trims strings on the right"
+  (elisp-tf-x-str-trim-right '(x:str-trim-right s)) => '(string-trim-right s))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-str-pad-left :added "4.1"}
+(fact "pads strings on the left"
+  (let [out (pr-str (elisp-tf-x-str-pad-left '(x:str-pad-left s n ch)))]
+    [(string/includes? out "make-string")
+     (string/includes? out "aref")
+     (string/includes? out "concat")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-str-pad-right :added "4.1"}
+(fact "pads strings on the right"
+  (let [out (pr-str (elisp-tf-x-str-pad-right '(x:str-pad-right s n ch)))]
+    [(string/includes? out "make-string")
+     (string/includes? out "aref")
+     (string/includes? out "concat")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-str-starts-with :added "4.1"}
+(fact "checks string prefixes"
+  (elisp-tf-x-str-starts-with '(x:str-starts-with s prefix))
+  => '(string-prefix-p prefix s))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-str-ends-with :added "4.1"}
+(fact "checks string suffixes"
+  (elisp-tf-x-str-ends-with '(x:str-ends-with s suffix))
+  => '(string-suffix-p suffix s))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/+elisp-string+ :added "4.1"}
+(fact "registers Elisp string operators"
+  [(get-in +elisp-string+ [:x-str-join :value])
+   (get-in +elisp-string+ [:x-str-replace :emit])]
+  => [true :macro])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-m-abs :added "4.1"}
+(fact "computes absolute values"
+  (elisp-tf-x-m-abs '(x:m-abs n)) => '(abs n))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-m-acos :added "4.1"}
+(fact "computes arc cosines"
+  (elisp-tf-x-m-acos '(x:m-acos n)) => '(acos n))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-m-asin :added "4.1"}
+(fact "computes arc sines"
+  (elisp-tf-x-m-asin '(x:m-asin n)) => '(asin n))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-m-atan :added "4.1"}
+(fact "computes arc tangents"
+  (elisp-tf-x-m-atan '(x:m-atan n)) => '(atan n))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-m-max :added "4.1"}
+(fact "computes maximum values"
+  (elisp-tf-x-m-max '(x:m-max a b c)) => '(max a b c))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-m-min :added "4.1"}
+(fact "computes minimum values"
+  (elisp-tf-x-m-min '(x:m-min a b c)) => '(min a b c))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-m-mod :added "4.1"}
+(fact "computes modulo"
+  (elisp-tf-x-m-mod '(x:m-mod n d)) => '(mod n d))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-m-quot :added "4.1"}
+(fact "computes integer quotient"
+  (elisp-tf-x-m-quot '(x:m-quot n d)) => '(floor (/ n d)))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-m-floor :added "4.1"}
+(fact "computes floor"
+  (elisp-tf-x-m-floor '(x:m-floor n)) => '(floor n))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-m-ceil :added "4.1"}
+(fact "computes ceiling"
+  (elisp-tf-x-m-ceil '(x:m-ceil n)) => '(ceiling n))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-m-cos :added "4.1"}
+(fact "computes cosine"
+  (elisp-tf-x-m-cos '(x:m-cos n)) => '(cos n))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-m-cosh :added "4.1"}
+(fact "computes hyperbolic cosine"
+  (let [out (pr-str (elisp-tf-x-m-cosh '(x:m-cosh n)))]
+    [(string/includes? out "exp")
+     (string/includes? out "2.0")])
+  => [true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-m-exp :added "4.1"}
+(fact "computes exponential"
+  (elisp-tf-x-m-exp '(x:m-exp n)) => '(exp n))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-m-loge :added "4.1"}
+(fact "computes natural logarithms"
+  (elisp-tf-x-m-loge '(x:m-loge n)) => '(log n))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-m-log10 :added "4.1"}
+(fact "computes base ten logarithms"
+  (elisp-tf-x-m-log10 '(x:m-log10 n)) => '(/ (log n) (log 10)))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-m-sin :added "4.1"}
+(fact "computes sine"
+  (elisp-tf-x-m-sin '(x:m-sin n)) => '(sin n))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-m-sinh :added "4.1"}
+(fact "computes hyperbolic sine"
+  (let [out (pr-str (elisp-tf-x-m-sinh '(x:m-sinh n)))]
+    [(string/includes? out "exp")
+     (string/includes? out "2.0")])
+  => [true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-m-sqrt :added "4.1"}
+(fact "computes square roots"
+  (elisp-tf-x-m-sqrt '(x:m-sqrt n)) => '(sqrt n))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-m-tan :added "4.1"}
+(fact "computes tangent"
+  (elisp-tf-x-m-tan '(x:m-tan n)) => '(tan n))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-m-tanh :added "4.1"}
+(fact "computes hyperbolic tangent"
+  (elisp-tf-x-m-tanh '(x:m-tanh n)) => '(/ (x:m-sinh n) (x:m-cosh n)))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-m-pow :added "4.1"}
+(fact "computes powers"
+  (elisp-tf-x-m-pow '(x:m-pow base exp)) => '(expt base exp))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/+elisp-math+ :added "4.1"}
+(fact "registers Elisp math operators"
+  [(get-in +elisp-math+ [:x-m-abs :value])
+   (get-in +elisp-math+ [:x-m-pow :emit])]
+  => [true :macro])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-json-encode :added "4.1"}
+(fact "encodes JSON values"
+  (let [out (pr-str (elisp-tf-x-json-encode '(x:json-encode value)))]
+    [(string/includes? out "json-serialize")
+     (string/includes? out "xt-json-normalize")])
+  => [true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-json-decode :added "4.1"}
+(fact "decodes JSON values into native containers"
+  (let [out (pr-str (elisp-tf-x-json-decode '(x:json-decode expr)))]
+    [(string/includes? out "json-parse-string")
+     (string/includes? out "hash-table")
+     (string/includes? out "array")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-return-encode :added "4.1"}
+(fact "encodes successful and failed return values"
+  (let [out (pr-str (elisp-tf-x-return-encode '(x:return-encode value id key)))]
+    [(string/includes? out "condition-case")
+     (string/includes? out "json-serialize")
+     (string/includes? out "xt-json-normalize")
+     (string/includes? out "raw")])
+  => [true true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-return-wrap :added "4.1"}
+(fact "wraps callback results and errors"
+  (let [out (pr-str (elisp-tf-x-return-wrap '(x:return-wrap f encode-fn)))]
+    [(string/includes? out "condition-case")
+     (string/includes? out "funcall")
+     (string/includes? out "error-message-string")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-return-eval :added "4.1"}
+(fact "evaluates wrapped return expressions"
+  (let [out (pr-str (elisp-tf-x-return-eval '(x:return-eval source wrap-fn)))]
+    [(string/includes? out "calc-eval")
+     (string/includes? out "funcall")
+     (string/includes? out "string-to-number")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/+elisp-json+ :added "4.1"}
+(fact "registers Elisp JSON operators"
+  [(get-in +elisp-json+ [:x-json-encode :value])
+   (get-in +elisp-json+ [:x-return-eval :emit])]
+  => [true :macro])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-bit-and :added "4.1"}
+(fact "computes bitwise and"
+  (elisp-tf-x-bit-and '(x:bit-and x y)) => '(logand x y))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-bit-or :added "4.1"}
+(fact "computes bitwise or"
+  (elisp-tf-x-bit-or '(x:bit-or x y)) => '(logior x y))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-bit-xor :added "4.1"}
+(fact "computes bitwise xor"
+  (elisp-tf-x-bit-xor '(x:bit-xor x y)) => '(logxor x y))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-bit-lshift :added "4.1"}
+(fact "computes bitwise left shifts"
+  (elisp-tf-x-bit-lshift '(x:bit-lshift x y)) => '(lsh x y))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-bit-rshift :added "4.1"}
+(fact "computes bitwise right shifts"
+  (elisp-tf-x-bit-rshift '(x:bit-rshift x y)) => '(lsh x (- y)))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/+elisp-bit+ :added "4.1"}
+(fact "registers Elisp bit operators"
+  [(get-in +elisp-bit+ [:x-bit-and :value])
+   (get-in +elisp-bit+ [:x-bit-rshift :emit])]
+  => [true :macro])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-iter-from-arr :added "4.1"}
+(fact "creates an array iterator"
+  (elisp-tf-x-iter-from-arr '(x:iter-from-arr arr))
+  => '(vector "__xt_iter__" arr 0))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-iter-from-obj :added "4.1"}
+(fact "creates an object iterator"
+  (elisp-tf-x-iter-from-obj '(x:iter-from-obj obj))
+  => '(x:iter-from-arr (x:obj-pairs obj)))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-iter-from :added "4.1"}
+(fact "selects native and portable iterators"
+  (let [out (pr-str (elisp-tf-x-iter-from '(x:iter-from obj)))]
+    [(string/includes? out "x:iter-native?")
+     (string/includes? out "x:iter-from-arr")])
+  => [true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-iter-next :added "4.1"}
+(fact "advances an iterator and reports its end"
+  (let [out (pr-str (elisp-tf-x-iter-next '(x:iter-next iter)))]
+    [(string/includes? out "aref")
+     (string/includes? out "aset")
+     (string/includes? out "__xt_iter_end__")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-iter-eq :added "4.1"}
+(fact "compares iterators until both end"
+  (let [out (pr-str (elisp-tf-x-iter-eq '(x:iter-eq left right eq-fn)))]
+    [(string/includes? out "while")
+     (string/includes? out "x:iter-next")
+     (string/includes? out "done")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-iter-null :added "4.1"}
+(fact "creates an empty iterator"
+  (elisp-tf-x-iter-null '[_]) => '(vector "__xt_iter__" [] 0))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-iter-has? :added "4.1"}
+(fact "checks iterator containers"
+  (elisp-tf-x-iter-has? '(x:iter-has? iter))
+  => '(or (vectorp iter) (x:iter-native? iter)))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-iter-native? :added "4.1"}
+(fact "checks native iterator layout"
+  (elisp-tf-x-iter-native? '(x:iter-native? iter))
+  => '(and (vectorp iter) (= 3 (length iter)) (equal "__xt_iter__" (aref iter 0))))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/+elisp-iter+ :added "4.1"}
+(fact "registers Elisp iterator operators"
+  [(get-in +elisp-iter+ [:x-iter-next :value])
+   (get-in +elisp-iter+ [:x-iter-native? :emit])]
+  => [true :macro])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-prototype-create :added "4.1"}
+(fact "creates a prototype"
+  (elisp-tf-x-prototype-create '(prototype-create m))
+  => '(xt-proto-create m))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-prototype-get :added "4.1"}
+(fact "gets a prototype"
+  (elisp-tf-x-prototype-get '(prototype-get obj))
+  => '(xt-proto-get obj))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-prototype-set :added "4.1"}
+(fact "sets a prototype"
+  (elisp-tf-x-prototype-set '(prototype-set obj proto))
+  => '(xt-proto-set obj proto))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-prototype-method :added "4.1"}
+(fact "gets a prototype method"
+  (elisp-tf-x-prototype-method '(prototype-method obj key))
+  => '(xt-proto-method obj key))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/+elisp-proto+ :added "4.1"}
+(fact "registers Elisp prototype operators"
+  [(get-in +elisp-proto+ [:prototype-create :emit])
+   (get-in +elisp-proto+ [:prototype-create :op-spec :allow-blocks])]
+  => [:macro true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-promise :added "4.1"}
+(fact "creates a promise form"
+  (elisp-tf-x-promise '(x:promise thunk)) => '(xt-promise thunk))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-promise-new :added "4.1"}
+(fact "creates a new promise form"
+  (elisp-tf-x-promise-new '(x:promise-new thunk)) => '(xt-promise-new thunk))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-async-run :added "4.1"}
+(fact "runs asynchronous code in a thread"
+  (elisp-tf-x-async-run '(x:async-run thunk)) => '(make-thread thunk))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-promise-all :added "4.1"}
+(fact "combines promises"
+  (elisp-tf-x-promise-all '(x:promise-all promises)) => '(xt-promise-all promises))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-promise-then :added "4.1"}
+(fact "chains promise success callbacks"
+  (elisp-tf-x-promise-then '(x:promise-then promise thunk))
+  => '(xt-promise-then promise thunk))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-promise-catch :added "4.1"}
+(fact "chains promise failure callbacks"
+  (elisp-tf-x-promise-catch '(x:promise-catch promise thunk))
+  => '(xt-promise-catch promise thunk))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-promise-finally :added "4.1"}
+(fact "chains promise cleanup callbacks"
+  (elisp-tf-x-promise-finally '(x:promise-finally promise thunk))
+  => '(xt-promise-finally promise thunk))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-promise-native? :added "4.1"}
+(fact "checks native promises"
+  (elisp-tf-x-promise-native? '(x:promise-native? value))
+  => '(xt-promise-native-p value))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-with-delay :added "4.1"}
+(fact "delays a promise"
+  (elisp-tf-x-with-delay '(x:with-delay ms thunk))
+  => '(xt-with-delay ms thunk))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/+elisp-promise+ :added "4.1"}
+(fact "registers Elisp promise operators"
+  [(get-in +elisp-promise+ [:x-async-run :value])
+   (get-in +elisp-promise+ [:x-with-delay :value])]
+  => [true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-socket-connect :added "4.1"}
+(fact "opens a socket and forwards errors"
+  (let [out (pr-str (elisp-tf-x-socket-connect '(x:socket-connect host port opts cb)))]
+    [(string/includes? out "open-network-stream")
+     (string/includes? out "condition-case")
+     (string/includes? out "funcall")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-socket-send :added "4.1"}
+(fact "sends socket data and waits for output"
+  (let [out (pr-str (elisp-tf-x-socket-send '(x:socket-send conn data)))]
+    [(string/includes? out "process-send-string")
+     (string/includes? out "accept-process-output")])
+  => [true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-socket-close :added "4.1"}
+(fact "closes live sockets"
+  (let [out (pr-str (elisp-tf-x-socket-close '(x:socket-close conn)))]
+    [(string/includes? out "process-live-p")
+     (string/includes? out "delete-process")])
+  => [true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/+elisp-socket+ :added "4.1"}
+(fact "registers Elisp socket operators"
+  [(get-in +elisp-socket+ [:x-socket-connect :value])
+   (get-in +elisp-socket+ [:x-socket-connect :emit])]
+  => [true :macro])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-notify-http :added "4.1"}
+(fact "builds HTTP notification control flow"
+  (let [out (pr-str (elisp-tf-x-notify-http '(x:notify-http host port value id key opts)))]
+    [(string/includes? out "call-process")
+     (string/includes? out "Content-Type")
+     (string/includes? out "unable to connect")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/+elisp-http+ :added "4.1"}
+(fact "registers Elisp HTTP operators"
+  [(get-in +elisp-http+ [:x-notify-http :value/standalone])
+   (get-in +elisp-http+ [:x-notify-http :op-spec :allow-blocks])]
+  => [true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-pwd :added "4.1"}
+(fact "gets the current working directory"
+  (elisp-tf-x-pwd '[_]) => '(directory-file-name default-directory))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-shell :added "4.1"}
+(fact "builds shell success and error handling"
+  (let [out (pr-str (elisp-tf-x-shell '(x:shell command root cb)))]
+    [(string/includes? out "call-process-shell-command")
+     (string/includes? out "default-directory")
+     (string/includes? out "condition-case")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/+elisp-shell+ :added "4.1"}
+(fact "registers Elisp shell operators"
+  [(get-in +elisp-shell+ [:x-shell :op-spec :allow-blocks])
+   (get-in +elisp-shell+ [:x-pwd :emit])]
+  => [true :macro])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-file-resolve :added "4.1"}
+(fact "resolves file paths"
+  (elisp-tf-x-file-resolve '(x:file-resolve root path))
+  => '(expand-file-name path root))
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-file-slurp :added "4.1"}
+(fact "reads file contents through a callback"
+  (let [out (pr-str (elisp-tf-x-file-slurp '(x:file-slurp path cb)))]
+    [(string/includes? out "insert-file-contents")
+     (string/includes? out "buffer-string")
+     (string/includes? out "condition-case")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/elisp-tf-x-file-spit :added "4.1"}
+(fact "writes file contents through a callback"
+  (let [out (pr-str (elisp-tf-x-file-spit '(x:file-spit path content cb)))]
+    [(string/includes? out "with-temp-file")
+     (string/includes? out "make-directory")
+     (string/includes? out "funcall")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/+elisp-file+ :added "4.1"}
+(fact "registers Elisp file operators"
+  (get-in +elisp-file+ [:x-file-resolve :emit]) => :macro)
+
+^{:refer lang.model.v1.spec-xtalk.fn-elisp/+elisp+ :added "4.1"}
+(fact "combines all Elisp operator groups"
+  [(boolean (get +elisp+ :x-print))
+   (boolean (get +elisp+ :x-json-encode))
+   (boolean (get +elisp+ :x-file-resolve))]
+  => [true true true])

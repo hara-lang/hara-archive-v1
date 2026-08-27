@@ -1,0 +1,45 @@
+(ns lang.model.v1.sql.spec-common-test
+  (:require [lang.model.v1.sql.spec-common :refer :all]
+            [lang.common.book-meta :as book-meta])
+  (:use code.test))
+
+^{:refer lang.model.v1.sql.spec-common/+dialect-sql+ :added "4.1"}
+(fact "defines the SQL dialect aliases"
+  [(get-in +dialect-sql+ [:type-alias :uuid])
+   (get +dialect-sql+ :identifier-style)]
+  => ["UUID" :quoted])
+
+^{:refer lang.model.v1.sql.spec-common/build-features :added "4.1"}
+(fact "builds SQL feature overrides"
+  (let [features (build-features +dialect-sql+)]
+    [(get-in features [:defn :static/dbtype])
+     (get-in features [:defenum :static/dbtype])
+     (get-in features [:deftype :static/dbtype])])
+  => [:function :enum :table])
+
+^{:refer lang.model.v1.sql.spec-common/build-template :added "4.1"}
+(fact "builds SQL token templates"
+  (let [template (build-template +dialect-sql+)]
+    [(get template :dialect)
+     (get-in template [:default :common :statement])
+     (get-in template [:token :symbol :replace \-])])
+  => [+dialect-sql+ ";" "_"])
+
+^{:refer lang.model.v1.sql.spec-common/build-grammar :added "4.1"}
+(fact "builds a tagged SQL grammar"
+  (let [grammar (build-grammar :sql +dialect-sql+)]
+    [(get grammar :tag)
+     (boolean (get-in grammar [:reserved (quote defn)]))])
+  => [:sql true])
+
+^{:refer lang.model.v1.sql.spec-common/build-meta :added "4.1"}
+(fact "builds SQL metadata"
+  (book-meta/book-meta? (build-meta)) => true)
+
+^{:refer lang.model.v1.sql.spec-common/build-book :added "4.1"}
+(fact "builds a SQL book with dialect metadata"
+  (let [book (build-book :sql :sql +dialect-sql+ "sql")]
+    [(get book :lang)
+     (get-in book [:grammar :tag])
+     (get-in book [:file :suffix])])
+  => [:sql :sql "sql"])

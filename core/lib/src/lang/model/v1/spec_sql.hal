@@ -1,0 +1,7 @@
+(ns lang.model.v1.spec-sql
+  (:require [lang.model.v1.sql.spec-common :as common]))
+
+(def +book+
+  (common/build-book :sql :sql common/+dialect-sql+ "sql"))
+
+(def +init+ +book+)

@@ -1,0 +1,227 @@
+(ns lang.model.v1.sql.spec-common.common
+  (:require [std.foundation.string :as str]
+            [lang.common.emit :as emit]
+            [lang.common.emit-helper :as helper]
+            [lang.common.book :as book]
+            [std.lib.collection :as collection]
+            [std.foundation :as f]))
+
+(declare sql-enum-values)
+
+(defn sql-dialect
+  "Gets the active SQL dialect."
+  [grammar mopts]
+  (merge (or (:dialect grammar) {})
+         (or (:dialect mopts) {})))
+
+(defn sql-string
+  "Renders a SQL string literal."
+  [s]
+  (helper/pr-single s))
+
+(defn sql-ident-base
+  "Renders the base identifier name."
+  [x]
+  (-> (cond (keyword? x) (name x)
+            (symbol? x) (name x)
+            (string? x) x
+            :else (str x))
+      (str/replace "-" "_")))
+
+(defn sql-ident
+  "Renders a SQL identifier."
+  ([x]
+   (sql-ident x nil nil))
+  ([x grammar mopts]
+   (let [{:keys [identifier-style]
+          :or {identifier-style :quoted}} (sql-dialect grammar mopts)
+         base (sql-ident-base x)]
+     (case identifier-style
+       :plain base
+       :upper (str/upper-case base)
+       (str "\"" (str/replace base "\"" "\"\"") "\"")))))
+
+(defn sql-qualified-ident
+  "Renders a qualified identifier."
+  ([x schema]
+   (sql-qualified-ident x schema nil nil))
+  ([x schema grammar mopts]
+   (if schema
+     (str (sql-ident schema grammar mopts) "."
+          (sql-ident x grammar mopts))
+     (sql-ident x grammar mopts))))
+
+(defn sql-type-name
+  "Renders a SQL type name."
+  ([type]
+   (sql-type-name type nil nil))
+  ([type grammar mopts]
+   (let [{:keys [type-alias]} (sql-dialect grammar mopts)]
+     (cond (vector? type)
+           (str/join " " (map (fn [part] (sql-type-name part grammar mopts)) type))
+
+           (keyword? type)
+           (or (get type-alias type)
+               (-> type name (str/replace "-" " ") str/upper-case))
+
+           (symbol? type) (sql-ident type grammar mopts)
+           (string? type) type
+           :else (str type)))))
+
+(defn sql-sym-meta
+  "Normalises SQL symbol metadata."
+  [sym]
+  (let [{return :-
+         schema :schema
+         :or {return [:text]}
+         :as msym} (meta sym)]
+    (assoc msym :- return :schema schema :static/return return)))
+
+(defn sql-hydrate
+  "Hydrates top-level SQL entries with static metadata."
+  [[op sym & body] grammar _mopts]
+  (let [reserved (select-keys (or (get-in grammar [:reserved op]) {})
+                              [:static/return :static/dbtype :static/enum-values])
+        static (merge reserved
+                      (select-keys (or (meta sym) {})
+                                   [:static/return :static/dbtype :static/enum-values]))]
+    [static
+     (apply list op
+            (with-meta sym (merge (meta sym) static))
+            body)]))
+
+(defn sql-indent
+  "Indents text by a fixed number of spaces."
+  [text spaces]
+  (let [pad (apply str (repeat spaces " "))]
+    (->> (str/split-lines text)
+         (map (fn [line]
+                (if (str/blank? line) line (str pad line))))
+         (str/join "\n"))))
+
+(defn sql-resolve-entry
+  "Resolves a language entry from a symbol."
+  [sym]
+  (when (symbol? sym)
+    (when-let [v (resolve sym)]
+      (let [value @v]
+        (if (book/book-entry? value) value nil)))))
+
+(defn sql-enum-entry
+  "Returns enum entry metadata if present."
+  [type]
+  (let [entry (sql-resolve-entry type)]
+    (when (= :enum (:static/dbtype entry)) entry)))
+
+(defn sql-enum-values-from-type
+  "Returns enum values for a type if it resolves to an enum entry."
+  [type]
+  (:static/enum-values (sql-enum-entry type)))
+
+(defn sql-render
+  "Renders a generic SQL value."
+  [value grammar mopts]
+  (let [{:keys [bool-literal]
+         :or {bool-literal {true "TRUE" false "FALSE"}}}
+        (sql-dialect grammar mopts)]
+    (cond (nil? value) "NULL"
+          (string? value) (sql-string value)
+          (keyword? value) (sql-string (name value))
+          (boolean? value) (get bool-literal value)
+          (number? value) (str value)
+          (or (list? value) (vector? value) (map? value) (set? value))
+          (emit/emit-main value grammar mopts)
+          (symbol? value) (sql-ident value grammar mopts)
+          :else (str value))))
+
+(defn sql-body
+  "Renders a SQL function body."
+  [body grammar mopts]
+  (->> body
+       (map (fn [form]
+              (let [line (if (string? form)
+                           form
+                           (emit/emit-main form grammar mopts))]
+                (if (and (not (str/blank? line))
+                         (not (str/ends-with? line ";")))
+                  (str line ";")
+                  line))))
+       (remove str/blank?)
+       (str/join "\n")))
+
+(defn sql-column-spec
+  "Normalises a table column specification."
+  [spec]
+  (if (odd? (count spec))
+    (throw (ex :argument {:spec spec}
+               :ex/message "Column spec must contain pairs")))
+  (mapv vec (partition 2 spec)))
+
+(defn sql-column-name
+  "Renders the column name."
+  [k {:keys [type]} grammar mopts]
+  (if (= :ref type)
+    (sql-ident (str (sql-ident-base k) "_id") grammar mopts)
+    (sql-ident k grammar mopts)))
+
+(defn sql-column-type
+  "Renders the column type."
+  [{:keys [type ref ref-type]} grammar mopts]
+  (if (= :ref type)
+    (sql-type-name (or ref-type (:type ref) :uuid) grammar mopts)
+    (sql-type-name type grammar mopts)))
+
+(defn sql-reference-target
+  "Renders the referenced table."
+  [ref grammar mopts]
+  (let [table (or (:table ref) (:name ref) (:ns ref) ref)]
+    (cond (map? table)
+          (sql-qualified-ident (:name table) (:schema table) grammar mopts)
+          (symbol? table) (sql-ident table grammar mopts)
+          (keyword? table) (sql-ident table grammar mopts)
+          (string? table) (sql-ident table grammar mopts)
+          :else (sql-ident table grammar mopts))))
+
+(defn sql-reference-column
+  "Renders the referenced column."
+  [ref grammar mopts]
+  (sql-ident (or (:column ref) :id) grammar mopts))
+
+(defn sql-column-definition
+  "Renders a SQL column definition."
+  [[k attrs] grammar mopts]
+  (if (not (map? attrs))
+    (throw (ex :argument {:column k :attrs attrs}
+               :ex/message "Column attrs must be a map")))
+  (let [{:keys [primary required unique default ref sql type]} attrs
+        {:keys [enum-column-mode enum-column-type]
+         :or {enum-column-mode :native enum-column-type "VARCHAR2(255)"}}
+        (sql-dialect grammar mopts)
+        enum-values (sql-enum-values-from-type type)
+        cname (sql-column-name k attrs grammar mopts)
+        ctype (if (and enum-values (not= :native enum-column-mode))
+                enum-column-type
+                (sql-column-type attrs grammar mopts))
+        pieces (cond-> [cname ctype]
+                 primary (conj "PRIMARY KEY")
+                 required (conj "NOT NULL")
+                 unique (conj "UNIQUE")
+                 (has? attrs :default)
+                 (conj "DEFAULT" (sql-render default grammar mopts))
+                 ref (conj "REFERENCES"
+                           (sql-reference-target ref grammar mopts)
+                           (str "(" (sql-reference-column ref grammar mopts) ")"))
+                 (and enum-values (= :check enum-column-mode))
+                 (conj (str "CHECK (" cname " IN ("
+                            (str/join ", " (sql-enum-values enum-values)) "))"))
+                 (get-in sql [:raw]) (conj (get-in sql [:raw])))]
+    (str/join " " pieces)))
+
+(defn sql-enum-values
+  "Renders enum literal values."
+  [values]
+  (mapv (fn [value]
+          (cond (keyword? value) (sql-string (name value))
+                (symbol? value) (sql-string (name value))
+                :else (sql-string (str value))))
+        values))

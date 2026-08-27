@@ -1,0 +1,75 @@
+(ns lang.model.v1.spec-go-test
+  (:use code.test)
+  (:require [lang.common.book :as book]
+            [lang.common.book-meta :as book-meta]
+            [lang.model.v1.spec-go :as spec-go]))
+
+^{:refer lang.model.v1.spec-go/go-typesystem :added "4.1"}
+(fact "handles generic Go types"
+  [(spec-go/go-typesystem '[:> slice int] spec-go/+grammar+ {})
+   (spec-go/go-typesystem '[:> map string int] spec-go/+grammar+ {})]
+  => ["[]int" "map[string]int"])
+
+^{:refer lang.model.v1.spec-go/go-vector :added "4.1"}
+(fact "emits vectors and slices"
+  [(spec-go/go-vector '[1 2 3] spec-go/+grammar+ {})
+   (spec-go/go-vector '[:> slice int] spec-go/+grammar+ {})]
+  => ["[]any{1, 2, 3}" "[]int"])
+
+^{:refer lang.model.v1.spec-go/tf-go-arrow :added "4.1"}
+(fact "transforms channel send and receive forms"
+  [(spec-go/tf-go-arrow '(<- ch))
+   (spec-go/tf-go-arrow '(<- ch 1))]
+  => ['(:% (:- "<-") ch)
+      '(:% ch (:- " <- ") 1)])
+
+^{:refer lang.model.v1.spec-go/go-defstruct :added "4.1"}
+(fact "emits Go struct fields"
+  (spec-go/go-defstruct '(defstruct Person [[name string] [age int]])
+                        spec-go/+grammar+
+                        {})
+  => "type Person struct {\n  name string\n  age int\n}")
+
+^{:refer lang.model.v1.spec-go/go-definterface :added "4.1"}
+(fact "emits Go interface methods"
+  (spec-go/go-definterface '(definterface Reader [Read Write])
+                           spec-go/+grammar+
+                           {})
+  => "type Reader interface {\n  Read\n  Write\n}")
+
+^{:refer lang.model.v1.spec-go/+features+ :added "4.1"}
+(fact "Go features include channel and XTalk operators"
+  [(boolean (get-in spec-go/+features+ [:go-chan]))
+   (boolean (get-in spec-go/+features+ [:defstruct]))
+   (boolean (get-in spec-go/+features+ [:x-len]))]
+  => [true true true])
+
+^{:refer lang.model.v1.spec-go/+template+ :added "4.1"}
+(fact "Go template carries Go-specific vector and function layout"
+  [(get-in spec-go/+template+ [:default :function :prefix])
+   (get-in spec-go/+template+ [:data :map :start])
+   (get-in spec-go/+template+ [:token :symbol :replace \-])]
+  => ["func" "map[string]any{" "_"])
+
+^{:refer lang.model.v1.spec-go/+grammar+ :added "4.1"}
+(fact "Go grammar is tagged and reserves its declarations"
+  [(get spec-go/+grammar+ :tag)
+   (boolean (get-in spec-go/+grammar+ [:reserved (quote defstruct)]))
+   (boolean (get-in spec-go/+grammar+ [:reserved (quote go)]))]
+  => [:go true true])
+
+^{:refer lang.model.v1.spec-go/+meta+ :added "4.1"}
+(fact "Go metadata is a native BookMeta value"
+  (book-meta/book-meta? spec-go/+meta+) => true)
+
+^{:refer lang.model.v1.spec-go/+book+ :added "4.1"}
+(fact "Go book carries the Go grammar and metadata"
+  [(book/book? spec-go/+book+)
+   (:lang spec-go/+book+)
+   (= (:grammar spec-go/+book+) spec-go/+grammar+)
+   (book-meta/book-meta? (:meta spec-go/+book+))]
+  => [true :go true true])
+
+^{:refer lang.model.v1.spec-go/+init+ :added "4.1"}
+(fact "Go initialization is the immutable book value"
+  spec-go/+init+ => spec-go/+book+)

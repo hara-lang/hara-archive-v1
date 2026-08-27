@@ -1,0 +1,52 @@
+(ns lang.model.v1.spec-sql-test
+  (:require [lang.model.v1.spec-sql :as sql]
+            [lang.model.v1.sql.spec-common :as common]
+            [lang.common.book-meta :as book-meta])
+  (:use code.test))
+
+^{:refer lang.model.v1.spec-sql/+book+ :added "4.1"}
+(fact "builds the SQL book"
+  [(get sql/+book+ :lang)
+   (get-in sql/+book+ [:grammar :tag])
+   (get-in sql/+book+ [:file :suffix])]
+  => [:sql :sql "sql"])
+
+^{:refer lang.model.v1.spec-sql/+init+ :added "4.1"}
+(fact "uses the SQL book as its stable initialization value"
+  sql/+init+ => sql/+book+)
+
+^{:refer lang.model.v1.sql.spec-common/+dialect-sql+ :added "4.1"}
+(fact "defines the SQL dialect aliases"
+  [(get-in common/+dialect-sql+ [:type-alias :uuid])
+   (get common/+dialect-sql+ :identifier-style)]
+  => ["UUID" :quoted])
+
+^{:refer lang.model.v1.sql.spec-common/build-features :added "4.1"}
+(fact "builds SQL feature overrides"
+  (let [features (common/build-features common/+dialect-sql+)]
+    [(get-in features [:defn :static/dbtype])
+     (get-in features [:defenum :static/dbtype])
+     (get-in features [:deftype :static/dbtype])])
+  => [:function :enum :table])
+
+^{:refer lang.model.v1.sql.spec-common/build-template :added "4.1"}
+(fact "builds SQL token templates"
+  (let [template (common/build-template common/+dialect-sql+)]
+    [(get template :dialect) (get-in template [:default :common :statement])])
+  => [common/+dialect-sql+ ";"])
+
+^{:refer lang.model.v1.sql.spec-common/build-grammar :added "4.1"}
+(fact "builds a tagged SQL grammar"
+  (let [grammar (common/build-grammar :sql common/+dialect-sql+)]
+    [(get grammar :tag) (boolean (get-in grammar [:reserved (quote defn)]))])
+  => [:sql true])
+
+^{:refer lang.model.v1.sql.spec-common/build-meta :added "4.1"}
+(fact "builds SQL metadata"
+  (book-meta/book-meta? (common/build-meta)) => true)
+
+^{:refer lang.model.v1.sql.spec-common/build-book :added "4.1"}
+(fact "builds a SQL book with dialect metadata"
+  (let [book (common/build-book :sql :sql common/+dialect-sql+ "sql")]
+    [(get book :lang) (get-in book [:grammar :tag]) (get-in book [:file :suffix])])
+  => [:sql :sql "sql"])

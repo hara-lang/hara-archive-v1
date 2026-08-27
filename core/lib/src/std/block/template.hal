@@ -2,6 +2,70 @@
   (:require [std.block :as b]
     [std.block.navigate :as nav]))
 
+(defn template-expand-children
+  "Expands template child values and splices unquote-splice markers."
+  [values]
+  (reduce (fn [output value]
+            (if (and (vector? value)
+                     (= :template/splice (first value)))
+              (vec (concat output (second value)))
+              (conj (vec output) value)))
+          []
+          values))
+
+(defn template-replace-unquotes
+  "Replaces runtime unquote forms in a template with lexical values."
+  [form locals]
+  (cond
+    (list? form)
+    (let [head (first form)]
+      (cond
+        (= head (quote unquote))
+        (get locals (second form))
+
+        (= head (quote unquote-splicing))
+        [:template/splice (get locals (second form))]
+
+        :else
+        (apply list
+               (template-expand-children
+                (map (fn [value]
+                       (template-replace-unquotes value locals))
+                     form)))))
+
+    (vector? form)
+    (vec (template-expand-children
+          (map (fn [value]
+                 (template-replace-unquotes value locals))
+               form)))
+
+    (map? form)
+    (reduce (fn [output entry]
+              (assoc output
+                     (template-replace-unquotes (key entry) locals)
+                     (template-replace-unquotes (val entry) locals)))
+            (empty form)
+            form)
+
+    (set? form)
+    (set (template-expand-children
+          (map (fn [value]
+                 (template-replace-unquotes value locals))
+               form)))
+
+    :else form))
+
+(defmacro $
+  "Expands a template using the caller's runtime lexical values."
+  [form]
+  (let [locals (keys (get &env :locals {}))
+        bindings (mapcat (fn [sym]
+                          [(list (quote quote) sym) sym])
+                        locals)]
+    (list (quote std.block.template/template-replace-unquotes)
+          (list (quote quote) form)
+          (apply list (quote hash-map) bindings))))
+
 (defn get-template-params
   [code]
   (->> (nav/navigator code)

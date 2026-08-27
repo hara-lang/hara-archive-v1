@@ -1,0 +1,16 @@
+(ns lang.model.v1.sql.spec-common.form-defenum-test
+  (:require [lang.model.v1.sql.spec-common.form-defenum :refer :all])
+  (:use code.test))
+
+^{:refer lang.model.v1.sql.spec-common.form-defenum/sql-defenum-format :added "4.1"}
+(fact "formats enum metadata"
+  (let [[metadata form] (sql-defenum-format '(defenum Status [:pending :done]))]
+    [(get metadata :static/dbtype) (get metadata :static/enum-values) form])
+  => [:enum [:pending :done] '(defenum Status [:pending :done])])
+
+^{:refer lang.model.v1.sql.spec-common.form-defenum/sql-defenum :added "4.1"}
+(fact "emits native SQL enums"
+  (sql-defenum [:defenum 'Status [:pending :done]]
+               {:dialect {:identifier-style :quoted :enum-mode :native}}
+               {})
+  => "CREATE TYPE \"Status\" AS ENUM ('pending', 'done');")

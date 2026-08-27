@@ -1,0 +1,9 @@
+(ns lang.model.v1.spec-js.rewrite-test
+  (:require [lang.model.v1.spec-js.rewrite :as rewrite])
+  (:use code.test))
+
+^{:refer lang.model.v1.spec-js.rewrite/js-rewrite-stage :added "4.1"}
+(fact "keeps JavaScript staging stable when no lowering is required"
+  [(rewrite/js-rewrite-stage '(do (var f (fn [x] (return x))) (f 1)) nil)
+   (rewrite/js-rewrite-stage nil {})]
+  => ['(do (var f (fn [x] (return x))) (f 1)) nil])

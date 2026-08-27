@@ -813,7 +813,7 @@
    {:id "spec_js/ts" :source "src/tahto/model/spec_js/ts.clj"
     :target "lib/src/lang/model/v1/spec_js/ts.hal" :status :ported}
    {:id "spec_js/rewrite" :source "src/tahto/model/spec_js/rewrite.clj"
-    :target "lib/src/lang/model/v1/spec_js/rewrite.hal" :status :pending}
+    :target "lib/src/lang/model/v1/spec_js/rewrite.hal" :status :ported}
    {:id "spec_js/jsx" :source "src/tahto/model/spec_js/jsx.clj"
     :target "lib/src/lang/model/v1/spec_js/jsx.hal" :status :pending}
    {:id "spec_js/html" :source "src/tahto/model/spec_js/html.clj"
@@ -837,21 +837,21 @@
    {:id "spec_c" :source "src/tahto/model/spec_c.clj"
     :target "lib/src/lang/model/v1/spec_c.hal" :status :ported}
    {:id "spec_go" :source "src/tahto/model/spec_go.clj"
-    :target "lib/src/lang/model/v1/spec_go.hal" :status :pending}
+    :target "lib/src/lang/model/v1/spec_go.hal" :status :ported}
    {:id "spec_go/typed" :source "src/tahto/model/spec_go/typed.clj"
-    :target "lib/src/lang/model/v1/spec_go/typed.hal" :status :pending}
+    :target "lib/src/lang/model/v1/spec_go/typed.hal" :status :ported}
    {:id "spec_sql" :source "src/tahto/model/spec_sql.clj"
-    :target "lib/src/lang/model/v1/spec_sql.hal" :status :pending}
+    :target "lib/src/lang/model/v1/spec_sql.hal" :status :ported}
    {:id "sql/spec_common" :source "src/tahto/model/sql/spec_common.clj"
-    :target "lib/src/lang/model/v1/sql/spec_common.hal" :status :pending}
+    :target "lib/src/lang/model/v1/sql/spec_common.hal" :status :ported}
    {:id "sql/spec_common/common" :source "src/tahto/model/sql/spec_common/common.clj"
-    :target "lib/src/lang/model/v1/sql/spec_common/common.hal" :status :pending}
+    :target "lib/src/lang/model/v1/sql/spec_common/common.hal" :status :ported}
    {:id "sql/spec_common/form_defenum" :source "src/tahto/model/sql/spec_common/form_defenum.clj"
-    :target "lib/src/lang/model/v1/sql/spec_common/form_defenum.hal" :status :pending}
+    :target "lib/src/lang/model/v1/sql/spec_common/form_defenum.hal" :status :ported}
    {:id "sql/spec_common/form_defn" :source "src/tahto/model/sql/spec_common/form_defn.clj"
-    :target "lib/src/lang/model/v1/sql/spec_common/form_defn.hal" :status :pending}
+    :target "lib/src/lang/model/v1/sql/spec_common/form_defn.hal" :status :ported}
    {:id "sql/spec_common/form_deftype" :source "src/tahto/model/sql/spec_common/form_deftype.clj"
-    :target "lib/src/lang/model/v1/sql/spec_common/form_deftype.hal" :status :pending}
+    :target "lib/src/lang/model/v1/sql/spec_common/form_deftype.hal" :status :ported}
    {:id "spec_dart" :source "src/tahto/model/spec_dart.clj"
     :target "lib/src/lang/model/v1/spec_dart.hal" :status :pending}
    {:id "spec_dart/rewrite" :source "src/tahto/model/spec_dart/rewrite.clj"
@@ -861,11 +861,11 @@
    {:id "spec_bash" :source "src/tahto/model/spec_bash.clj"
     :target "lib/src/lang/model/v1/spec_bash.hal" :status :pending}
    {:id "spec_llvm" :source "src/tahto/model/spec_llvm.clj"
-    :target "lib/src/lang/model/v1/spec_llvm.hal" :status :pending}
+    :target "lib/src/lang/model/v1/spec_llvm.hal" :status :ported}
    {:id "spec_haxe" :source "src/tahto/model/spec_haxe.clj"
     :target "lib/src/lang/model/v1/spec_haxe.hal" :status :pending}
    {:id "spec_lisp_common" :source "src/tahto/model/spec_lisp_common.clj"
-    :target "lib/src/lang/model/v1/spec_lisp_common.hal" :status :pending}
+    :target "lib/src/lang/model/v1/spec_lisp_common.hal" :status :ported}
    {:id "spec_elisp" :source "src/tahto/model/spec_elisp.clj"
     :target "lib/src/lang/model/v1/spec_elisp.hal" :status :pending}
    {:id "spec_scheme" :source "src/tahto/model/spec_scheme.clj"
@@ -875,11 +875,11 @@
    {:id "spec_ruby/rewrite" :source "src/tahto/model/spec_ruby/rewrite.clj"
     :target "lib/src/lang/model/v1/spec_ruby/rewrite.hal" :status :pending}
    {:id "spec_xtalk/fn_dart" :source "src/tahto/model/spec_xtalk/fn_dart.clj"
-    :target "lib/src/lang/model/v1/spec_xtalk/fn_dart.hal" :status :pending}
+    :target "lib/src/lang/model/v1/spec_xtalk/fn_dart.hal" :status :ported}
    {:id "spec_xtalk/fn_elisp" :source "src/tahto/model/spec_xtalk/fn_elisp.clj"
-    :target "lib/src/lang/model/v1/spec_xtalk/fn_elisp.hal" :status :pending}
+    :target "lib/src/lang/model/v1/spec_xtalk/fn_elisp.hal" :status :ported}
    {:id "spec_xtalk/fn_go" :source "src/tahto/model/spec_xtalk/fn_go.clj"
-    :target "lib/src/lang/model/v1/spec_xtalk/fn_go.hal" :status :pending}
+    :target "lib/src/lang/model/v1/spec_xtalk/fn_go.hal" :status :ported}
    {:id "spec_xtalk/fn_scheme" :source "src/tahto/model/spec_xtalk/fn_scheme.clj"
     :target "lib/src/lang/model/v1/spec_xtalk/fn_scheme.hal" :status :pending}])
 
