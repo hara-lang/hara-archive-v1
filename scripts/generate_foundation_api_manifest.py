@@ -62,9 +62,22 @@ def selected_namespaces(inventory: list[str], extras: tuple[str, ...]) -> list[s
 
 def parse_runtime_config(path: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     source = path.read_text()
-    libraries = re.search(r"const LIBRARIES:.*?=\s*&\[(.*?)\];", source, re.S)
+    libraries = re.search(
+        r"const (?:LIBRARIES|FOUNDATION_LIBRARIES):.*?=\s*&\[(.*?)\];",
+        source,
+        re.S,
+    )
     natives = re.search(r"const NATIVE_TYPES:.*?=\s*&\[(.*?)\];", source, re.S)
-    if not libraries or not natives:
+    native_names = re.findall(r'"([^"]+)"', natives.group(1)) if natives else []
+    if not native_names:
+        declarations = path.parent.parent / "core" / "native_declarations.rs"
+        if declarations.is_file():
+            native_names = re.findall(
+                r"#\[hara_native\((?:(?!\)\]).)*?name\s*=\s*\"([^\"]+)\"",
+                declarations.read_text(),
+                re.S,
+            )
+    if not libraries or not native_names:
         raise ValueError(f"Unable to parse runtime aliases from {path}")
     aliases = [{
         "alias": alias,
@@ -79,7 +92,7 @@ def parse_runtime_config(path: Path) -> tuple[list[dict[str, Any]], list[dict[st
         "namespace": f"std.native.{name}",
         "automaticAlias": name,
         "kind": "static-object",
-    } for name in re.findall(r'"([^"]+)"', natives.group(1))]
+    } for name in native_names]
     return (
         sorted(aliases, key=lambda item: item["alias"]),
         sorted(native_objects, key=lambda item: item["name"]),
