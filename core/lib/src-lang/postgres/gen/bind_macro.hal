@@ -1,7 +1,5 @@
 (ns postgres.gen.bind-macro
-  (:require [std.foundation :refer :all :exclude [resolve]]
-            
-            [lang.common.emit-helper :as helper]
+  (:require [lang.common.emit-helper :as helper]
             [lang.common.util :as util]
             [lang.core.script :as script]))
 

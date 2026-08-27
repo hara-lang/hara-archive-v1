@@ -15,9 +15,7 @@ pub use crate::package_catalog::{catalog_from_lock, LockedPackage};
 mod archive;
 mod install;
 use archive::*;
-#[cfg(test)]
-use install::install_archive_at;
-use install::{install_archive, json_string, validate_recipe};
+use install::{install_archive, install_archive_at, json_string, validate_recipe};
 
 /// Capability adapter used by the Hara-owned CLI policy. These functions
 /// expose package mechanics without parsing command-line arguments or writing
@@ -28,16 +26,105 @@ pub fn check_path(input: &Path) -> Result<(String, String), String> {
 }
 
 pub fn build_path(input: &Path, output: Option<&Path>) -> Result<PathBuf, String> {
-    let project = read_project(input)?;
+    build_path_with_package(input, output, None, None)
+}
+
+/// Builds one semantic package from a project profile. The profile and its
+/// selected name are kept on a cloned project model so a command-line
+/// selection never mutates project.edn on disk.
+pub fn build_path_with_package(
+    input: &Path,
+    output: Option<&Path>,
+    package_name: Option<&str>,
+    profile: Option<&Path>,
+) -> Result<PathBuf, String> {
+    let mut project = read_project(input)?;
+    if let Some(name) = package_name {
+        if name.is_empty() {
+            return Err("package selection requires a non-empty semantic name".into());
+        }
+        project.package_name = Some(name.to_owned());
+    }
+    if let Some(profile) = profile {
+        project.package_profile = Some(project_relative_path(&project, profile)?);
+    }
+    if project.package_name.is_some() && project.package_profile.is_none() {
+        let default = project.root.join("config/packages.edn");
+        if default.is_file() {
+            project.package_profile = Some(PathBuf::from("config/packages.edn"));
+        } else {
+            return Err(
+                "semantic package selection requires --profile PATH or config/packages.edn".into(),
+            );
+        }
+    }
     let destination = output.map(Path::to_path_buf).unwrap_or_else(|| {
-        project.root.join("target").join(format!(
-            "{}-{}.harp",
-            archive_name(&project.id),
-            project.version
-        ))
+        let id = project
+            .package_name
+            .as_deref()
+            .filter(|_| project.package_profile.is_some())
+            .unwrap_or(&project.id);
+        project
+            .root
+            .join("target")
+            .join(format!("{}-{}.harp", archive_name(id), project.version))
     });
     build_archive(&project, &destination)?;
     Ok(destination)
+}
+
+fn project_relative_path(project: &Project, path: &Path) -> Result<PathBuf, String> {
+    let root = project
+        .root
+        .canonicalize()
+        .map_err(|error| format!("cannot resolve project root {}: {error}", project.root.display()))?;
+    let candidate = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        // CLI callers commonly pass a workspace-relative profile
+        // (`core/config/packages.edn`), while project manifests conventionally
+        // use a project-relative profile (`config/packages.edn`). Prefer the
+        // project-relative spelling when both resolve, then accept the
+        // workspace-relative spelling as a convenience.
+        let project_relative = project.root.join(path);
+        if project_relative.exists() {
+            project_relative
+        } else {
+            std::env::current_dir()
+                .map_err(|error| format!("cannot resolve package profile path: {error}"))?
+                .join(path)
+        }
+    };
+    let resolved = candidate.canonicalize().map_err(|error| {
+        format!(
+            "cannot resolve package profile {}: {error}",
+            candidate.display()
+        )
+    })?;
+    match resolved.strip_prefix(&root) {
+        Ok(relative) if !relative.as_os_str().is_empty() => Ok(relative.to_path_buf()),
+        _ => Err("package profile must be inside the project root".to_owned()),
+    }
+}
+
+/// Maps a semantic package name such as code.test to a stable registry
+/// coordinate. A profile name remains the browser-facing selector; the
+/// derived coordinate gives native package stores a unique installation key.
+pub(crate) fn semantic_package_identity(name: &str) -> Result<String, String> {
+    if name.is_empty() {
+        return Err("semantic package name must be non-empty".into());
+    }
+    if name.contains(':') {
+        return project::normalize_coordinate(name);
+    }
+    let package = if name.contains('/') {
+        name.to_owned()
+    } else if let Some((owner, remainder)) = name.split_once('.') {
+        format!("{owner}/{remainder}")
+    } else {
+        format!("hara/{name}")
+    };
+    project::normalize_coordinate(&format!("hara:{package}"))
 }
 
 pub fn inspect_path(archive: &Path) -> Result<String, String> {
@@ -45,12 +132,19 @@ pub fn inspect_path(archive: &Path) -> Result<String, String> {
 }
 
 pub fn install_path(input: &Path) -> Result<PathBuf, String> {
+    install_path_at(input, &install::dist_root())
+}
+
+/// Installs a package into an explicit distribution root. Embedders and
+/// tests use this form to keep package state isolated from the user's global
+/// Hara distribution.
+pub fn install_path_at(input: &Path, distribution_root: &Path) -> Result<PathBuf, String> {
     let archive = if input.is_dir() {
         build_path(input, None)?
     } else {
         input.to_path_buf()
     };
-    install_archive(&archive)
+    install_archive_at(&archive, distribution_root)
 }
 
 /// Handles the public `hara package` command group.
@@ -66,24 +160,16 @@ pub fn run(args: &[String]) -> Result<(), String> {
             Ok(())
         }
         Some("build") => {
-            let root = args
-                .get(1)
-                .map(PathBuf::from)
+            let parsed = parse_build_arguments(&args[1..])?;
+            let root = parsed
+                .path
                 .unwrap_or_else(|| PathBuf::from("."));
-            let project = read_project(&root)?;
-            let output = args
-                .iter()
-                .position(|arg| arg == "--output")
-                .and_then(|index| args.get(index + 1))
-                .map(PathBuf::from)
-                .unwrap_or_else(|| {
-                    project.root.join("target").join(format!(
-                        "{}-{}.harp",
-                        archive_name(&project.id),
-                        project.version
-                    ))
-                });
-            build_archive(&project, &output)?;
+            let output = build_path_with_package(
+                &root,
+                parsed.output.as_deref(),
+                parsed.package.as_deref(),
+                parsed.profile.as_deref(),
+            )?;
             println!("package build: {}", output.display());
             Ok(())
         }
@@ -92,6 +178,24 @@ pub fn run(args: &[String]) -> Result<(), String> {
                 .get(1)
                 .ok_or_else(|| "hara package inspect requires ARCHIVE.harp".to_owned())?;
             println!("{}", inspect_archive(Path::new(archive))?);
+            Ok(())
+        }
+        Some("profile") => {
+            let path = args
+                .get(1)
+                .map(PathBuf::from)
+                .unwrap_or_else(|| PathBuf::from("config/packages.edn"));
+            let source = fs::read_to_string(&path)
+                .map_err(|error| format!("cannot read {}: {error}", path.display()))?;
+            let definitions = crate::package_catalog::definitions_from_packages_edn(&source)?;
+            for definition in definitions {
+                let dependencies = if definition.dependencies.is_empty() {
+                    String::new()
+                } else {
+                    format!(" depends on {}", definition.dependencies.join(", "))
+                };
+                println!("{}{}", definition.name, dependencies);
+            }
             Ok(())
         }
         Some("install") => {
@@ -125,10 +229,11 @@ pub fn run(args: &[String]) -> Result<(), String> {
         )),
         Some("--help") | Some("-h") | None => {
             println!(
-                "hara package <check|build|inspect|sync|add|remove|update|publish|tap|search|info>\n\n\
+                "hara package <check|build|inspect|profile|sync|add|remove|update|publish|tap|search|info>\n\n\
                  check [PATH]                 validate project.edn and recipe\n\
-                 build [PATH] [--output PATH] build deterministic .harp\n\
+                 build [PATH] [--package NAME] [--profile PATH] [--output PATH] build deterministic .harp\n\
                  inspect ARCHIVE.harp         print package.edn\n\
+                 profile [PATH]               validate and list semantic packages\n\
                  install [PATH|ARCHIVE.harp]  install into HARA_DIST_HOME or ~/.hara/dist\n\
                  tap bootstrap official       install the official profile\n\
                  tap init NAME --registry PATH --identity PATH --identity-root-key ED25519_HEX\n\
@@ -141,6 +246,59 @@ pub fn run(args: &[String]) -> Result<(), String> {
         }
         Some(command) => Err(format!("unknown package command: {command}")),
     }
+}
+
+#[derive(Default)]
+struct BuildArguments {
+    path: Option<PathBuf>,
+    output: Option<PathBuf>,
+    package: Option<String>,
+    profile: Option<PathBuf>,
+}
+
+fn parse_build_arguments(args: &[String]) -> Result<BuildArguments, String> {
+    let mut parsed = BuildArguments::default();
+    let mut index = 0;
+    while index < args.len() {
+        let argument = &args[index];
+        let (option, inline) = if argument.starts_with("--") {
+            argument
+                .split_once('=')
+                .map_or((argument.as_str(), None), |(option, value)| {
+                    (option, Some(value))
+                })
+        } else {
+            (argument.as_str(), None)
+        };
+        let value = |index: &mut usize, label: &str| -> Result<String, String> {
+            if let Some(value) = inline {
+                if value.is_empty() {
+                    return Err(format!("{label} requires a value"));
+                }
+                return Ok(value.to_owned());
+            }
+            *index += 1;
+            args.get(*index)
+                .filter(|value| !value.starts_with('-'))
+                .cloned()
+                .ok_or_else(|| format!("{label} requires a value"))
+        };
+        match option {
+            "--output" => parsed.output = Some(PathBuf::from(value(&mut index, "--output")?)),
+            "--package" => parsed.package = Some(value(&mut index, "--package")?),
+            "--profile" => parsed.profile = Some(PathBuf::from(value(&mut index, "--profile")?)),
+            value if value.starts_with('-') => {
+                return Err(format!("unknown package build option: {value}"))
+            }
+            value => {
+                if parsed.path.replace(PathBuf::from(value)).is_some() {
+                    return Err("package build accepts at most one project path".into());
+                }
+            }
+        }
+        index += 1;
+    }
+    Ok(parsed)
 }
 
 fn read_project(path: &Path) -> Result<Project, String> {

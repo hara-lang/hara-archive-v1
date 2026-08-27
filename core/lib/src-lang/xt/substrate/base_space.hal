@@ -1,68 +1,21 @@
 (ns xt.substrate.base-space
-  (:require [lang.core :as l :refer [defspec.xt]]))
+  (:require [lang.core :as l]))
 
 (l/script :xtalk
   {:require [[xt.lang.spec-base :as xt]
              [xt.lang.common-data :as xtd]
              [xt.substrate.base-frame :as frame]]})
 
-(defspec.xt NodeSpace
-  [:xt/record
+(def ^{:schema [:xt/record
    ["id" :xt/str]
    ["state" :xt/any]
-   ["meta" [:xt/maybe [:xt/dict :xt/str :xt/any]]]])
+   ["meta" [:xt/maybe [:xt/dict :xt/str :xt/any]]]]} NodeSpace nil)
 
-(defspec.xt NodeSpaceUpdater
-  [:fn [:xt/any NodeSpace :xt/any] :xt/any])
+(def ^{:schema [:fn [:xt/any NodeSpace :xt/any] :xt/any]} NodeSpaceUpdater nil)
 
-(defspec.xt space
-  [:fn [:xt/str
+(defn.xt ^{:schema [:fn [:xt/str
         [:xt/maybe [:xt/dict :xt/str :xt/any]]]
-       NodeSpace])
-
-(defspec.xt get-space
-  [:fn [:xt/any
-        [:xt/maybe :xt/str]]
-       [:xt/maybe NodeSpace]])
-
-(defspec.xt create-space
-  [:fn [:xt/any
-        [:xt/maybe :xt/str]
-        [:xt/maybe [:xt/dict :xt/str :xt/any]]]
-       NodeSpace])
-
-(defspec.xt ensure-space
-  [:fn [:xt/any
-        [:xt/maybe :xt/str]
-        [:xt/maybe [:xt/dict :xt/str :xt/any]]]
-       NodeSpace])
-
-(defspec.xt remove-space
-  [:fn [:xt/any
-        [:xt/maybe :xt/str]]
-       [:xt/maybe NodeSpace]])
-
-(defspec.xt list-spaces
-  [:fn [:xt/any] [:xt/array :xt/str]])
-
-(defspec.xt get-space-state
-  [:fn [:xt/any
-        [:xt/maybe :xt/str]]
-       :xt/any])
-
-(defspec.xt set-space-state
-  [:fn [:xt/any
-        [:xt/maybe :xt/str]
-        :xt/any]
-       :xt/any])
-
-(defspec.xt update-space-state
-  [:fn [:xt/any
-        [:xt/maybe :xt/str]
-        NodeSpaceUpdater]
-       :xt/any])
-
-(defn.xt space
+       NodeSpace]} space
   "constructs a node space record"
   {:added "4.1"}
   [space-id opts]
@@ -72,7 +25,9 @@
     :state (or (. opts ["state"]) {})
     :meta (or (. opts ["meta"]) {})}))
 
-(defn.xt get-space
+(defn.xt ^{:schema [:fn [:xt/any
+        [:xt/maybe :xt/str]]
+       [:xt/maybe NodeSpace]]} get-space
   "gets a node space by id"
   {:added "4.1"}
   [node space-id]
@@ -81,7 +36,10 @@
     (. node ["spaces"])
     (or space-id frame/SPACE_NODE))))
 
-(defn.xt create-space
+(defn.xt ^{:schema [:fn [:xt/any
+        [:xt/maybe :xt/str]
+        [:xt/maybe [:xt/dict :xt/str :xt/any]]]
+       NodeSpace]} create-space
   "creates or replaces a node space"
   {:added "4.1"}
   [node space-id opts]
@@ -91,7 +49,10 @@
                 entry)
   (return entry))
 
-(defn.xt ensure-space
+(defn.xt ^{:schema [:fn [:xt/any
+        [:xt/maybe :xt/str]
+        [:xt/maybe [:xt/dict :xt/str :xt/any]]]
+       NodeSpace]} ensure-space
   "ensures that a node space exists"
   {:added "4.1"}
   [node space-id opts]
@@ -101,7 +62,9 @@
     (:= entry (-/create-space node sid opts)))
   (return entry))
 
-(defn.xt remove-space
+(defn.xt ^{:schema [:fn [:xt/any
+        [:xt/maybe :xt/str]]
+       [:xt/maybe NodeSpace]]} remove-space
   "removes a node space"
   {:added "4.1"}
   [node space-id]
@@ -111,7 +74,7 @@
   (xt/x:del-key spaces sid)
   (return entry))
 
-(defn.xt list-spaces
+(defn.xt ^{:schema [:fn [:xt/any] [:xt/array :xt/str]]} list-spaces
   "lists all current node spaces"
   {:added "4.1"}
   [node]
@@ -119,14 +82,19 @@
                         (fn [x] (return x))
                         xt/x:str-lt)))
 
-(defn.xt get-space-state
+(defn.xt ^{:schema [:fn [:xt/any
+        [:xt/maybe :xt/str]]
+       :xt/any]} get-space-state
   "gets state for a node space"
   {:added "4.1"}
   [node space-id]
   (var entry (-/ensure-space node space-id nil))
   (return (. entry ["state"])))
 
-(defn.xt set-space-state
+(defn.xt ^{:schema [:fn [:xt/any
+        [:xt/maybe :xt/str]
+        :xt/any]
+       :xt/any]} set-space-state
   "sets state for a node space"
   {:added "4.1"}
   [node space-id state]
@@ -134,7 +102,10 @@
   (xt/x:set-key entry "state" state)
   (return state))
 
-(defn.xt update-space-state
+(defn.xt ^{:schema [:fn [:xt/any
+        [:xt/maybe :xt/str]
+        NodeSpaceUpdater]
+       :xt/any]} update-space-state
   "updates state for a node space"
   {:added "4.1"}
   [node space-id updater]

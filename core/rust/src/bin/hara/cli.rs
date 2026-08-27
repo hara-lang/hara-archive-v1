@@ -180,6 +180,22 @@ pub(crate) fn run(mut options: Options) -> Result<(), String> {
         Ok(project) => project_model::expand_aliases(&project, &options.command)?,
         Err(_) => options.command.clone(),
     };
+    if expanded.first().map(String::as_str) == Some("package")
+        && expanded.get(1).map(String::as_str) == Some("profile")
+    {
+        return hara_wasm::package::run(&expanded[1..]);
+    }
+    if expanded.first().map(String::as_str) == Some("package")
+        && expanded.get(1).map(String::as_str) == Some("build")
+        && expanded[2..].iter().any(|argument| {
+            argument == "--package"
+                || argument.starts_with("--package=")
+                || argument == "--profile"
+                || argument.starts_with("--profile=")
+        })
+    {
+        return hara_wasm::package::run(&expanded[1..]);
+    }
     hara::run(&options, &expanded)
 }
 

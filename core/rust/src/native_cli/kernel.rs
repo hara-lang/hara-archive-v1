@@ -113,10 +113,14 @@ pub(super) fn kernel_call(
         "package-build" => {
             let input = string_argument(arguments, 0, operation)?.to_owned();
             let output = optional_string_argument(arguments, 1, operation)?.map(str::to_owned);
+            let package = optional_string_argument(arguments, 2, operation)?.map(str::to_owned);
+            let profile = optional_string_argument(arguments, 3, operation)?.map(str::to_owned);
             let built = std::thread::spawn(move || {
-                crate::package::build_path(
+                crate::package::build_path_with_package(
                     std::path::Path::new(&input),
                     output.as_deref().map(std::path::Path::new),
+                    package.as_deref(),
+                    profile.as_deref().map(std::path::Path::new),
                 )
             })
             .join()

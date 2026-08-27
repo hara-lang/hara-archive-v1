@@ -1,6 +1,7 @@
 (ns tool.metaspec.conforms
   (:config {:override [walk]})
   (:require [tool.metaspec.registry :as registry]
+            [tool.metaspec.lint :as lint]
             [tool.metaspec.schema :as schema]))
 
 (defn finding
@@ -137,7 +138,7 @@
        (vec
         (mapcat
          (fn [key]
-           (if (schema/qualified-keyword? key)
+           (if (lint/qualified-keyword? key)
              []
              [(finding
                :fail
@@ -160,7 +161,7 @@
        (mapcat
         (fn [entry]
           (if (or (map? (:value entry))
-                  (schema/qualified-keyword? (:value entry)))
+                  (lint/qualified-keyword? (:value entry)))
             []
             [(finding
               :fail

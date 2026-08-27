@@ -168,6 +168,18 @@ pub fn compile_source_with_config_allow_unbound_globals(
     compile_spanned_forms_with_config_options(&forms, registry, config, true, true)
 }
 
+/// Compiles an already-read form without printing it back to source first.
+/// This is used by the native runtime's ordinary form boundary so metadata
+/// such as `^:async` remains part of the bytecode contract.
+pub fn compile_form_with_config_allow_unbound_globals(
+    form: Form,
+    registry: &crate::kernel::NamespaceRegistry<crate::core::Value>,
+    config: crate::kernel::GeneratedNamespaceConfig,
+) -> Result<Program, CompileError> {
+    let form = synthetic_spanned_form(form);
+    compile_spanned_forms_with_config_options(&[form], registry, config, false, true)
+}
+
 /// Reports whether source contains a language-level dynamic evaluation
 /// boundary. Direct-native callers use this to permit late-bound reads which
 /// may be materialized by `Runtime/eval`, `load-string`, or `defonce` during
@@ -186,9 +198,9 @@ pub fn source_uses_dynamic_evaluation(source: &str) -> Result<bool, CompileError
     fn contains(form: &Form) -> bool {
         match crate::core::form_without_metadata(form) {
             Form::List(values) => {
-                values.first().is_some_and(|value| {
-                    matches!(value, Form::Symbol(name) if dynamic_symbol(name))
-                }) || values.iter().any(contains)
+                values.first().is_some_and(
+                    |value| matches!(value, Form::Symbol(name) if dynamic_symbol(name)),
+                ) || values.iter().any(contains)
             }
             Form::Vector(values) | Form::Set(values) => values.iter().any(contains),
             Form::Map(entries) => entries

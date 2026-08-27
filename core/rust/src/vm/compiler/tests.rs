@@ -16,8 +16,7 @@ fn short_circuit_forms_compile_with_a_terminating_final_operand() {
 }
 
 #[test]
-fn structural_callable_compiles_as_a_first_class_value() {
-}
+fn structural_callable_compiles_as_a_first_class_value() {}
 
 #[test]
 fn map_literals_preserve_source_order_in_bytecode() {

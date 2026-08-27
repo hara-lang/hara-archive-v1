@@ -1953,7 +1953,10 @@ mod tests {
         let error = runtime
             .eval_native("(interpreted 41)")
             .expect_err("a function created by the interpreter must not cross the native scope");
-        assert!(error.contains("evaluator-backed Hara function"), "{error}");
+        assert!(
+            error.contains("evaluator- or fiber-backed Hara function"),
+            "{error}"
+        );
     }
 
     #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
@@ -2083,12 +2086,21 @@ mod tests {
         let after_definitions = second.native_execution_telemetry();
         assert_eq!(first.eval_native("isolated").unwrap(), "41");
         assert_eq!(second.eval_native("isolated").unwrap(), "42");
+        assert_eq!(
+            second.eval_native("(let [value 20] (+ value 22))").unwrap(),
+            "42"
+        );
         let second_telemetry = second.native_execution_telemetry();
         assert!(
             second_telemetry.bytecode_functions > after_definitions.bytecode_functions,
             "each native entry validates its bytecode unit"
         );
-        assert!(second_telemetry.native_target_calls > 0);
+        assert!(
+            second_telemetry.native_target_calls > after_definitions.native_target_calls,
+            "native target count did not advance: before={}, after={}",
+            after_definitions.native_target_calls,
+            second_telemetry.native_target_calls
+        );
         assert!(second_telemetry.invocations > first_telemetry.invocations);
     }
 
@@ -3250,6 +3262,7 @@ mod tests {
         for method_var in method_vars {
             let mut segments = method_var.split(['.', '/']);
             let protocol_namespace = segments.nth(2).expect("protocol namespace");
+            let _protocol = segments.next().expect("protocol type");
             let method = segments.next().expect("protocol method");
             assert!(
                 catalog.contains(&format!(":method {method} ")),

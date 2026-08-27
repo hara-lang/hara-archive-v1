@@ -18,6 +18,14 @@
               {:dry-run true
                :parsed {:positionals ["fixture"]
                         :options {:tap "official"}}})
+  (test-check "package build preserves semantic package selection and profile"
+              (:parsed
+               (package/parsed-arguments
+                ["core" "--package" "code.test"
+                 "--profile" "config/packages.edn"] false))
+              {:positionals ["core"]
+               :options {:package "code.test"
+                         :profile "config/packages.edn"}})
   (test-check "package registry keeps verification inputs as data"
               (:parsed
                (package/parsed-arguments

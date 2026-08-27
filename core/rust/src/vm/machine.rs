@@ -818,7 +818,9 @@ impl Machine {
             _ => false,
         };
         if !protocol_deref && !matches!(function.code.get(self.ip), Some(Instruction::Await)) {
-            return VmOutcome::Failed(self.error(&function, "VM is not suspended at await or deref"));
+            return VmOutcome::Failed(
+                self.error(&function, "VM is not suspended at await or deref"),
+            );
         }
         match state {
             PromiseState::Pending => {

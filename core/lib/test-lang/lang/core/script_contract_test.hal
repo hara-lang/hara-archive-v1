@@ -150,8 +150,9 @@
                defmacro.xt defmacro.xtalk
                def.xt defn.xt defn-.xt defabstract.xt
                defrun.xt defglobal.xt deftemp.xt
-               defclass.xt defgen.xt defspec.xt
+               defclass.xt defgen.xt
                return break set= br])
+            (not (has? xtalk-imports 'defspec.xt))
             (symbols-present?
              postgres-imports
              '[!.pg !.postgres
@@ -163,7 +164,7 @@
            (reset! script/+modules+ modules-before)
            (reset! script/+scripts+ scripts-before)
            (reset! script/+module-contexts+ contexts-before))))
-     => [true true true])
+     => [true true true true])
 
    (fact "script macro discovery publishes exact language definition families"
      (let [_ (lang.core/script-import-symbols :postgres)

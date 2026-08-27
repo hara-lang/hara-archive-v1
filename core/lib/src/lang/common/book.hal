@@ -237,7 +237,8 @@
         fields [:lang :id :module :section :declared :form :form-input :deps
                 :deps-fragment :deps-native :xtalk-ops :xtalk-profiles
                 :polyfill-modules :namespace :template :standalone :line
-                :time :priority :display :static/code.cache :static/template.cache]
+                :time :priority :display :static/schema :static/code.cache
+                :static/template.cache]
         updates
         (reduce (fn [output key]
                   (let [value (get entry-value key)]

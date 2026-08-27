@@ -48,20 +48,24 @@
   (let [parsed (tap/parse-arguments arguments)
         path (selected-path request (:positionals parsed) :build)
         output-directory (get (:options parsed) :out-dir)
-  output-path (get (:options parsed) :output)
-  _ (if (and output-directory output-path)
-      (throw (ex :syntax {} :ex/message "--out-dir and --output cannot be combined"))
-      nil)
-  metadata (if output-directory (native/package-check path) nil)
-  output (native/package-build
-          path
-          (or output-path
-              (if output-directory
-            (File/join
-             output-directory
-             (str (str/replace (:identity metadata) "/" "-")
-                  "-" (:version metadata) ".harp"))
-                nil)))]
+        output-path (get (:options parsed) :output)
+        package-name (get (:options parsed) :package)
+        profile (get (:options parsed) :profile)
+        _ (if (and output-directory output-path)
+            (throw (ex :syntax {} :ex/message "--out-dir and --output cannot be combined"))
+            nil)
+        metadata (if output-directory (native/package-check path) nil)
+        output (native/package-build
+                path
+                (or output-path
+                    (if output-directory
+                      (File/join
+                       output-directory
+                       (str (str/replace (:identity metadata) "/" "-")
+                            "-" (:version metadata) ".harp"))
+                      nil))
+                package-name
+                profile)]
     (model/success {:package/archive output}
                    [(model/message (str "package build: " output "\n"))])))
 

@@ -136,6 +136,27 @@ fn rejects_missing_profile_language_and_unknown_default() {
 }
 
 #[test]
+fn accepts_a_profile_only_multi_package_project_declaration() {
+    let root = temp("package-profile");
+    fs::create_dir_all(root.join("config")).unwrap();
+    fs::write(
+        root.join("config/packages.edn"),
+        "{demo.public {:include [[demo.public :complete]]}}",
+    )
+    .unwrap();
+    fs::write(
+        root.join("project.edn"),
+        "{:hara/type :project :hara/version \"1.0.0\" :project/id demo/app :project/version \"1.0.0\" :project/source-paths [] :project/test-paths [] :project/extension-paths [] :project/capabilities #{} :project/package {:profile \"config/packages.edn\"}}",
+    )
+    .unwrap();
+    let project = read(&root).unwrap();
+    assert_eq!(project.package_name, None);
+    assert_eq!(project.package_profile, Some(PathBuf::from("config/packages.edn")));
+    assert!(!project.package_workspace);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn expands_project_aliases_and_rejects_cycles() {
     let root = temp("aliases");
     fs::create_dir_all(&root).unwrap();

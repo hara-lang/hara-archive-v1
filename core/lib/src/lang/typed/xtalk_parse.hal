@@ -151,9 +151,15 @@
                  (seq (rest items)))
           [(first items) (rest items)]
           [nil items])]
+    (when (and attr-map (has? attr-map :schema))
+      (throw
+       (ex :syntax {:symbol form-sym
+                    :schema (:schema attr-map)}
+           :ex/message ":schema must be attached to the declaration symbol")))
     {:docstring docstring
      :attr-map attr-map
      :items items
+     :binding-meta (or (meta form-sym) {})
      :meta (cond-> (merge attr-map (meta form-sym))
              docstring (assoc :docstring docstring))}))
 
@@ -170,22 +176,10 @@
     :else
     [(first items) (rest items)]))
 
-(defn parse-registered-spec
-  [entry aliases]
-  (let [ns-sym (:module entry)
-        spec-sym (:id entry)
-        ctx {:ns ns-sym
-             :aliases aliases}]
-    (types/make-spec-def
-     ns-sym
-     spec-sym
-     (types/normalize-type (:type entry) ctx)
-     (:meta entry))))
-
 (defn declaration-schema
-  [meta ctx]
-  (when (has? meta :schema)
-    (types/normalize-type (:schema meta) ctx)))
+  [binding-meta ctx]
+  (when (has? binding-meta :schema)
+    (types/normalize-type (:schema binding-meta) ctx)))
 
 (defn function-schema
   [ns-sym fn-sym meta ctx]
@@ -202,7 +196,7 @@
   (let [form (:form entry)
         fn-sym (second form)
         metadata (merge (or (meta fn-sym) {})
-                        (select-keys entry [:schema :- :public :standalone
+                        (select-keys entry [:- :public :standalone
                                             :docstring :added]))
         ctx {:ns (:module entry)
              :aliases aliases}]
@@ -211,11 +205,11 @@
 (defn parse-defn
   [form ns-sym aliases]
   (let [[def-op fn-sym & more] form
-        {:keys [meta items]} (parse-decl-preamble more fn-sym)
+        {:keys [meta binding-meta items]} (parse-decl-preamble more fn-sym)
         [args-form body] (parse-callable-items items)
         ctx {:ns ns-sym
              :aliases aliases}
-        spec (function-schema ns-sym fn-sym meta ctx)
+        spec (function-schema ns-sym fn-sym binding-meta ctx)
         inputs (parse-fn-inputs args-form ctx)
         output (if spec
                  (get-in spec [:type :output])
@@ -238,11 +232,19 @@
 (defn parse-defvalue
   [form ns-sym aliases]
   (let [[_ value-sym & more] form
-        {:keys [meta items]} (parse-decl-preamble more value-sym)
+        {:keys [meta binding-meta items]} (parse-decl-preamble more value-sym)
         ctx {:ns ns-sym
              :aliases aliases}
-        schema (declaration-schema meta ctx)
+        schema (declaration-schema binding-meta ctx)
         raw-value (first items)
+        _ (when (and schema (nil? raw-value))
+            (throw
+             (ex :syntax {:symbol value-sym
+                          :schema (:schema binding-meta)}
+                 :ex/message
+                 "Schema-only declarations use (def Name (schema ...))")))
+        spec (when schema
+               (types/make-spec-def ns-sym value-sym schema meta))
         value (types/make-value-def
                ns-sym
                value-sym
@@ -252,12 +254,8 @@
                      types/+unknown-type+))
                (assoc meta :aliases aliases :def true)
                raw-value
-               nil)]
-    (if (and schema (nil? raw-value))
-      (assoc value
-             :schema-only true
-             :spec (types/make-spec-def ns-sym value-sym schema meta))
-      value)))
+               spec)]
+    value))
 
 (defn merge-spec-inputs
   [inputs spec-inputs]
@@ -270,80 +268,50 @@
           spec-inputs)
     inputs))
 
-(defn attach-function-spec
-  [fn-def spec]
-  (if (and spec
-           (= :fn (get-in spec [:type :kind])))
-    (if-let [direct (:spec fn-def)]
-      (if (= (:type direct) (:type spec))
-        fn-def
-        (throw
-         (ex :syntax {:symbol (:name fn-def)
-                      :direct (:type direct)
-                      :legacy (:type spec)}
-             :ex/message "Function has conflicting direct and legacy schemas")))
-      (let [spec-type (:type spec)]
-        (assoc fn-def
-               :inputs (merge-spec-inputs (:inputs fn-def)
-                                          (:inputs spec-type))
-               :output (if (= (:output fn-def)
-                              types/+unknown-type+)
-                         (:output spec-type)
-                         (:output fn-def))
-               :spec spec)))
-    fn-def))
-
-(defn attach-value-spec
-  [value-def spec]
-  (if (and spec
-           (not= :fn (get-in spec [:type :kind])))
-    (assoc value-def
-           :type (if (= (:type value-def)
-                        types/+unknown-type+)
-                   (:type spec)
-                   (:type value-def))
-           :spec spec)
-    value-def))
-
-(defn spec-map-by-kind
-  [specs pred]
-  (into {}
-        (keep (fn [spec]
-                (when (pred spec)
-                  [(types/type-key (some-> spec :ns symbol)
-                                   (:name spec))
-                   spec])))
-        specs))
-
-(defn attach-specs
-  [{:keys [specs functions values] :as analysis}]
-  (let [fn-specs
-        (spec-map-by-kind specs
-                          #(= :fn (get-in % [:type :kind])))
-        value-specs
-        (spec-map-by-kind specs
-                          #(not= :fn (get-in % [:type :kind])))]
-    (assoc analysis
-           :functions
-           (mapv (fn [fn-def]
-                   (attach-function-spec
-                    fn-def
-                    (get fn-specs
-                         (types/type-key (some-> fn-def :ns symbol)
-                                         (:name fn-def)))))
-                 functions)
-           :values
-           (mapv (fn [value-def]
-                   (attach-value-spec
-                    value-def
-                    (get value-specs
-                         (types/type-key (some-> value-def :ns symbol)
-                                         (:name value-def)))))
-                 values))))
-
 (defn module-aliases
   [module]
   (dissoc (or (:link module) {}) '-))
+
+(defn portable-schema-surface?
+  "Returns true for schema surfaces in the cross-language :xt vocabulary."
+  [surface]
+  (or (and (keyword? surface)
+           (= "xt" (namespace surface)))
+      (and (vector? surface)
+           (keyword? (first surface))
+           (or (= "xt" (namespace (first surface)))
+               (has? #{:and :array :dict :fn :maybe :or :record :tuple :vector}
+                     (first surface))))))
+
+(defn parse-module-schema
+  [ns-sym aliases pair]
+  (let [schema-id (first pair)
+        surface (second pair)
+        schema-name (symbol (name schema-id))]
+    (when (and (symbol? schema-id)
+               (portable-schema-surface? surface)
+               (or (nil? (namespace schema-id))
+                   (= (str ns-sym) (namespace schema-id))))
+      (try
+        (types/make-spec-def
+         ns-sym
+         schema-name
+         (types/normalize-type surface {:ns ns-sym :aliases aliases})
+         {:schema surface
+          :sidecar true})
+        (catch Throwable error nil)))))
+
+(defn module-schema-specs
+  [ns-sym module aliases]
+  (let [schemas (:schema module)]
+    (if (map? schemas)
+      (vec
+       (keep
+        (fn [schema-id]
+          (parse-module-schema ns-sym aliases
+                               [schema-id (get schemas schema-id)]))
+        (sort-by str (keys schemas))))
+      [])))
 
 (defn analyze-module-raw
   [ns-sym]
@@ -352,12 +320,11 @@
       (throw (ex :not-found {:ns ns-sym
                        :available (sort-by str
                                            (keys (deref script/+modules+)))} :ex/message "Tahto script module not found")))
-    (let [aliases (module-aliases module)
-          specs (->> (deref script/+specs+)
-                     vals
-                     (filter #(= ns-sym (:module %)))
-                     (sort-by (comp str :symbol))
-                     (mapv #(parse-registered-spec % aliases)))
+    (script/refresh-module-schemas ns-sym)
+    (let [module (get (deref script/+modules+) ns-sym)
+          schema-ns (script/module-source-symbol ns-sym)
+          aliases (module-aliases module)
+          module-specs (module-schema-specs schema-ns module aliases)
           fragment-specs (->> (:fragment module)
                               vals
                               (sort-by (comp str :id))
@@ -377,10 +344,8 @@
                          (parse-defn form ns-sym aliases))
 
                  (#{:def :defglobal} op-key)
-                 (let [value (parse-defvalue form ns-sym aliases)]
-                   (if (:schema-only value)
-                     (update out :specs conj (:spec value))
-                     (update out :values conj value)))
+                 (update out :values conj
+                         (parse-defvalue form ns-sym aliases))
 
                  :else
                  out)))
@@ -391,7 +356,7 @@
       {:ns ns-sym
        :aliases aliases
        :specs (vec (sort-by :name
-                            (concat specs
+                            (concat module-specs
                                     fragment-specs
                                     (:specs declarations))))
        :functions (:functions declarations)
@@ -400,8 +365,6 @@
 
 (defn analyze-module
   [ns-sym]
-  (-> ns-sym
-      analyze-module-raw
-      attach-specs))
+  (analyze-module-raw ns-sym))
 
 (def analyze-namespace analyze-module)

@@ -1,7 +1,6 @@
 (ns xt.lang.common-string
-  (:config {:blank true})
-  (:require [lang.core :as l :refer [defspec.xt]]
-            [std.foundation :refer :all :exclude [do if fn quote try replace]]))
+  (:config {:override [replace]})
+  (:require [lang.core :as l]))
 
 (l/script :xtalk
   {:require [[xt.lang.spec-base :as xt]]})
@@ -38,10 +37,7 @@
    (return (- (xt/x:str-index-of s tok 0)
               (xt/x:offset 0)))))
 
-(defspec.xt substring
-  [:fn [:xt/str :xt/num [:xt/maybe :xt/num]] :xt/str])
-
-(defn.xt substring
+(defn.xt ^{:schema [:fn [:xt/str :xt/num [:xt/maybe :xt/num]] :xt/str]} substring
   "gets the substring"
   {:added "4.0"}
   ([s start finish]
@@ -226,10 +222,7 @@
     (:= out (xt/x:cat out (xt/x:get-idx choices (xt/x:offset idx)))))
   (return out))
 
-(defspec.xt tag-string
-  [:fn [:xt/str] :xt/str])
-
-(defn.xt tag-string
+(defn.xt ^{:schema [:fn [:xt/str] :xt/str]} tag-string
   "gets the string description for a given tag"
   {:added "4.0"}
   [tag]

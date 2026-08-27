@@ -1,7 +1,7 @@
 import init, * as wasmBindings from "./wasm/hara_wasm.js";
 import { instantiateWholeWasm } from "./whole-wasm.js";
 import { parseJson } from "./json.js";
-import { disposeBrowserPackageProviders } from "./packages.js";
+import { disposeBrowserPackageProviders, installLockedPackages } from "./packages.js";
 export {
   disposeBrowserPackageProviders,
   installLockedPackages,
@@ -10,8 +10,6 @@ export {
 } from "./packages.js";
 
 const { Runtime } = wasmBindings;
-
-let started;
 
 function asResourceEntries(resources) {
   if (!resources) return [];
@@ -27,7 +25,7 @@ function createApi(runtime) {
       (hbc) => runtime.evalBytecodeArtifact(hbc)
     );
 
-  return Object.freeze({
+  const api = {
     eval(source) {
       return runtime.eval(String(source));
     },
@@ -76,6 +74,13 @@ function createApi(runtime) {
     evalBytecode(artifact) {
       return runtime.evalBytecodeArtifact(artifact);
     },
+    evalBytecodeBundle(artifact) {
+      if (typeof runtime.evalBytecodeBundle !== "function") return false;
+      return runtime.evalBytecodeBundle(artifact);
+    },
+    installPackages(lockSource, options = {}) {
+      return installLockedPackages(api, lockSource, options);
+    },
     instrumentationConformance(corpus) {
       if (typeof wasmBindings.instrumentation_conformance !== "function") {
         throw new Error("instrumentation conformance requires the full Wasm runtime");
@@ -109,7 +114,8 @@ function createApi(runtime) {
       runtime.free();
       return cleanup;
     }
-  });
+  };
+  return Object.freeze(api);
 }
 
 function defaultWasmUrl() {
@@ -120,20 +126,20 @@ function defaultWasmUrl() {
 }
 
 /**
- * Starts an isolated Hara runtime. The embedded HAL catalog is loaded by the
- * Wasm Runtime constructor; `resources` are optional host overrides.
+ * Starts an isolated core runtime. Foundation and other semantic packages are
+ * installed only when the caller supplies a lock/profile explicitly.
  */
-export async function start({ wasmUrl, resources } = {}) {
-  if (!started) {
-    started = (async () => {
-      await init(wasmUrl ?? defaultWasmUrl());
-      const runtime = new Runtime();
-      return createApi(runtime);
-    })();
-  }
-  const api = await started;
+export async function start({ wasmUrl, resources, lock, targets, packageOptions = {} } = {}) {
+  await init(wasmUrl ?? defaultWasmUrl());
+  const runtime = typeof Runtime.core === "function" ? Runtime.core() : new Runtime();
+  const api = createApi(runtime);
   for (const [namespace, source] of asResourceEntries(resources)) {
     api.registerResource(namespace, source);
+  }
+  if (lock !== undefined && lock !== null) {
+    const installOptions = { ...packageOptions };
+    if (targets !== undefined) installOptions.targets = targets;
+    await api.installPackages(lock, installOptions);
   }
   return api;
 }

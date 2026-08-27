@@ -96,6 +96,13 @@ pub struct PackageCatalogDescriptor {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PackageBytecode {
+    pub format: String,
+    pub path: PathBuf,
+    pub sha256: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PackageCatalogAdmission {
     pub format: String,
     pub report: String,
@@ -156,9 +163,11 @@ pub struct VerifiedPackageSelection {
 pub struct PackageManifest {
     pub format: String,
     pub identity: String,
+    pub name: Option<String>,
     pub version: Version,
     pub provenance: Option<PackageProvenance>,
     pub files: BTreeMap<PathBuf, PackageFile>,
+    pub bytecode: Option<PackageBytecode>,
     pub schema_catalog: Option<PackageCatalogDescriptor>,
     pub wasm_imports: BTreeMap<String, PackageVariant>,
     pub flavors: BTreeMap<String, PackageVariant>,

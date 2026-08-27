@@ -31,6 +31,15 @@
               (std.foundation/get value "answer")]))
    :expected [true 42]}])
 
+^{:refer std.foundation/bytes}
+(Test/run
+ [{:name "constructs an opaque byte buffer through Bytes/new"
+   :test (fn []
+           (let [value (std.foundation/bytes 1 2 -3)]
+             [(std.native.Bytes/count value)
+              (std.native.Bytes/get value 2)]))
+   :expected [3 253]}])
+
 ^{:refer std.foundation/uuid}
 (Test/run
  [{:name "constructs UUID values with portable type identity"
@@ -404,7 +413,7 @@
 
 ^{:refer std.foundation/defonce}
 (Test/run
- [{:name "does not replace an existing Var root"
+  [{:name "does not replace an existing Var root"
    :test (fn []
            (do
              (std.foundation/defonce retained-value (atom 1))
@@ -782,6 +791,14 @@
    :test (fn [] [(std.foundation/map? {:a 1})
                  (std.foundation/map? [1])])
    :expected [true false]}])
+
+^{:refer std.foundation/map-entry?}
+(Test/run
+ [{:name "recognizes map entries through IPair"
+   :test (fn [] [(std.foundation/map-entry? (first {:a 1}))
+                 (std.foundation/map-entry? (tuple :a 1))
+                 (std.foundation/map-entry? [1])])
+   :expected [true true false]}])
 
 ^{:refer std.foundation/set?}
 (Test/run

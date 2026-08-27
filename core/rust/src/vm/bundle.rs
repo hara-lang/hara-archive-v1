@@ -64,7 +64,26 @@ pub fn compile_bytecode_bundle(sources: &[ModuleSource<'_>]) -> Result<Vec<u8>, 
     for &(name, _, source) in EMBEDDED_HAL_RESOURCES {
         runtime.register_resource(name, source);
     }
-    for source in sources {
+    compile_bytecode_bundle_with_runtime(&mut runtime, sources, sources)
+}
+
+/// Compiles a package with a fully bootstrapped Foundation runtime. `context`
+/// is registered for resolving imports and macros, while only `sources` are
+/// emitted into the resulting HBX0 bundle.
+pub fn compile_package_bytecode_bundle(
+    context: &[ModuleSource<'_>],
+    sources: &[ModuleSource<'_>],
+) -> Result<Vec<u8>, String> {
+    let mut runtime = Runtime::new();
+    compile_bytecode_bundle_with_runtime(&mut runtime, context, sources)
+}
+
+fn compile_bytecode_bundle_with_runtime(
+    runtime: &mut Runtime,
+    context: &[ModuleSource<'_>],
+    sources: &[ModuleSource<'_>],
+) -> Result<Vec<u8>, String> {
+    for source in context {
         runtime.register_resource(source.resource, source.source);
     }
     let mut encoded = Vec::new();

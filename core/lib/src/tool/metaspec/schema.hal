@@ -39,6 +39,15 @@
            [:any :nil :bool :boolean :num :number :int :integer
             :str :string :keyword :symbol :list :vector :map :set :bytes]))
 
+(defn ^{:schema [:fn [:str] :bool]}
+  version-string?
+  "Returns true when value is a semantic version string accepted by assets."
+  [value]
+  (and (string? value)
+       (RegExp/matches
+        (RegExp/compile "^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$")
+        value)))
+
 (defmethod std.typed.schema/normalize :tool.metaspec/unsupported-type
   [surface]
   {:kind :tool.metaspec/unsupported-type
@@ -154,14 +163,15 @@
                  (filter
                   (fn [key] (not (has? property-keys key)))
                   required))
-                (map
-                 (fn [entry]
-                   (let [key (key entry)
-                         child (compile-declaration (val entry))]
-                     (if (member? key required)
-                       [key child]
-                       [key {:optional true} child])))
-                 properties-map)))]
+                (vec
+                 (Iter/iter-map
+                  (fn [entry]
+                    (let [key (key entry)
+                          child (compile-declaration (val entry))]
+                      (if (member? key required)
+                        [key child]
+                        [key {:optional true} child])))
+                  properties-map))))]
           (vec
            (concat [:map]
                    (if (empty? root-properties) [] [root-properties])

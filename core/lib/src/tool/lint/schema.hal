@@ -172,6 +172,19 @@
         (second tail)
         :else (first tail)))))
 
+(defn schema-form-surface
+  "Unwraps a raw canonical `(schema surface)` form."
+  [value]
+  (when (and (list? value)
+             (= 2 (count value))
+             (= 'schema (first value)))
+    (second value)))
+
+(defn schema-initializer-surface
+  "Unwraps the canonical `(schema surface)` value initializer."
+  [initializer]
+  (schema-form-surface (when initializer (block/value initializer))))
+
 (defn declaration-fields
   "Returns normalized field surfaces from a defstruct or defmutable form."
   [definition]
@@ -288,6 +301,8 @@
                   (catch Throwable error
                     {:error (str error)})))
               generated-schema (get-in declaration [:schema])
+              initializer (definition-initializer definition)
+              initializer-surface (schema-initializer-surface initializer)
               schema-block (or (:schema-block inline)
                                (:metadata-block definition)
                                (when (has? (or (:metadata entry) {}) :schema)
@@ -298,10 +313,14 @@
                  :metadata metadata
                  :declaration declaration
                  :has-schema (or (has? metadata :schema)
-                                 (and generated-schema true))
-                 :schema-surface (or generated-schema (get metadata :schema))
+                                 (and generated-schema true)
+                                 (not (nil? initializer-surface)))
+                 :schema-surface
+                 (or generated-schema
+                     (get metadata :schema)
+                     initializer-surface)
                  :schema-block schema-block
-                 :initializer (definition-initializer definition))))
+                 :initializer initializer)))
       (:definitions scan)))))
 
 ;; ---------------------------------------------------------------------------
@@ -365,15 +384,18 @@
 
 (defn schema-surface?
   [surface]
-  (or (and (keyword? surface) (has? +schema-primitives+ surface))
-      (and (map? surface) (keyword? (:kind surface)))
-      (and (list? surface)
-           (= 2 (count surface))
-           (= 'var (first surface))
-           (symbol? (second surface)))
-      (and (vector? surface)
-           (keyword? (first surface))
-           (has? +schema-heads+ (first surface)))))
+  (let [surface (or (schema-form-surface surface) surface)]
+    (or (and (keyword? surface)
+             (or (has? +schema-primitives+ surface)
+                 (= "xt" (namespace surface))))
+        (and (map? surface) (keyword? (:kind surface)))
+        (and (list? surface)
+             (= 2 (count surface))
+             (= 'var (first surface))
+             (symbol? (second surface)))
+        (and (vector? surface)
+             (keyword? (first surface))
+             (has? +schema-heads+ (first surface))))))
 
 (defn candidate-records
   [scans]
@@ -386,6 +408,7 @@
         (fn [definition]
           (let [initializer (:initializer definition)
                 surface (or (get-in definition [:declaration :schema])
+                            (schema-initializer-surface initializer)
                             (when initializer (block/value initializer)))]
             (when (and (or (= :struct (:kind definition))
                            (= :var (:kind definition)))

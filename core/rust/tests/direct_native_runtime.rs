@@ -52,19 +52,41 @@ fn direct_native_keeps_the_disj_core_intrinsic_available() {
 }
 
 #[test]
+fn direct_native_guest_protocols_dispatch_without_tree_evaluator_reentry() {
+    let mut runtime = Runtime::core();
+    enable_native(&mut runtime);
+    assert_eq!(
+        runtime
+            .eval_direct_native(
+                "(do (defstruct Box [value]) \
+                     (defprotocol BoxOps (read [self])) \
+                     (extend-type Box BoxOps (read [self] (:value self))) \
+                     (read (Box 42)))",
+            )
+            .unwrap(),
+        "42"
+    );
+}
+
+#[test]
 fn base_bytes_matches_the_bytes_constructor_contract() {
     let mut runtime = Runtime::core();
     enable_native(&mut runtime);
     assert_eq!(
         runtime
-            .eval_direct_native("[(Bytes/count (Base/bytes 1 2 -3 255)) (Bytes/get (Base/bytes 1 2 -3) 2)]")
+            .eval_direct_native(
+                "[(Bytes/count (Base/bytes 1 2 -3 255)) (Bytes/get (Base/bytes 1 2 -3) 2)]"
+            )
             .unwrap(),
         "[4 253]"
     );
     let error = runtime
         .eval_direct_native("(Base/bytes 256)")
         .expect_err("Base/bytes must reject values outside the byte range");
-    assert!(error.contains("bytes expects a value in the range -128..255"), "{error}");
+    assert!(
+        error.contains("bytes expects a value in the range -128..255"),
+        "{error}"
+    );
 }
 
 #[test]
@@ -105,9 +127,7 @@ fn direct_native_preserves_multimethods_across_evaluations_and_loads() {
         .eval_direct_native("(defmethod local-classify :ok [value] 41)")
         .unwrap();
     assert_eq!(
-        runtime
-            .eval_direct_native("(local-classify :ok)")
-            .unwrap(),
+        runtime.eval_direct_native("(local-classify :ok)").unwrap(),
         "41"
     );
 
@@ -181,7 +201,12 @@ fn async_direct_native_functions_preserve_the_promise_return_shape() {
 fn direct_native_evaluates_dynamic_runtime_forms_without_falling_back() {
     let mut runtime = Runtime::core();
     enable_native(&mut runtime);
-    assert_eq!(runtime.eval_direct_native("(Runtime/eval '(+ 1 2))").unwrap(), "3");
+    assert_eq!(
+        runtime
+            .eval_direct_native("(Runtime/eval '(+ 1 2))")
+            .unwrap(),
+        "3"
+    );
     assert_eq!(
         runtime
             .eval_direct_native("(Runtime/load-string \"(+ 19 23)\")")
@@ -212,9 +237,7 @@ fn direct_native_macroexpansion_preserves_macro_validation_errors() {
     let mut runtime = Runtime::new();
     enable_native(&mut runtime);
     runtime
-        .eval_native(
-            "(ns example.direct-macro (:require [std.lib.collection :as collection]))",
-        )
+        .eval_native("(ns example.direct-macro (:require [std.lib.collection :as collection]))")
         .expect("collection namespace must load");
     let source =
         "[(try (do (macroexpand (quote (collection/select {:a 1} :a))) false) (catch Throwable error true))

@@ -56,10 +56,7 @@ fn add_program() -> Program {
         vec![
             Instruction::Constant(1),
             Instruction::Constant(2),
-            Instruction::IntrinsicCall {
-                target: 0,
-                argc: 2,
-            },
+            Instruction::IntrinsicCall { target: 0, argc: 2 },
             Instruction::Return,
         ],
         vec![
@@ -154,19 +151,11 @@ fn instruction_display_and_shape() {
     assert_eq!(Instruction::LoadLocal(3).to_string(), "LoadLocal 3");
     assert_eq!(Instruction::StoreLocal(3).to_string(), "StoreLocal 3");
     assert_eq!(
-        Instruction::IntrinsicCall {
-            target: 7,
-            argc: 2
-        }
-        .to_string(),
+        Instruction::IntrinsicCall { target: 7, argc: 2 }.to_string(),
         "IntrinsicCall target 7 argc 2"
     );
     assert_eq!(
-        Instruction::IntrinsicCall {
-            target: 7,
-            argc: 2,
-        }
-        .to_string(),
+        Instruction::IntrinsicCall { target: 7, argc: 2 }.to_string(),
         "IntrinsicCall target 7 argc 2"
     );
     assert_eq!(Instruction::Jump(12).to_string(), "Jump 0012");
@@ -193,19 +182,11 @@ fn instruction_display_and_shape() {
     assert!(!Instruction::Return.falls_through());
     assert!(Instruction::Pop.falls_through());
     assert_eq!(
-        Instruction::IntrinsicCall {
-            target: 0,
-            argc: 3
-        }
-        .stack_effect(),
+        Instruction::IntrinsicCall { target: 0, argc: 3 }.stack_effect(),
         Some(-2)
     );
     assert_eq!(
-        Instruction::IntrinsicCall {
-            target: 0,
-            argc: 0,
-        }
-        .stack_effect(),
+        Instruction::IntrinsicCall { target: 0, argc: 0 }.stack_effect(),
         Some(1)
     );
     assert_eq!(
@@ -361,10 +342,7 @@ fn validator_rejects_primitive_underflow() {
     let program = program(
         vec![
             Instruction::True,
-            Instruction::IntrinsicCall {
-                target: 0,
-                argc: 3,
-            },
+            Instruction::IntrinsicCall { target: 0, argc: 3 },
             Instruction::Return,
         ],
         vec![Value::String("+".into())],

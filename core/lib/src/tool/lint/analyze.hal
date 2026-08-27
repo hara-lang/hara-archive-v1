@@ -34,21 +34,36 @@
   [entry]
   (if (vector? entry)
     (let [target (first entry)]
-      (loop [remaining (vec (rest entry)) alias nil refers #{}]
+      (loop [remaining (vec (rest entry))
+             alias nil
+             refers #{}
+             refer-all? false
+             excludes #{}]
         (if (empty? remaining)
-          {:namespace target :alias alias :refers refers}
+          {:namespace target
+           :alias alias
+           :refers refers
+           :refer-all? refer-all?
+           :excludes excludes}
           (let [option (first remaining)
                 value (second remaining)]
             (cond
               (= option :as)
-              (recur (vec (drop 2 remaining)) value refers)
+              (recur (vec (drop 2 remaining)) value refers refer-all? excludes)
 
               (= option :refer)
-              (recur (vec (drop 2 remaining)) alias (into refers value))
+              (if (= value :all)
+                (recur (vec (drop 2 remaining)) alias refers true excludes)
+                (recur (vec (drop 2 remaining)) alias (into refers value)
+                       refer-all? excludes))
+
+              (= option :exclude)
+              (recur (vec (drop 2 remaining)) alias refers refer-all?
+                     (into excludes value))
 
               :else
-              (recur (vec (rest remaining)) alias refers))))))
-    {:namespace entry :alias nil :refers #{}}))
+              (recur (vec (rest remaining)) alias refers refer-all? excludes))))))
+    {:namespace entry :alias nil :refers #{} :refer-all? false :excludes #{}}))
 
 (defn namespace-info
   [root]
@@ -58,7 +73,7 @@
                               (or (= head 'ns) (= head 'ns+))))
                           (code-children root)))]
     (if (nil? ns-block)
-      {:name nil :aliases {} :refers #{}}
+      {:name nil :aliases {} :refers #{} :requires [] :requirements [] :config {}}
       (let [form (block/value ns-block)
             name (second form)
             clauses (drop 2 form)
@@ -70,6 +85,12 @@
                     [] clauses)]
         {:name name
          :block ns-block
+         :config (or (second (first (filter (fn [clause]
+                                              (and (list? clause)
+                                                   (= :config (first clause))))
+                                            clauses)))
+                     {})
+         :requirements (vec requirements)
          :aliases (reduce (fn [output requirement]
                             (if (:alias requirement)
                               (assoc output (:alias requirement)
@@ -169,6 +190,92 @@
 (defn public-metadata-findings
   [definitions]
   (vec (keep public-metadata-finding definitions)))
+
+(defn src-lang-path?
+  [file]
+  (let [path (str/replace (str (or file "")) "\\" "/")]
+    (or (= path "src-lang")
+        (str/starts-with? path "src-lang/")
+        (str/ends-with? path "/src-lang")
+        (str/includes? path "/src-lang/"))))
+
+(defn src-lang-override-finding
+  [scan]
+  (let [ns-info (:namespace scan)
+        file (get-in scan [:document :file])
+        overrides (vec (or (get-in ns-info [:config :override]) []))
+        target-heads '#{def.xt defn.xt defgen.xt}
+        allowed (into #{}
+                      (map :name
+                           (filter (fn [definition]
+                                     (has? target-heads (:head definition)))
+                                   (:definitions scan))))
+        invalid (vec (filter (fn [name] (not (has? allowed name))) overrides))]
+    (when (and (src-lang-path? file) (not (empty? invalid)))
+      (merge
+       (model/finding
+        (:block ns-info)
+        :tool.lint/src-lang-invalid-override
+        :error
+        (str "src-lang override entries must name local def.xt, defn.xt, or "
+             "defgen.xt declarations: " (str/join ", " (map str invalid)))
+        :tool.source-analysis/src-lang-override-policy)
+       {:override invalid}))))
+
+(defn src-lang-foundation-findings
+  [scan]
+  (let [ns-info (:namespace scan)
+        file (get-in scan [:document :file])]
+    (if (src-lang-path? file)
+      (vec
+       (map
+        (fn [requirement]
+          (model/finding
+           (:block ns-info)
+           :tool.lint/src-lang-foundation-refer-all
+           :error
+           "src-lang namespaces must not use std.foundation :refer :all"
+           :tool.source-analysis/src-lang-foundation-refer-all))
+        (filter
+         (fn [requirement]
+           (and (= 'std.foundation (:namespace requirement))
+                (:refer-all? requirement)))
+         (:requirements ns-info))))
+      [])))
+
+(defn spec-schema-placement-findings
+  [scan]
+  (let [ns-name (get-in scan [:namespace :name])
+        file (get-in scan [:document :file])]
+    (if (and (src-lang-path? file)
+             (symbol? ns-name)
+             (str/starts-with? (str ns-name) "xt.lang.spec-"))
+      (vec
+       (keep
+        (fn [definition]
+          (let [metadata (merge (:metadata definition)
+                                (:metadata (infer/inline-metadata definition)))]
+            (when (and (= 'def (:head definition))
+                       (has? metadata :schema))
+              (model/finding
+               (:block definition)
+               :tool.lint/spec-schema-placement
+               :error
+               (str "spec-* schema metadata must be attached to the defmacro.xt "
+                    "declaration symbol: " (:name definition))
+               :tool.source-analysis/spec-schema-placement))))
+        (:definitions scan)))
+      [])))
+
+(defn src-lang-policy-findings
+  [scan]
+  (if (src-lang-path? (get-in scan [:document :file]))
+    (let [override-finding (src-lang-override-finding scan)]
+      (vec
+       (concat (if override-finding [override-finding] [])
+               (src-lang-foundation-findings scan)
+               (spec-schema-placement-findings scan))))
+    []))
 
 (defn binding-symbols
   [binding]
@@ -601,6 +708,7 @@
                                          :tool.lint/bang-suffixed-definition)
                                  (bang-definition-findings definitions)
                                  [])
+                               (src-lang-policy-findings scan)
                                (analyzed-findings analyses))))
         inferences
         (vec (sort-by inference-key

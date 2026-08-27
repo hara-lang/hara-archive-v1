@@ -36,8 +36,10 @@ The release also provides an IIFE bundle for a plain script tag:
 </script>
 ```
 
-The Hara HAL catalog is embedded in the Wasm runtime. Host resources can be
-registered before requiring them:
+The default browser runtime is the small core evaluator. Foundation and other
+semantic package families are opt-in, so a page can choose the exact lock and
+load only the capabilities it needs. Host resources can still be registered
+before requiring them:
 
 ```js
 const hara = await Hara.start({
@@ -58,6 +60,23 @@ const lock = await fetch(projectLockUrl).then((response) => response.text());
 await installLockedPackages(hara, lock);
 hara.require("my.world");
 ```
+
+The same selection can happen during isolated startup. `targets` accepts a
+semantic package name, an exact lock coordinate, or a namespace:
+
+```js
+const hara = await start({
+  lock,
+  targets: ["lang.model.v1.postgres"],
+  packageOptions: { origin: "https://packages.example" }
+});
+```
+
+HARP archives may contain a verified `bytecode/package.hbx`. The loader checks
+its manifest digest and installs the HBX0 index when the VM runtime exposes the
+bundle seam; otherwise the verified HAL resources remain the source fallback.
+`config/packages.edn` follows Foundation's `:include` (`:base`, `:complete`,
+and `:exclude`) and dependency conventions when building semantic packages.
 
 Memory-backed Wasm packages use the explicit `memory.v1` binding route. The
 manifest, canonical interface, and canonical `bindings.edn` plan are verified

@@ -1,5 +1,5 @@
 (ns xt.substrate.base-router
-  (:require [lang.core :as l :refer [defspec.xt]]))
+  (:require [lang.core :as l]))
 
 (l/script :xtalk
   {:require [[xt.lang.spec-base :as xt]
@@ -7,133 +7,32 @@
              [xt.lang.spec-promise :as promise]
              [xt.substrate.base-frame :as frame]]})
 
-(defspec.xt RouterConnectionEntry
-  [:xt/record
+(def ^{:schema [:xt/record
    ["id" :xt/str]
-   ["meta" [:xt/maybe [:xt/dict :xt/str :xt/any]]]])
+   ["meta" [:xt/maybe [:xt/dict :xt/str :xt/any]]]]} RouterConnectionEntry nil)
 
-(defspec.xt RouterSubscriptionEntry
-  [:xt/record
+(def ^{:schema [:xt/record
    ["id" :xt/str]
-   ["meta" [:xt/maybe [:xt/dict :xt/str :xt/any]]]])
+   ["meta" [:xt/maybe [:xt/dict :xt/str :xt/any]]]]} RouterSubscriptionEntry nil)
 
-(defspec.xt RouterSignalSubscriptions
-  [:xt/dict :xt/str RouterSubscriptionEntry])
+(def ^{:schema [:xt/dict :xt/str RouterSubscriptionEntry]} RouterSignalSubscriptions nil)
 
-(defspec.xt RouterSpaceSubscriptions
-  [:xt/dict :xt/str RouterSignalSubscriptions])
+(def ^{:schema [:xt/dict :xt/str RouterSignalSubscriptions]} RouterSpaceSubscriptions nil)
 
-(defspec.xt RouterSubscriptions
-  [:xt/dict :xt/str RouterSpaceSubscriptions])
+(def ^{:schema [:xt/dict :xt/str RouterSpaceSubscriptions]} RouterSubscriptions nil)
 
-(defspec.xt RouterState
-  [:xt/record
+(def ^{:schema [:xt/record
    ["connections" [:xt/dict :xt/str RouterConnectionEntry]]
-   ["subscriptions" RouterSubscriptions]])
-
-(defspec.xt subscribe-frame
-  [:fn [[:xt/maybe :xt/str]
-        :xt/str
-        [:xt/maybe :xt/str]
-        [:xt/maybe [:xt/dict :xt/str :xt/any]]]
-       frame/NodeFrame])
-
-(defspec.xt unsubscribe-frame
-  [:fn [[:xt/maybe :xt/str]
-        :xt/str
-        [:xt/maybe :xt/str]
-        [:xt/maybe [:xt/dict :xt/str :xt/any]]]
-       frame/NodeFrame])
-
-(defspec.xt ensure-router
-  [:fn [:xt/any] RouterState])
-
-(defspec.xt get-connections
-  [:fn [:xt/any] [:xt/dict :xt/str RouterConnectionEntry]])
-
-(defspec.xt get-subscriptions
-  [:fn [:xt/any] RouterSubscriptions])
-
-(defspec.xt register-connection
-  [:fn [:xt/any
-        :xt/str
-        [:xt/maybe [:xt/dict :xt/str :xt/any]]]
-       RouterConnectionEntry])
-
-(defspec.xt prune-subscription-signal-loop
-  [:fn [RouterSpaceSubscriptions
-        [:xt/array :xt/str]
-        :xt/str
-        :xt/int]
-       :xt/nil])
-
-(defspec.xt prune-subscription-space-loop
-  [:fn [RouterSubscriptions
-        [:xt/array :xt/str]
-        :xt/str
-        :xt/int]
-       :xt/nil])
-
-(defspec.xt unregister-connection
-  [:fn [:xt/any :xt/str] [:xt/maybe RouterConnectionEntry]])
-
-(defspec.xt ensure-space-subscriptions
-  [:fn [:xt/any
-        [:xt/maybe :xt/str]]
-       RouterSpaceSubscriptions])
-
-(defspec.xt ensure-signal-subscriptions
-  [:fn [:xt/any
-        [:xt/maybe :xt/str]
-        :xt/str]
-       RouterSignalSubscriptions])
-
-(defspec.xt add-subscription
-  [:fn [:xt/any
-        :xt/str
-        [:xt/maybe :xt/str]
-        :xt/str
-        [:xt/maybe :xt/str]
-        [:xt/maybe [:xt/dict :xt/str :xt/any]]]
-       RouterSubscriptionEntry])
-
-(defspec.xt remove-subscription
-  [:fn [:xt/any
-        :xt/str
-        [:xt/maybe :xt/str]
-        :xt/str]
-       [:xt/maybe RouterSubscriptionEntry]])
-
-(defspec.xt list-subscriptions
-  [:fn [:xt/any
-        [:xt/maybe :xt/str]
-        [:xt/maybe :xt/str]]
-       [:or RouterSubscriptions
-            RouterSpaceSubscriptions
-            [:xt/array :xt/str]]])
-
-(defspec.xt target-ids
-  [:fn [:xt/any
-        [:xt/maybe :xt/str]
-        :xt/str]
-       [:xt/array :xt/str]])
-
-(defspec.xt receive-subscribe
-  [:fn [:xt/any
-        frame/NodeFrame
-        [:xt/maybe [:xt/dict :xt/str :xt/any]]]
-       :xt/promise])
-
-(defspec.xt receive-unsubscribe
-  [:fn [:xt/any
-        frame/NodeFrame
-        [:xt/maybe [:xt/dict :xt/str :xt/any]]]
-       :xt/promise])
+   ["subscriptions" RouterSubscriptions]]} RouterState nil)
 
 (def$.xt KIND_SUBSCRIBE   "subscribe")
 (def$.xt KIND_UNSUBSCRIBE "unsubscribe")
 
-(defn.xt subscribe-frame
+(defn.xt ^{:schema [:fn [[:xt/maybe :xt/str]
+        :xt/str
+        [:xt/maybe :xt/str]
+        [:xt/maybe [:xt/dict :xt/str :xt/any]]]
+       frame/NodeFrame]} subscribe-frame
   "constructs a router subscribe control frame"
   {:added "4.1"}
   [space signal subscription-id meta]
@@ -145,7 +44,11 @@
     :signal signal
     :meta (or meta {})}))
 
-(defn.xt unsubscribe-frame
+(defn.xt ^{:schema [:fn [[:xt/maybe :xt/str]
+        :xt/str
+        [:xt/maybe :xt/str]
+        [:xt/maybe [:xt/dict :xt/str :xt/any]]]
+       frame/NodeFrame]} unsubscribe-frame
   "constructs a router unsubscribe control frame"
   {:added "4.1"}
   [space signal subscription-id meta]
@@ -157,7 +60,7 @@
     :signal signal
     :meta (or meta {})}))
 
-(defn.xt ensure-router
+(defn.xt ^{:schema [:fn [:xt/any] RouterState]} ensure-router
   "ensures router state is present on a node"
   {:added "4.1"}
   [node]
@@ -168,19 +71,22 @@
     (xt/x:set-key node "router" router))
   (return router))
 
-(defn.xt get-connections
+(defn.xt ^{:schema [:fn [:xt/any] [:xt/dict :xt/str RouterConnectionEntry]]} get-connections
   "gets registered router connections"
   {:added "4.1"}
   [node]
   (return (. (-/ensure-router node) ["connections"])))
 
-(defn.xt get-subscriptions
+(defn.xt ^{:schema [:fn [:xt/any] RouterSubscriptions]} get-subscriptions
   "gets router subscriptions"
   {:added "4.1"}
   [node]
   (return (. (-/ensure-router node) ["subscriptions"])))
 
-(defn.xt register-connection
+(defn.xt ^{:schema [:fn [:xt/any
+        :xt/str
+        [:xt/maybe [:xt/dict :xt/str :xt/any]]]
+       RouterConnectionEntry]} register-connection
   "registers a connection with the router"
   {:added "4.1"}
   [node transport-id meta]
@@ -191,7 +97,11 @@
                 entry)
   (return entry))
 
-(defn.xt prune-subscription-signal-loop
+(defn.xt ^{:schema [:fn [RouterSpaceSubscriptions
+        [:xt/array :xt/str]
+        :xt/str
+        :xt/int]
+       :xt/nil]} prune-subscription-signal-loop
   "removes a connection from all signals within a space"
   {:added "4.1"}
   [space-subs signal-ids transport-id index]
@@ -208,7 +118,11 @@
                                             transport-id
                                             (+ index 1))))
 
-(defn.xt prune-subscription-space-loop
+(defn.xt ^{:schema [:fn [RouterSubscriptions
+        [:xt/array :xt/str]
+        :xt/str
+        :xt/int]
+       :xt/nil]} prune-subscription-space-loop
   "removes a connection from all router subscriptions"
   {:added "4.1"}
   [subscriptions space-ids transport-id index]
@@ -228,7 +142,7 @@
                                            transport-id
                                            (+ index 1))))
 
-(defn.xt unregister-connection
+(defn.xt ^{:schema [:fn [:xt/any :xt/str] [:xt/maybe RouterConnectionEntry]]} unregister-connection
   "unregisters a connection and all of its subscriptions"
   {:added "4.1"}
   [node transport-id]
@@ -242,7 +156,9 @@
                                    0)
   (return prev))
 
-(defn.xt ensure-space-subscriptions
+(defn.xt ^{:schema [:fn [:xt/any
+        [:xt/maybe :xt/str]]
+       RouterSpaceSubscriptions]} ensure-space-subscriptions
   "ensures the per-space subscription table exists"
   {:added "4.1"}
   [node space]
@@ -254,7 +170,10 @@
     (xt/x:set-key subscriptions space-id space-subs))
   (return space-subs))
 
-(defn.xt ensure-signal-subscriptions
+(defn.xt ^{:schema [:fn [:xt/any
+        [:xt/maybe :xt/str]
+        :xt/str]
+       RouterSignalSubscriptions]} ensure-signal-subscriptions
   "ensures the per-signal subscription table exists"
   {:added "4.1"}
   [node space signal]
@@ -265,7 +184,13 @@
     (xt/x:set-key space-subs signal signal-subs))
   (return signal-subs))
 
-(defn.xt add-subscription
+(defn.xt ^{:schema [:fn [:xt/any
+        :xt/str
+        [:xt/maybe :xt/str]
+        :xt/str
+        [:xt/maybe :xt/str]
+        [:xt/maybe [:xt/dict :xt/str :xt/any]]]
+       RouterSubscriptionEntry]} add-subscription
   "adds a router subscription for a connection"
   {:added "4.1"}
   [node transport-id space signal subscription-id meta]
@@ -276,7 +201,11 @@
   (xt/x:set-key signal-subs transport-id entry)
   (return entry))
 
-(defn.xt remove-subscription
+(defn.xt ^{:schema [:fn [:xt/any
+        :xt/str
+        [:xt/maybe :xt/str]
+        :xt/str]
+       [:xt/maybe RouterSubscriptionEntry]]} remove-subscription
   "removes a router subscription for a connection"
   {:added "4.1"}
   [node transport-id space signal]
@@ -295,7 +224,12 @@
     (xt/x:del-key subscriptions (or space frame/SPACE_NODE)))
   (return prev))
 
-(defn.xt list-subscriptions
+(defn.xt ^{:schema [:fn [:xt/any
+        [:xt/maybe :xt/str]
+        [:xt/maybe :xt/str]]
+       [:or RouterSubscriptions
+            RouterSpaceSubscriptions
+            [:xt/array :xt/str]]]} list-subscriptions
   "lists router subscriptions"
   {:added "4.1"}
   [node space signal]
@@ -313,13 +247,19 @@
                                 (fn [x] (return x))
                                 xt/x:str-lt)))))))
 
-(defn.xt target-ids
+(defn.xt ^{:schema [:fn [:xt/any
+        [:xt/maybe :xt/str]
+        :xt/str]
+       [:xt/array :xt/str]]} target-ids
   "lists transport ids subscribed for a stream"
   {:added "4.1"}
   [node space signal]
   (return (-/list-subscriptions node space signal)))
 
-(defn.xt receive-subscribe
+(defn.xt ^{:schema [:fn [:xt/any
+        frame/NodeFrame
+        [:xt/maybe [:xt/dict :xt/str :xt/any]]]
+       :xt/promise]} receive-subscribe
   "processes an inbound subscribe control frame"
   {:added "4.1"}
   [node event ctx]
@@ -333,7 +273,10 @@
                         (. event ["meta"])))
   (return (promise/x:promise-run event)))
 
-(defn.xt receive-unsubscribe
+(defn.xt ^{:schema [:fn [:xt/any
+        frame/NodeFrame
+        [:xt/maybe [:xt/dict :xt/str :xt/any]]]
+       :xt/promise]} receive-unsubscribe
   "processes an inbound unsubscribe control frame"
   {:added "4.1"}
   [node event ctx]

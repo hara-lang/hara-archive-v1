@@ -137,4 +137,29 @@
       :analysis/refinements {:vector/backend :persistent
                              :metadata :absent}})
 
+^{:refer 'tool.lint/lint-source
+  :id 'src-lang-policy-guard}
+(fact "enforces source-language policy through the public lint boundary"
+  (let [report
+        (report-data
+         (lint/lint-source
+          (str "(ns xt.lang.spec-demo\n"
+               "  (:config {:override [do]})\n"
+               "  (:require [std.foundation :refer :all]))\n"
+               "(defn.xt value [] nil)\n"
+               "(def ^{:schema [:fn [] :xt/str]} x nil)\n")
+          {:file "src-lang/xt/lang/demo.hal"}))]
+    (set
+     (map :type
+          (filter
+           (fn [finding]
+             (has? #{:tool.lint/src-lang-invalid-override
+                     :tool.lint/src-lang-foundation-refer-all
+                     :tool.lint/spec-schema-placement}
+                   (:type finding)))
+           (:findings report)))))
+  => #{:tool.lint/src-lang-invalid-override
+       :tool.lint/src-lang-foundation-refer-all
+       :tool.lint/spec-schema-placement})
+
 (pr-str (run '[tool.lint-test]))

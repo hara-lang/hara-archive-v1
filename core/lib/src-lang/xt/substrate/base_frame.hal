@@ -1,13 +1,12 @@
 (ns xt.substrate.base-frame
-  (:require [lang.core :as l :refer [defspec.xt]]))
+  (:require [lang.core :as l]))
 
 (l/script :xtalk
   {:require [[xt.lang.spec-base :as xt]
              [xt.lang.common-data :as xtd]
              [xt.lang.common-string :as str]]})
 
-(defspec.xt NodeFrame
-  [:xt/record
+(def ^{:schema [:xt/record
    ["kind" :xt/str]
    ["id" :xt/str]
    ["space" :xt/str]
@@ -19,65 +18,7 @@
    ["data" [:xt/maybe :xt/any]]
    ["error" [:xt/maybe :xt/any]]
    ["signal" [:xt/maybe :xt/str]]
-   ["cause" [:xt/maybe :xt/any]]])
-
-(defspec.xt rand-id
-  [:fn [[:xt/maybe :xt/str] :xt/int] :xt/str])
-
-(defspec.xt frame
-  [:fn [:xt/str
-        :xt/str
-        [:xt/maybe :xt/str]
-        [:xt/maybe [:xt/dict :xt/str :xt/any]]
-        [:xt/maybe [:xt/dict :xt/str :xt/any]]]
-       NodeFrame])
-
-(defspec.xt request-frame
-  [:fn [[:xt/maybe :xt/str]
-        :xt/str
-        [:xt/maybe [:xt/array :xt/any]]
-        [:xt/maybe [:xt/dict :xt/str :xt/any]]]
-       NodeFrame])
-
-(defspec.xt response-frame
-  [:fn [:xt/str
-        [:xt/maybe :xt/str]
-        :xt/str
-        :xt/any
-        [:xt/maybe :xt/any]
-        [:xt/maybe [:xt/dict :xt/str :xt/any]]]
-       NodeFrame])
-
-(defspec.xt response-ok-frame
-  [:fn [:xt/str
-        [:xt/maybe :xt/str]
-        :xt/any
-        [:xt/maybe [:xt/dict :xt/str :xt/any]]]
-       NodeFrame])
-
-(defspec.xt response-error-frame
-  [:fn [:xt/str
-        [:xt/maybe :xt/str]
-        :xt/any
-        [:xt/maybe [:xt/dict :xt/str :xt/any]]]
-       NodeFrame])
-
-(defspec.xt stream-frame
-  [:fn [[:xt/maybe :xt/str]
-        :xt/str
-        :xt/any
-        [:xt/maybe [:xt/dict :xt/str :xt/any]]
-        [:xt/maybe :xt/any]]
-       NodeFrame])
-
-(defspec.xt request-frame?
-  [:fn [NodeFrame] :xt/bool])
-
-(defspec.xt response-frame?
-  [:fn [NodeFrame] :xt/bool])
-
-(defspec.xt stream-frame?
-  [:fn [NodeFrame] :xt/bool])
+   ["cause" [:xt/maybe :xt/any]]]} NodeFrame nil)
 
 (def$.xt KIND_REQUEST  "request")
 (def$.xt KIND_RESPONSE "response")
@@ -88,14 +29,19 @@
 
 (def$.xt SPACE_NODE "__NODE__")
 
-(defn.xt rand-id
+(defn.xt ^{:schema [:fn [[:xt/maybe :xt/str] :xt/int] :xt/str]} rand-id
   "creates a simple random id"
   {:added "4.1"}
   [prefix n]
   (return (xt/x:cat (or prefix "")
                     (str/str-rand n))))
 
-(defn.xt frame
+(defn.xt ^{:schema [:fn [:xt/str
+        :xt/str
+        [:xt/maybe :xt/str]
+        [:xt/maybe [:xt/dict :xt/str :xt/any]]
+        [:xt/maybe [:xt/dict :xt/str :xt/any]]]
+       NodeFrame]} frame
   "constructs a base node frame"
   {:added "4.1"}
   [kind id space meta extra]
@@ -107,7 +53,11 @@
      :meta (or meta {})}
     (or extra {}))))
 
-(defn.xt request-frame
+(defn.xt ^{:schema [:fn [[:xt/maybe :xt/str]
+        :xt/str
+        [:xt/maybe [:xt/array :xt/any]]
+        [:xt/maybe [:xt/dict :xt/str :xt/any]]]
+       NodeFrame]} request-frame
   "constructs a request frame"
   {:added "4.1"}
   [space action args meta]
@@ -121,7 +71,13 @@
             {:action action
              :args (or args [])})))
 
-(defn.xt response-frame
+(defn.xt ^{:schema [:fn [:xt/str
+        [:xt/maybe :xt/str]
+        :xt/str
+        :xt/any
+        [:xt/maybe :xt/any]
+        [:xt/maybe [:xt/dict :xt/str :xt/any]]]
+       NodeFrame]} response-frame
   "constructs a response frame"
   {:added "4.1"}
   [reply-to space status data error meta]
@@ -137,19 +93,32 @@
              :data data
              :error error})))
 
-(defn.xt response-ok-frame
+(defn.xt ^{:schema [:fn [:xt/str
+        [:xt/maybe :xt/str]
+        :xt/any
+        [:xt/maybe [:xt/dict :xt/str :xt/any]]]
+       NodeFrame]} response-ok-frame
   "constructs a successful response frame"
   {:added "4.1"}
   [reply-to space data meta]
   (return (-/response-frame reply-to space -/STATUS_OK data nil meta)))
 
-(defn.xt response-error-frame
+(defn.xt ^{:schema [:fn [:xt/str
+        [:xt/maybe :xt/str]
+        :xt/any
+        [:xt/maybe [:xt/dict :xt/str :xt/any]]]
+       NodeFrame]} response-error-frame
   "constructs an errored response frame"
   {:added "4.1"}
   [reply-to space error meta]
   (return (-/response-frame reply-to space -/STATUS_ERROR nil error meta)))
 
-(defn.xt stream-frame
+(defn.xt ^{:schema [:fn [[:xt/maybe :xt/str]
+        :xt/str
+        :xt/any
+        [:xt/maybe [:xt/dict :xt/str :xt/any]]
+        [:xt/maybe :xt/any]]
+       NodeFrame]} stream-frame
   "constructs a publish frame"
   {:added "4.1"}
   [space signal data meta cause]
@@ -164,21 +133,21 @@
              :data data
              :cause cause})))
 
-(defn.xt request-frame?
+(defn.xt ^{:schema [:fn [NodeFrame] :xt/bool]} request-frame?
   "checks if a frame is a request"
   {:added "4.1"}
   [frame]
   (return (== -/KIND_REQUEST
               (. frame ["kind"]))))
 
-(defn.xt response-frame?
+(defn.xt ^{:schema [:fn [NodeFrame] :xt/bool]} response-frame?
   "checks if a frame is a response"
   {:added "4.1"}
   [frame]
   (return (== -/KIND_RESPONSE
               (. frame ["kind"]))))
 
-(defn.xt stream-frame?
+(defn.xt ^{:schema [:fn [NodeFrame] :xt/bool]} stream-frame?
   "checks if a frame is a stream"
   {:added "4.1"}
   [frame]

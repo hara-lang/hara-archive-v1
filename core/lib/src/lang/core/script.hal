@@ -7,7 +7,6 @@
             [lang.core.runtime :as runtime]))
 
 (def +modules+ (atom {}))
-(def +specs+ (atom {}))
 (def +scripts+ (atom {}))
 (def +loaded-modules+ (atom {}))
 (def +module-contexts+ (atom {}))
@@ -140,34 +139,104 @@
      (swap! +modules+ assoc module value)
      value)))
 
-(defn register-spec
-  [id type-form metadata]
-  (let [module (module-symbol)
-        qualified (symbol (name module) (name id))
-        value {:symbol qualified
-               :module module
-               :id (symbol-id id)
-               :type type-form
-               :meta metadata}]
-    (swap! +specs+ assoc qualified value)
-    nil))
+(declare portable-schema-form)
 
-(defn defspec-form
-  [symbol body]
-  (let [docstring (if (string? (first body)) (first body) nil)
-        remaining (if docstring (rest body) body)
-        attributes (if (map? (first remaining)) (first remaining) {})
-        remaining (if (map? (first remaining)) (rest remaining) remaining)
-        type-form (first remaining)
-        metadata (merge (meta symbol)
-                        attributes
-                        (if docstring {:docstring docstring} {}))]
-    `(lang.core.script/register-spec
-      '~symbol '~type-form '~metadata)))
+(defn schema-value-form
+  "Returns the portable schema surface owned by a declaration Var.
 
-(defmacro defspec.xt
-  [symbol & body]
-  (lang.core.script/defspec-form symbol body))
+   Ordinary `(def Name (schema ...))` values own a SchemaType directly. Native
+   `defstruct` and `defmutable` declarations own a runtime type, so their
+   SchemaType is obtained through Schema/of. The registry receives only the
+   portable form; runtime descriptor objects never cross the module boundary."
+  [variable]
+  (let [value (deref variable)
+        value-type (type value)]
+    (cond
+      (= :std.native.SchemaType value-type)
+      (portable-schema-form (std.native.Schema/form value))
+
+      (or (= :std.native.StructType value-type)
+          (= :std.native.MutableType value-type))
+      (let [schema-value (std.native.Schema/of variable)]
+        (when schema-value
+          (portable-schema-form (std.native.Schema/form schema-value))))
+
+      :else nil)))
+
+(defn portable-schema-form
+  "Rewrites runtime Var and schema values into portable schema forms."
+  [value]
+  (let [value-type (type value)]
+    (cond
+      (= :std.native.Var value-type)
+      (list 'var (std.native.Runtime/var-sym value))
+
+      (= :std.native.SchemaType value-type)
+      (portable-schema-form (std.native.Schema/form value))
+
+      (vector? value)
+      (vec (map portable-schema-form value))
+
+      (list? value)
+      (apply list (map portable-schema-form value))
+
+      (map? value)
+      (reduce-kv (fn [output key item]
+                   (assoc output
+                          (portable-schema-form key)
+                          (portable-schema-form item)))
+                 {}
+                 value)
+
+      (set? value)
+      (set (map portable-schema-form value))
+
+      :else value)))
+
+(defn module-source-symbol
+  "Resolves the source namespace which owns a logical module id."
+  [module-id]
+  (let [module (get (deref +modules+) module-id)
+        source (get module :source)
+        context-source
+        (reduce-kv
+         (fn [found source-symbol target]
+           (if (or found (not= target module-id))
+             found
+             source-symbol))
+         nil
+         (deref +module-contexts+))]
+    (or (when (symbol? source) source)
+        context-source
+        module-id)))
+
+(defn module-schema-values
+  "Collects portable schemas from all declaration Vars in a module namespace."
+  [module-id]
+  (let [source (module-source-symbol module-id)
+        variables (std.native.Runtime/vars source)]
+    (reduce-kv
+     (fn [output var-name variable]
+       (if-let [form (schema-value-form variable)]
+         (assoc output
+                (symbol (str source) (name var-name))
+                form)
+         output))
+     {}
+     variables)))
+
+(defn refresh-module-schemas
+  "Publishes declaration schemas into a module's portable sidecar."
+  [module-id]
+  (let [module (get (deref +modules+) module-id)]
+    (if (nil? module)
+      (throw (ex :not-found {:module module-id}
+                 :ex/message "Tahto script module not found"))
+      (let [existing (if (map? (:schema module)) (:schema module) {})
+            schemas (module-schema-values module-id)
+            updated (assoc module :schema (merge existing schemas))]
+        (swap! +modules+ assoc module-id updated)
+        updated))))
 
 (defn register-code
   ([form]
@@ -181,6 +250,7 @@
         metadata (or (meta symbol) {})
         language (or explicit-language (:lang module-value) :xtalk)
         schema (or (:static/schema metadata)
+                   (:schema metadata)
                    (:schema module-value)
                    (first (get-in module-value [:static :all :schema])))
         entry (merge metadata
@@ -192,7 +262,11 @@
                       :op-key (keyword (name op))
                       :form form
                       :form-input form})
-        entry (if schema (assoc entry :static/schema schema) entry)
+        entry (if schema
+                (assoc (dissoc entry :schema)
+                       :static/schema
+                       (portable-schema-form schema))
+                entry)
         entry (if (has? metadata :public)
                 (assoc entry :static/public (:public metadata))
                 entry)]
@@ -306,6 +380,7 @@
                          :source source}
                    :ex/message "Required namespace did not provide a script module"))
         (do
+          (refresh-module-schemas module)
           (swap! +loaded-modules+ assoc module true)
           module)))))
 

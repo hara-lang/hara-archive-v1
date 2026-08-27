@@ -549,9 +549,8 @@ impl Runtime {
                 return Err("direct-native does not support traced evaluation".into());
             }
             if !is_interpreter_management_form(&form) {
-                let source = form.to_string();
                 return self
-                    .compile_bytecode_for_direct_native(&source)
+                    .compile_form_for_direct_native(&form)
                     .and_then(|program| self.execute_compiled_direct_native(program))
                     .map(|report| report.value);
             }
@@ -999,7 +998,7 @@ impl Runtime {
             .map_err(|error| JsValue::from_str(&error))?;
         for package in packages {
             let namespaces = package.namespaces.clone();
-            let descriptor = core::Value::OrderedMap(Box::new(POrderedMap::from_iter([
+            let mut descriptor = vec![
                 (
                     core::Value::Keyword("package/coordinate".into()),
                     core::Value::String(package.coordinate.clone()),
@@ -1040,12 +1039,23 @@ impl Runtime {
                             .dependencies
                             .iter()
                             .map(|coordinate| core::Value::String(coordinate.clone()))
-                            .collect::<Vec<_>>(),
+                        .collect::<Vec<_>>(),
                     )),
                 ),
-            ])));
+            ];
+            if let Some(name) = &package.name {
+                descriptor.push((
+                    core::Value::Keyword("package/name".into()),
+                    core::Value::String(name.clone()),
+                ));
+            }
             self.package_catalog
-                .register(package.coordinate, descriptor, namespaces.clone());
+                .register(
+                    package.coordinate,
+                    package.name,
+                    core::Value::OrderedMap(Box::new(POrderedMap::from_iter(descriptor))),
+                    namespaces.clone(),
+                );
             for namespace in namespaces {
                 if self.namespace_registry.load_state(&namespace).is_none() {
                     self.namespace_registry
@@ -1367,6 +1377,16 @@ impl Runtime {
     #[cfg_attr(not(feature = "raw-wasm"), wasm_bindgen(js_name = evalBytecodeArtifact))]
     pub fn eval_bytecode_artifact_js(&mut self, bytes: &[u8]) -> Result<String, JsValue> {
         self.eval_bytecode_artifact(bytes)
+            .map_err(|error| JsValue::from_str(&error))
+    }
+
+    /// Installs a verified HBX0 namespace bundle. The bundle indexes each
+    /// module's bytecode without making package loading implicit; callers
+    /// still choose when to `require` a registered namespace.
+    #[cfg(feature = "bytecode-vm")]
+    #[cfg_attr(not(feature = "raw-wasm"), wasm_bindgen(js_name = evalBytecodeBundle))]
+    pub fn eval_bytecode_bundle_js(&mut self, bytes: &[u8]) -> Result<(), JsValue> {
+        crate::vm::eval_bytecode_bundle(self, bytes)
             .map_err(|error| JsValue::from_str(&error))
     }
 

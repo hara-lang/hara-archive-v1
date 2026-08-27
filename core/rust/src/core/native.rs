@@ -1936,6 +1936,251 @@ fn native_runtime_values(
     }
 }
 
+#[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+fn eval_direct_native_source(source: &str) -> Result<Value, String> {
+    let context = DirectNativeContext::capture();
+    let forms = crate::kernel::read_forms(source).map_err(|error| error.to_string())?;
+    let has_namespace_form = forms.iter().any(|form| {
+        matches!(
+            form_without_metadata(&form.form),
+            Form::List(items)
+                if matches!(items.first(), Some(Form::Symbol(operator)) if operator == "ns" || operator == "ns+")
+        )
+    });
+    let config = if has_namespace_form {
+        crate::vm::source_namespace_config(&forms).map_err(|error| error.to_string())?
+    } else {
+        crate::kernel::GeneratedNamespaceConfig::defaults()
+    };
+    let namespaces = context.namespaces.clone();
+    let program = context
+        .with(|| {
+            without_direct_native_execution(|| {
+                crate::vm::compile_source_with_config_allow_unbound_globals(
+                    source,
+                    &namespaces,
+                    config,
+                )
+            })
+        })
+        .map_err(|error| error.to_string())?;
+    let mut program = program;
+    if program.namespace.is_none() {
+        program.namespace = Some(context.namespace.clone());
+    }
+    let engine = crate::direct_native::NativeEngine::new();
+    // `context.with` already installs the captured providers, namespace, and
+    // multimethod map. Calling the convenience entry point here would wrap
+    // the same map in a second context and restore an old snapshot over any
+    // declarations made by the nested program.
+    let result = context.with(|| engine.execute_blocking(Rc::new(program)));
+    // Nested Runtime/eval calls execute with a captured multimethod map. Carry
+    // declarations made there back into the enclosing native frame so a later
+    // form in the same frame can install methods or invoke the new multifn.
+    let nested_multimethods = context.multimethods.borrow().clone();
+    ACTIVE_MULTIMETHODS.with(|active| {
+        active.borrow_mut().extend(nested_multimethods);
+    });
+    result.map(|report| report.value)
+}
+
+#[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+fn eval_direct_native_form(form: &Form) -> Result<Value, String> {
+    eval_direct_native_source(&form.to_string())
+}
+
+#[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+fn eval_direct_native_function(parts: &[Form], declaration: &str) -> Result<Rc<Function>, String> {
+    let mut function = Vec::with_capacity(parts.len() + 1);
+    function.push(Form::Symbol("fn".into()));
+    function.extend_from_slice(parts);
+    let value = eval_direct_native_form(&Form::List(function))?;
+    match value {
+        Value::Function(function) => Ok(function),
+        _ => Err(format!("{declaration} function did not produce a callable")),
+    }
+}
+
+/// Handles declaration instructions without routing their nested expressions
+/// or function bodies back through the tree evaluator. These forms mutate
+/// protocol/multimethod registries, so the compiler keeps their declaration
+/// form as a constant and this VM-side adapter performs the mutation.
+#[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+fn eval_direct_native_declaration(expected_operator: &str, form: &Form) -> Result<Value, String> {
+    let Form::List(items) = form_without_metadata(form) else {
+        unreachable!("declaration validation checked the form shape")
+    };
+    match expected_operator {
+        "defprotocol" => {
+            if items.len() < 3 {
+                return Err("defprotocol expects a name and method declarations".into());
+            }
+            let name = match form_without_metadata(&items[1]) {
+                Form::Symbol(name) if !name.contains('/') => name.clone(),
+                _ => return Err("defprotocol name must be an unqualified symbol".into()),
+            };
+            let mut methods = HashMap::new();
+            for declaration in &items[2..] {
+                let Form::List(parts) = form_without_metadata(declaration) else {
+                    return Err("defprotocol method declaration must be a list".into());
+                };
+                if parts.len() != 2
+                    || !matches!(form_without_metadata(&parts[0]), Form::Symbol(_))
+                    || !matches!(form_without_metadata(&parts[1]), Form::Vector(_))
+                {
+                    return Err(
+                        "defprotocol method declaration expects a name and parameter vector".into(),
+                    );
+                }
+                let Form::Symbol(method) = form_without_metadata(&parts[0]) else {
+                    unreachable!()
+                };
+                let Form::Vector(arguments) = form_without_metadata(&parts[1]) else {
+                    unreachable!()
+                };
+                if arguments.is_empty() || methods.insert(method.clone(), arguments.len()).is_some()
+                {
+                    return Err("protocol methods must be unique and take a receiver".into());
+                }
+            }
+            publish_guest_protocol(&name, methods, Vec::new(), &mut HashMap::new())
+        }
+        "extend-type" => {
+            if items.len() < 4 {
+                return Err(
+                    "extend-type expects a type, protocol, and method implementations".into(),
+                );
+            }
+            let type_value = eval_direct_native_form(&items[1])?;
+            let type_name = match type_value {
+                Value::StructType(ty) => ty.name.clone(),
+                Value::MutableType(ty) => ty.name.clone(),
+                _ => return Err("extend-type expects a struct or mutable type".into()),
+            };
+            let protocol = match eval_direct_native_form(&items[2])? {
+                Value::Protocol(protocol) => protocol,
+                _ => return Err("extend-type expects a protocol".into()),
+            };
+            let mut seen = HashSet::new();
+            let mut implementations = Vec::with_capacity(items.len() - 3);
+            for implementation in &items[3..] {
+                let Form::List(parts) = form_without_metadata(implementation) else {
+                    return Err("extend-type implementations must be method forms".into());
+                };
+                if parts.len() < 3 {
+                    return Err("extend-type implementations require a body".into());
+                }
+                let Form::Symbol(method) = form_without_metadata(&parts[0]) else {
+                    return Err("extended method name must be a symbol".into());
+                };
+                let Form::Vector(arguments) = form_without_metadata(&parts[1]) else {
+                    return Err("extended method arguments must be a vector".into());
+                };
+                if !seen.insert(method.clone()) {
+                    return Err("Duplicate extended method".into());
+                }
+                let valid_arity = protocol.methods.get(method).is_some_and(|expected| {
+                    *expected == arguments.len()
+                        || (*expected == usize::MAX && !arguments.is_empty())
+                });
+                if !valid_arity {
+                    return Err(format!("invalid protocol method implementation: {method}"));
+                }
+                implementations.push((
+                    method.clone(),
+                    eval_direct_native_function(&parts[1..], "extend-type")?,
+                ));
+            }
+            let registry = active_protocol_registry()?;
+            for (method, function) in implementations {
+                registry.register_guest(protocol.name.clone(), type_name.clone(), method, function);
+            }
+            Ok(Value::Protocol(protocol))
+        }
+        "defmulti" => {
+            if items.len() != 3 {
+                return Err("defmulti expects a name and dispatch function".into());
+            }
+            let Form::Symbol(name) = form_without_metadata(&items[1]) else {
+                return Err("defmulti name must be an unqualified symbol".into());
+            };
+            if name.contains('/') {
+                return Err("defmulti name must be an unqualified symbol".into());
+            }
+            let Value::Function(dispatch) = eval_direct_native_form(&items[2])? else {
+                return Err("defmulti dispatch function must be callable".into());
+            };
+            let registry = namespace_registry()?;
+            let namespace = registry.current();
+            let qualified = format!("{}/{}", namespace.name().as_str(), name);
+            let state = Rc::new(RefCell::new(MultiMethod {
+                dispatch,
+                methods: Vec::new(),
+                default: None,
+            }));
+            let invoke_state = state.clone();
+            let value = native_variadic_function(&qualified, move |arguments| {
+                let state = invoke_state.borrow();
+                let key = call_function(&state.dispatch, arguments.clone())?;
+                let method = state
+                    .methods
+                    .iter()
+                    .find(|(candidate, _)| *candidate == key)
+                    .map(|(_, method)| method.clone())
+                    .or_else(|| state.default.clone())
+                    .ok_or_else(|| {
+                        format!("No multimethod method for dispatch value {}", key.display())
+                    })?;
+                call_function(&method, arguments)
+            });
+            let var = namespace.intern(name, value.clone());
+            var.set_origin(definition_origin());
+            register_multimethod(qualified, state);
+            Ok(value)
+        }
+        "defmethod" => {
+            if items.len() < 5 {
+                return Err(
+                    "defmethod expects a multifn, dispatch value, parameters, and body".into(),
+                );
+            }
+            let Form::Symbol(name) = form_without_metadata(&items[1]) else {
+                return Err("defmethod multifn must be a symbol".into());
+            };
+            let namespace = namespace_registry()?.current().name().as_str().to_owned();
+            let qualified = if name.contains('/') {
+                name.clone()
+            } else {
+                format!("{namespace}/{name}")
+            };
+            let key = eval_direct_native_form(&items[2])?;
+            let function = eval_direct_native_function(&items[3..], "defmethod")?;
+            let state = multimethod_state(&qualified)
+                .ok_or_else(|| "defmethod expects an existing multifn".to_string())?;
+            let mut state = state.borrow_mut();
+            if matches!(
+                &key,
+                Value::Keyword(keyword)
+                    if keyword.get_namespace().is_none() && keyword.get_name() == "default"
+            ) {
+                state.default = Some(function);
+            } else if let Some((_, existing)) = state
+                .methods
+                .iter_mut()
+                .find(|(candidate, _)| *candidate == key)
+            {
+                *existing = function;
+            } else {
+                state.methods.push((key, function));
+            }
+            Ok(Value::Nil)
+        }
+        _ => Err(format!(
+            "unsupported native declaration: {expected_operator}"
+        )),
+    }
+}
+
 fn eval_value(value: Value, env: &mut HashMap<String, Value>) -> Result<Value, String> {
     #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
     if direct_native_execution() {

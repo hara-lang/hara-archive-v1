@@ -1,6 +1,6 @@
 (ns postgres.core.graph-insert
   (:config {:blank true})
-  (:require [std.foundation :refer :all]
+  (:require [std.foundation :refer [ex reduce-kv]]
             [postgres.core.graph-walk :as walk]
             [postgres.core.impl-base :as base]
             [postgres.core.impl-insert :as insert]))

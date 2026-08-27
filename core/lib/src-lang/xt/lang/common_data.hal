@@ -1,7 +1,6 @@
 (ns xt.lang.common-data
-  (:config {:blank true})
-  (:require [lang.core :as l :refer [defspec.xt]]
-            [std.foundation :refer :all :exclude [do if fn quote try first second nth last get-in]]))
+  (:config {:override [first second nth last get-in]})
+  (:require [lang.core :as l]))
 
 (l/script :xtalk
   {:require [[xt.lang.spec-base :as xt]]})
@@ -640,7 +639,6 @@
     (xt/x:set-key obj k (-/set-in child narr v)))
   (return obj))
 
-
 (defn.xt obj-intersection
   "finds the intersection between map lookups"
   {:added "4.0"}
@@ -735,7 +733,6 @@
        (:= k e)
        (:= out (f out k e))))
    (return out)))
-
 
 ;;
 ;; ARRAY FUNCTIONAL
@@ -980,7 +977,6 @@
     (:= j (+ j 1))
     (xt/x:arr-push out bitem))
   (return out))
-
 
 ;;
 ;; OBJECT FUNCTIONAL

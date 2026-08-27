@@ -15,9 +15,8 @@ fn vm_fiber_step(
         }
         VmFiberState::Suspended => {
             let Some(promise) = fiber.borrow().pending() else {
-                return context.with(|| {
-                    continuation(Err("bytecode fiber suspended without promise".into()))
-                });
+                return context
+                    .with(|| continuation(Err("bytecode fiber suspended without promise".into())));
             };
             Step::Wait(
                 promise,

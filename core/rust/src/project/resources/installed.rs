@@ -1,4 +1,5 @@
 use crate::kernel::{parse, Form};
+use crate::package_manifest::PackageManifest;
 use crate::project::{normalize_coordinate, read, Project};
 use semver::{Version, VersionReq};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -204,7 +205,14 @@ fn read_registration(
         ));
     }
     let project = read(&package_root)?;
-    if normalize_coordinate(&project.id)? != coordinate || project.version != *version {
+    let manifest = PackageManifest::read(&package_root.join("package.edn"))
+        .map_err(|error| error.to_string())?;
+    let installed_coordinate = if manifest.name.is_some() {
+        normalize_coordinate(&manifest.identity)?
+    } else {
+        normalize_coordinate(&project.id)?
+    };
+    if installed_coordinate != coordinate || project.version != *version {
         return Err(format!(
             "{} disagrees with the installed project manifest",
             path.display()

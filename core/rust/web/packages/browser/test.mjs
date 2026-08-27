@@ -61,8 +61,31 @@ test("browser SDK starts the embedded runtime and loads supplied resources", asy
   assert.equal(hara.eval("app.config/answer"), "42");
 });
 
+test("browser SDK starts isolated core runtimes", async () => {
+  const first = await startVm({
+    resources: { "app.first": "(ns app.first) (def answer 41)" }
+  });
+  const second = await startVm();
+  try {
+    assert.notEqual(first.raw, second.raw);
+    first.require("app.first");
+    assert.equal(first.eval("app.first/answer"), "41");
+    assert.throws(() => second.eval("app.first/answer"), /unbound symbol/);
+  } finally {
+    await first.dispose();
+    await second.dispose();
+  }
+});
+
 test("browser SDK executes the generic memory.v1 bytes binding", async () => {
-  const hara = await startVm();
+  const hara = await startVm({
+    resources: {
+      "std.foundation":
+        "(ns std.foundation) "
+        + "(defn bytes [a b c d] (std.native.Bytes/new a b c d))"
+    }
+  });
+  hara.require("std.foundation");
   hara.installMemoryWasmBinding(
     MEMORY_MANIFEST,
     MEMORY_INTERFACE,

@@ -22,8 +22,7 @@ concurrency:
 
 env:
   SPECS_FIXTURE: 01-lang/004-foundation/draft/conformance/fixtures/foundation_behavioral.hal
-  DIRECT_CALLABLE_FIXTURE: 01-lang/004-foundation/draft/conformance/fixtures/direct_callable_bootstrap.hal
-  SPECS_REVISION: b6925d0075401861d6f69dec44e95c7c5622a5ee
+  SPECS_REVISION: f0c9f72c6c22ef7b9a3df4f996dc35e72e35fe44
 
 jobs:
   catalog:
@@ -46,7 +45,6 @@ jobs:
         run: |
           set -euo pipefail
           test -f "$GITHUB_WORKSPACE/hara-specs-registry/$SPECS_FIXTURE"
-          test -f "$GITHUB_WORKSPACE/hara-specs-registry/$DIRECT_CALLABLE_FIXTURE"
           ln -sfn "$GITHUB_WORKSPACE/hara-specs-registry" \
             "$GITHUB_WORKSPACE/../hara-specs-registry"
 
@@ -55,48 +53,38 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - name: Check formatting of the bounded Rust change
+      - name: Check formatting of the direct-native regression suite
         shell: bash
         run: |
           set -euo pipefail
           rustfmt --edition 2021 --config skip_children=true --check \
-            core/rust/raw/src/lib.rs \
-            core/rust/src/core.rs \
-            core/rust/src/core/evaluator.rs \
-            core/rust/src/core/inventory.rs \
-            core/rust/src/core/value.rs \
-            core/rust/src/fiber.rs \
-            core/rust/src/kernel/generated.rs \
-            core/rust/src/lib.rs \
-            core/rust/src/runtime/runtime.rs \
-            core/rust/src/runtime/tests.rs \
-            core/rust/src/vm/machine/dispatch.rs \
-            core/rust/src/core/direct_callable.rs \
-            core/rust/src/core/direct_callable_catalog.rs \
-            core/rust/src/core/direct_callable_impl.rs \
-            core/rust/src/core/direct_callable_operations.rs \
-            core/rust/src/core/direct_callable_probe.rs \
-            core/rust/src/core/direct_callable_tests.rs
+            core/rust/tests/direct_native_runtime.rs
 
-      - name: Close the catalog and prove zero evaluator re-entry
+      - name: Run the current direct-native catalog and boundary suites
         run: |
-          cargo test --manifest-path core/rust/Cargo.toml \
-            direct_callable_catalog_closes_the_runtime_inventory --lib
-          cargo test --manifest-path core/rust/Cargo.toml \
-            complete_ordinary_callable_catalog_never_reenters_the_evaluator --lib
-          cargo test --manifest-path core/rust/Cargo.toml \
-            representative_direct_callables_preserve_value_behavior --lib
-          cargo test --manifest-path core/rust/Cargo.toml \
-            specs_owned_direct_callable_bootstrap_fixture_runs_before_foundation_source_loading --lib
-          cargo test --manifest-path core/rust/Cargo.toml \
+          cargo test --locked --manifest-path core/rust/Cargo.toml \
+            --test direct_native_runtime -- --nocapture
+          cargo test --locked --manifest-path core/rust/Cargo.toml \
+            -p hara-runtime --features direct-native direct_native_ --lib -- --nocapture
+          cargo test --locked --manifest-path core/rust/Cargo.toml \
+            -p hara-runtime --features direct-native \
+            native_bytes_calls_terminate_without_reentering_the_hal_facade --lib -- --nocapture
+          cargo test --locked --manifest-path core/rust/Cargo.toml \
+            -p hara-runtime --features direct-native \
+            native_string_calls_terminate_without_reentering_the_hal_facade --lib -- --nocapture
+          cargo test --locked --manifest-path core/rust/Cargo.toml \
+            -p hara-runtime --features direct-native \
+            qualified_hal_facades_do_not_override_native_type_aliases --lib -- --nocapture
+          cargo test --locked --manifest-path core/rust/Cargo.toml \
+            -p hara-runtime --features direct-native \
             rust_native_work_handles_are_available_to_guest_hara --lib
 
       - name: Check supported feature profiles
         run: |
-          cargo check --manifest-path core/rust/Cargo.toml --all-targets
-          cargo check --manifest-path core/rust/Cargo.toml \
+          cargo check --locked --manifest-path core/rust/Cargo.toml --all-targets
+          cargo check --locked --manifest-path core/rust/Cargo.toml \
             --no-default-features --lib
-          cargo check --manifest-path core/rust/raw/Cargo.toml
+          cargo check --locked --manifest-path core/rust/raw/Cargo.toml
 
   bytecode:
     name: Tree, fiber, and bytecode VM parity
@@ -118,7 +106,6 @@ jobs:
         run: |
           set -euo pipefail
           test -f "$GITHUB_WORKSPACE/hara-specs-registry/$SPECS_FIXTURE"
-          test -f "$GITHUB_WORKSPACE/hara-specs-registry/$DIRECT_CALLABLE_FIXTURE"
           ln -sfn "$GITHUB_WORKSPACE/hara-specs-registry" \
             "$GITHUB_WORKSPACE/../hara-specs-registry"
 
@@ -143,14 +130,14 @@ jobs:
 
       - name: Run focused evaluator and VM machine suites
         run: |
-          cargo test --manifest-path core/rust/Cargo.toml fiber:: --lib
-          cargo test --manifest-path core/rust/Cargo.toml \
+          cargo test --locked --manifest-path core/rust/Cargo.toml fiber:: --lib
+          cargo test --locked --manifest-path core/rust/Cargo.toml \
             --features bytecode-vm vm::machine:: --lib
 
       - name: Run bytecode VM execution suite (baseline has pre-existing failures)
         continue-on-error: true
         run: |
-          cargo test --manifest-path core/rust/Cargo.toml \
+          cargo test --locked --manifest-path core/rust/Cargo.toml \
             --features bytecode-vm vm::execution_tests --lib
 
   foundation:
@@ -173,7 +160,6 @@ jobs:
         run: |
           set -euo pipefail
           test -f "$GITHUB_WORKSPACE/hara-specs-registry/$SPECS_FIXTURE"
-          test -f "$GITHUB_WORKSPACE/hara-specs-registry/$DIRECT_CALLABLE_FIXTURE"
           ln -sfn "$GITHUB_WORKSPACE/hara-specs-registry" \
             "$GITHUB_WORKSPACE/../hara-specs-registry"
 
@@ -184,21 +170,22 @@ jobs:
 
       - name: Run authoritative Foundation and protocol corpora
         run: |
-          cargo test --manifest-path core/rust/Cargo.toml \
+          cargo test --locked --manifest-path core/rust/Cargo.toml \
+            -p hara-runtime --features direct-native \
             specs_owned_foundation_behavioral_corpus_runs_in_the_native_runtime --lib
-          cargo test --manifest-path core/rust/Cargo.toml \
-            specs_owned_direct_callable_bootstrap_fixture_runs_before_foundation_source_loading --lib
-          cargo test --manifest-path core/rust/Cargo.toml \
+          cargo test --locked --manifest-path core/rust/Cargo.toml \
+            -p hara-runtime --features direct-native \
             shared_foundation_protocol_conformance_fixture_runs_in_the_native_runtime --lib
-          cargo test --manifest-path core/rust/Cargo.toml \
+          cargo test --locked --manifest-path core/rust/Cargo.toml \
+            -p hara-runtime --features direct-native \
             shared_foundation_protocol_functionality_fixture_runs_in_the_native_runtime --lib
 
       - name: Check raw, browser, and minimal Wasm targets
         run: |
-          cargo check --manifest-path core/rust/raw/Cargo.toml
-          cargo check --manifest-path core/rust/Cargo.toml \
+          cargo check --locked --manifest-path core/rust/raw/Cargo.toml
+          cargo check --locked --manifest-path core/rust/Cargo.toml \
             --target wasm32-unknown-unknown --lib
-          cargo check --manifest-path core/rust/Cargo.toml \
+          cargo check --locked --manifest-path core/rust/Cargo.toml \
             --target wasm32-unknown-unknown \
             --no-default-features --lib
 
@@ -225,7 +212,6 @@ jobs:
         run: |
           set -euo pipefail
           test -f "$GITHUB_WORKSPACE/hara-specs-registry/$SPECS_FIXTURE"
-          test -f "$GITHUB_WORKSPACE/hara-specs-registry/$DIRECT_CALLABLE_FIXTURE"
           ln -sfn "$GITHUB_WORKSPACE/hara-specs-registry" \
             "$GITHUB_WORKSPACE/../hara-specs-registry"
 
@@ -250,6 +236,6 @@ jobs:
 
       - name: Run Work protocol, evaluator, and compiler suites
         run: |
-          cargo test --manifest-path core/rust/Cargo.toml work:: --lib
-          cargo test --manifest-path core/rust/Cargo.toml \
+          cargo test --locked --manifest-path core/rust/Cargo.toml work:: --lib
+          cargo test --locked --manifest-path core/rust/Cargo.toml \
             --features bytecode-vm work --lib

@@ -3,5 +3,4 @@
 
 (l/script :xtalk)
 
-(def.xt ^{:schema :xt/str} Token
-  nil)
+(def Token (schema :xt/str))

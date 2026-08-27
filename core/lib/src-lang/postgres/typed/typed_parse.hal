@@ -1,6 +1,6 @@
 (ns postgres.typed.typed-parse
   (:config {:blank true})
-  (:require [std.foundation :as foundation :refer :all :exclude [read-forms]]
+  (:require [std.foundation :as foundation :refer [boolean seq?]]
             [postgres.typed.typed-infer :as typed-infer]
             [postgres.typed.typed-common :as types]))
 
