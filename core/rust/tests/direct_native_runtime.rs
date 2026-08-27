@@ -69,20 +69,20 @@ fn direct_native_guest_protocols_dispatch_without_tree_evaluator_reentry() {
 }
 
 #[test]
-fn base_bytes_matches_the_bytes_constructor_contract() {
+fn bytes_new_matches_the_bytes_constructor_contract() {
     let mut runtime = Runtime::core();
     enable_native(&mut runtime);
     assert_eq!(
         runtime
             .eval_direct_native(
-                "[(Bytes/count (Base/bytes 1 2 -3 255)) (Bytes/get (Base/bytes 1 2 -3) 2)]"
+                "[(Bytes/count (Bytes/new 1 2 -3 255)) (Bytes/get (Bytes/new 1 2 -3) 2)]"
             )
             .unwrap(),
         "[4 253]"
     );
     let error = runtime
-        .eval_direct_native("(Base/bytes 256)")
-        .expect_err("Base/bytes must reject values outside the byte range");
+        .eval_direct_native("(Bytes/new 256)")
+        .expect_err("Bytes/new must reject values outside the byte range");
     assert!(
         error.contains("bytes expects a value in the range -128..255"),
         "{error}"

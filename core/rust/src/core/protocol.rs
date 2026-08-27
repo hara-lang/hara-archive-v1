@@ -1129,7 +1129,6 @@ fn native_base_values(operation: &str, values: &[Value]) -> Result<Value, String
         ))),
         "hash-map" => Err("Base/hash-map expects an even number of arguments".into()),
         "hash-set" => Ok(Value::Set(values.iter().cloned().collect())),
-        "bytes" => native_bytes_new(values),
         "atom" => match values {
             [value] => Ok(Value::Atom(Box::new(RuntimeAtom::new(value.clone(), true)))),
             _ => Err("Base/atom expects one value".into()),
