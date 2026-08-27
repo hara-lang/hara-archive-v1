@@ -55,7 +55,7 @@
      (= atomic (:data record))
      (:count (:summary batch))
      (:results (:summary batch))])
-  => ["sample.hal" true 1 1])
+  => ['sample.core true 1 1])
 
 (fact "composed tasks preserve the tasklet result boundary"
   (let [heal-then-analyse
@@ -96,9 +96,24 @@
                :data
                :source])
       "\n")])
-  => ["composed.hal"
+  => ['composed.core
       "composed.core"
       true])
+
+(fact "code.manage selectors are applied by the shared task engine"
+  (let [batch
+        (work/run
+         (work/local-runtime)
+         manage/analyse
+         {:units [{:path "alpha.hal"
+                   :source "(ns alpha.core)\n(defn alpha [] 1)\n"}
+                  {:path "beta.hal"
+                   :source "(ns beta.core)\n(defn beta [] 2)\n"}]
+          :selector "alpha"})]
+    [(count (:results batch))
+     (get-in batch [:results 0 :item/value :item/id])
+     (:count (:summary batch))])
+  => [1 'alpha.core 1])
 
 (fact "source edits remain atomic dry-run values"
   (let [edit

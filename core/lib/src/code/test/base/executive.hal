@@ -93,7 +93,7 @@
 
 (defn run:test
   "Evaluates facts already registered in the native test runtime."
-  ([] (test-work/run {}))
+  ([] (test-work/run {:namespace :all}))
   ([selector-or-options]
    (test-work/run selector-or-options)))
 

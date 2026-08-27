@@ -158,9 +158,15 @@
      (get-in task/test-task-defaults [:report :sections])
      (get-in task/test-task-defaults [:summary :fields])
      (get-in (task/task-defaults :test) [:return :select])]
-    [:input-context [:items :results :summary]
-     [:files :facts :checks :passed :failed :throw :timeout :skipped]
-     :summary])
+     [:input-context [:items :results :summary]
+      [:files :facts :checks :passed :failed :throw :timeout :skipped]
+      :summary])
+
+   ^{:refer work.flow.task/invocation-options}
+   (test-check
+    "task flow exposes the selector invocation surface"
+    (task/invocation-options ['std {:parallel true}] :namespace)
+    {:selector 'std :parallel true})
 
    (test-check
     "task flows register themselves for def.work"

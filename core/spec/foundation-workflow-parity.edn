@@ -7,6 +7,17 @@
  :families
  {:code.test
   {:source "src/code/test/task.clj"
+   :invocation {:arity [0 3]
+                :lookup :omitted
+                :selector-owner work.flow.task.selector/invocation-options}
+   :selection {:scalar :prefix
+               :regexp :search
+               :set :exact
+               :list :conjunction
+               :vector :disjunction
+               :zero-argument :current-namespace
+               :cli-default :all}
+   :reporter :work.flow.task.report/observer
    :entries
    [{:feature :run :status :implemented
      :native code.test/run}
@@ -34,7 +45,18 @@
 
   :code.manage
   {:source "src/code/manage.clj"
-   :template work.flow.task.engine
+   :template work.flow.task
+   :invocation {:arity [0 3]
+                :lookup :omitted
+                :selector-owner work.flow.task.selector/invocation-options}
+   :selection {:scalar :prefix
+               :regexp :search
+               :set :exact
+               :list :conjunction
+               :vector :disjunction
+               :zero-argument :current-namespace
+               :cli-default :all}
+   :reporter :work.flow.task.report/observer
    :entries
    [{:feature :analyse :status :implemented}
     {:feature :extract :status :implemented}

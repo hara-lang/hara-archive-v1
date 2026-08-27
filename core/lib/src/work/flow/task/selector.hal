@@ -1,29 +1,71 @@
 (ns work.flow.task.selector)
 
+(defn ^{:public true} selector-options
+  "Builds flat task options from the legacy selector, params, and environment forms.
+   A map in the selector position is already an options map. The lookup position
+   is intentionally absent from this portable selector surface."
+  ([selector]
+   (if (map? selector) selector {:selector selector}))
+  ([selector params]
+   (if (map? selector)
+     (merge selector (or params {}))
+     (assoc (or params {}) :selector selector)))
+  ([selector params environment]
+   (assoc (selector-options selector params)
+          :environment environment)))
+
+(defn ^{:public true} invocation-options
+  "Normalises a selector task's public zero-to-three argument surface.
+   A single map is options/params. Non-map values are selectors. Optional
+   selector-key maps a domain key such as :namespace to generic :selector
+   without introducing a lookup argument."
+  ([arguments]
+   (invocation-options arguments nil))
+  ([arguments selector-key]
+   (let [options
+         (case (count arguments)
+           0 {}
+           1 (selector-options (first arguments))
+           2 (selector-options (first arguments) (second arguments))
+           3 (selector-options (first arguments)
+                                (second arguments)
+                                (nth arguments 2))
+           (throw
+            (ex :argument {:arguments arguments}
+                :ex/message "Selector task invocation accepts at most selector, params, and environment")))]
+     (if (and selector-key
+              (has? options selector-key)
+              (not (has? options :selector)))
+       (assoc (dissoc options selector-key)
+              :selector (get options selector-key))
+       options))))
+
 (defn matches?
   "Matches one task-flow selector against an item identifier. Scalars use
-   prefix matching, sets use exact membership, dotted lists form a qualified
-   prefix, and vectors are disjunctions."
+   prefix matching, regular expressions search the identifier, sets use exact
+   membership, lists are conjunctions, and vectors are disjunctions. Collection
+   forms are checked before callable predicates because Hara collections may
+   themselves satisfy fn?."
   [selector identifier]
   (cond (or (nil? selector) (= :all selector)) true
-        (or (string? selector) (symbol? selector) (keyword? selector))
-        (str/starts-with? (str identifier) (str selector))
-        (fn? selector) (if (selector identifier) true false)
+        (list? selector)
+        (reduce (fn [matched part]
+                  (and matched
+                       (work.flow.task.selector/matches? part identifier)))
+                true selector)
+        (vector? selector)
+        (reduce (fn [matched part]
+                  (or matched
+                      (work.flow.task.selector/matches? part identifier)))
+                false selector)
         (set? selector)
         (reduce (fn [matched value] (or matched (= value identifier)))
                 false selector)
-        (list? selector)
-        (let [prefix
-              (reduce (fn [output part]
-                        (if (= output "")
-                          (str part)
-                          (str output "." part)))
-                      ""
-                      selector)]
-          (str/starts-with? (str identifier) prefix))
-        (vector? selector)
-        (reduce (fn [matched part] (or matched (matches? part identifier)))
-                false selector)
+        (or (string? selector) (symbol? selector) (keyword? selector))
+        (str/starts-with? (str identifier) (str selector))
+        (regexp? selector)
+        (not (nil? (re-find selector (str identifier))))
+        (fn? selector) (if (selector identifier) true false)
         :else
         (throw (ex :argument {:selector selector :identifier identifier} :ex/message "Command selector is not valid"))))
 

@@ -14,14 +14,35 @@
    (selector/matches? (fn [value] (= value :fail-fast)) :fail-fast)]
   => [true false true])
 
+^{:refer work.flow.task.selector/selector-options}
+(fact "selector options preserve flat params without adding lookup"
+  [(selector/selector-options 'std {:parallel true})
+   (selector/selector-options {:selector 'std} {:timeout 10})
+   (selector/selector-options 'std {:parallel true} {:root "."})]
+  => [{:selector 'std :parallel true}
+      {:selector 'std :timeout 10}
+      {:selector 'std :parallel true :environment {:root "."}}])
+
+^{:refer work.flow.task.selector/invocation-options}
+(fact "selector invocations accept zero through three public positions"
+  [(selector/invocation-options [])
+   (selector/invocation-options ['std])
+   (selector/invocation-options ['std {:parallel true}])
+   (selector/invocation-options ['std {:parallel true} {:root "."}] :namespace)]
+  => [{}
+      {:selector 'std}
+      {:selector 'std :parallel true}
+      {:selector 'std :parallel true :environment {:root "."}}])
+
 (fact "task-flow selectors preserve scalar and collection semantics"
   [(selector/matches? 'code 'code.test)
    (selector/matches? ['std 'code.test] 'code.test)
    (selector/matches? '(code test) 'code.test)
    (selector/matches? #{'code.test 'std.work} 'code.test)
+   (selector/matches? (regexp "test") 'code.test)
    (selector/matches? nil 'anything)
    (selector/matches? :all 'anything)]
-  => [true true true true true true])
+  => [true true false true true true true])
 
 (fact "task-flow metadata selectors support include and exclude policies"
   [(selector/matches-options? metadata {:include [{:unit #{:web}}]})

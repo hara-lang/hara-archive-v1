@@ -1,9 +1,11 @@
 (ns code.manage.cli
   (:require [code.manage :as manage]
+            [code.manage.context :as context]
             [code.manage.editor :as editor]
             [tool.cli.model :as model]
             [code.project :as project]
-            [work.base :as work]))
+            [work.base :as work]
+            [work.flow.task.selector :as selector]))
 
 (def +value-options+
   {"--match" :match "--replacement" :replacement
@@ -15,11 +17,9 @@
 
 (def +direct-operations+ #{:contract-check :issue-contract})
 
-(def +test-only+
-  #{:refactor-test :isolate :factcheck-remove :factcheck-generate :unchecked})
+(def +test-only+ context/+test-only+)
 
-(def +source-and-test+
-  #{:ns-rename :find-usages :grep :grep-replace})
+(def +source-and-test+ context/+source-and-test+)
 
 (defn tail [values] (vec (rest values)))
 
@@ -55,7 +55,7 @@
       (throw (ex :syntax {:operation operation :option "--pattern"} :ex/message "purge --pattern is obsolete; purge removes docstrings and :added metadata"))
 
       :else
-      (assoc (assoc parsed :format format) :options options))))
+      (assoc parsed :format format :options options))))
 
 (defn parse-arguments [arguments]
   (let [operation (keyword (or (first arguments) "analyse"))]
@@ -123,108 +123,79 @@
                    (:patterns next-state)
                    (:options next-state))))))))
 
+(defn parsed-selector
+  [namespaces]
+  (cond
+    (empty? namespaces) :all
+    (= 1 (count namespaces)) (first namespaces)
+    :else (vec namespaces)))
 
-(defn selected? [path namespaces]
-  (or (empty? namespaces)
-      (not
-       (empty?
-        (filter
-         (fn [namespace]
-           (str/includes?
-            path
-            (str/replace
-             (str/replace namespace "." "/") "-" "_")))
-         namespaces)))))
+
+(defn path-selector-candidates
+  [path]
+  (let [path (str/replace (str path) "\\" "/")
+        path (if (str/ends-with? path ".hal")
+               (str/slice path 0 (- (str/length path) 4))
+               path)
+        parts (vec (filter (fn [part] (not (str/blank? part)))
+                           (str/split path "/")))]
+    (loop [remaining parts
+           output []]
+      (if (empty? remaining)
+        output
+        (recur (vec (rest remaining))
+               (conj output
+                     (str/replace (str/join "." remaining) "_" "-")))))))
+
+(defn selected?
+  [path namespaces]
+  (if (empty? namespaces)
+    true
+    (let [selection (if (= 1 (count namespaces))
+                      (first namespaces)
+                      (vec namespaces))]
+      (reduce
+       (fn [matched candidate]
+         (or matched (selector/matches? selection candidate)))
+       false
+       (path-selector-candidates path)))))
 
 (defn roots-for [project operation]
-  (cond
-    (has? +test-only+ operation) (:project/test-paths project)
-    (has? +source-and-test+ operation)
-    (vec (concat (:project/source-paths project) (:project/test-paths project)))
-    :else (:project/source-paths project)))
+  (context/roots-for project operation))
 
 (defn unit [path type]
-  {:path path
-   :type type
-   :source (project/read-text path)})
+  (context/unit path type))
 
 (defn versioned-unit
   [base version]
-  (assoc (assoc base :version version)
-         :project-version version))
+  (context/versioned-unit base version))
 
 (defn paired-source-unit
   "Adds the mapped test and project-version fields required by manage workflows."
   [base version test-path test-source]
-  (assoc (versioned-unit base version)
-         :test-path test-path
-         :test-source (or test-source "")))
+  (context/paired-source-unit base version test-path test-source))
 
 (defn project-test-path
   "Maps an absolute source PATH through the project's corresponding test root."
   [current-project path]
-  (project/paired-test-path current-project path))
+  (context/project-test-path current-project path))
 
 (defn paired-unit
   [current-project path type]
-  (let [version (:project/version current-project)
-        base (unit path type)]
-    (if (= type :source)
-      (let [test-path (project-test-path current-project path)]
-        (paired-source-unit
-         base
-         version
-         test-path
-         (if (deref (File/exists? test-path))
-           (project/read-text test-path)
-           "")))
-      (versioned-unit base version))))
+  (context/paired-unit current-project path type))
 
 
 (defn units-for
   [project parsed]
-  (let [test-roots (:project/test-paths project)
-        paths (project/files-in project
-                                (roots-for project (:operation parsed))
-                                ".hal")]
-    (reduce
-     (fn [output path]
-       (if (selected? path (:namespaces parsed))
-         (conj output
-               (paired-unit
-                project
-                path
-                (if (not
-                     (empty?
-                      (filter
-                       (fn [root]
-                         (str/includes?
-                          path
-                          (File/join (:project/root project) root)))
-                       test-roots)))
-                  :test
-                  :source)))
-         output))
-     []
-     paths)))
+  (context/units-for project (:operation parsed)))
 
 
 (defn current-input
   "Constructs the current-namespace input used by callable code.manage tasks."
-  [operation namespace]
-  (let [cwd (OS/cwd)
-        local-manifest (File/join cwd "project.edn")
-        start (if (deref (File/exists? local-manifest))
-                local-manifest
-                cwd)
-        current-project (project/discover start)
-        parsed {:operation operation
-                :write false
-                :namespaces [(str namespace)]
-                :format :edn
-                :options {}}]
-    {:units (units-for current-project parsed)
-     :options {}}))
+  ([operation namespace]
+   (context/current-input operation namespace))
+  ([operation namespace invocation]
+   (context/current-input operation namespace invocation)))
 
 (defn current-source [path]
   (if (deref (File/exists? path)) (project/read-text path) ""))
@@ -310,7 +281,8 @@
            [(model/message :stderr (str output "\n"))])))
       (let [plan (manage/plan (:operation parsed)
                               {:units (units-for current-project parsed)
-                               :options (:options parsed)})
+                               :options (:options parsed)
+                               :selector (parsed-selector (:namespaces parsed))})
             output (render-plan plan parsed)]
         (if (:write parsed)
           (apply-edits (:project/root current-project) (:edits plan))

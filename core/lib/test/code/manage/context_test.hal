@@ -1,0 +1,118 @@
+(ns code.manage.context-test
+  (:use code.test)
+  (:require [code.manage.context :as context]))
+
+(def project
+  (context/current-project
+   (File/join (OS/cwd) "core/project.edn")))
+
+(def source-path
+  (File/join (:project/root project)
+             "lib/src/code/manage/context.hal"))
+
+^{:refer code.manage.context/roots-for}
+(fact "manage roots follow the operation category"
+  [(context/roots-for
+    {:project/source-paths ["src"] :project/test-paths ["test"]}
+    :analyse)
+   (context/roots-for
+    {:project/source-paths ["src"] :project/test-paths ["test"]}
+    :refactor-test)
+   (context/roots-for
+    {:project/source-paths ["src"] :project/test-paths ["test"]}
+    :grep)]
+  => [["src"] ["test"] ["src" "test"]])
+
+^{:refer code.manage.context/unit}
+(fact "manage units retain source type and declared namespace"
+  (select-keys
+   (context/unit source-path :source)
+   [:path :type :namespace])
+  => {:path source-path :type :source :namespace 'code.manage.context})
+
+^{:refer code.manage.context/versioned-unit}
+(fact "versioned units carry both compatibility version fields"
+  (context/versioned-unit {:path "demo.hal"} "1.2.3")
+  => {:path "demo.hal" :version "1.2.3" :project-version "1.2.3"})
+
+^{:refer code.manage.context/paired-source-unit}
+(fact "paired source units preserve test mapping and empty-source defaults"
+  (context/paired-source-unit {:path "demo.hal"} "1.2.3" "demo_test.hal" nil)
+  => {:path "demo.hal"
+      :version "1.2.3"
+      :project-version "1.2.3"
+      :test-path "demo_test.hal"
+      :test-source ""})
+
+^{:refer code.manage.context/project-test-path}
+(fact "source paths map to the matching project test root"
+  (context/project-test-path
+   {:project/root "/project"
+    :project/source-paths ["src" "src-lang"]
+    :project/test-paths ["test" "test-lang"]}
+   "/project/src-lang/demo/core.hal")
+  => "/project/test-lang/demo/core_test.hal")
+
+^{:refer code.manage.context/paired-unit}
+(fact "paired units are project records with corresponding test source"
+  (let [unit (context/paired-unit project source-path :source)]
+    [(get unit :namespace)
+     (get unit :type)
+     (get unit :version)
+     (get unit :project-version)
+     (str/ends-with? (:test-path unit) "lib/test/code/manage/context_test.hal")
+     (str/starts-with? (:test-source unit) "(ns code.manage.context-test)")])
+  => ['code.manage.context :source "0.1.0" "0.1.0" true true])
+
+^{:refer code.manage.context/units-for}
+(fact "operation catalogs contain project source units"
+  (let [units (context/units-for project :analyse)]
+    [(vector? units)
+     (< 0 (count units))
+     (has? (set (map :namespace units)) 'code.manage.context)])
+  => [true true true])
+
+^{:refer code.manage.context/current-project}
+(fact "current project discovery reads the supplied manifest boundary"
+  [(= (:project/id project) 'hara.lang)
+   (= (:project/version project) "0.1.0")]
+  => [true true])
+
+^{:refer code.manage.context/selector-input?}
+(fact "selector inputs include the shared scalar and collection forms"
+  [(context/selector-input? "code")
+   (context/selector-input? 'code)
+   (context/selector-input? :code)
+   (context/selector-input? (regexp "code"))
+   (context/selector-input? #{"code"})
+   (context/selector-input? '(code manage))
+   (context/selector-input? ["code" "std"])
+   (context/selector-input? (fn [value] (= value "code")))
+   (context/selector-input? {:namespace "code"})]
+  => [true true true true true true true true false])
+
+^{:refer code.manage.context/task-input}
+(fact "task input tags selectors while preserving explicit unit catalogs"
+  [(context/task-input nil)
+   (context/task-input "code")
+   (context/task-input {:namespace "code" :parallel true})
+   (context/task-input {:path "code.hal"
+                        :source "(ns code)\n"})
+   (context/task-input {:units []})]
+  => [{:task/request "work.flow.task.engine.request/0-alpha"}
+      {:task/request "work.flow.task.engine.request/0-alpha" :selector "code"}
+      {:task/request "work.flow.task.engine.request/0-alpha"
+       :parallel true :selector "code"}
+      {:path "code.hal" :source "(ns code)\n"}
+      {:units []}])
+
+^{:refer code.manage.context/current-input}
+(fact "current input filters only the implicit current namespace"
+  (let [input (context/current-input project :analyse 'code.manage.context {})]
+    [(has? input :selector)
+     (count (:units input))
+     (get-in input [:units 0 :namespace])
+     (:options input)])
+  => [false 1 'code.manage.context {}])
+
+(pr-str (run {:namespace "code.manage.context-test"}))

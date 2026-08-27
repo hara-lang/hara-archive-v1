@@ -151,46 +151,53 @@
 (defn invocation-arguments
   "Restores the historical task call convention for zero to four arguments.
    A map in the single-argument position is params over constructed input.
-   Values following :args are forwarded to the task main function."
-  [arguments]
-  (let [marker
-        (loop [index 0]
-          (if (= index (count arguments))
-            -1
-            (if (= :args (nth arguments index))
-              index
-              (recur (inc index)))))
-        task-arguments
-        (if (= marker -1)
-          arguments
-          (vec (take marker arguments)))
-        additional
-        (if (= marker -1)
-          []
-          (vec (drop (inc marker) arguments)))
-        total (count task-arguments)
-        options
-        (case total
-          0 {}
-          1 (let [value (first task-arguments)]
-              (if (map? value)
-                {:params value}
-                {:input value}))
-          2 {:input (nth task-arguments 0)
-             :params (nth task-arguments 1)}
-          3 {:input (nth task-arguments 0)
-             :params (nth task-arguments 1)
-             :environment (nth task-arguments 2)}
-          4 {:input (nth task-arguments 0)
-             :params (nth task-arguments 1)
-             :lookup (nth task-arguments 2)
-             :environment (nth task-arguments 3)}
-          (throw
-           (ex :generic {:arguments task-arguments} :ex/message "Task invocation accepts at most input, params, lookup, and environment")))]
-    (request
-     (if (empty? additional)
-       options
-       (assoc options :args additional)))))
+   Values following :args are forwarded to the task main function. Selector
+   profiles use the shared zero-to-three selector convention instead."
+  ([arguments]
+   (invocation-arguments arguments nil))
+  ([arguments invocation]
+   (if (= :selector (:mode (or invocation {})))
+     (request
+      (selector/invocation-options arguments (:selector-key invocation)))
+     (let [marker
+           (loop [index 0]
+             (if (= index (count arguments))
+               -1
+               (if (= :args (nth arguments index))
+                 index
+                 (recur (inc index)))))
+           task-arguments
+           (if (= marker -1)
+             arguments
+             (vec (take marker arguments)))
+           additional
+           (if (= marker -1)
+             []
+             (vec (drop (inc marker) arguments)))
+           total (count task-arguments)
+           options
+           (case total
+             0 {}
+             1 (let [value (first task-arguments)]
+                 (if (map? value)
+                   {:params value}
+                   {:input value}))
+             2 {:input (nth task-arguments 0)
+                :params (nth task-arguments 1)}
+             3 {:input (nth task-arguments 0)
+                :params (nth task-arguments 1)
+                :environment (nth task-arguments 2)}
+             4 {:input (nth task-arguments 0)
+                :params (nth task-arguments 1)
+                :lookup (nth task-arguments 2)
+                :environment (nth task-arguments 3)}
+             (throw
+              (ex :generic {:arguments task-arguments}
+                  :ex/message "Task invocation accepts at most input, params, lookup, and environment")))]
+       (request
+        (if (empty? additional)
+          options
+          (assoc options :args additional)))))))
 
 (defn invoke
   "Invokes compiled task work through the historical four-argument calling
@@ -199,7 +206,7 @@
   (work/run
    (work/local-runtime)
    work-value
-   (invocation-arguments arguments)))
+   (invocation-arguments arguments (:invocation definition))))
 
 (defn callable
   [work-value definition]
@@ -218,12 +225,21 @@
   (and (map? value)
        (= request-id (:task/request value))))
 
+(defn request-params
+  "Returns task parameters from a request while removing invocation controls."
+  [input]
+  (merge
+   (dissoc input
+           :task/request :input :params :environment :env :lookup
+           :args :selector :mode)
+   (or (:params input) {})))
+
 (defn normalise-request
   [input]
   (if (request? input)
     {:task/input (:input input)
      :task/input? (has? input :input)
-     :task/params (or (:params input) {})
+     :task/params (request-params input)
      :task/environment
      (if (has? input :environment)
        (:environment input)
@@ -235,6 +251,7 @@
      :task/lookup? (has? input :lookup)
      :task/args (vec (or (:args input) []))
      :task/selector (:selector input)
+     :task/selector? (has? input :selector)
      :task/mode (or (:mode input) :run)}
     {:task/input input
      :task/input? true
@@ -245,6 +262,7 @@
      :task/lookup? false
      :task/args []
      :task/selector (if (map? input) (:selector input) nil)
+     :task/selector? (and (map? input) (has? input :selector))
      :task/mode :run}))
 
 (defn main-function
@@ -334,7 +352,8 @@
      :report (report/normalise-profile (:report definition))
      :return (merge-nested default-return
                            (or (:return definition) {}))
-     :metadata (or (:metadata definition) {})}))
+     :metadata (or (:metadata definition) {})
+     :invocation (or (:invocation definition) {})}))
 
 (defn task-item-id
   [value index]
@@ -394,7 +413,12 @@
     (:task/input invocation)
     (let [construct (get-in definition [:construct :input])]
       (if construct
-        (construct definition)
+        (construct
+         (assoc definition
+                :task/params (:task/params invocation)
+                :task/selector (:task/selector invocation)
+                :task/selector? (:task/selector? invocation)
+                :task/environment (:task/environment invocation)))
         nil))))
 
 (defn construct-environment
@@ -430,9 +454,9 @@
         (or (get-in definition [:main :args-required?])
             (get-in definition [:main :args?]))
         selector-value
-        (or (:task/selector invocation)
-            (get-in definition [:item :selector])
-            :all)
+        (if (:task/selector? invocation)
+          (:task/selector invocation)
+          (or (get-in definition [:item :selector]) :all))
         clock (:clock/now context)
         started-at (if clock (clock) nil)]
     (if (and required? (empty? arguments))

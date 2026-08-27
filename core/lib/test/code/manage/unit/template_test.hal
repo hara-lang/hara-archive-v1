@@ -1,0 +1,43 @@
+(ns code.manage.unit.template-test
+  (:use code.test)
+  (:require [code.manage.unit.template :as template]))
+
+(def source-unit
+  {:path "demo/core.hal"
+   :source "(ns demo.core)\n(defn answer [] 42)\n"})
+
+(def demo-task
+  (template/task
+   {:operation :demo
+    :main {:fn (fn [unit] unit)
+           :symbol 'demo/unit
+           :argcount 1}}))
+
+^{:refer code.manage.unit.template/unit-namespace}
+(fact "task item namespaces come from declared source namespaces"
+  [(template/unit-namespace source-unit)
+   (template/unit-namespace {:namespace 'declared.core
+                              :path "other.hal"
+                              :source "(ns ignored.core)\n"})]
+  => ['demo.core 'declared.core])
+
+^{:refer code.manage.unit.template/task-item}
+(fact "task items expose namespace identity and preserve options"
+  (let [item (template/task-item source-unit {:version "1.0.0"})]
+    [(:item/id item)
+     (get-in item [:item/value :code.manage/unit :namespace])
+     (get-in item [:item/value :code.manage/options])
+     (get-in item [:item/value :code.manage/path])])
+  => ['demo.core
+      'demo.core
+      {:version "1.0.0"}
+      "demo/core.hal"])
+
+^{:refer code.manage.unit.template/task}
+(fact "composed manage tasks declare the shared selector invocation mode"
+  [(template/task? demo-task)
+   (get-in (template/task-definition demo-task) [:invocation :mode])
+   (get-in (template/task-definition demo-task) [:invocation :selector-key])]
+  => [true :selector :namespace])
+
+(pr-str (run {:namespace "code.manage.unit.template-test"}))

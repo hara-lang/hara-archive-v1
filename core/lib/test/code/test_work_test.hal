@@ -375,8 +375,10 @@
           definition (:template/definition spec)]
       [(:task/type definition)
        (:task/version definition)
+       (get-in definition [:invocation :mode])
+       (get-in definition [:invocation :selector-key])
        (fn? (get-in definition [:item :run]))])
-    [:test 13 true])
+    [:test 13 :selector :namespace true])
 
    ^{:refer code.test.work/namespace-items}
    (test-check
@@ -396,8 +398,92 @@
                  {:namespace "code.test-work-test"
                   :name "work-driven passing fact"})]
       [(get input :namespace)
+       (get input :selector)
        (count (:test/items input))])
-    ["code.test-work-test" 1])
+    ["code.test-work-test" "code.test-work-test" 1])
+
+   ^{:refer code.test.work/normalize-run-options}
+   (test-check
+    "test selectors normalize into the shared namespace option"
+    [(get (test-work/normalize-run-options 'code.test-work-test) :namespace)
+     (get (test-work/normalize-run-options {:selector 'code.test-work-test}) :namespace)
+     (get (test-work/normalize-run-options {:namespace 'code.test-work-test
+                                            :environment {:root "."}})
+          :test/environment)]
+    ['code.test-work-test 'code.test-work-test {:root "."}])
+
+   ^{:refer code.test.work/report-options}
+   (test-check
+    "test reporting defaults to ANSI unless color is disabled"
+    [(get (test-work/report-options {}) :ansi)
+     (get (test-work/report-options {:no-color true}) :ansi)
+     (get (test-work/report-options {:ansi false}) :ansi)]
+    [true false false])
+
+   ^{:refer code.test.work/default-observer}
+   (test-check
+    "test reporting supplies a callable task observer"
+    (let [observer (test-work/default-observer {:ansi false})]
+      [(map? observer) (fn? (:function observer))])
+    [true true])
+
+   ^{:refer code.test.work/reporting-runtime}
+   (test-check
+    "test reporting installs an observer only when requested"
+    (let [runtime (work/local-runtime)
+          reported (test-work/reporting-runtime runtime {:ansi false})
+          quiet (test-work/reporting-runtime runtime {:no-report true})]
+      [(fn? (get-in reported [:work/hooks :work/observer :function]))
+       (= runtime quiet)])
+    [true true])
+
+   ^{:refer code.test.work/reporting-work-options}
+   (test-check
+    "test reporting preserves explicit work observers"
+    (let [observer (work/recording-observer)
+          options (test-work/reporting-work-options
+                   (work/local-runtime)
+                   {:ansi false}
+                   {:work/hooks {:work/observer observer}})]
+      (= observer (get-in options [:work/hooks :work/observer])))
+    true)
+
+   ^{:refer code.test.work/runtime-value?}
+   (test-check
+    "test invocation distinguishes runtimes from selector values"
+    [(test-work/runtime-value? (work/local-runtime))
+     (test-work/runtime-value? work/default-host)
+     (test-work/runtime-value? {})]
+    [true true false])
+
+   ^{:refer code.test.work/run-on}
+   (test-check
+    "run-on returns the shared summary for an empty selector"
+    (let [result
+          (test-work/run-on
+           (work/local-runtime)
+           {:namespace "code.test.no-such-namespace"
+            :no-report true}
+           {})]
+      [(:status result) (:files result) (:facts result)])
+    [:passed 0 0])
+
+   ^{:refer code.test.work/start-on}
+   (test-check
+    "start-on delegates empty selection to the durable task runtime"
+    (let [runtime (work/durable-runtime)
+          reference
+          (test-work/start-on
+           runtime
+           {:namespace "code.test.no-such-namespace"
+            :no-report true}
+           {:id "test-start-on"})
+          result (work/result runtime reference)]
+      [(work/status runtime reference)
+       (:status result)
+       (:files result)
+       (:facts result)])
+    [:completed :passed 0 0])
 
    ^{:refer code.test.work/start}
    (test-check

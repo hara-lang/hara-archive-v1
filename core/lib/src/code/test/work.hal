@@ -6,6 +6,7 @@
             [code.test.manage :as manage]
             [work.flow.task :as task]
             [work.flow.task.selector :as selector]
+            [work.flow.task.report :as task-report]
             [work.base :as work]
             [work.base.result :as work-result]
             [code.test.result :as test-result]))
@@ -661,7 +662,7 @@
 
 (defn namespace-items
   [options]
-  (let [facts (selected-facts options)
+  (let [facts (selected-facts (dissoc options :namespace))
         namespaces (vec (distinct (map (fn [fact] (:namespace fact)) facts)))]
     (vec
      (map
@@ -673,15 +674,17 @@
   [options]
   (assoc (select-keys options
                       [:namespace
+                       :selector
                        :name
                        :include-tags
                        :exclude-tags
                        :test/filter
                        :test/revision
+                       :test/environment
                        :fail-fast
                        :timeout])
-         :test/items
-         (namespace-items options)))
+         :selector (:namespace options)
+         :test/items (namespace-items options)))
 
 (def test-task-summary task/test-summary-finalise)
 
@@ -696,6 +699,8 @@
    {:id 'code.test/run
     :type :test
     :version batch-revision
+    :invocation {:mode :selector
+                 :selector-key :namespace}
     :item {:run run-test-task-item}}))
 
 (defn fact-batch-work
@@ -740,10 +745,79 @@
 
 (defn normalize-run-options
   [selector-or-options]
-  (runner-options
-   (if (map? selector-or-options)
-     selector-or-options
-     {:namespace selector-or-options})))
+  (let [selector-or-options
+        (if (map? selector-or-options)
+          selector-or-options
+          (task/invocation-options [selector-or-options]))
+        options
+        (if (and (map? selector-or-options)
+                 (has? selector-or-options :selector))
+          (assoc (dissoc selector-or-options :selector)
+                 :namespace (:selector selector-or-options))
+          selector-or-options)
+        options
+        (if (has? options :environment)
+          (assoc (dissoc options :environment)
+                 :test/environment (:environment options))
+          options)
+        options
+        (if (has? options :namespace)
+          options
+          (assoc options :namespace (current-namespace)))]
+    (runner-options options)))
+
+(defn report-options
+  [options]
+  (assoc (select-keys options [:emit])
+         :ansi (if (has? options :ansi)
+                 (:ansi options)
+                 (not (:no-color options)))))
+
+(defn default-observer
+  [options]
+  (task-report/observer (report-options options)))
+
+(defn reporting-runtime
+  ([runtime options]
+   (reporting-runtime runtime options {}))
+  ([runtime options work-options]
+   (let [hooks (if (work/canonical-runtime? runtime)
+                 (or (:work/hooks runtime) {})
+                 {})
+         requested (or (get-in work-options [:work/hooks :work/observer])
+                       (:observer work-options))]
+     (if (and (work/canonical-runtime? runtime)
+              (not (:no-report options))
+              (or requested (nil? (:work/observer hooks))))
+       (assoc runtime
+              :work/hooks
+              (assoc hooks
+                     :work/observer
+                     (or requested
+                         (:work/observer hooks)
+                         (default-observer options))))
+       runtime))))
+
+(defn reporting-work-options
+  [runtime options work-options]
+  (let [work-options (or work-options {})
+        hooks (or (:work/hooks work-options) {})
+        nested-observer (:work/observer hooks)]
+    (if (or (:no-report options)
+            (not (nil? nested-observer))
+            (work/canonical-runtime? runtime))
+      work-options
+      (assoc work-options
+             :work/hooks
+             (assoc hooks
+                    :work/observer
+                    (or (:observer work-options)
+                        (default-observer options)))))))
+
+(defn runtime-value?
+  [value]
+  (or (work/canonical-runtime? value)
+      (satisfies? IWorkHost value)))
 
 (defn runner-work-options
   [options work-options]
@@ -753,6 +827,29 @@
                 {:test/options options
                  :test/config (:test/config options)
                  :test/context (:test/context options)})))
+
+(defn run-on
+  [runtime selector-or-options work-options]
+  (let [options (normalize-run-options selector-or-options)
+        runtime (or runtime (work/local-runtime))
+        work-options (runner-work-options options work-options)
+        work-options (reporting-work-options runtime options work-options)
+        runtime (reporting-runtime runtime options work-options)
+        run-id (:id work-options)
+        artifact-options
+        (if (and run-id
+                 (nil? (get-in options [:test/config :started-at])))
+          (assoc-in options [:test/config :started-at] run-id)
+          options)
+        summary
+        (work/run runtime
+                  (runner-work (work-revision options))
+                  (test-task-input options)
+                  work-options)]
+    (work-result/then
+     summary
+     (fn [resolved]
+       (complete-test-run resolved artifact-options)))))
 
 (defn native-cancelled-result
   [fact]
@@ -789,41 +886,43 @@
 
 (defn run
   "Runs selected facts through the Foundation-compatible task profile."
-  ([] (run {}))
+  ([] (run-on nil (current-namespace) {}))
   ([selector-or-options]
-   (run work/default-host selector-or-options {}))
-  ([runtime selector-or-options]
-   (run runtime selector-or-options {}))
-  ([runtime selector-or-options work-options]
-   (let [options (normalize-run-options selector-or-options)
-         run-id (:id work-options)
-         artifact-options
-         (if (and run-id
-                  (nil? (get-in options [:test/config :started-at])))
-           (assoc-in options [:test/config :started-at] run-id)
-           options)
-         summary
-         (work/run runtime
-                   (runner-work (work-revision options))
-                   (test-task-input options)
-                   (runner-work-options options work-options))]
-     (work-result/then
-      summary
-      (fn [resolved]
-        (complete-test-run resolved artifact-options))))))
+   (run-on nil selector-or-options {}))
+  ([first second]
+   (if (runtime-value? first)
+     (run-on first second {})
+     (run-on nil (task/invocation-options [first second]) {})))
+  ([first second third]
+   (if (runtime-value? first)
+     (run-on first second third)
+     (run-on nil (task/invocation-options [first second third]) {}))))
+
+(defn start-on
+  [runtime selector-or-options work-options]
+  (let [options (normalize-run-options selector-or-options)
+        runtime (or runtime (work/local-runtime))
+        work-options (runner-work-options options work-options)
+        work-options (reporting-work-options runtime options work-options)
+        runtime (reporting-runtime runtime options work-options)]
+    (work/start runtime
+                (runner-work (work-revision options))
+                (test-task-input options)
+                work-options)))
 
 (defn start
   "Starts the canonical namespace test task and returns a live IWorkRun."
+  ([] (start-on nil (current-namespace) {}))
   ([selector-or-options]
-   (start work/default-host selector-or-options {}))
-  ([runtime selector-or-options]
-   (start runtime selector-or-options {}))
-  ([runtime selector-or-options work-options]
-   (let [options (normalize-run-options selector-or-options)]
-     (work/start runtime
-                 (runner-work (work-revision options))
-                 (test-task-input options)
-                 (runner-work-options options work-options)))))
+   (start-on nil selector-or-options {}))
+  ([first second]
+   (if (runtime-value? first)
+     (start-on first second {})
+     (start-on nil (task/invocation-options [first second]) {})))
+  ([first second third]
+   (if (runtime-value? first)
+     (start-on first second third)
+     (start-on nil (task/invocation-options [first second third]) {}))))
 
 (defn batch-result
   ([run]
@@ -836,7 +935,7 @@
 
 (defn run-tests
   "Compatibility name for run."
-  ([] (run {}))
+  ([] (run))
   ([options] (run options)))
 
 (def revision work-revision)

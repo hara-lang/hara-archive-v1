@@ -94,6 +94,36 @@
    origin
    [observation]))
 
+(def workflow-foundation-tests
+  ["test/code/manage/automation_test.clj"
+   "test/code/manage/fn_format_test.clj"
+   "test/code/manage/ns_format_sym_test.clj"
+   "test/code/manage/ns_format_test.clj"
+   "test/code/manage/ns_rename_test.clj"
+   "test/code/manage/transform/defn_props_test.clj"
+   "test/code/manage/unit/factcheck_test.clj"
+   "test/code/manage/unit/import_test.clj"
+   "test/code/manage/unit/isolate_test.clj"
+   "test/code/manage/unit/require_test.clj"
+   "test/code/manage/unit/scaffold_test.clj"
+   "test/code/manage/unit/snapto_test.clj"
+   "test/code/manage/unit/template_test.clj"
+   "test/code/manage/unit/walk_test.clj"
+   "test/code/manage/unit_test.clj"
+   "test/code/manage/var_test.clj"
+   "test/code/manage_test.clj"])
+
+(def workflow-observation
+  {:operations 35
+   :selector/arity [0 3]
+   :selector/lookup? false
+   :defaults {:direct :current-namespace
+              :cli :all}
+   :template :work.flow.task
+   :report :work.flow.task.report
+   :packaging :task-report
+   :selector/owner :work.flow.task.selector/invocation-options})
+
 ^{:refer tool.migrate.policy.foundation.conformance/validate-core-observations}
 (fact "core observation validation requires complete deterministic evidence"
   [(conformance/validate-core-observations
@@ -322,5 +352,37 @@
    (conformance/normalize-value {:foundation/expected (fn [value] value)})]
   => [{:status :manual-review :expected nil :reason :missing-expectation}
       {:status :manual-review :expected nil :reason :closure}])
+
+^{:refer tool.migrate.policy.foundation.conformance/workflow-conformance}
+(fact "tool.migrate checks the pinned Foundation workflow inventory and contract"
+  (let [runner
+        (fn [argv input]
+          {:exit 0
+           :stdout (str/join "\n" workflow-foundation-tests)})
+        report (conformance/workflow-conformance
+                runner
+                conformance/+baseline+
+                workflow-observation)]
+    [(count (:foundation/test-paths report))
+     (:valid? report)
+     (:errors report)])
+  => [17 true []])
+
+(fact "workflow conformance reports selector contract drift"
+  (let [runner
+        (fn [argv input]
+          {:exit 0
+           :stdout (str/join "\n" workflow-foundation-tests)})
+        report
+        (conformance/workflow-conformance
+         runner
+         conformance/+baseline+
+         (assoc workflow-observation :selector/arity [0 4]))]
+    [(get-in report [:errors 0 :type])
+     (get-in report [:errors 0 :expected])
+     (get-in report [:errors 0 :actual])])
+  => [:conformance/workflow-contract-drift
+      [0 3]
+      [0 4]])
 
 (pr-str (run {:namespace "tool.migrate.policy.foundation.conformance-test"}))

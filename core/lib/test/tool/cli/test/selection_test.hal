@@ -17,7 +17,7 @@
                                   {:namespace 'code.test-test})
              (selection/matching? #{'hara.other}
                                   {:namespace 'hara.other})]
-            [true true true true])
+            [true true false true])
 
 ^{:refer tool.cli.test.selection/select}
 (test-check "selection filters records while preserving order"

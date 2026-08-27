@@ -1,6 +1,7 @@
 (ns work.flow.task
   (:require [work.flow :as flow]
-            [work.flow.task.engine :as engine]))
+            [work.flow.task.engine :as engine]
+            [work.flow.task.selector :as selector]))
 
 (def path [:task])
 
@@ -187,6 +188,9 @@
    (engine/compile definition)))
 
 (def task compile)
+
+(def ^{:public true} selector-options selector/selector-options)
+(def ^{:public true} invocation-options selector/invocation-options)
 
 (defn invoke
   "Invokes one compiled task through its historical callable surface."

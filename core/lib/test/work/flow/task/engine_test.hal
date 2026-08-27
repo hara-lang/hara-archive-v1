@@ -1,0 +1,58 @@
+(ns work.flow.task.engine-test
+  (:use code.test)
+  (:require [work.flow.task.engine :as engine]))
+
+^{:refer work.flow.task.engine/invocation-arguments}
+(fact "selector invocations use the shared three-position surface"
+  [(select-keys
+    (engine/invocation-arguments
+     ['std {:parallel true} {:root "."}]
+     {:mode :selector})
+    [:selector :parallel :environment :task/request])
+   (select-keys
+    (engine/invocation-arguments
+     [1 2 3 4]
+     {})
+    [:input :params :lookup :environment :task/request])]
+  => [{:selector 'std
+       :parallel true
+       :environment {:root "."}
+       :task/request "work.flow.task.engine.request/0-alpha"}
+      {:input 1
+       :params 2
+       :lookup 3
+       :environment 4
+       :task/request "work.flow.task.engine.request/0-alpha"}])
+
+^{:refer work.flow.task.engine/request-params}
+(fact "task request parameters retain flat selector-task options"
+  (engine/request-params
+   {:task/request "work.flow.task.engine.request/0-alpha"
+    :selector 'std
+    :parallel true
+    :params {:timeout 10}
+    :environment {:root "."}})
+  => {:parallel true :timeout 10})
+
+^{:refer work.flow.task.engine/normalise-request}
+(fact "normalised task requests distinguish explicit selectors from input"
+  [(select-keys
+    (engine/normalise-request
+     {:task/request "work.flow.task.engine.request/0-alpha"
+      :selector 'std})
+    [:task/input? :task/params :task/selector :task/selector? :task/mode])
+   (select-keys
+    (engine/normalise-request {:selector 'std :units []})
+    [:task/input :task/input? :task/selector :task/selector? :task/params])]
+  => [{:task/input? false
+       :task/params {}
+       :task/selector 'std
+       :task/selector? true
+       :task/mode :run}
+      {:task/input {:selector 'std :units []}
+       :task/input? true
+       :task/selector 'std
+       :task/selector? true
+       :task/params {}}])
+
+(pr-str (run {:namespace "work.flow.task.engine-test"}))

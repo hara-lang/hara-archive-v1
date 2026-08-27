@@ -1,6 +1,7 @@
 (ns code.manage.unit.template
   (:config {:override [task]})
-  (:require [work.base :as work]
+  (:require [code.framework :as framework]
+            [work.base :as work]
             [work.flow.task :as task-template]))
 
 (def schema-id "code.manage.task/0-alpha")
@@ -14,6 +15,17 @@
   (and (map? value)
        (has? value :path)
        (has? value :source)))
+
+(defn unit-namespace
+  "Returns the declared namespace used as the task item selector."
+  [unit]
+  (or (:namespace unit)
+      (try
+        (let [namespace (framework/namespace-name (:source unit))]
+          (if namespace (symbol namespace) nil))
+        (catch error nil))
+      (:path unit)
+      (:name unit)))
 
 (defn task-input-units
   [input]
@@ -46,12 +58,16 @@
 
 (defn task-item
   [unit options]
-  {:item/id (or (:path unit)
-                (:namespace unit)
-                (:name unit))
-   :item/value
-   {:code.manage/unit unit
-    :code.manage/options options}})
+  (let [namespace (unit-namespace unit)]
+    {:item/id namespace
+     :item/value
+     {:code.manage/unit
+      (if (and namespace (nil? (:namespace unit)))
+        (assoc unit :namespace namespace)
+        unit)
+      :code.manage/options options
+      :code.manage/namespace namespace
+      :code.manage/path (:path unit)}}))
 
 (defn tasklet-subject-unit
   [subject]
@@ -119,16 +135,15 @@
 (defn legacy-batch
   [bundle]
   (let [records (vec (:records bundle))]
-    (assoc
-     (assoc bundle
-            :items (vec (map legacy-input-item records)))
-     :results (vec (map legacy-item records)))))
+    (assoc bundle
+           :items (vec (map legacy-input-item records))
+           :results (vec (map legacy-item records)))))
 
 (defn finalise-summary
   [operation summary records results]
-  (assoc
-   (assoc summary :operation operation)
-   :count (:items summary)))
+  (assoc summary
+         :operation operation
+         :count (:items summary)))
 
 (defn assert-task
   [config]
@@ -175,6 +190,8 @@
            {:code.manage/schema schema-id
             :code.manage/operation operation
             :code.manage/tasklet tasklet-symbol}
+           :invocation {:mode :selector
+                        :selector-key :namespace}
            :item
            {:list-mode :input-context
             :list

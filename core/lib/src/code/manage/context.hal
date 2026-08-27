@@ -1,0 +1,126 @@
+(ns code.manage.context
+  (:config {:role :internal})
+  (:require [code.project :as project]
+            [work.flow.task :as task]
+            [work.flow.task.selector :as selector]))
+
+(def +test-only+
+  #{:refactor-test :isolate :factcheck-remove :factcheck-generate :unchecked})
+
+(def +source-and-test+
+  #{:ns-rename :find-usages :grep :grep-replace})
+
+(defn roots-for
+  [current-project operation]
+  (cond
+    (has? +test-only+ operation) (:project/test-paths current-project)
+    (has? +source-and-test+ operation)
+    (vec (concat (:project/source-paths current-project)
+                 (:project/test-paths current-project)))
+    :else (:project/source-paths current-project)))
+
+(defn unit
+  [path type]
+  (let [source (project/read-text path)]
+    {:path path
+     :type type
+     :namespace (project/namespace-from-source source nil)
+     :source source}))
+
+(defn versioned-unit
+  [base version]
+  (assoc base :version version :project-version version))
+
+(defn paired-source-unit
+  [base version test-path test-source]
+  (assoc (versioned-unit base version)
+         :test-path test-path
+         :test-source (or test-source "")))
+
+(defn project-test-path
+  [current-project path]
+  (project/paired-test-path current-project path))
+
+(defn paired-unit
+  [current-project path type]
+  (let [version (:project/version current-project)
+        base (project/project-file-record current-project path)]
+    (if (= type :source)
+      (let [test-path (project-test-path current-project path)]
+        (paired-source-unit
+         base
+         version
+         test-path
+         (if (deref (File/exists? test-path))
+           (project/read-text test-path)
+           "")))
+      (versioned-unit base version))))
+
+(defn units-for
+  "Returns every operation-eligible unit; task selection is applied later by
+   work.flow.task.engine so direct, CLI, and composed calls share one contract."
+  [current-project operation]
+  (vec
+   (map (fn [path]
+          (paired-unit current-project path
+                       (project/file-type current-project path)))
+        (project/files-in current-project
+                          (roots-for current-project operation)
+                          ".hal"))))
+
+(defn current-project
+  ([] (current-project (OS/cwd)))
+  ([start] (project/discover start)))
+
+(defn selector-input?
+  [value]
+  (or (string? value)
+      (symbol? value)
+      (keyword? value)
+      (regexp? value)
+      (set? value)
+      (list? value)
+      (vector? value)
+      (fn? value)))
+
+(defn task-input
+  "Converts selector-shaped public inputs into explicit task requests.
+   Unit maps remain ordinary task input so callers can supply an in-memory catalog."
+  [value]
+  (cond
+    (nil? value) (task/request)
+    (selector-input? value) (task/request {:selector value})
+    (and (map? value)
+         (or (has? value :units)
+             (has? value :unit)
+             (has? value :path)
+             (has? value :source)))
+    value
+    (and (map? value) (not (has? value :units)))
+    (task/request (task/invocation-options [value] :namespace))
+    :else value))
+
+(defn current-input
+  "Constructs input for callable code.manage.
+   Zero-selector is current namespace. Explicit selector gets the complete
+   operation catalog and is filtered by the shared task engine. Task params
+   become operation options."
+  ([operation namespace]
+   (current-input (current-project) operation namespace {}))
+  ([operation namespace invocation]
+   (current-input (current-project) operation namespace invocation))
+  ([current-project operation namespace invocation]
+   (let [units (units-for current-project operation)
+         units (if (:task/selector? invocation)
+                 units
+                 (vec
+                  (filter
+                   (fn [unit]
+                     (selector/matches? namespace (:namespace unit)))
+                   units)))
+         params (or (:task/params invocation) {})
+         input {:units units
+                :options params}]
+     (if (:task/selector? invocation)
+       (assoc input :selector (:task/selector invocation))
+       input))))

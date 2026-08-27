@@ -85,9 +85,23 @@
                  (get payload "write")
                  (get-in payload ["findings" 0 "classification"])])
               ["code.manage.editor/0-alpha" "pedantic" false "M"])
+  ^{:refer code.manage.cli/selected?}
   (test-check "namespace selectors use source path spelling"
               (cli/selected? "/project/src/code/manage.hal" ["code.manage"])
               true)
+  ^{:refer code.manage.cli/parsed-selector}
+  (test-check "CLI selectors use the shared scalar and disjunction forms"
+              [(cli/parsed-selector [])
+               (cli/parsed-selector ["code.manage"])
+               (cli/parsed-selector ["code" "std"])]
+              [:all "code.manage" ["code" "std"]])
+  ^{:refer code.manage.cli/path-selector-candidates}
+  (test-check "path selectors expose namespace suffix candidates"
+              (cli/path-selector-candidates "/project/src/code/manage.hal")
+              ["project.src.code.manage"
+               "src.code.manage"
+               "code.manage"
+               "manage"])
   (test-check "manage handler reaches its parser through the default host"
               (let [message
                     (try

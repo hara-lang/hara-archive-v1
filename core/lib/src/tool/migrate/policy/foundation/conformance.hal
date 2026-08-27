@@ -40,6 +40,22 @@
    :output/root (str "../hara-specs-registry/"
                      (:registry/root +active-profile+))})
 
+(def +workflow-contract+
+  {:contract/id :code.manage-task-flow
+   :contract/version 1
+   :foundation/test-prefixes ["test/code/manage_test.clj"
+                              "test/code/manage"]
+   :foundation/test-count 17
+   :operations 35
+   :selector/arity [0 3]
+   :selector/lookup? false
+   :defaults {:direct :current-namespace
+              :cli :all}
+   :template :work.flow.task
+   :report :work.flow.task.report
+   :packaging :task-report
+   :selector/owner :work.flow.task.selector/invocation-options})
+
 (defn family-descriptor
   [family-id test-prefixes test-count target-namespace mappings output-path]
   {:family/id family-id
@@ -248,8 +264,7 @@
         :output/path output-path})
      (corpus/duplicate-values (map :output/path families))))))
 
-^{:public true}
-(defn generation-plan
+(defn ^{:public true} generation-plan
   [baseline families]
   (let [families (vec (sort-by :family/name families))
         errors (plan-errors baseline families)]
@@ -258,8 +273,7 @@
      :errors errors
      :valid? (empty? errors)}))
 
-^{:public true}
-(defn initial-plan
+(defn ^{:public true} initial-plan
   []
   (generation-plan +baseline+ +initial-families+))
 
@@ -273,20 +287,70 @@
            (path-selected? descriptor path)))
     (migrate-git/list-tree runner revision))))
 
+(defn ^{:public true} workflow-conformance
+  "Checks the shared code.manage workflow contract against pinned Foundation.
+
+   The Foundation side is discovered only through tool.migrate's read-only
+   Git boundary. The observed map is the Hara implementation ledger supplied
+   by the caller, so this check does not load, evaluate, or write either
+   project while reporting selector or task-template drift."
+  [runner baseline observed]
+  (let [foundation-tests
+        (vec
+         (sort
+          (filter
+           (fn [file-path]
+             (and
+              (str/ends-with? file-path ".clj")
+              (or (= file-path "test/code/manage_test.clj")
+                  (str/starts-with? file-path "test/code/manage/"))))
+           (migrate-git/list-tree runner (:foundation/revision baseline)))))
+        expected
+        (select-keys
+         +workflow-contract+
+         [:operations :selector/arity :selector/lookup? :defaults
+          :template :report :packaging :selector/owner])
+        actual
+        (select-keys
+         (or observed {})
+         [:operations :selector/arity :selector/lookup? :defaults
+          :template :report :packaging :selector/owner])
+        errors
+        (vec
+         (concat
+          (if (= (:foundation/test-count +workflow-contract+)
+                 (count foundation-tests))
+            []
+            [{:type :conformance/workflow-test-inventory-drift
+              :expected (:foundation/test-count +workflow-contract+)
+              :discovered (count foundation-tests)
+              :paths foundation-tests}])
+          (if (= expected actual)
+            []
+            [{:type :conformance/workflow-contract-drift
+              :expected expected
+              :actual actual}])))]
+    {:document/type :hara-foundation-workflow-conformance
+     :document/version 1
+     :foundation/repository (:foundation/repository baseline)
+     :foundation/revision (:foundation/revision baseline)
+     :foundation/test-paths foundation-tests
+     :contract +workflow-contract+
+     :observed (or observed {})
+     :errors errors
+     :valid? (empty? errors)}))
+
 (defn inventory-family
   "Attaches the exact discovered source-test inventory to one family."
   [runner revision descriptor]
   (let [paths (foundation-test-paths runner revision descriptor)
         expected (:source/test-count descriptor)]
-    (assoc
-     (assoc
-      (assoc descriptor
-             :source/discovered-tests paths)
-      :source/discovered-count (count paths))
-     :source/inventory-complete? (= expected (count paths)))))
+    (assoc descriptor
+           :source/discovered-tests paths
+           :source/discovered-count (count paths)
+           :source/inventory-complete? (= expected (count paths)))))
 
-^{:public true}
-(defn baseline-inventory
+(defn ^{:public true} baseline-inventory
   "Builds the reviewable Stage 0 inventory without reading or writing host files."
   [runner baseline]
   (let [plan (generation-plan
@@ -322,8 +386,7 @@
         (not (:source/inventory-complete? descriptor)))
       (:families inventory))))))
 
-^{:public true}
-(defn inventory-report
+(defn ^{:public true} inventory-report
   "Returns only deterministic baseline facts suitable for review or CI."
   [inventory]
   {:document/type :hara-foundation-inventory
@@ -992,9 +1055,9 @@
     (vec
      (map
       (fn [observation]
-        (assoc
-         (assoc observation :review/disposition :pending)
-         :review/evidence []))
+        (assoc observation
+               :review/disposition :pending
+               :review/evidence []))
       (:origin/core-references origin)))
     :core/accounting (:origin/core-accounting origin)
     :document/id (keyword "foundation.conformance" (:family/name descriptor))
@@ -1010,9 +1073,9 @@
     (vec
      (map
       (fn [observation]
-        (assoc
-         (assoc observation :review/disposition :pending)
-         :review/evidence []))
+        (assoc observation
+               :review/disposition :pending
+               :review/evidence []))
       (:origin/external-dependencies origin)))
     :external/accounting (:origin/external-accounting origin)
     :runtime/status {:rust :pending :jvm :pending :wasm :pending}
@@ -1783,12 +1846,12 @@
   [form]
   (case (classify-form form)
     :portable (assoc form :status :emitted)
-    :skipped (assoc
-              (assoc form :status :skipped)
-              :reason (or (:reason form) :host-only))
-    (assoc
-     (assoc form :status :manual-review)
-     :reason (or (:reason form) :runner-boundary))))
+    :skipped (assoc form
+                    :status :skipped
+                    :reason (or (:reason form) :host-only))
+    (assoc form
+           :status :manual-review
+           :reason (or (:reason form) :runner-boundary))))
 
 (defn stable-id
   [descriptor observation]
@@ -1983,8 +2046,7 @@
    :observation-count (count observations)
    :errors (:validation/errors document)})
 
-^{:public true}
-(defn generate
+(defn ^{:public true} generate
   [baseline descriptor observations]
   (let [document (corpus-document baseline descriptor observations)]
     {:path (output-path baseline descriptor)
