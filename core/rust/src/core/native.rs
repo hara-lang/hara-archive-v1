@@ -2062,6 +2062,10 @@ fn eval_direct_native_declaration(expected_operator: &str, form: &Form) -> Resul
             };
             let protocol = match eval_direct_native_form(&items[2])? {
                 Value::Protocol(protocol) => protocol,
+                Value::Var(var) => match var.deref_value() {
+                    Value::Protocol(protocol) => protocol,
+                    _ => return Err("extend-type expects a protocol".into()),
+                },
                 _ => return Err("extend-type expects a protocol".into()),
             };
             let mut seen = HashSet::new();
