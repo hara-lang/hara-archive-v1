@@ -792,13 +792,14 @@
                  (std.foundation/map? [1])])
    :expected [true false]}])
 
-^{:refer std.foundation/map-entry?}
+^{:refer std.foundation/pair?}
 (Test/run
- [{:name "recognizes map entries through IPair"
-   :test (fn [] [(std.foundation/map-entry? (first {:a 1}))
-                 (std.foundation/map-entry? (tuple :a 1))
-                 (std.foundation/map-entry? [1])])
-   :expected [true true false]}])
+ [{:name "recognizes compact map entry pairs"
+   :test (fn [] [(std.foundation/pair? (first {:a 1}))
+                 (std.foundation/pair? (tuple :a 1))
+                 (std.foundation/pair? (std.foundation/vector 1 2))
+                 (std.foundation/pair? '(1 2))])
+   :expected [true true false false]}])
 
 ^{:refer std.foundation/set?}
 (Test/run

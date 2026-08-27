@@ -60,7 +60,7 @@ public class HaraGeneratedLibrariesTest {
       assertTrue(context.eval(HaraLanguage.ID, "(char? \\a)").asBoolean());
       assertTrue(context.eval(HaraLanguage.ID, "(list? '(a b))").asBoolean());
       assertTrue(context.eval(HaraLanguage.ID, "(not (list? '[a b]))").asBoolean());
-      assertTrue(context.eval(HaraLanguage.ID, "(map-entry? (first {:a 1}))").asBoolean());
+      assertTrue(context.eval(HaraLanguage.ID, "(pair? (first {:a 1}))").asBoolean());
       assertTrue(context.eval(HaraLanguage.ID, "(not (uuid? :a))").asBoolean());
       assertTrue(context.eval(HaraLanguage.ID, "(not (regexp? :a))").asBoolean());
       assertTrue(context.eval(HaraLanguage.ID, "(fn? (fn [value] value))").asBoolean());
@@ -143,16 +143,16 @@ public class HaraGeneratedLibrariesTest {
   }
 
   @Test
-  public void protocolPredicatesAndMapEntriesUseCanonicalCapabilities() {
+  public void protocolPredicatesAndPairsUseCanonicalCapabilities() {
     try (Context context = context()) {
       assertEquals(
-          "[true true true true]",
+          "[true true true]",
           context
               .eval(
                   HaraLanguage.ID,
-                  "[(coll? {}) (counted? []) (pair? (first {:a 1})) "
-                      + "(map-entry? (first {:a 1}))]")
+                  "[(coll? {}) (counted? []) (pair? (first {:a 1}))]")
               .toString());
+      assertErrorContains(context, "(map-entry? (first {:a 1}))", "Unbound symbol");
       assertEquals(
           ":std.native.Tuple",
           context.eval(HaraLanguage.ID, "(type (first {:a 1}))").toString());
