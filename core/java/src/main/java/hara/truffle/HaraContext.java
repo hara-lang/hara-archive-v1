@@ -693,6 +693,7 @@ public final class HaraContext {
         new UnaryBuiltin(
             "std.native.Base/resolve",
             value -> resolveAvailableValue(value, "std.native.Base/resolve")));
+    base.define("bytes", new VariadicBuiltin("std.native.Base/bytes", this::createBytes));
     base.define(
         "special-symbol?",
         new UnaryBuiltin(

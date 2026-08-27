@@ -1666,13 +1666,7 @@ fn native_iter_operation(method: &str, arguments: Vec<Value>) -> Result<Value, S
 
 fn native_bytes_operation(method: &str, arguments: Vec<Value>) -> Result<Value, String> {
     match (method, arguments.as_slice()) {
-        ("new", values) => {
-            let values = values
-                .iter()
-                .map(|value| byte_input(value, "bytes"))
-                .collect::<Result<Vec<_>, _>>()?;
-            Ok(Value::ByteBuffer(Rc::new(RefCell::new(values))))
-        }
+        ("new", values) => native_bytes_new(values),
         ("count", [value]) => byte_count(value),
         ("get", [value, index]) => byte_get(value, index, None),
         ("get", [value, index, default]) => byte_get(value, index, Some(default.clone())),
@@ -1698,6 +1692,14 @@ fn native_bytes_operation(method: &str, arguments: Vec<Value>) -> Result<Value, 
             "std.native.Bytes/{method} received unsupported arguments"
         )),
     }
+}
+
+fn native_bytes_new(values: &[Value]) -> Result<Value, String> {
+    let values = values
+        .iter()
+        .map(|value| byte_input(value, "bytes"))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(Value::ByteBuffer(Rc::new(RefCell::new(values))))
 }
 
 /// Structural evaluator arms that are ordinary callable values.  Rust keeps

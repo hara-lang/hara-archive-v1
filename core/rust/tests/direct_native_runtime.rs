@@ -52,6 +52,22 @@ fn direct_native_keeps_the_disj_core_intrinsic_available() {
 }
 
 #[test]
+fn base_bytes_matches_the_bytes_constructor_contract() {
+    let mut runtime = Runtime::core();
+    enable_native(&mut runtime);
+    assert_eq!(
+        runtime
+            .eval_direct_native("[(Bytes/count (Base/bytes 1 2 -3 255)) (Bytes/get (Base/bytes 1 2 -3) 2)]")
+            .unwrap(),
+        "[4 253]"
+    );
+    let error = runtime
+        .eval_direct_native("(Base/bytes 256)")
+        .expect_err("Base/bytes must reject values outside the byte range");
+    assert!(error.contains("bytes expects a value in the range -128..255"), "{error}");
+}
+
+#[test]
 fn runtime_direct_native_loader_handles_require_inside_a_native_frame() {
     let mut runtime = Runtime::core();
     runtime.register_resource(

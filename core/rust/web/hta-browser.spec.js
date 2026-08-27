@@ -59,7 +59,7 @@ test("fresh browser sandbox evaluates without native authority",async({page})=>{
     catch(error){secondRun=error.code;}
     const isolated=await create().run({
       operation:"sandbox.eval",
-      source:"(and (nil? (resolve 'Runtime)) (nil? (resolve 'std.native.Runtime/call)) (nil? (resolve 'Host/call)) (nil? (resolve 'File/read)))",
+      source:"(and (nil? (Base/resolve 'Runtime)) (nil? (Base/resolve 'std.native.Runtime/call)) (nil? (Base/resolve 'Host/call)) (nil? (Base/resolve 'File/read)))",
     });
     return {completed,secondRun,isolated};
   });
