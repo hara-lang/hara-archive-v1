@@ -5,40 +5,30 @@
 ;; existing ledger.noir extension identity used by the runtime and registry.
 (ns crypto.ext.noir)
 
-^{:public true}
-(def +namespace+ "crypto.ext.noir")
-^{:public true}
-(def +extension-namespace+ "ledger.noir")
-^{:public true}
-(def +identity+ "hara/ledger.noir")
-^{:public true}
-(def +version+ "0.1.0")
-^{:public true}
-(def +artifact-format+ "hara/ledger.noir/v1")
-^{:public true}
-(def +proof-format+ "hara.noir.proof/0-alpha")
+(def ^{:public true} +namespace+ "crypto.ext.noir")
+(def ^{:public true} +extension-namespace+ "ledger.noir")
+(def ^{:public true} +identity+ "hara/ledger.noir")
+(def ^{:public true} +version+ "0.1.0")
+(def ^{:public true} +artifact-format+ "hara/ledger.noir/v1")
+(def ^{:public true} +proof-format+ "hara.noir.proof/0-alpha")
 
-^{:public true}
-(def +exports+
+(def ^{:public true} +exports+
   {"compile" {:args [:value] :returns :value :async true}
    "prove"   {:args [:value :map] :returns :value :async true}
    "verify"  {:args [:value :value] :returns :boolean :async true}})
 
-^{:public true}
-(def +assets+
+(def ^{:public true} +assets+
   ["assets/noir-wasm.mjs"
    "assets/barretenberg.js"
    "assets/barretenberg-threads.js"
    "assets/main.worker.js"
    "assets/thread.worker.js"])
 
-^{:public true}
-(def +targets+
+(def ^{:public true} +targets+
   {:node {:provider "node/provider.mjs" :runtime :process}
    :browser {:provider "browser/provider.mjs" :runtime :web-worker}})
 
-^{:public true}
-(def +manifest+
+(def ^{:public true} +manifest+
   {:namespace +extension-namespace+
    :identity +identity+
    :version +version+
@@ -49,8 +39,7 @@
    :exports +exports+
    :capabilities []})
 
-^{:public true}
-(defn manifest
+(defn ^{:public true} manifest
   "Returns the canonical extension manifest used by package builders."
   []
   +manifest+)

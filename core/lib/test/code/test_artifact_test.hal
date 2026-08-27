@@ -41,7 +41,7 @@
        :test/config {:runner :code.test}
        :test/context :internal
        :save-run true})]
-    ["./.tahto/runs/run-9.edn"
+    ["/.tahto/runs/run-9.edn"
      ".tahto/runs/run-9.run.edn"
      '(code.test/run (quote {:namespace "sample.test"}))])
 

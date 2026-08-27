@@ -8,7 +8,6 @@
 (def ROUTE "hta-wasm")
 (def provider (common/Provider SERVICE ROUTE))
 
-^{:public true}
-(defn dispatch
+(defn ^{:public true} dispatch
   [operation arguments]
   (common/dispatch provider operation arguments))

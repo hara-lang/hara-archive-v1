@@ -1,6 +1,7 @@
 (ns code.manage
   (:config {:override [import]})
   (:require [code.manage.automation :as automation]
+            [code.manage.context :as context]
             [code.manage.ns-format :as manage-format]
             [code.manage.ns-rename :as manage-rename]
             [code.manage.unit :as unit]
@@ -18,22 +19,15 @@
 ;; Atomic operations live under code.manage.unit.*.  This namespace owns the
 ;; public task values composed around those tasklets, matching Foundation.
 
-(defn- current-task-input
-  [operation]
-  (do
-    (let [input-var (resolve 'code.manage.cli/current-input)]
-      (if input-var
-        ((deref input-var) operation (current-namespace))
-        (throw
-         (ex :state {:operation operation} :ex/message "code.manage.cli/current-input is unavailable"))))))
-
 (defn- composed-task
   [operation tasklet-reference tasklet argcount]
   (template/task
    {:operation operation
     :construct
     {:input (fn [definition]
-              (current-task-input operation))}
+              (context/current-input operation
+                                     (current-namespace)
+                                     definition))}
     :main
     {:fn tasklet
      :symbol tasklet-reference
@@ -417,7 +411,7 @@
   [operation input]
   (let [task-value (command-task operation)
         batch
-        (work/run work/default-host task-value input)
+        (work/run work/default-host task-value (context/task-input input))
         records (batch-records batch)
         values
         (vec
@@ -484,4 +478,6 @@
   [operation input]
   (if (= operation :incomplete-report)
     (incomplete-report (:units input))
-    (work/run work/default-host (command-task operation) input)))
+    (work/run work/default-host
+              (command-task operation)
+              (context/task-input input))))

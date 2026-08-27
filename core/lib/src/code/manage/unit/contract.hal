@@ -42,8 +42,7 @@
     "delivery boundary" :delivery
     nil))
 
-^{:public true}
-(defn parse-document
+(defn ^{:public true} parse-document
   "Parses Markdown headings while preserving contract bodies and malformed headings."
   [source]
   (let [text (if (string? source) source "")
@@ -110,8 +109,7 @@
              sections
              malformed)))))))
 
-^{:public true}
-(defn canonical-github-link?
+(defn ^{:public true} canonical-github-link?
   "Returns true only for canonical GitHub links in the connector organizations."
   [value]
   (if (not (string? value))
@@ -143,8 +141,7 @@
       (recur (string/slice current 0 (dec (string/length current))))
       current)))
 
-^{:public true}
-(defn extract-links
+(defn ^{:public true} extract-links
   "Extracts HTTP(S) URL tokens without network access."
   [text]
   (vec
@@ -156,8 +153,7 @@
          (re-split "[^A-Za-z0-9:/._?&#=%-]+"
                    (if (string? text) text ""))))))
 
-^{:public true}
-(defn check-contract
+(defn ^{:public true} check-contract
   "Checks one connector issue contract without credentials or network access."
   [input]
   (if (and (not (string? input))

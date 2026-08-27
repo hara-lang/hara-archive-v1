@@ -10,17 +10,12 @@
             [lang.model.v1.spec-xtalk :as xtalk]
             [std.foundation.string :as string]))
 
-^{:public true}
-(def +language+ :c)
-^{:public true}
-(def +tag+ :c)
-^{:public true}
-(def +version+ 1)
-^{:public true}
-(def +grammar-version+ 1)
+(def ^{:public true} +language+ :c)
+(def ^{:public true} +tag+ :c)
+(def ^{:public true} +version+ 1)
+(def ^{:public true} +grammar-version+ 1)
 
-^{:public true}
-(defn tf-define
+(defn ^{:public true} tf-define
   "Transforms a C define form."
   {:added "4.0"}
   [[_ sym & more :as form]]
@@ -33,8 +28,7 @@
             body)
       (list :- "#define" sym body))))
 
-^{:public true}
-(defn tf-struct
+(defn ^{:public true} tf-struct
   "Transforms a C struct definition."
   {:added "4.0"}
   [[_ sym fields]]
@@ -48,8 +42,7 @@
                       \\ (list \| (apply list 'do out)))
                 (list :- "\n};")))))
 
-^{:public true}
-(defn tf-enum
+(defn ^{:public true} tf-enum
   "Transforms a C enum definition."
   {:added "4.0"}
   [[_ sym fields]]
@@ -58,16 +51,14 @@
         (list 'quote fields)
         (list :- "};")))
 
-^{:public true}
-(defn tf-typedef
+(defn ^{:public true} tf-typedef
   "Transforms a C typedef form."
   {:added "4.0"}
   [[_ type alias]]
   (let [alias-str (ut/sym-default-str alias)]
     (list :- "typedef" type (str alias-str ";"))))
 
-^{:public true}
-(defn to-c-type
+(defn ^{:public true} to-c-type
   "Converts a value to a C type."
   {:added "4.0"}
   [t]
@@ -76,8 +67,7 @@
         (vector? t) (string/join " " (map to-c-type t))
         :else (str t)))
 
-^{:public true}
-(defn c-sanitize
+(defn ^{:public true} c-sanitize
   "Sanitizes a symbol for a C identifier."
   {:added "4.0"}
   [s]
@@ -86,8 +76,7 @@
       (string/replace "." "_")
       (string/replace "/" "____")))
 
-^{:public true}
-(defn c-fn-args
+(defn ^{:public true} c-fn-args
   "Emits custom C function arguments."
   {:added "4.0"}
   [[_ args] grammar-value mopts]
@@ -122,8 +111,7 @@
                            args))
          ")")))
 
-^{:public true}
-(defn emit-defn
+(defn ^{:public true} emit-defn
   "Emits a C function definition."
   {:added "4.0"}
   [[_ sym args & body] grammar-value mopts]
@@ -146,15 +134,13 @@
          body-str
          "\n}")))
 
-^{:public true}
-(defn tf-arrow
+(defn ^{:public true} tf-arrow
   "Transforms the C arrow form."
   {:added "4.0"}
   [[_ left right]]
   (list :% left (list :- "->" right)))
 
-^{:public true}
-(defn tf-sizeof
+(defn ^{:public true} tf-sizeof
   "Transforms the C sizeof form."
   {:added "4.0"}
   [[_ val]]
@@ -218,8 +204,7 @@
             :script {:start "" :end ""}}
     :define {:def {:raw ""}}}))
 
-^{:public true}
-(def +grammar+
+(def ^{:public true} +grammar+
   (grammar/definition
    {:grammar/id +tag+
     :grammar/version +grammar-version+
@@ -275,8 +260,7 @@
    {:module-import (fn [name _ _] (list ':- "#include" name))
     :module-export (fn [_ _] nil)}))
 
-^{:public true}
-(defn install
+(defn ^{:public true} install
   "Installs the XTalk parent and C grammar into an immutable catalog."
   [catalog]
   (let [catalog (xtalk/install catalog)]
@@ -284,14 +268,12 @@
       catalog
       (registry/install catalog +grammar+))))
 
-^{:public true}
-(defn catalog
+(defn ^{:public true} catalog
   "Creates a fresh catalog containing the XTalk and C grammar sources."
   []
   (install (registry/registry)))
 
-^{:public true}
-(defn select
+(defn ^{:public true} select
   "Resolves the exact C grammar version from a catalog."
   ([]
    (select (catalog)))
@@ -300,11 +282,9 @@
     catalog
     {:grammar/id +tag+ :grammar/version +grammar-version+})))
 
-^{:public true}
-(def +selection+ (select))
+(def ^{:public true} +selection+ (select))
 
-^{:public true}
-(def +book+
+(def ^{:public true} +book+
   (book/book
    {:lang +language+
     :parent :xtalk
@@ -314,5 +294,4 @@
     :selection +selection+
     :meta +meta+}))
 
-^{:public true}
-(def +init+ +book+)
+(def ^{:public true} +init+ +book+)

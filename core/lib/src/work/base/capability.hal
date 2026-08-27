@@ -17,13 +17,11 @@
   [provider]
   (or (:provider/capability-descriptors provider) {}))
 
-^{:public true}
-(defn descriptor
+(defn ^{:public true} descriptor
   [provider capability]
   (get (descriptors provider) capability))
 
-^{:public true}
-(defn capability?
+(defn ^{:public true} capability?
   [provider capability]
   (or (not (nil? (descriptor provider capability)))
       (contains-value? (:provider/capabilities provider) capability)))
@@ -59,8 +57,7 @@
          :ex/message "Work capability operation is not installed")))
   provider)
 
-^{:public true}
-(defn call
+(defn ^{:public true} call
   "Invokes one explicitly installed optional capability operation.
 
    `arguments` is a vector so the dispatcher never has to infer a wire shape

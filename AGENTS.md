@@ -118,8 +118,7 @@ that it belongs to the exported API; move unsupported helpers to another
 Mark every supported, recommended API Var at its owning definition:
 
 ```hara
-^{:public true}
-(defn encode [value] ...)
+(defn ^{:public true} encode [value] ...)
 ```
 
 Autocomplete and documentation tools use `:public true` to prioritize these

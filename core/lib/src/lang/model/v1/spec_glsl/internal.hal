@@ -8,14 +8,10 @@
             [lang.model.v1.spec-xtalk :as xtalk]
             [std.foundation.string :as string]))
 
-^{:public true}
-(def +language+ :glsl)
-^{:public true}
-(def +tag+ :glsl)
-^{:public true}
-(def +version+ 1)
-^{:public true}
-(def +grammar-version+ 1)
+(def ^{:public true} +language+ :glsl)
+(def ^{:public true} +tag+ :glsl)
+(def ^{:public true} +version+ 1)
+(def ^{:public true} +grammar-version+ 1)
 
 (def +types+
   [:bool :int :float :double :uint
@@ -89,8 +85,7 @@
     (fn [name _ _]
       (list ':- "#include" name))}))
 
-^{:public true}
-(defn install
+(defn ^{:public true} install
   "Installs the XTalk parent and GLSL grammar into an immutable catalog."
   [catalog]
   (let [catalog (xtalk/install catalog)]
@@ -98,14 +93,12 @@
       catalog
       (registry/install catalog +grammar+))))
 
-^{:public true}
-(defn catalog
+(defn ^{:public true} catalog
   "Creates a fresh catalog containing the XTalk and GLSL grammar sources."
   []
   (install (registry/registry)))
 
-^{:public true}
-(defn select
+(defn ^{:public true} select
   "Resolves the exact GLSL grammar version from a catalog."
   ([]
    (select (catalog)))
@@ -114,10 +107,8 @@
     catalog
     {:grammar/id +tag+ :grammar/version +grammar-version+})))
 
-^{:public true}
-(def +selection+ (select))
-^{:public true}
-(def +book+
+(def ^{:public true} +selection+ (select))
+(def ^{:public true} +book+
   (book/book
    {:lang +language+
     :parent :xtalk
@@ -126,5 +117,4 @@
     :grammar (:grammar +selection+)
     :selection +selection+
     :meta +meta+}))
-^{:public true}
-(def +init+ +book+)
+(def ^{:public true} +init+ +book+)

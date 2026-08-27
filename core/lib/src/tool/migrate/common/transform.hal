@@ -71,4 +71,118 @@
                       :target/language target-language
                       :catalog (:document/id (catalog/catalog options))}})))))
 
+(defn ^{:public true} canonicalize-public-metadata
+  "Moves declaration :public metadata from a form prefix to its binding symbol.
+
+   This is a Hara source canonicalization pass. It only considers definitions
+   recognized by code.framework and leaves metadata on facts and other forms
+   untouched."
+  [source]
+  (let [analysis (framework/analyse-structure source)
+        state
+        (reduce
+         (fn [state definition]
+           (if (:generated definition)
+             state
+             (let [form (:form definition)
+                   prefix
+                   (first
+                    (filter
+                     (fn [record]
+                       (= true
+                          (get
+                           (:value (framework/metadata-info source record))
+                           :public)))
+                     (:prefix-metadata form)))]
+               (if (nil? prefix)
+                 state
+                 (let [prefix-info (framework/metadata-info source prefix)
+                       prefix-value (:value prefix-info)
+                       binding (framework/binding-metadata
+                                source form (:name-record definition))
+                       binding-public (get binding :public)]
+                   (if (and (has? binding :public)
+                            (not= true binding-public))
+                     (assoc
+                      state
+                      :diagnostics
+                      (conj
+                       (:diagnostics state)
+                       {:type :tool.migrate/public-metadata-conflict
+                        :level :error
+                        :message
+                        (str "cannot move :public true onto "
+                             (:name definition)
+                             "; the binding already declares :public "
+                             binding-public)
+                        :definition/var (:name definition)
+                        :definition/form (:head definition)}))
+                     (let [binding-record
+                           (first
+                            (filter
+                             (fn [record]
+                               (= (:end record) (:name-end definition)))
+                             (framework/inline-metadata-records source form)))
+                           binding-info
+                           (if binding-record
+                             (framework/metadata-info source binding-record)
+                             nil)
+                           map-record (if binding-info
+                                        (:map-record binding-info)
+                                        nil)
+                           insertion
+                           (cond
+                             (= true binding-public)
+                             nil
+
+                             map-record
+                             {:start (inc (:start map-record))
+                              :end (inc (:start map-record))
+                              :text ":public true "}
+
+                             (nil? binding-record)
+                             {:start (:name-start definition)
+                              :end (:name-start definition)
+                              :text "^{:public true} "}
+
+                             :else
+                             (let [metadata-text (pr-str binding)
+                                   body (str/slice metadata-text
+                                                   1
+                                                   (dec (str/length metadata-text)))]
+                               {:start (:start binding-record)
+                                :end (:end binding-record)
+                                :text
+                                (str "^{:public true " body "} "
+                                     (str/slice source
+                                                (:name-start definition)
+                                                (:name-end definition)))}))
+                           public-pair
+                           (first
+                            (filter
+                             (fn [pair] (= :public (:key pair)))
+                             (:pairs prefix-info)))
+                           removal
+                           (if (= 1 (count prefix-value))
+                             {:start (:start prefix)
+                              :end (:start form)
+                              :text ""}
+                             {:start (:start (:key-record public-pair))
+                              :end (:end (:value-record public-pair))
+                              :text ""})]
+                       (assoc
+                        state
+                        :edits
+                        (into (:edits state)
+                              (if insertion
+                                [insertion removal]
+                                [removal]))
+                        :moved (inc (:moved state))))))))))
+         {:edits [] :diagnostics [] :moved 0}
+         (:definitions analysis))
+        output (framework/apply-edits source (:edits state))]
+    (assoc state
+           :output output
+           :changed (not= source output))))
+
 (def transform-unit transform-code)

@@ -86,6 +86,44 @@
      (:type (first (:diagnostics result)))]
     => [1 :tool.migrate/manual]))
 
+^{:refer tool.migrate.common.transform/canonicalize-public-metadata}
+(fact "moves declaration public metadata onto the binding symbol"
+  (let [source
+        (str "(ns demo.core)\n"
+             "^{:public true} (defn old [] 1)\n"
+             "^{:public true} (defstruct Point [x y])\n"
+             "^{:public true} (defmutable Cursor [[position :int]])\n"
+             "(defn ^{:doc :ok} both [] 2)\n"
+             "^{:refer demo.core/value}\n"
+             "(fact true)\n")
+        result (transform/canonicalize-public-metadata source)]
+    [(:moved result)
+     (:changed result)
+     (:diagnostics result)
+     (:output result)])
+  => [3 true []
+      (str "(ns demo.core)\n"
+           "(defn ^{:public true} old [] 1)\n"
+           "(defstruct ^{:public true} Point [x y])\n"
+           "(defmutable ^{:public true} Cursor [[position :int]])\n"
+           "(defn ^{:doc :ok} both [] 2)\n"
+           "^{:refer demo.core/value}\n"
+           "(fact true)\n")])
+
+^{:refer tool.migrate.common.transform/canonicalize-public-metadata}
+(fact "reports conflicting binding visibility without changing source"
+  (let [source "^{:public true} (defn ^{:public false} hidden [] 1)"
+        result (transform/canonicalize-public-metadata source)]
+    [(:changed result)
+     (:moved result)
+     (select-keys (first (:diagnostics result))
+                  [:type :level :definition/var :definition/form])])
+  => [false 0
+      {:type :tool.migrate/public-metadata-conflict
+       :level :error
+       :definition/var "hidden"
+       :definition/form "defn"}])
+
 (def results
   [(test-check
     "transform-code applies the declarative rewrite"

@@ -229,6 +229,21 @@
     (concat (:prefix-metadata form)
             (inline-metadata-records source form)))))
 
+(defn binding-metadata
+  "Returns metadata attached to a definition's binding symbol only."
+  [source form name-record]
+  (if (nil? name-record)
+    {}
+    (let [record
+          (first
+           (filter
+            (fn [metadata]
+              (= (:end metadata) (:end name-record)))
+            (inline-metadata-records source form)))]
+      (if record
+        (:value (metadata-info source record))
+        {}))))
+
 (defn merged-metadata
   [metadata]
   (reduce
@@ -333,6 +348,7 @@
             name (if name-record (str (:value name-record)) nil)
             metadata (form-metadata source form)
             metadata-value (merged-metadata metadata)
+            binding-metadata-value (binding-metadata source form name-record)
             docstring (if (and doc-record (string? (:value doc-record)))
                         (:value doc-record)
                         nil)
@@ -350,7 +366,7 @@
          :family-id (:id family)
          :language (:language family)
          :reachable (not private)
-         :public (= true (:public metadata-value))
+         :public (= true (:public binding-metadata-value))
          :private private
          :line (:line name-position)
          :column (:column name-position)

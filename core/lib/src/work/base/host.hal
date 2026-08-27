@@ -111,8 +111,7 @@
   [host]
   (:locator host))
 
-^{:public true}
-(defn capabilities
+(defn ^{:public true} capabilities
   [host]
   (reduce
    (fn [installed capability-id]
@@ -120,28 +119,23 @@
    (or (:provider/capabilities (:provider host)) #{})
    (keys (:provider/capability-descriptors (:provider host)))))
 
-^{:public true}
-(defn capability-descriptors
+(defn ^{:public true} capability-descriptors
   [host]
   (or (:provider/capability-descriptors (:provider host)) {}))
 
-^{:public true}
-(defn capability-descriptor
+(defn ^{:public true} capability-descriptor
   [host capability]
   (get (capability-descriptors host) capability))
 
-^{:public true}
-(defn capability?
+(defn ^{:public true} capability?
   [host capability]
   (capability/capability? (:provider host) capability))
 
-^{:public true}
-(defn capability-operation?
+(defn ^{:public true} capability-operation?
   [host capability operation]
   (capability/operation? (:provider host) capability operation))
 
-^{:public true}
-(defn capability-call
+(defn ^{:public true} capability-call
   "Invokes an explicitly installed optional host capability operation.
 
   Arguments are supplied as a portable vector.  The host and provider
@@ -150,65 +144,55 @@
   [host capability-id operation arguments]
   (capability/call (:provider host) capability-id operation arguments))
 
-^{:public true}
-(defn await-work
+(defn ^{:public true} await-work
   [host run-id wait]
   (capability-call host :work/suspension :await [run-id wait]))
 
-^{:public true}
-(defn signal-work
+(defn ^{:public true} signal-work
   ([host run-id signal]
    (signal-work host run-id signal {}))
   ([host run-id signal options]
    (capability-call host :work/suspension :signal
                    [run-id signal (or options {})])))
 
-^{:public true}
-(defn claim-acquire
+(defn ^{:public true} claim-acquire
   [host resource options]
   (capability-call host :work/claims :acquire
                   [resource (or options {})]))
 
-^{:public true}
-(defn claim-renew
+(defn ^{:public true} claim-renew
   [host claim options]
   (capability-call host :work/claims :renew
                   [claim (or options {})]))
 
-^{:public true}
-(defn claim-release
+(defn ^{:public true} claim-release
   [host claim]
   (capability-call host :work/claims :release [claim]))
 
-^{:public true}
-(defn claim-assert
+(defn ^{:public true} claim-assert
   [host resource claim]
   (capability-call host :work/claims :assert [resource claim]))
 
-^{:public true}
-(defn receipt-candidates
+(defn ^{:public true} receipt-candidates
   ([host]
    (receipt-candidates host nil))
   ([host run-id]
    (capability-call host :work/receipts :candidates [run-id])))
 
-^{:public true}
-(defn receipt-status
+(defn ^{:public true} receipt-status
   ([host]
    (receipt-status host nil))
   ([host run-id]
    (capability-call host :work/receipts :status [run-id])))
 
-^{:public true}
-(defn receipt-sign
+(defn ^{:public true} receipt-sign
   ([host envelope]
    (receipt-sign host envelope {}))
   ([host envelope options]
    (capability-call host :work/receipts :sign
                    [envelope (or options {})])))
 
-^{:public true}
-(defn receipt-publish
+(defn ^{:public true} receipt-publish
   ([host envelope]
    (receipt-publish host envelope {}))
   ([host envelope options]
@@ -217,8 +201,7 @@
                                options
                                {:claim/token options})])))
 
-^{:public true}
-(defn reset-capabilities
+(defn ^{:public true} reset-capabilities
   [host]
   (let [resetter (:provider/reset (:provider host))]
     (if resetter

@@ -151,6 +151,25 @@
      :definitions definitions
      :reader-findings (:diagnostics parsed)}))
 
+(defn public-metadata-finding
+  "Reports public metadata placed on a declaration form instead of its name."
+  [definition]
+  (when (= true (get (:metadata definition) :public))
+    (merge
+     (model/finding
+      (or (:metadata-block definition) (:block definition))
+      :tool.lint/public-metadata-placement
+      :error
+      (str ":public true must be attached to the declaration symbol in "
+           (:head definition) " " (:name definition))
+      :tool.source-analysis/public-metadata-placement)
+     {:definition/var (:name definition)
+      :definition/form (:head definition)})))
+
+(defn public-metadata-findings
+  [definitions]
+  (vec (keep public-metadata-finding definitions)))
+
 (defn binding-symbols
   [binding]
   (cond
@@ -577,6 +596,7 @@
                   (map (fn [finding] (assoc finding :file file))
                        (concat (:reader-findings scan)
                                (duplicate-findings definitions)
+                               (public-metadata-findings definitions)
                                (if (has? (or (:rules options) #{})
                                          :tool.lint/bang-suffixed-definition)
                                  (bang-definition-findings definitions)

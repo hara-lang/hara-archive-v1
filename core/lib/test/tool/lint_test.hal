@@ -24,7 +24,7 @@
   (let [source
         (str "(ns demo.core)\n"
              "(defn run! [] nil)\n"
-             "^{:public true} (defn.xt effect! [] nil)\n"
+             "(defn.xt ^{:public true} effect! [] nil)\n"
              "(defmacro- wrap! [] nil)\n"
              "'(defn quoted! [] nil)\n"
              "(run!)")
@@ -58,6 +58,22 @@
         :definition/form 'defmacro-
         :rename/candidate 'demo.core/wrap
         :rename/collision false}]])
+
+^{:refer 'tool.lint/lint-source
+  :id 'public-metadata-placement}
+(fact "requires public metadata on declaration symbols while preserving fact metadata"
+  (let [legacy
+        (report-data
+         (lint/lint-source
+          "(ns demo.core)\n^{:public true} (defn old [] 1)\n"))
+        fact-report
+        (report-data
+         (lint/lint-source
+          "(ns demo.core)\n^{:refer demo.core/value}\n(fact true)\n"))]
+    [(map :type (:findings legacy))
+     (has? (set (map :type (:findings fact-report)))
+           :tool.lint/public-metadata-placement)])
+  => [[:tool.lint/public-metadata-placement] false])
 
 ^{:refer 'tool.lint/lint-source
   :id 'recovering-reader}

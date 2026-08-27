@@ -40,7 +40,16 @@
   [(get (Runtime/namespace 'tool.migrate) :namespace/role)
    (get (Runtime/namespace 'tool.migrate.common.transform) :namespace/role)
    (nil? (get (ns-publics 'tool.migrate) 'language))
-   (nil? (get (ns-publics 'tool.migrate) 'target-language))]
-  => [:facade :internal false false])
+   (nil? (get (ns-publics 'tool.migrate) 'target-language))
+   (nil? (get (ns-publics 'tool.migrate)
+             'canonicalize-public-metadata))]
+  => [:facade :internal false false false])
+
+^{:refer tool.migrate/canonicalize-public-metadata}
+(fact "the migration facade exposes public metadata canonicalization"
+  (:output
+   (migrate/canonicalize-public-metadata
+    "^{:public true} (defn old [] 1)"))
+  => "(defn ^{:public true} old [] 1)")
 
 (pr-str (run {:namespace "tool.migrate-test"}))
