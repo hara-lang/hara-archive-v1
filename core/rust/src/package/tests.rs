@@ -150,7 +150,11 @@ fn validates_and_builds_deterministic_archive() {
 #[test]
 fn packages_only_explicit_source_files_from_custom_manifest() {
     let root = fixture();
-    fs::write(root.join("src/example/provider.hal"), "(ns example.provider) 7\n").unwrap();
+    fs::write(
+        root.join("src/example/provider.hal"),
+        "(ns example.provider) 7\n",
+    )
+    .unwrap();
     fs::write(
         root.join("portable.edn"),
         "{:hara/type :project :hara/version \"1.0.0\" :project/id \"hara:example/portable\" :project/version \"1.0.0\" :project/source-paths [] :project/source-files [\"src/example/main.hal\"] :project/test-paths [] :project/extension-paths [] :project/capabilities #{} :project/dependencies {}}",
@@ -210,9 +214,7 @@ fn canonical_database_packages_exclude_runtime_providers() {
         expected.sort();
         assert_eq!(names, expected);
         assert!(!names.iter().any(|name| {
-            name.contains("/postgres/")
-                || name.contains("/sqlite/")
-                || name.contains("/node/")
+            name.contains("/postgres/") || name.contains("/sqlite/") || name.contains("/node/")
         }));
     }
     fs::remove_dir_all(root).unwrap();
@@ -324,6 +326,43 @@ fn validates_typed_recipes_and_installs_content_addressed_roots() {
     let installed = install_archive_at(&archive, &dist).unwrap();
     assert!(installed.join("hara.recipe.edn").is_file());
     assert!(dist.join("packages/hara/example/app/1.2.3.edn").is_file());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn installs_semantic_packages_under_their_manifest_identity() {
+    let root = fixture();
+    fs::create_dir_all(root.join("config")).unwrap();
+    fs::write(
+        root.join("config/packages.edn"),
+        "{demo.public {:include [[demo.public :complete]]}}\n",
+    )
+    .unwrap();
+    fs::write(
+        root.join("src/example/public.hal"),
+        "(ns demo.public) (def answer 42)\n",
+    )
+    .unwrap();
+    let source = fs::read_to_string(root.join("project.edn")).unwrap();
+    fs::write(
+        root.join("project.edn"),
+        source.trim().strip_suffix('}').unwrap().to_owned()
+            + " :project/package {:name \"demo.public\" :profile \"config/packages.edn\"}}\n",
+    )
+    .unwrap();
+
+    let project = read_project(&root).unwrap();
+    let archive = root.join("semantic.harp");
+    build_archive(&project, &archive).unwrap();
+    let manifest = PackageManifest::read_archive(&archive).unwrap();
+    assert_eq!(manifest.identity, "hara:demo/public");
+    assert_eq!(manifest.name.as_deref(), Some("demo.public"));
+
+    let distribution = root.join("dist");
+    install_archive_at(&archive, &distribution).unwrap();
+    assert!(distribution
+        .join("packages/hara/demo/public/1.2.3.edn")
+        .is_file());
     fs::remove_dir_all(root).unwrap();
 }
 

@@ -1,0 +1,168 @@
+{
+  code.framework {:description "source and test management"
+                  :include [[code.framework :complete]]}
+  code.manage {:description "source code utilities and workflow"
+               :include [[code.manage :complete]]
+               :dependencies [code.framework tool.cli.model work]}
+  code.project {:description "project and package operations"
+                :include [[code.project :complete]]
+                :dependencies [code.framework tool.cli.model work]}
+  code.query {:description "code query and matching"
+              :include [[code.query :complete]]
+              :dependencies [code.framework]}
+  code.test {:description "test discovery, execution, and reporting"
+             :include [[code.test :complete]]
+             :dependencies [code.manage tool.cli.model work]}
+  code.vm {:description "bytecode and VM tooling"
+           :include [[code.vm :complete]]}
+
+  crypto.ext.noir {:description "Noir proof provider contract"
+                   :include [[crypto.ext.noir :complete]]}
+
+  lang.base {:description "language base grammar"
+             :include [[lang.base :complete]]}
+  lang.common {:description "shared language compiler support"
+               :include [[lang.common :complete]]
+               :dependencies [lang.base]}
+  lang.core {:description "core language compilation and evaluation"
+             :include [[lang.core :complete]]
+             :dependencies [lang.common]}
+  lang.protocol {:description "language protocol definitions"
+                 :include [[lang.protocol :complete]]
+                 :dependencies [lang.base]}
+  lang.seedgen {:description "language seed generation"
+                :include [[lang.seedgen :complete]]
+                :dependencies [lang.common work]}
+  lang.typed {:description "typed xtalk support"
+              :include [[lang.typed :complete]]
+              :dependencies [lang.common lang.core]}
+
+  lang.model.v1.spec-c {:description "C model specification"
+                        :include [[lang.model.v1.spec-c :complete]]
+                        :dependencies [lang.common]}
+  lang.model.v1.spec-glsl {:description "GLSL model specification"
+                           :include [[lang.model.v1.spec-glsl :complete]]
+                           :dependencies [lang.common]}
+  lang.model.v1.spec-go {:description "Go model specification"
+                         :include [[lang.model.v1.spec-go :complete]]
+                         :dependencies [lang.common]}
+  lang.model.v1.spec-hara {:description "Hara model specification"
+                           :include [[lang.model.v1.spec-hara :complete]]
+                           :dependencies [lang.common]}
+  lang.model.v1.spec-js {:description "JavaScript and TypeScript model specification"
+                         :include [[lang.model.v1.spec-js :complete]]
+                         :dependencies [lang.common]}
+  lang.model.v1.spec-lisp-common {:description "Lisp model specification"
+                                  :include [[lang.model.v1.spec-lisp-common :complete]]
+                                  :dependencies [lang.common]}
+  lang.model.v1.spec-llvm {:description "LLVM model specification"
+                           :include [[lang.model.v1.spec-llvm :complete]]
+                           :dependencies [lang.common]}
+  lang.model.v1.spec-lua {:description "Lua model specification"
+                          :include [[lang.model.v1.spec-lua :complete]]
+                          :dependencies [lang.common]}
+  lang.model.v1.postgres {:description "Postgres model, graph, typed, and generator support"
+                          :include [[lang.model.v1.spec-postgres :complete]
+                                    [postgres.core :complete]
+                                    [postgres.typed :complete]
+                                    [postgres.gen :complete]]
+                          :dependencies [lang.common lang.core
+                                         lang.model.v1.spec-xtalk lang.typed]}
+  lang.model.v1.spec-python {:description "Python model specification"
+                            :include [[lang.model.v1.spec-python :complete]]
+                            :dependencies [lang.common]}
+  lang.model.v1.spec-sql {:description "SQL model specification"
+                          :include [[lang.model.v1.spec-sql :complete]]
+                          :dependencies [lang.common]}
+  lang.model.v1.sql {:description "shared SQL model support"
+                     :include [[lang.model.v1.sql :complete]]
+                     :dependencies [lang.model.v1.spec-sql]}
+  lang.model.v1.spec-xtalk {:description "xtalk model specification"
+                            :include [[lang.model.v1.spec-xtalk :complete]]
+                            :dependencies [lang.common]}
+
+  lang.runtime.basic {:description "basic runtime providers"
+                      :include [[lang.runtime.basic :complete]]
+                      :dependencies [lang.protocol]}
+  lang.runtime.hara {:description "Hara runtime"
+                     :include [[lang.runtime.hara :complete]]
+                     :dependencies [lang.runtime.basic]}
+  lang.runtime.standard {:description "standard runtime"
+                         :include [[lang.runtime.standard :complete]]
+                         :dependencies [lang.runtime.basic]}
+  lang.runtime.postgres {:description "Postgres language runtime"
+                         :include [[lang.runtime.postgres :complete]]
+                         :dependencies [db.postgres lang.core lang.model.v1.postgres]}
+
+  db.ledger {:description "ledger database support"
+             :include [[db.ledger :complete]]}
+  db.node {:description "node database support"
+           :include [[db.node :complete]]}
+  db.postgres {:description "Postgres database provider"
+               :include [[db.postgres :complete]]}
+  db.protocol {:description "database protocols"
+               :include [[db.protocol :complete]]}
+  db.sqlite {:description "SQLite database provider"
+             :include [[db.sqlite :complete]]}
+  db.text {:description "database text and query support"
+           :include [[db.text :complete]]
+           :dependencies [db.protocol]}
+
+  std.block {:description "block data and editing"
+             :include [[std.block :complete]]}
+  std.config {:description "configuration"
+              :include [[std.config :complete]]}
+  std.crypto {:description "cryptographic helpers"
+              :include [[std.crypto :complete]]}
+  std.dom {:description "DOM data and operations"
+           :include [[std.dom :complete]]}
+  std.foundation {:description "language Foundation"
+                  :include [[std.foundation :complete]]}
+  std.fs {:description "filesystem support"
+          :include [[std.fs :complete]]}
+  std.lib {:description "standard library utilities"
+           :include [[std.lib :complete]]}
+  std.logic {:description "logic programming"
+             :include [[std.logic :complete]]}
+  std.stream {:description "stream and channel support"
+              :include [[std.stream :complete]]}
+  std.substrate {:description "portable substrate protocols"
+                 :include [[std.substrate :complete]]}
+  std.typed {:description "typed catalog and schema support"
+             :include [[std.typed :complete]]}
+
+  tool.metaspec {:description "metaspec conformance and linting"
+                 :include [[tool.metaspec :complete]]
+                 :dependencies [std.logic std.typed]}
+  tool.cli.model {:description "shared CLI request and outcome model"
+                  :include [[tool.cli.model :complete]]}
+  tool.cli {:description "Hara command-line interface"
+            :include [[tool.cli :exclude [tool.cli.model]]]
+            :dependencies [code.manage code.project code.test lang.seedgen tool.cli.model work]}
+  tool.inrepl {:description "interactive REPL tooling"
+               :include [[tool.inrepl :complete]]
+               :dependencies [code.project lang.core]}
+  tool.lint {:description "linting and static analysis"
+             :include [[tool.lint :complete]]
+             :dependencies [code.query std.block std.typed]}
+  tool.migrate {:description "source migration and conformance tooling"
+                :include [[tool.migrate :complete]]
+                :dependencies [code.manage std.block std.fs]}
+  tool.package {:description "portable executable package tooling"
+                :include [[tool.package :complete]]}
+  tool.runtime {:description "target-language runtime descriptors"
+                :include [[tool.runtime :complete]]
+                :dependencies [tool.sh]}
+  tool.sh {:description "portable process and shell adapters"
+           :include [[tool.sh :complete]]}
+  tool.vm {:description "Hara bytecode tooling"
+           :include [[tool.vm :complete]]}
+
+  work {:description "portable work algebra and providers"
+        :include [[work :complete]]
+        :dependencies [std.fs std.lib tool.sh]}
+  workspace {:description "portable workspace model"
+             :include [[workspace :complete]]}
+  xt {:description "portable cross-target substrate"
+     :include [[xt :complete]]}
+}

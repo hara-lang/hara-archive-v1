@@ -43,6 +43,36 @@ async function fixture() {
   return { archive, lock, registry, registryCommit, archiveDigest };
 }
 
+async function bytecodeFixture() {
+  const source = encoder.encode("(ns postgres.core) (def answer 42)");
+  const bundle = new Uint8Array([0x48, 0x42, 0x58, 0x30, 0x01]);
+  const sourceDigest = await digest(source);
+  const bundleDigest = await digest(bundle);
+  const manifest = encoder.encode(
+    `{:harp/format "0.0.0-alpha" `
+      + `:package {:identity "hara:lang/model.v1.postgres" :name "lang.model.v1.postgres" :version "1.0.0"} `
+      + `:files {"src/postgres/core.hal" {:size ${source.byteLength} :sha256 "${sourceDigest}"} `
+      + `"bytecode/package.hbx" {:size ${bundle.byteLength} :sha256 "${bundleDigest}"}} `
+      + `:resources {"postgres.core" "src/postgres/core.hal"} `
+      + `:bytecode {:format "0.0.0-alpha" :path "bytecode/package.hbx" :sha256 "${bundleDigest}"}}`
+  );
+  const archive = zipSync({
+    "package.edn": manifest,
+    "src/postgres/core.hal": source,
+    "bytecode/package.hbx": bundle
+  });
+  const archiveDigest = await digest(archive);
+  const registryCommit = "1".repeat(40);
+  const identityRevision = "2".repeat(40);
+  const lock = `{:lock/format "0.0.0-alpha" :packages {"hara:lang/model.v1.postgres" `
+    + `{:name "lang.model.v1.postgres" :version "1.0.0" :tap "hara" `
+    + `:registry-commit "${registryCommit}" :identity-revision "${identityRevision}" `
+    + `:archive-sha256 "${archiveDigest}" :namespaces [postgres.core]}}}`;
+  const registry = `{:registry/packages {"hara:lang/model.v1.postgres" {"1.0.0" `
+    + `{:archive-sha256 "${archiveDigest}" :identity-revision "${identityRevision}"}}}}`;
+  return { archive, bundle, lock, registry, registryCommit, archiveDigest };
+}
+
 async function htaFixture(capabilities = "[]", namespace = "db.sqlite.wasm.hta") {
   const source = encoder.encode("(ns demo.world) (def world {:title \"Demo\"})");
   const worker = encoder.encode('import "./assets/chunk.js"; export const sqlite = true;');
@@ -133,6 +163,61 @@ test("exact locks use the pinned registry and digest object endpoint", async () 
   assert.equal(resources["demo.world"], "(ns demo.world) (def world {:title \"Demo\"})");
 });
 
+test("semantic targets reject ambiguous lock names", async () => {
+  const lock = `{:lock/format "0.0.0-alpha" :packages {"demo:one" `
+    + `{:name "shared"} "demo:two" {:name "shared"}}}`;
+  await assert.rejects(
+    loadLockedPackageResources(lock, async () => new Response(""), "https://packages.example", ["shared"]),
+    /package\/ambiguous-target: shared/
+  );
+});
+
+test("semantic package names select verified bytecode bundles before source fallback", async () => {
+  const { archive, bundle, lock, registry, archiveDigest } = await bytecodeFixture();
+  const events = [];
+  const runtime = {
+    registerResource(namespace, source) {
+      events.push(["source", namespace, source]);
+    },
+    raw: {
+      registerPackageLock() {},
+      evalBytecodeBundle(bytes) {
+        events.push(["bytecode", bytes]);
+      }
+    }
+  };
+  const names = await installLockedPackages(runtime, lock, {
+    targets: ["lang.model.v1.postgres"],
+    origin: "https://packages.example",
+    fetch: async (url) => new Response(url.includes("/v1/registry") ? registry : archive)
+  });
+  assert.deepEqual(names, ["postgres.core"]);
+  assert.equal(events[0][0], "source");
+  assert.equal(events[1][0], "bytecode");
+  assert.deepEqual(events[1][1], bundle);
+  assert.equal(archiveDigest.length, 71);
+});
+
+test("verified packages keep the source path when bytecode evaluation is unavailable", async () => {
+  const { archive, lock, registry } = await bytecodeFixture();
+  const events = [];
+  const runtime = {
+    registerResource(namespace, source) {
+      events.push([namespace, source]);
+    },
+    raw: {
+      registerPackageLock() {}
+    }
+  };
+  const names = await installLockedPackages(runtime, lock, {
+    targets: ["lang.model.v1.postgres"],
+    origin: "https://packages.example",
+    fetch: async (url) => new Response(url.includes("/v1/registry") ? registry : archive)
+  });
+  assert.deepEqual(names, ["postgres.core"]);
+  assert.deepEqual(events, [["postgres.core", "(ns postgres.core) (def answer 42)"]]);
+});
+
 test("installation is atomic when a locked archive fails verification", async () => {
   const { archive, lock, registry } = await fixture();
   const registered = [];
@@ -175,7 +260,9 @@ test("the package provider activates and unloads an exact target", async () => {
   });
 
   await handler("package", "ensure", [{ "package/coordinate": "demo:world" }]);
+  await handler("package", "ensure", [{ "package/coordinate": "demo:world" }]);
   assert.equal(provider.active.has("demo:world"), true);
+  assert.equal(registered.length, 1);
   assert.equal(registered[0][0], "demo.world");
   assert.deepEqual(
     await handler("package", "unload", [{ "package/coordinate": "demo:world" }, {}]),

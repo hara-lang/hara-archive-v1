@@ -161,25 +161,61 @@ function ednScalar(value) {
   return String(value);
 }
 
+function lockedPackages(lock) {
+  if (!lock || lock.packages === null || typeof lock.packages !== "object" || Array.isArray(lock.packages)) {
+    throw new Error("project.lock.edn requires :packages to be a map");
+  }
+  return lock.packages ?? {};
+}
+
 function packageCoordinate(lock, target) {
-  if (Object.hasOwn(lock.packages ?? {}, target)) return target;
-  for (const [coordinate, entry] of Object.entries(lock.packages ?? {})) {
-    if ((entry.namespaces ?? []).some((namespace) => ednScalar(namespace) === target)) return coordinate;
+  const packages = lockedPackages(lock);
+  if (typeof target !== "string" || target.length === 0) {
+    throw new Error("package/target-invalid");
+  }
+  if (Object.hasOwn(packages, target)) return target;
+  const matches = [];
+  for (const [coordinate, entry] of Object.entries(packages)) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+    const name = entry.name ?? entry["package/name"];
+    if (name === target || (entry.namespaces ?? []).some((namespace) => ednScalar(namespace) === target)) {
+      matches.push(coordinate);
+    }
+  }
+  if (matches.length === 1) return matches[0];
+  if (matches.length > 1) {
+    throw new Error(`package/ambiguous-target: ${target} (${matches.sort().join(",")})`);
   }
   throw new Error(`package/not-locked: ${target}`);
 }
 
 function lockedClosure(lock, targets) {
+  const packages = lockedPackages(lock);
   const selected = new Set();
+  const visiting = new Set();
+  const ordered = [];
   const visit = (target) => {
     const coordinate = packageCoordinate(lock, target);
     if (selected.has(coordinate)) return;
-    const entry = lock.packages[coordinate];
+    if (visiting.has(coordinate)) throw new Error(`package/dependency-cycle: ${coordinate}`);
+    const entry = packages[coordinate];
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      throw new Error(`package/descriptor-invalid: ${coordinate}`);
+    }
+    if (entry.dependencies !== undefined
+        && (entry.dependencies === null
+          || typeof entry.dependencies !== "object"
+          || Array.isArray(entry.dependencies))) {
+      throw new Error(`package/descriptor-invalid: ${coordinate} dependencies`);
+    }
+    visiting.add(coordinate);
+    for (const dependency of Object.keys(entry.dependencies ?? {}).sort()) visit(dependency);
+    visiting.delete(coordinate);
     selected.add(coordinate);
-    for (const dependency of Object.keys(entry.dependencies ?? {})) visit(dependency);
+    ordered.push(coordinate);
   };
-  for (const target of targets ?? Object.keys(lock.packages ?? {})) visit(target);
-  return [...selected].sort();
+  for (const target of targets ?? Object.keys(packages).sort()) visit(target);
+  return ordered;
 }
 
 function safeArchivePath(path) {
@@ -213,9 +249,11 @@ async function loadLockedPackageArtifacts(
   if (lock["lock/format"] !== "0.0.0-alpha") {
     throw new Error("project.lock.edn requires :lock/format \"0.0.0-alpha\"");
   }
+  lockedPackages(lock);
 
   const staged = {};
   const extensions = [];
+  const packages = [];
   for (const coordinate of lockedClosure(lock, targets)) {
     const entry = lock.packages[coordinate];
     const registryCommit = entry["registry-commit"];
@@ -263,24 +301,110 @@ async function loadLockedPackageArtifacts(
 
     const manifestSource = textDecoder.decode(files["package.edn"]);
     const manifest = parseEdn(manifestSource);
+    if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) {
+      throw new Error(`Locked package ${coordinate} has an invalid manifest`);
+    }
+    if (manifest.files === null
+        || typeof manifest.files !== "object"
+        || Array.isArray(manifest.files)) {
+      throw new Error(`Locked package ${coordinate} has invalid :files`);
+    }
+    if (manifest.resources !== undefined
+        && (manifest.resources === null
+          || typeof manifest.resources !== "object"
+          || Array.isArray(manifest.resources))) {
+      throw new Error(`Locked package ${coordinate} has invalid :resources`);
+    }
+    if (manifest.package !== undefined
+        && (manifest.package === null
+          || typeof manifest.package !== "object"
+          || Array.isArray(manifest.package))) {
+      throw new Error(`Locked package ${coordinate} has invalid :package`);
+    }
+    const manifestIdentity = manifest.package?.identity;
+    if (manifestIdentity !== undefined && manifestIdentity !== coordinate) {
+      throw new Error(`Locked package ${coordinate} package identity mismatch`);
+    }
+    const manifestVersion = manifest.package?.version;
+    if (manifestVersion !== undefined && manifestVersion !== entry.version) {
+      throw new Error(`Locked package ${coordinate} package version mismatch`);
+    }
+    const declaredFiles = new Set(Object.keys(manifest.files));
+    if (declaredFiles.has("package.edn")) {
+      throw new Error(`Locked package ${coordinate} declares package.edn as an artifact`);
+    }
+    for (const path of declaredFiles) {
+      if (!safeArchivePath(path)) {
+        throw new Error(`Locked package ${coordinate} has an unsafe manifest path: ${path}`);
+      }
+    }
+    for (const path of Object.keys(files)) {
+      if (path !== "package.edn" && !declaredFiles.has(path)) {
+        throw new Error(`Locked package ${coordinate} contains undeclared file: ${path}`);
+      }
+    }
+    const manifestName = manifest.package?.name ?? manifest.package?.["package/name"];
+    const lockedName = entry.name ?? entry["package/name"];
+    if (lockedName !== undefined && typeof lockedName !== "string") {
+      throw new Error(`Locked package ${coordinate} has an invalid semantic name`);
+    }
+    if (lockedName !== undefined && lockedName !== manifestName) {
+      throw new Error(`Locked package ${coordinate} semantic name mismatch`);
+    }
     for (const [path, file] of Object.entries(manifest.files ?? {})) {
       const bytes = files[path];
-      if (!bytes) {
+      if (!bytes || typeof file?.size !== "number" || typeof file?.sha256 !== "string") {
         throw new Error(`Locked package ${coordinate} is missing ${path}`);
       }
       if (file.size !== bytes.byteLength || await sha256(bytes) !== file.sha256) {
         throw new Error(`Locked package ${coordinate} failed file verification: ${path}`);
       }
     }
+    let bytecode;
+    if (manifest.bytecode !== undefined) {
+      const descriptor = manifest.bytecode;
+      if (!descriptor || typeof descriptor !== "object" || Array.isArray(descriptor)) {
+        throw new Error(`Locked package ${coordinate} has invalid bytecode metadata`);
+      }
+      const path = descriptor.path;
+      if (typeof path !== "string" || !safeArchivePath(path)) {
+        throw new Error(`Locked package ${coordinate} has an unsafe bytecode path`);
+      }
+      const bytes = files[path];
+      const file = manifest.files?.[path];
+      if (!bytes || !file || !/^sha256:[0-9a-f]{64}$/.test(descriptor.sha256 ?? "")
+          || descriptor.format !== "0.0.0-alpha"
+          || file.size !== bytes.byteLength || file.sha256 !== descriptor.sha256
+          || await sha256(bytes) !== descriptor.sha256) {
+        throw new Error(`Locked package ${coordinate} failed bytecode verification: ${path}`);
+      }
+      bytecode = bytes;
+    }
+    const packageResources = {};
     for (const [namespace, path] of Object.entries(manifest.resources ?? {})) {
       if (Object.hasOwn(staged, namespace)) {
         throw new Error(`Duplicate locked HAL namespace: ${namespace}`);
+      }
+      if (typeof path !== "string" || !safeArchivePath(path) || !manifest.files?.[path]) {
+        throw new Error(`Locked package ${coordinate} has an invalid resource path: ${path}`);
       }
       const bytes = files[path];
       if (!bytes) {
         throw new Error(`Locked package ${coordinate} is missing resource ${path}`);
       }
-      staged[namespace] = textDecoder.decode(bytes);
+      const source = textDecoder.decode(bytes);
+      staged[namespace] = source;
+      packageResources[namespace] = source;
+    }
+    if (entry.namespaces !== undefined && !Array.isArray(entry.namespaces)) {
+      throw new Error(`Locked package ${coordinate} has invalid namespace declarations`);
+    }
+    const lockedNamespaces = (entry.namespaces ?? [])
+      .map(ednScalar)
+      .sort();
+    const manifestNamespaces = Object.keys(packageResources).sort();
+    if (lockedNamespaces.length && JSON.stringify(lockedNamespaces) !== JSON.stringify(manifestNamespaces)) {
+      throw new Error(`Locked package ${coordinate} namespace declaration mismatch`);
     }
     const manifestData = parseEdnData(manifestSource, "package/manifest-malformed");
     const declaredExtensions = manifestField(manifestData, "extensions");
@@ -315,8 +439,47 @@ async function loadLockedPackageArtifacts(
         files: new Map(Object.entries(files))
       }));
     }
+    packages.push(Object.freeze({
+      coordinate,
+      name: manifestName ?? lockedName,
+      namespaces: Object.freeze(Object.keys(packageResources).sort()),
+      resources: Object.freeze(packageResources),
+      bytecode
+    }));
   }
-  return Object.freeze({ resources: staged, extensions: Object.freeze(extensions) });
+  return Object.freeze({
+    resources: staged,
+    extensions: Object.freeze(extensions),
+    packages: Object.freeze(packages)
+  });
+}
+
+function evalBytecodeBundle(runtime, bytes) {
+  const evaluator = runtime.evalBytecodeBundle
+    ?? runtime.raw?.evalBytecodeBundle
+    ?? runtime.raw?.eval_bytecode_bundle;
+  if (typeof evaluator !== "function") return false;
+  const owner = runtime.evalBytecodeBundle ? runtime : runtime.raw;
+  return evaluator.call(owner, bytes) !== false;
+}
+
+function unregisterResource(runtime, namespace) {
+  const unregister = runtime.unregisterResource
+    ?? runtime.raw?.unregisterResource
+    ?? runtime.raw?.unregister_resource;
+  if (typeof unregister === "function") {
+    try {
+      unregister.call(runtime.unregisterResource ? runtime : runtime.raw, namespace);
+    } catch {
+      // Rollback is best-effort for adapters that expose no unregister seam.
+    }
+  }
+}
+
+function installBytecodeBundles(runtime, packages) {
+  for (const package_ of packages) {
+    if (package_.bytecode) evalBytecodeBundle(runtime, package_.bytecode);
+  }
 }
 
 /** Installs the on-demand Package capability used by std.native.Package. */
@@ -327,18 +490,32 @@ export function installPackageProvider(runtime, lockSource, options = {}) {
   const handler = async (service, operation, arguments_) => {
     if (service !== "package") throw new Error(`host/unsupported-service: ${service}`);
     const descriptor = arguments_?.[0] ?? {};
-    const coordinate = descriptor["package/coordinate"];
-    if (typeof coordinate !== "string") throw new Error("package/descriptor-invalid");
+    const requestedCoordinate = descriptor["package/coordinate"];
+    if (typeof requestedCoordinate !== "string") throw new Error("package/descriptor-invalid");
+    const coordinate = packageCoordinate(lock, requestedCoordinate);
     if (operation === "ensure") {
       const closure = lockedClosure(lock, [coordinate]);
-      const resources = await loadLockedPackageResources(
+      if (closure.every(item => active.has(item))) return descriptor;
+      const loaded = await loadLockedPackageArtifacts(
         lockSource,
         options.fetch,
         options.origin ?? defaultPackagesOrigin,
         closure
       );
-      for (const [namespace, source] of Object.entries(resources)) {
-        runtime.registerResource(namespace, source);
+      const registered = [];
+      const pending = new Set(closure.filter(item => !active.has(item)));
+      try {
+        for (const package_ of loaded.packages) {
+          if (!pending.has(package_.coordinate)) continue;
+          for (const [namespace, source] of Object.entries(package_.resources)) {
+            runtime.registerResource(namespace, source);
+            registered.push(namespace);
+          }
+        }
+        installBytecodeBundles(runtime, loaded.packages.filter(package_ => pending.has(package_.coordinate)));
+      } catch (error) {
+        for (const namespace of registered.reverse()) unregisterResource(runtime, namespace);
+        throw error;
       }
       closure.forEach((item) => active.add(item));
       return descriptor;
@@ -346,13 +523,16 @@ export function installPackageProvider(runtime, lockSource, options = {}) {
     if (operation === "unload") {
       const cascade = arguments_?.[1]?.cascade === true;
       const selected = new Set([coordinate]);
+      const packages = lockedPackages(lock);
       if (cascade) {
         let changed = true;
         while (changed) {
           changed = false;
-          for (const [candidate, entry] of Object.entries(lock.packages ?? {})) {
+          for (const [candidate, entry] of Object.entries(packages)) {
             if (active.has(candidate)
-                && Object.keys(entry.dependencies ?? {}).some((dependency) => selected.has(dependency))
+                && Object.keys(entry.dependencies ?? {}).some((dependency) => {
+                  return selected.has(packageCoordinate(lock, dependency));
+                })
                 && !selected.has(candidate)) {
               selected.add(candidate);
               changed = true;
@@ -360,16 +540,18 @@ export function installPackageProvider(runtime, lockSource, options = {}) {
           }
         }
       } else {
-        const blockers = Object.entries(lock.packages ?? {})
+        const blockers = Object.entries(packages)
           .filter(([candidate, entry]) => active.has(candidate)
-            && Object.keys(entry.dependencies ?? {}).includes(coordinate))
+            && Object.keys(entry.dependencies ?? {}).some((dependency) => {
+              return packageCoordinate(lock, dependency) === coordinate;
+            }))
           .map(([candidate]) => candidate);
         if (blockers.length) throw new Error(`package/unload-blocked: ${blockers.join(",")}`);
       }
       const order = [...selected].reverse();
       for (const item of order) {
         for (const namespace of lock.packages[item]?.namespaces ?? []) {
-          runtime.raw?.unregister_resource?.(ednScalar(namespace));
+          unregisterResource(runtime, ednScalar(namespace));
         }
         active.delete(item);
       }
@@ -632,8 +814,9 @@ export async function installLockedPackages(runtime, lockSource, options = {}) {
       runtime.registerResource(namespace, source);
       registered.push([namespace, source]);
     }
+    installBytecodeBundles(runtime, loaded.packages);
   } catch (error) {
-    for (const [namespace] of registered.reverse()) runtime.unregisterResource?.(namespace);
+    for (const [namespace] of registered.reverse()) unregisterResource(runtime, namespace);
     await extensionState.cleanup();
     throw error;
   }

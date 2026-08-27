@@ -20,6 +20,18 @@ pub(super) fn parse_manifest(source: &str) -> Result<PackageManifest, PackageMan
 
     let package = expect_map(required_value(root, "package", "package.edn")?, ":package")?;
     let identity = required_string(package, "identity", ":package")?;
+    let name = optional_value(package, "name", ":package")?
+        .map(|value| {
+            let name = identifier(value, ":package :name")?;
+            if name.is_empty() {
+                return Err(PackageManifestError::new(
+                    "package/invalid-manifest",
+                    ":package :name must be non-empty",
+                ));
+            }
+            Ok(name)
+        })
+        .transpose()?;
     let version_source = required_string(package, "version", ":package")?;
     let version = Version::parse(&version_source).map_err(|error| {
         PackageManifestError::new(
@@ -31,6 +43,10 @@ pub(super) fn parse_manifest(source: &str) -> Result<PackageManifest, PackageMan
         .map(parse_provenance)
         .transpose()?;
     let files = parse_files(required_value(root, "files", "package.edn")?)?;
+
+    let bytecode = optional_value(root, "bytecode", "package.edn")?
+        .map(|value| parse_bytecode(value, &files))
+        .transpose()?;
 
     let schema_catalog = optional_value(root, "schema/catalog", "package.edn")?
         .map(|value| parse_schema_catalog(value, &files))
@@ -58,13 +74,57 @@ pub(super) fn parse_manifest(source: &str) -> Result<PackageManifest, PackageMan
     Ok(PackageManifest {
         format,
         identity,
+        name,
         version,
         provenance,
         files,
+        bytecode,
         schema_catalog,
         wasm_imports,
         flavors,
         canonical_edn: canonical_form(&form).to_string(),
+    })
+}
+
+fn parse_bytecode(
+    value: &Form,
+    files: &BTreeMap<PathBuf, PackageFile>,
+) -> Result<PackageBytecode, PackageManifestError> {
+    let entries = expect_map(value, ":bytecode")?;
+    let format = required_string(entries, "format", ":bytecode")?;
+    if format != PACKAGE_FORMAT {
+        return Err(PackageManifestError::new(
+            "package/invalid-bytecode",
+            format!("unsupported :bytecode :format {format}"),
+        ));
+    }
+    let path = parse_relative_path(&required_string(entries, "path", ":bytecode")?)?;
+    let sha256 = required_string(entries, "sha256", ":bytecode")?;
+    validate_sha256(&sha256)?;
+    let file = files.get(&path).ok_or_else(|| {
+        PackageManifestError::new(
+            "package/bytecode-missing",
+            format!(
+                ":bytecode :path is not declared in :files: {}",
+                path.display()
+            ),
+        )
+    })?;
+    if file.sha256 != sha256 {
+        return Err(PackageManifestError::new(
+            "package/bytecode-digest-mismatch",
+            format!(
+                "{} declares {}, but :files declares {}",
+                path.display(),
+                sha256,
+                file.sha256
+            ),
+        ));
+    }
+    Ok(PackageBytecode {
+        format,
+        path,
+        sha256,
     })
 }
 

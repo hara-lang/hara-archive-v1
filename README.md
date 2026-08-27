@@ -105,6 +105,18 @@ hara package install packages/core
 hara package publish --tap hara --dry-run packages/core
 ```
 
+A multi-package project can keep its Foundation-compatible namespace catalog in
+`config/packages.edn` and build one semantic package at a time:
+
+```shell
+hara package profile core/config/packages.edn
+hara package build core --package code.test --profile core/config/packages.edn
+```
+
+The archive contains only the selected namespaces plus declared bundles. Its
+optional `bytecode/package.hbx` is verified by browser loaders, with the HAL
+resources retained as the portable source fallback.
+
 Repositories containing several packages can use `code.deploy`. It exposes the
 same CLI operations as native `std.work` values, accepts a data catalog with
 `:path`, `:depends`, and per-package `:options`, and processes packages in

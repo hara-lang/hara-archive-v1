@@ -3,6 +3,12 @@ export interface StartOptions {
   wasmUrl?: RequestInfo | URL | ArrayBuffer | WebAssembly.Module | Uint8Array;
   /** Host resources registered before the first require. */
   resources?: Map<string, string> | Record<string, string>;
+  /** Exact lock used to install semantic packages before the runtime is returned. */
+  lock?: string;
+  /** Semantic package names, coordinates, or namespaces selected from the lock. */
+  targets?: string[];
+  /** Fetch, capability, host, and browser-worker policy for package installation. */
+  packageOptions?: LockedPackageOptions;
 }
 
 export interface HaraRuntime {
@@ -21,6 +27,8 @@ export interface HaraRuntime {
   currentNamespace(): string;
   compileBytecode(source: string): Uint8Array;
   evalBytecode(artifact: Uint8Array): string;
+  evalBytecodeBundle(artifact: Uint8Array): void;
+  installPackages(lockSource: string, options?: LockedPackageOptions): Promise<string[]>;
   compileWholeWasm(source: string): Promise<WholeWasmModule>;
   compileWholeWasmProduct(source: string): WholeWasmProduct;
   loadWholeWasm(
@@ -62,7 +70,7 @@ export function loadLockedPackageResources(
 ): Promise<Record<string, string>>;
 
 export function installLockedPackages(
-  runtime: Pick<HaraRuntime, "registerResource">,
+  runtime: Pick<HaraRuntime, "registerResource"> & Partial<Pick<HaraRuntime, "evalBytecodeBundle">>,
   lockSource: string,
   options?: LockedPackageOptions
 ): Promise<string[]>;

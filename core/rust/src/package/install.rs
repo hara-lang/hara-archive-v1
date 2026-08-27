@@ -51,7 +51,7 @@ pub(super) fn validate_recipe(project: &Project) -> Result<PathBuf, String> {
     Ok(path)
 }
 
-fn dist_root() -> PathBuf {
+pub(super) fn dist_root() -> PathBuf {
     if let Some(root) = std::env::var_os("HARA_DIST_HOME") {
         return PathBuf::from(root);
     }
@@ -100,7 +100,16 @@ pub(super) fn install_archive_at(archive: &Path, root: &Path) -> Result<PathBuf,
     }
 
     let project = validate_installed_root(&package_root, &manifest)?;
-    let coordinate = project::normalize_coordinate(&project.id)?;
+    let coordinate = if manifest.name.is_some() {
+        project::normalize_coordinate(&manifest.identity).map_err(|error| {
+            format!(
+                "package/invalid-manifest: package identity {} is invalid: {error}",
+                manifest.identity
+            )
+        })?
+    } else {
+        project::normalize_coordinate(&project.id)?
+    };
     let (tap, package) = split_coordinate(&coordinate)?;
     let mut parts = package.split('/');
     let owner = parts
@@ -277,7 +286,11 @@ fn validate_installed_root(
         );
     }
     let project = read_project(package_root)?;
-    let coordinate = project::normalize_coordinate(&project.id)?;
+    let project_coordinate = if manifest.name.is_none() {
+        Some(project::normalize_coordinate(&project.id)?)
+    } else {
+        None
+    };
     let manifest_coordinate =
         project::normalize_coordinate(&manifest.identity).map_err(|error| {
             format!(
@@ -285,10 +298,12 @@ fn validate_installed_root(
                 manifest.identity
             )
         })?;
-    if coordinate != manifest_coordinate {
-        return Err(format!(
-            "package/invalid-manifest: project identity {coordinate} does not match package identity {manifest_coordinate}"
-        ));
+    if let Some(coordinate) = project_coordinate {
+        if coordinate != manifest_coordinate {
+            return Err(format!(
+                "package/invalid-manifest: project identity {coordinate} does not match package identity {manifest_coordinate}"
+            ));
+        }
     }
     if project.version != manifest.version {
         return Err(format!(

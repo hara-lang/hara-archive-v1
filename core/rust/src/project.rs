@@ -50,6 +50,12 @@ pub struct Project {
     /// Whether the intentionally portable workspace declaration is a package
     /// resource.  This never includes a live Studio workspace or cache.
     pub package_workspace: bool,
+    /// Semantic package coordinate selected from the project's package
+    /// profile. This is independent from the namespace coordinates it owns.
+    pub package_name: Option<String>,
+    /// Optional Foundation-compatible package profile used to select source
+    /// namespaces while building a package archive.
+    pub package_profile: Option<PathBuf>,
     /// Optional explicit HAL files to include when building a package.
     ///
     /// This keeps package projects rooted next to canonical sources without
@@ -259,10 +265,10 @@ pub fn read(input: &Path) -> Result<Project, String> {
             )
         })
         .transpose()?;
-    let package_workspace = lookup(entries, "project/package")
-        .map(package_workspace)
+    let package_config = lookup(entries, "project/package")
+        .map(package_config)
         .transpose()?
-        .unwrap_or(false);
+        .unwrap_or_default();
     let source_files = lookup(entries, "project/source-files")
         .map(|value| paths(value, "project/source-files"))
         .transpose()?;
@@ -348,7 +354,9 @@ pub fn read(input: &Path) -> Result<Project, String> {
         capabilities,
         artifact_paths,
         archive_root,
-        package_workspace,
+        package_workspace: package_config.workspace,
+        package_name: package_config.name,
+        package_profile: package_config.profile,
         source_files,
         main,
         default_profile,
@@ -1068,13 +1076,39 @@ fn paths(form: &Form, label: &str) -> Result<Vec<PathBuf>, String> {
         _ => Err(format!("project.edn :{label} must be a vector of strings")),
     }
 }
-fn package_workspace(form: &Form) -> Result<bool, String> {
+#[derive(Default)]
+struct PackageConfig {
+    workspace: bool,
+    name: Option<String>,
+    profile: Option<PathBuf>,
+}
+
+fn package_config(form: &Form) -> Result<PackageConfig, String> {
     let entries = map(form, "project.edn :project/package must be an EDN map")?;
-    match lookup(entries, "workspace") {
-        None | Some(Form::Bool(false)) => Ok(false),
-        Some(Form::Bool(true)) => Ok(true),
-        Some(_) => Err("project.edn :project/package :workspace must be a boolean".into()),
+    let workspace = match lookup(entries, "workspace") {
+        None | Some(Form::Bool(false)) => false,
+        Some(Form::Bool(true)) => true,
+        Some(_) => return Err("project.edn :project/package :workspace must be a boolean".into()),
+    };
+    let name = lookup(entries, "name")
+        .map(|value| identifier(value, "project.edn :project/package :name"))
+        .transpose()?;
+    if name.as_deref().is_some_and(str::is_empty) {
+        return Err("project.edn :project/package :name must be non-empty".into());
     }
+    let profile = lookup(entries, "profile")
+        .map(|value| {
+            relative_path(
+                &string(value, "project.edn :project/package :profile")?,
+                "project/package/profile",
+            )
+        })
+        .transpose()?;
+    Ok(PackageConfig {
+        workspace,
+        name,
+        profile,
+    })
 }
 fn dependencies(form: &Form) -> Result<BTreeMap<String, String>, String> {
     let mut output = BTreeMap::new();
