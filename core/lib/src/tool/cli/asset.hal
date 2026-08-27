@@ -117,7 +117,7 @@
   (let [contents (deref (file/read (file/join root (:entry/path entry))))]
     (assoc entry
            :entry/size (bytes/count contents)
-           :entry/sha256 (str "sha256:" (crypto/sha256 contents)))))
+           :entry/sha256 (str "sha256:" (Crypto/sha256 contents)))))
 
 (defn build-manifest [collection]
   (verify-files collection)

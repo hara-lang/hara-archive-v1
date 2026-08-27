@@ -680,8 +680,10 @@ pub fn builtin_protocol_method_values() -> Vec<(String, String, Value)> {
                 let arity_display_name = display_name.clone();
                 let (minimum_arity, maximum_arity) = method.arity.range();
                 let value = if protocol_name == "std.protocol.ideref.IDeref" && method.name == "deref" {
-                    native_fiber_function(
+                    native_protocol_fiber_function(
                         &display_name,
+                        &protocol_name,
+                        &method_name,
                         minimum_arity,
                         maximum_arity.is_none(),
                         {
@@ -694,8 +696,10 @@ pub fn builtin_protocol_method_values() -> Vec<(String, String, Value)> {
                 } else if protocol_name == "std.protocol.icoroutine.ICoroutine"
                     && method.name == "resume"
                 {
-                    native_fiber_function(
+                    native_protocol_fiber_function(
                         &display_name,
+                        &protocol_name,
+                        &method_name,
                         minimum_arity,
                         maximum_arity.is_none(),
                         {

@@ -40,6 +40,56 @@ fn runtime_backend_executes_ordinary_hara_functions_in_the_vm() {
 }
 
 #[test]
+fn direct_native_keeps_the_disj_core_intrinsic_available() {
+    let mut runtime = Runtime::core();
+    enable_native(&mut runtime);
+    assert_eq!(
+        runtime
+            .eval_direct_native("(disj #{:removed} :removed)")
+            .unwrap(),
+        "#{}"
+    );
+}
+
+#[test]
+fn direct_native_guest_protocols_dispatch_without_tree_evaluator_reentry() {
+    let mut runtime = Runtime::core();
+    enable_native(&mut runtime);
+    assert_eq!(
+        runtime
+            .eval_direct_native(
+                "(do (defstruct Box [value]) \
+                     (defprotocol BoxOps (read [self])) \
+                     (extend-type Box BoxOps (read [self] (:value self))) \
+                     (read (Box 42)))",
+            )
+            .unwrap(),
+        "42"
+    );
+}
+
+#[test]
+fn bytes_new_matches_the_bytes_constructor_contract() {
+    let mut runtime = Runtime::core();
+    enable_native(&mut runtime);
+    assert_eq!(
+        runtime
+            .eval_direct_native(
+                "[(Bytes/count (Bytes/new 1 2 -3 255)) (Bytes/get (Bytes/new 1 2 -3) 2)]"
+            )
+            .unwrap(),
+        "[4 253]"
+    );
+    let error = runtime
+        .eval_direct_native("(Bytes/new 256)")
+        .expect_err("Bytes/new must reject values outside the byte range");
+    assert!(
+        error.contains("bytes expects a value in the range -128..255"),
+        "{error}"
+    );
+}
+
+#[test]
 fn runtime_direct_native_loader_handles_require_inside_a_native_frame() {
     let mut runtime = Runtime::core();
     runtime.register_resource(

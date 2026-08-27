@@ -183,6 +183,30 @@ impl Runtime {
         self.compile_bytecode_with_policy(source, true)
     }
 
+    fn compile_form_for_direct_native(
+        &self,
+        form: &Form,
+    ) -> Result<std::rc::Rc<vm::Program>, String> {
+        let namespace = self.current_namespace();
+        let config = self
+            .generated_configs
+            .get(&namespace)
+            .cloned()
+            .unwrap_or_else(kernel::GeneratedNamespaceConfig::defaults);
+        core::with_macros(self.macros.clone(), || {
+            vm::compile_form_with_config_allow_unbound_globals(
+                form.clone(),
+                &self.namespace_registry,
+                config,
+            )
+            .map(|mut program| {
+                program.namespace = Some(namespace.clone());
+                std::rc::Rc::new(program)
+            })
+            .map_err(|error| error.to_string())
+        })
+    }
+
     fn compile_bytecode_with_policy(
         &self,
         source: &str,

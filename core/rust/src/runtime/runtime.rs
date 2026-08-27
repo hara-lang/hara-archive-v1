@@ -549,9 +549,8 @@ impl Runtime {
                 return Err("direct-native does not support traced evaluation".into());
             }
             if !is_interpreter_management_form(&form) {
-                let source = form.to_string();
                 return self
-                    .compile_bytecode_for_direct_native(&source)
+                    .compile_form_for_direct_native(&form)
                     .and_then(|program| self.execute_compiled_direct_native(program))
                     .map(|report| report.value);
             }

@@ -38,6 +38,14 @@
       {:schema/type :vector
        :schema/items :demo/node}}}]})
 
+^{:refer 'tool.metaspec.schema/version-string?}
+(fact "accepts semantic version strings and rejects malformed values"
+  [(schema/version-string? "0.0.0-alpha")
+   (schema/version-string? "1.2.3+build.7")
+   (schema/version-string? "1.2")
+   (schema/version-string? 123)]
+  => [true true false false])
+
 (defn- field?
   [normalized key]
   (any? (fn [field] (= key (:name field))) (:fields normalized)))

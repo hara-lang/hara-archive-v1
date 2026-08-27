@@ -721,6 +721,48 @@ pub(crate) fn native_fiber_function(
     callback: impl Fn(Vec<Value>) -> Result<Value, String> + 'static,
     fiber_callback: impl Fn(Vec<Value>, Cont) -> Step + 'static,
 ) -> Value {
+    native_fiber_function_with_arity_error(
+        name,
+        fixed_arity,
+        variadic,
+        callback,
+        fiber_callback,
+        |expectation, _received| format!("function expects {expectation} arguments"),
+    )
+}
+
+pub(crate) fn native_protocol_fiber_function(
+    name: &str,
+    protocol: &str,
+    method: &str,
+    fixed_arity: usize,
+    variadic: bool,
+    callback: impl Fn(Vec<Value>) -> Result<Value, String> + 'static,
+    fiber_callback: impl Fn(Vec<Value>, Cont) -> Step + 'static,
+) -> Value {
+    let display_name = format!("{protocol}/{method}");
+    native_fiber_function_with_arity_error(
+        name,
+        fixed_arity,
+        variadic,
+        callback,
+        fiber_callback,
+        move |expectation, received| {
+            format!(
+                "protocol/arity: {display_name} expects {expectation} arguments, received {received}"
+            )
+        },
+    )
+}
+
+fn native_fiber_function_with_arity_error(
+    name: &str,
+    fixed_arity: usize,
+    variadic: bool,
+    callback: impl Fn(Vec<Value>) -> Result<Value, String> + 'static,
+    fiber_callback: impl Fn(Vec<Value>, Cont) -> Step + 'static,
+    arity_error: impl Fn(String, usize) -> String + 'static,
+) -> Value {
     let fiber_callback = move |arguments: Vec<Value>, continuation: Cont| {
         let valid = if variadic {
             arguments.len() >= fixed_arity
@@ -733,9 +775,7 @@ pub(crate) fn native_fiber_function(
             } else {
                 fixed_arity.to_string()
             };
-            return continuation(Err(format!(
-                "function expects {expectation} arguments"
-            )));
+            return continuation(Err(arity_error(expectation, arguments.len())));
         }
         fiber_callback(arguments, continuation)
     };
@@ -943,6 +983,22 @@ pub(crate) fn exception_function_values() -> Vec<(&'static str, Value)> {
 
 pub(crate) fn direct_function_value(name: &str) -> Option<Value> {
     match name {
+        "disj" => Some(native_variadic_function("disj", |arguments| {
+            let (collection, values) = arguments
+                .split_first()
+                .ok_or_else(|| "disj expects a collection".to_string())?;
+            let mut output = collection.clone();
+            for value in values {
+                if matches!(output, Value::Nil) {
+                    break;
+                }
+                output = crate::core::protocol_intrinsic_call(
+                    "std.protocol.idissoc.IDissoc/dissoc",
+                    &[output, value.clone()],
+                )?;
+            }
+            Ok(output)
+        })),
         "quot" => Some(native_function("quot", 2, |arguments| {
             numeric::numeric_quotient(&arguments[0], &arguments[1])
         })),
@@ -1597,13 +1653,7 @@ fn native_iter_operation(method: &str, arguments: Vec<Value>) -> Result<Value, S
 
 fn native_bytes_operation(method: &str, arguments: Vec<Value>) -> Result<Value, String> {
     match (method, arguments.as_slice()) {
-        ("new", values) => {
-            let values = values
-                .iter()
-                .map(|value| byte_input(value, "bytes"))
-                .collect::<Result<Vec<_>, _>>()?;
-            Ok(Value::ByteBuffer(Rc::new(RefCell::new(values))))
-        }
+        ("new", values) => native_bytes_new(values),
         ("count", [value]) => byte_count(value),
         ("get", [value, index]) => byte_get(value, index, None),
         ("get", [value, index, default]) => byte_get(value, index, Some(default.clone())),
@@ -1629,6 +1679,14 @@ fn native_bytes_operation(method: &str, arguments: Vec<Value>) -> Result<Value, 
             "std.native.Bytes/{method} received unsupported arguments"
         )),
     }
+}
+
+fn native_bytes_new(values: &[Value]) -> Result<Value, String> {
+    let values = values
+        .iter()
+        .map(|value| byte_input(value, "bytes"))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(Value::ByteBuffer(Rc::new(RefCell::new(values))))
 }
 
 /// Structural evaluator arms that are ordinary callable values.  Rust keeps
@@ -1890,6 +1948,10 @@ pub(crate) fn eval_bytecode_declaration(
         return Err(format!(
             "{expected_operator} instruction contains the wrong declaration"
         ));
+    }
+    #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+    if direct_native_execution() {
+        return eval_direct_native_declaration(expected_operator, &form);
     }
     let mut env = HashMap::new();
     if let Ok(registry) = namespace_registry() {
