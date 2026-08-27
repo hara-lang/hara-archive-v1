@@ -1857,12 +1857,21 @@ fn native_runtime_values(
             let Some(namespace) = registry.find(&owner) else {
                 return Ok(Value::Nil);
             };
+            // Global aliases are resolver-visible even when the owning namespace
+            // has not materialized a local alias entry. Report the same target
+            // and lifecycle state that qualified symbol resolution observes.
             let target = namespace.lazy_target(alias.as_str()).or_else(|| {
                 namespace
                     .aliases()
                     .into_iter()
                     .find(|(name, _)| name == alias)
                     .map(|(_, target)| target.name().clone())
+            }).or_else(|| {
+                registry
+                    .global_aliases()
+                    .into_iter()
+                    .find(|(name, _)| name == alias)
+                    .map(|(_, target)| target)
             });
             let Some(target) = target else {
                 return Ok(Value::Nil);

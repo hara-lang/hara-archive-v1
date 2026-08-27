@@ -377,7 +377,17 @@
    :expected '(if true (do 1) nil)}])
 
 ^{:refer std.foundation/ns-alias-state}
-(Test/run [])
+(Test/run
+ [{:name "reports the lifecycle state of a resolver-visible global alias"
+   :test (fn []
+           (do
+             (require [std.foundation.string])
+             (let [state (std.foundation/ns-alias-state 'str)]
+               [(get state :alias)
+                (get state :target)
+                (or (= :loaded (get state :state))
+                    (= :unloaded (get state :state)))])))
+   :expected ['str 'std.foundation.string true]}])
 
 ^{:refer std.foundation/intern-var}
 (Test/run
