@@ -1748,7 +1748,10 @@ fn native_runtime_values(
             if values.len() != 1 {
                 return Err("std.native.Runtime/eval expects one form".into());
             }
-            eval_value(values[0].clone(), env)
+            let mut environment = crate::core::current_namespace_environment()?;
+            let result = eval_value(values[0].clone(), &mut environment);
+            crate::core::save_namespace_environment(&registry, &mut environment);
+            result
         }
         "load-string" => {
             let [Value::String(source)] = values.as_slice() else {

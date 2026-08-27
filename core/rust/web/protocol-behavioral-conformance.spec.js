@@ -29,6 +29,7 @@ test("browser Wasm consumes the specs-owned protocol corpora", async ({ page }) 
     );
     const hara = await start({ resources });
     for (const namespace of Object.keys(resources)) hara.require(namespace);
+    hara.eval("(ns user)");
     if (
       !hara.raw ||
       typeof hara.eval !== "function" ||
