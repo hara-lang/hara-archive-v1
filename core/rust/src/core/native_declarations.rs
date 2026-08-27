@@ -139,7 +139,7 @@ pub(crate) mod declarations {
         name = "Runtime",
         methods = [
             "load-string", "macroexpand-1", "gensym", "ns-publics", "ns-aliases", "ns-find", "ns-create", "ns-name", "var-sym",
-            "current", "snapshot", "vars", "namespaces", "namespace", "module", "resolve", "alias-state",
+            "current", "snapshot", "vars", "namespaces", "namespace", "module", "alias-state",
             "intern-var", "eval-in", "eval"
         ],
         provider = native_runtime_provider

@@ -27,14 +27,18 @@ load and compile portable source. `std.lib.resp` and other library packages are
 package-tier resources. `hara.compiler`, `hara.verify`, and
 `hara.transpile.base.*` are not bootstrap dependencies.
 
-Namespace inspection and dynamic evaluation live on `std.native.Runtime` and use
-the same transparent Foundation-wrapper contract. Foundation exposes
-`ns-current`, `ns-list`, `ns-info`, `ns-vars`, `env-snapshot`, `env-module`,
-`resolve`, `ns-find`, `ns-create`, `ns-name`, `ns-publics`, `ns-aliases`,
-`ns-alias-state`, `intern-var`, `eval-in-ns`, and `eval`. `Runtime/eval`
-evaluates one form value in the current namespace;
-`Runtime/eval-in` evaluates a collection of form values in an existing namespace.
-Java and Rust must expose identical methods and evaluation behavior.
+Namespace inspection and dynamic evaluation live on `std.native.Runtime`; the
+non-loading symbol lookup primitive lives on `std.native.Base`. Foundation
+exposes the same transparent wrappers for `ns-current`, `ns-list`,
+`ns-info`, `ns-vars`, `env-snapshot`, `env-module`, `resolve`,
+`ns-find`, `ns-create`, `ns-name`, `ns-publics`, `ns-aliases`,
+`ns-alias-state`, `intern-var`, `eval-in-ns`, and `eval`. The Foundation
+`resolve` shim forwards to `Base/resolve`; it observes only Vars already
+materialized in the registry and never loads a namespace or package.
+Dynamic form evaluation remains Runtime-owned: `Runtime/eval` evaluates one
+form value in the current namespace, while `Runtime/eval-in` evaluates a
+collection of form values in an existing namespace. Java and Rust must expose
+identical methods and evaluation behavior.
 
 The same inline-forwarding rule applies throughout the embedded Foundation
 family. Transparent shims over `Maths`, `Num`, `Bits`, `String`, `Bytes`,

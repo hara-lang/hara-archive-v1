@@ -656,7 +656,6 @@ public final class HaraContext {
     runtime.define("namespaces", new VariadicBuiltin("std.native.Runtime/namespaces", this::environmentNamespaces));
     runtime.define("namespace", new UnaryBuiltin("std.native.Runtime/namespace", this::environmentNamespace));
     runtime.define("module", new UnaryBuiltin("std.native.Runtime/module", this::environmentModule));
-    runtime.define("resolve", new UnaryBuiltin("std.native.Runtime/resolve", this::environmentResolve));
     runtime.define("alias-state", new VariadicBuiltin("std.native.Runtime/alias-state", this::namespaceAliasState));
     runtime.define("intern-var", new VariadicBuiltin("std.native.Runtime/intern-var", this::internVar));
     runtime.define("eval-in", new VariadicBuiltin("std.native.Runtime/eval-in", this::evalInNamespace));
@@ -814,10 +813,6 @@ public final class HaraContext {
       }
     }
     return hara.lang.data.OrderedMap.Standard.from(null, entries.toArray());
-  }
-
-  private Object environmentResolve(Object value) {
-    return resolveAvailableValue(value, "std.native.Runtime/resolve");
   }
 
   private Object resolveAvailableValue(Object value, String operation) {
@@ -1375,6 +1370,9 @@ public final class HaraContext {
   }
 
   private void referFoundation(HaraNamespace target) {
+    // Native namespaces expose only their catalogued runtime surface. They must
+    // not inherit Foundation Vars, or removed native names reappear as aliases.
+    if (target.name().startsWith("std.native.")) return;
     HaraNamespace core = namespace(FOUNDATION_NAMESPACE);
     for (Map.Entry<String, HaraVar> entry : core.vars.entrySet()) {
       if (target.lookup(entry.getKey()) == null) target.refer(entry.getKey(), entry.getValue());

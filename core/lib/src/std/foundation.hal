@@ -2822,8 +2822,8 @@
   [name expression]
   (let [qualified (symbol (str (:ns &env)) (str name))]
     (list 'if
-          (list 'Runtime/resolve (list 'quote qualified))
-          (list 'Runtime/resolve (list 'quote qualified))
+          (list 'Base/resolve (list 'quote qualified))
+          (list 'Base/resolve (list 'quote qualified))
           (list 'Runtime/eval (list 'quote (list 'def name expression))))))
 
 (defmacro ->
