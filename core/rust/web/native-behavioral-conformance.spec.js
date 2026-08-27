@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { test, expect } from "@playwright/test";
+import { readFoundationResources } from "./conformance-bootstrap.js";
 
 const corpusUrl = new URL(
   "../../../../hara-specs-registry/01-lang/001-language/draft/conformance/fixtures/native_behavioral.hal",
@@ -9,13 +10,15 @@ const corpusUrl = new URL(
 
 test("browser Wasm consumes the specs-owned native behavioral corpus", async ({ page }) => {
   const corpus = await readFile(fileURLToPath(corpusUrl), "utf8");
+  const resources = await readFoundationResources();
 
   await page.goto("/rust/web/index.html");
-  const observed = await page.evaluate(async ({ corpus }) => {
+  const observed = await page.evaluate(async ({ corpus, resources }) => {
     const { start } = await import(
       "/rust/web/packages/browser/dist/hara-wasm-full/hara.mjs"
     );
-    const hara = await start();
+    const hara = await start({ resources });
+    for (const namespace of Object.keys(resources)) hara.require(namespace);
     if (
       !hara.raw ||
       typeof hara.eval !== "function" ||
@@ -69,7 +72,7 @@ test("browser Wasm consumes the specs-owned native behavioral corpus", async ({ 
       interpreted,
       compiled
     };
-  }, { corpus });
+  }, { corpus, resources });
 
   expect(observed.valid).toBe("true");
   expect(observed.methods.length).toBeGreaterThan(0);

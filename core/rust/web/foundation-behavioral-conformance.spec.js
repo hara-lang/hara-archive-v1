@@ -1,33 +1,24 @@
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { test, expect } from "@playwright/test";
+import { readFoundationResources } from "./conformance-bootstrap.js";
 
 const corpusUrl = new URL(
   "../../../../hara-specs-registry/01-lang/004-foundation/draft/conformance/fixtures/foundation_behavioral.hal",
   import.meta.url
 );
-const foundationModuleUrls = [
-  "../../lib/src/std/foundation/bytes.hal",
-  "../../lib/src/std/foundation/coroutine.hal",
-  "../../lib/src/std/foundation/pretty.hal",
-  "../../lib/src/std/foundation/promise.hal",
-  "../../lib/src/std/foundation/string.hal"
-].map((relative) => new URL(relative, import.meta.url));
 
 test("browser Wasm consumes the specs-owned Foundation behavioral corpus", async ({ page }) => {
   const corpus = await readFile(fileURLToPath(corpusUrl), "utf8");
-  const modules = (
-    await Promise.all(
-      foundationModuleUrls.map((url) => readFile(fileURLToPath(url), "utf8"))
-    )
-  ).join("\n");
+  const resources = await readFoundationResources();
 
   await page.goto("/rust/web/index.html");
-  const observed = await page.evaluate(async ({ modules, corpus }) => {
+  const observed = await page.evaluate(async ({ resources, corpus }) => {
     const { start } = await import(
       "/rust/web/packages/browser/dist/hara-wasm-full/hara.mjs"
     );
-    const hara = await start();
+    const hara = await start({ resources });
+    for (const namespace of Object.keys(resources)) hara.require(namespace);
     if (
       !hara.raw ||
       typeof hara.eval !== "function" ||
@@ -37,7 +28,6 @@ test("browser Wasm consumes the specs-owned Foundation behavioral corpus", async
       throw new Error("full browser runtime is absent");
     }
 
-    hara.eval(modules);
     hara.eval(corpus);
     const summary = String(hara.eval("(foundation-summary-report)"));
     const valid = String(hara.eval("(foundation-corpus-valid?)"));
@@ -81,7 +71,7 @@ test("browser Wasm consumes the specs-owned Foundation behavioral corpus", async
       interpreted,
       compiled
     };
-  }, { modules, corpus });
+  }, { resources, corpus });
 
   expect(observed.valid).toBe("true");
   expect(observed.portablePass).toBe("true");

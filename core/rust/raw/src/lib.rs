@@ -2348,38 +2348,26 @@ fn error_code(error: &str) -> i32 {
     4
 }
 
-fn one_shot_environment() -> HashMap<String, Value> {
-    let mut env = HashMap::new();
-    if let Some(declaration) = core::native_declarations()
-        .iter()
-        .find(|declaration| declaration.name == "Iter")
-    {
-        for method in declaration.methods {
-            let function = core::native_type_function_value("Iter", method)
-                .unwrap_or_else(|error| panic!("{error}"));
-            env.insert(format!("Iter/{method}"), function.clone());
-            env.insert(format!("std.native.Iter/{method}"), function);
-        }
-    }
-    env
-}
-
 fn evaluate(source: &str) -> Result<i64, i32> {
-    let forms = kernel::parse_forms(source).map_err(|_| 1)?;
-    let mut env = one_shot_environment();
-    let namespaces = kernel::NamespaceRegistry::new("user");
-    let protocols = core::ProtocolRegistry::core();
-    let value = core::with_namespace_registry(&namespaces, || {
-        core::with_protocols(&protocols, || {
-            let forms = forms;
-            let mut fiber = EvalFiber::start_forms(forms, env.clone())?;
-            let value = fiber.drive_sync()?;
-            env = fiber.environment();
-            Ok::<String, String>(value.display())
-        })
-    })
-    .map_err(|error| error_code(&error))?;
-    value.parse::<i64>().map_err(|_| 4)
+    kernel::parse_forms(source).map_err(|_| 1)?;
+
+    let mut runtime = Session::new();
+    runtime
+        .start_fiber(1, source)
+        .map_err(|error| error_code(&error))?;
+    let frame = runtime.events.borrow_mut().pop_front().ok_or(4)?;
+    let value = hta::decode(&frame).map_err(|_| 4)?;
+    let Value::Vector(values) = value else {
+        return Err(4);
+    };
+    if values.len() != 3 {
+        return Err(4);
+    }
+    match (&values[0], &values[2]) {
+        (Value::Number(kind), Value::Number(value)) if *kind == 0 => Ok(*value),
+        (Value::Number(kind), error) if *kind == 1 => Err(error_code(&error.display())),
+        _ => Err(4),
+    }
 }
 
 #[no_mangle]
@@ -2394,27 +2382,7 @@ pub extern "C" fn eval_i64(source_ptr: *const u8, source_len: usize) -> i64 {
 #[no_mangle]
 pub extern "C" fn eval_error_code(source_ptr: *const u8, source_len: usize) -> i32 {
     match source_text(source_ptr, source_len) {
-        Ok(source) => {
-            let forms = match kernel::parse_forms(source) {
-                Ok(forms) => forms,
-                Err(_) => return 1,
-            };
-            let mut env = one_shot_environment();
-            let namespaces = kernel::NamespaceRegistry::new("user");
-            let protocols = core::ProtocolRegistry::core();
-            match core::with_namespace_registry(&namespaces, || {
-                core::with_protocols(&protocols, || {
-                    let forms = forms;
-                    let mut fiber = EvalFiber::start_forms(forms, env.clone())?;
-                    let value = fiber.drive_sync()?;
-                    env = fiber.environment();
-                    Ok::<Value, String>(value)
-                })
-            }) {
-                Ok(_) => 0,
-                Err(error) => error_code(&error),
-            }
-        }
+        Ok(source) => evaluate(source).map(|_| 0).unwrap_or_else(|code| code),
         Err(code) => code,
     }
 }
@@ -2820,6 +2788,9 @@ mod tests {
             "(if (= (type {}) :std.native.HashMap) 42 0)",
             "(if (= (type (ns-create (quote example))) :std.native.Namespace) 42 0)",
             "(if (= [(tuple? []) (tuple? [1 2 3 4 5 6 7 8 9])] [true false]) 42 0)",
+            "(if (map? {}) 42 0)",
+            "(if (set? #{}) 42 0)",
+            "(if (atom? (atom nil)) 42 0)",
         ] {
             assert_eq!(evaluate(source), Ok(42), "{source}");
         }

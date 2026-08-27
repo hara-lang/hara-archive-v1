@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { test, expect } from "@playwright/test";
+import { readFoundationResources } from "./conformance-bootstrap.js";
 
 const specsRoot = new URL(
   "../../../../hara-specs-registry/01-lang/001-language/draft/conformance/fixtures/",
@@ -19,13 +20,15 @@ test("browser Wasm consumes the specs-owned protocol corpora", async ({ page }) 
 
   expect(behavioral).not.toMatch(/std\.protocol\.[^\s/]+\/I[A-Z]/);
   expect(surface).not.toMatch(/std\.protocol\.[^\s/]+\/I[A-Z]/);
+  const resources = await readFoundationResources();
 
   await page.goto("/rust/web/index.html");
-  const observed = await page.evaluate(async ({ behavioral, surface }) => {
+  const observed = await page.evaluate(async ({ behavioral, surface, resources }) => {
     const { start } = await import(
       "/rust/web/packages/browser/dist/hara-wasm-full/hara.mjs"
     );
-    const hara = await start();
+    const hara = await start({ resources });
+    for (const namespace of Object.keys(resources)) hara.require(namespace);
     if (
       !hara.raw ||
       typeof hara.eval !== "function" ||
@@ -63,7 +66,7 @@ test("browser Wasm consumes the specs-owned protocol corpora", async ({ page }) 
       compiled,
       protocolSurface
     };
-  }, { behavioral, surface });
+  }, { behavioral, surface, resources });
 
   for (const result of [
     observed.portable,
