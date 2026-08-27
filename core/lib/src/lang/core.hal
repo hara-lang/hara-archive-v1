@@ -223,7 +223,7 @@
   ([explicit-language form]
    (let [entry (register-language-code explicit-language form)
          module (:module entry)
-         source (symbol (str (current-namespace)))
+         source (symbol (str (ns-current)))
          declaration-symbol (script-definition-symbol (second form))
          id (:id entry)
          context-key (script-context (:lang entry))
@@ -242,7 +242,7 @@
   [explicit-language declaration-symbol value metadata]
   (let [module (script/current-module-id)
         module-value (script-module-value explicit-language module)
-        source (symbol (str (current-namespace)))
+        source (symbol (str (ns-current)))
         id (symbol (name declaration-symbol))
         qualified-module (symbol (name module) (name id))
         return-value
@@ -386,7 +386,7 @@
 (defn restart-script
   "Restarts every script declared by the current source namespace."
   []
-  (let [source (symbol (str (current-namespace)))
+  (let [source (symbol (str (ns-current)))
         entries
         (filter (fn [entry]
                   (= source (:source (second entry))))

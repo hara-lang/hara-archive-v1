@@ -19,7 +19,7 @@
                     module-id)
         options (preprocess/macro-opts)
         active-id (get-in options [:module :id])
-        selected (or module-id active-id (current-namespace))
+        selected (or module-id active-id (ns-current))
         selected (symbol (str selected))]
     (get (deref script/+modules+) selected)))
 
@@ -27,7 +27,7 @@
   "Collects native entries from a module and its registered links."
   {:added "4.0"}
   ([lang]
-   (linked-natives lang (current-namespace)))
+   (linked-natives lang (ns-current)))
   ([lang nss]
    (let [initial (if (or (vector? nss) (list? nss) (set? nss))
                    (vec nss)
@@ -50,7 +50,7 @@
   "Gets the native entries of one registered module."
   {:added "4.0"}
   ([lang]
-   (current-natives lang (current-namespace)))
+   (current-natives lang (ns-current)))
   ([lang module-id]
    (or (:native (current-module module-id)) {})))
 

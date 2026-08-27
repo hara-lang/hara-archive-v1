@@ -1042,14 +1042,12 @@ pub(crate) fn call_function(function: &Function, arguments: Vec<Value>) -> Resul
                 Some(
                     "macroexpand"
                         | "macroexpand-1"
-                        | "env-current"
-                        | "current-namespace"
+                        | "ns-current"
                         | "env-snapshot"
-                        | "env-vars"
-                        | "env-namespaces"
-                        | "env-namespace"
+                        | "ns-vars"
+                        | "ns-list"
+                        | "ns-info"
                         | "env-module"
-                        | "env-resolve"
                 )
             ));
     let namespace_scope = namespace_registry().ok().and_then(|registry| {

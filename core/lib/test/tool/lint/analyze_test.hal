@@ -1,0 +1,31 @@
+(ns tool.lint.analyze-test
+  (:use code.test)
+  (:require [tool.lint.analyze :as analyze]))
+
+(def legacy-scan
+  (analyze/scan-source
+   "(ns demo.core)\n^{:public true} (defn old [] 1)\n"
+   {}))
+
+^{:refer tool.lint.analyze/public-metadata-finding}
+(fact "identifies public metadata on a declaration form"
+  (select-keys
+   (analyze/public-metadata-finding (first (:definitions legacy-scan)))
+   [:type :level :definition/var :definition/form])
+  => {:type :tool.lint/public-metadata-placement
+      :level :error
+      :definition/var 'old
+      :definition/form 'defn})
+
+^{:refer tool.lint.analyze/public-metadata-findings}
+(fact "returns only placement findings for legacy declarations"
+  [(count (analyze/public-metadata-findings (:definitions legacy-scan)))
+   (count
+    (analyze/public-metadata-findings
+     (:definitions
+      (analyze/scan-source
+       "(ns demo.core)\n(defn ^{:public true} current [] 1)\n"
+       {}))))]
+  => [1 0])
+
+(pr-str (run {:namespace "tool.lint.analyze-test"}))

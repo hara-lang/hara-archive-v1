@@ -86,6 +86,135 @@
      (:type (first (:diagnostics result)))]
     => [1 :tool.migrate/manual]))
 
+^{:refer tool.migrate.common.transform/canonicalize-public-metadata}
+(fact "moves declaration public metadata onto the binding symbol"
+  (let [source
+        (str "(ns demo.core)\n"
+             "^{:public true} (defn old [] 1)\n"
+             "^{:public true} (defstruct Point [x y])\n"
+             "^{:public true} (defmutable Cursor [[position :int]])\n"
+             "(defn ^{:doc :ok} both [] 2)\n"
+             "^{:refer demo.core/value}\n"
+             "(fact true)\n")
+        result (transform/canonicalize-public-metadata source)]
+    [(:moved result)
+     (:changed result)
+     (:diagnostics result)
+     (:output result)])
+  => [3 true []
+      (str "(ns demo.core)\n"
+           "(defn ^{:public true} old [] 1)\n"
+           "(defstruct ^{:public true} Point [x y])\n"
+           "(defmutable ^{:public true} Cursor [[position :int]])\n"
+           "(defn ^{:doc :ok} both [] 2)\n"
+           "^{:refer demo.core/value}\n"
+           "(fact true)\n")])
+
+^{:refer tool.migrate.common.transform/canonicalize-public-metadata}
+(fact "reports conflicting binding visibility without changing source"
+  (let [source "^{:public true} (defn ^{:public false} hidden [] 1)"
+        result (transform/canonicalize-public-metadata source)]
+    [(:changed result)
+     (:moved result)
+     (select-keys (first (:diagnostics result))
+                  [:type :level :definition/var :definition/form])])
+  => [false 0
+      {:type :tool.migrate/public-metadata-conflict
+       :level :error
+       :definition/var "hidden"
+       :definition/form "defn"}])
+
+^{:refer tool.migrate.common.transform/migrate-defspec}
+(fact "moves callable and named legacy specs to declaration metadata"
+  (let [source
+        (str "(ns demo)\n"
+             "(defspec.xt find-user [:fn [UserMap :xt/str] [:xt/maybe User]])\n"
+             "(defn.xt find-user [users id] (return nil))\n"
+             "(defspec.xt User [:xt/record [\"id\" :xt/str]])\n")
+        result (transform/migrate-defspec source)]
+    [(:changed result)
+     (:moved result)
+     (:removed result)
+     (:diagnostics result)
+     (:output result)]
+    => [true
+        2
+        2
+        []
+        (str "(ns demo)\n\n"
+             "(defn.xt ^{:schema [:fn [UserMap :xt/str] [:xt/maybe User]]} "
+             "find-user [users id] (return nil))\n"
+             "(def.xt ^{:schema [:xt/record [\"id\" :xt/str]]} User nil)\n")]))
+
+^{:refer tool.migrate.common.transform/migrate-defspec}
+(fact "moves a legacy schema onto an existing declaration and is idempotent"
+  (let [source
+        (str "(ns demo)\n"
+             "(defspec.xt User [:xt/record [\"id\" :xt/str]])\n"
+             "(def.xt User {:id \"anonymous\"})\n"
+             "(defspec.xt run [:fn [:xt/int] :xt/str])\n"
+             "(defn.xt ^{:public true} run [value] value)\n")
+        result (transform/migrate-defspec source)
+        second-pass (transform/migrate-defspec (:output result))]
+    [(:diagnostics result)
+     (:output result)
+     (:changed second-pass)
+     (:moved second-pass)
+     (:removed second-pass)]
+    => [[]
+        (str "(ns demo)\n\n"
+             "(def.xt ^{:schema [:xt/record [\"id\" :xt/str]]} User "
+             "{:id \"anonymous\"})\n\n"
+             "(defn.xt ^{:schema [:fn [:xt/int] :xt/str] :public true} "
+             "run [value] value)\n")
+        false
+        0
+        0]))
+
+^{:refer tool.migrate.common.transform/migrate-defspec}
+(fact "publishes an unpaired callable schema as a schema-only declaration"
+  (let [result
+        (transform/migrate-defspec
+         "(ns demo)\n(defspec.xt missing [:fn [:xt/int] :xt/str])\n")]
+    [(:changed result)
+     (:moved result)
+     (:removed result)
+     (:diagnostics result)
+     (:output result)]
+    => [true
+        1
+        1
+        []
+        "(ns demo)\n\n(def.xt ^{:schema [:fn [:xt/int] :xt/str]} missing nil)"]))
+
+^{:refer tool.migrate.common.transform/migrate-defspec}
+(fact "removes legacy nil specs without inventing a declaration"
+  (let [result
+        (transform/migrate-defspec
+         "(ns demo)\n(defspec.xt native-op nil)\n")]
+    [(:changed result)
+     (:moved result)
+     (:removed result)
+     (:diagnostics result)
+     (:output result)]
+    => [true 0 1 [] "(ns demo)\n\n"]))
+
+^{:refer tool.migrate.common.transform/migrate-defspec}
+(fact "moves callable schemas onto macro declarations"
+  (let [source
+        (str "(ns demo)\n"
+             "(defspec.xt expand [:fn [:xt/int] :xt/str])\n"
+             "(defmacro.xt ^{:standalone true} expand\n"
+             "  ([value] (list (quote str) value)))\n")
+        result (transform/migrate-defspec source)]
+    [(:diagnostics result)
+     (:output result)]
+    => [[]
+        (str "(ns demo)\n\n"
+             "(defmacro.xt ^{:schema [:fn [:xt/int] :xt/str] :standalone true} "
+             "expand\n"
+             "  ([value] (list (quote str) value)))\n")]))
+
 (def results
   [(test-check
     "transform-code applies the declarative rewrite"

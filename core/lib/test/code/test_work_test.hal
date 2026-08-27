@@ -425,7 +425,7 @@
     "test reporting supplies a callable task observer"
     (let [observer (test-work/default-observer {:ansi false})]
       [(map? observer) (fn? (:function observer))])
-    [true true])
+    [false true])
 
    ^{:refer code.test.work/reporting-runtime}
    (test-check

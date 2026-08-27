@@ -87,30 +87,30 @@
      (vec (map (fn [item] (:item/id item))
                durable-manifest))]
     [:chain
-     [#ptr {:context :test
-            :id :test
-            :namespace "code.test-work-batch-test"
-            :name "batch passing fact"
-            :revision 11
-            :definition "definition:batch-passing-v1"}
-      #ptr {:context :test
-            :id :test
-            :namespace "code.test-work-batch-test"
-            :name "batch failing fact"
-            :revision 11
-            :definition 11}]])
+     [(pointer {:context :test
+                :id :test
+                :namespace "code.test-work-batch-test"
+                :name "batch passing fact"
+                :revision 11
+                :definition "definition:batch-passing-v1"})
+      (pointer {:context :test
+                :id :test
+                :namespace "code.test-work-batch-test"
+                :name "batch failing fact"
+                :revision 11
+                :definition 11})]])
 
    (test-check
     "explicit source digests invalidate checkpoint identity"
     [(test-work/fact-definition-token digest-fact 11)
      (test-work/fact-item-coordinate digest-fact 11)]
     ["sha256:synthetic-v2"
-     #ptr {:context :test
-           :id :test
-           :namespace "code.test-work-batch-test"
-           :name "synthetic digest fact"
-           :revision 11
-           :definition "sha256:synthetic-v2"}])
+     (pointer {:context :test
+               :id :test
+               :namespace "code.test-work-batch-test"
+               :name "synthetic digest fact"
+               :revision 11
+               :definition "sha256:synthetic-v2"})])
 
    (test-check
     "durable batches checkpoint each fact and preserve test-domain results"

@@ -80,16 +80,16 @@
     (reset! +latest+ summary)
     summary))
 (defn run-current [input params lookup env]
-  (run-namespace (current-namespace) params lookup env))
+  (run-namespace (ns-current) params lookup env))
 (defn eval-namespace [namespace]
   (test-work/run {:namespace namespace}))
 
 ;; Public facade adapters preserve distinct Foundation workflow entry points
 ;; while delegating native execution to the canonical code.test.work graph.
 (defn run:current
-  ([] (test-work/run {:namespace (current-namespace)}))
+  ([] (test-work/run {:namespace (ns-current)}))
   ([options]
-   (test-work/run (assoc options :namespace (current-namespace)))))
+   (test-work/run (assoc options :namespace (ns-current)))))
 
 (defn run:test
   "Evaluates facts already registered in the native test runtime."

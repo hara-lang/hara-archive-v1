@@ -246,8 +246,7 @@
             {:op :step
              :fn function}))))
 
-^{:public true}
-(defn suspend
+(defn ^{:public true} suspend
   "Creates a serializable Work node that waits on an ephemeral or durable
   suspension capability.  The wait identity and absolute deadline are data;
   providers own the pending handle."
@@ -370,40 +369,23 @@
 (def receipt-status runtime/receipt-status)
 (def publish-receipts runtime/publish-receipts)
 
-^{:public true}
-(def capabilities host/capabilities)
-^{:public true}
-(def capability? host/capability?)
-^{:public true}
-(def capability-descriptors host/capability-descriptors)
-^{:public true}
-(def capability-descriptor host/capability-descriptor)
-^{:public true}
-(def capability-operation? host/capability-operation?)
-^{:public true}
-(def capability-call host/capability-call)
-^{:public true}
-(def await-work host/await-work)
-^{:public true}
-(def signal-work host/signal-work)
-^{:public true}
-(def claim-acquire host/claim-acquire)
-^{:public true}
-(def claim-renew host/claim-renew)
-^{:public true}
-(def claim-release host/claim-release)
-^{:public true}
-(def claim-assert host/claim-assert)
-^{:public true}
-(def receipt-candidates host/receipt-candidates)
-^{:public true}
-(def receipt-capability-status host/receipt-status)
-^{:public true}
-(def receipt-sign host/receipt-sign)
-^{:public true}
-(def receipt-publish host/receipt-publish)
-^{:public true}
-(def reset-capabilities host/reset-capabilities)
+(def ^{:public true} capabilities host/capabilities)
+(def ^{:public true} capability? host/capability?)
+(def ^{:public true} capability-descriptors host/capability-descriptors)
+(def ^{:public true} capability-descriptor host/capability-descriptor)
+(def ^{:public true} capability-operation? host/capability-operation?)
+(def ^{:public true} capability-call host/capability-call)
+(def ^{:public true} await-work host/await-work)
+(def ^{:public true} signal-work host/signal-work)
+(def ^{:public true} claim-acquire host/claim-acquire)
+(def ^{:public true} claim-renew host/claim-renew)
+(def ^{:public true} claim-release host/claim-release)
+(def ^{:public true} claim-assert host/claim-assert)
+(def ^{:public true} receipt-candidates host/receipt-candidates)
+(def ^{:public true} receipt-capability-status host/receipt-status)
+(def ^{:public true} receipt-sign host/receipt-sign)
+(def ^{:public true} receipt-publish host/receipt-publish)
+(def ^{:public true} reset-capabilities host/reset-capabilities)
 
 (def default-host
   (ephemeral/ephemeral-host))

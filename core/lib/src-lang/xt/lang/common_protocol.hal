@@ -155,7 +155,7 @@
   "formats a defprotocol.xt form into a runtime protocol descriptor"
   {:added "4.1"}
   [sym opts+sigs]
-  (let [curr-ns   (snake-case (str (current-namespace)))
+  (let [curr-ns   (snake-case (str (ns-current)))
         curr-sym  (name sym)
         name-fn   (fn [s] (snake-case (name s)))
         on-str    (str curr-ns "/" curr-sym)
@@ -172,7 +172,7 @@
   "expands to a protocol value and method wrappers"
   {:added "4.1"}
   [sym & opts+sigs]
-  (let [curr-ns (snake-case (str (current-namespace)))
+  (let [curr-ns (snake-case (str (ns-current)))
         on-str  (str curr-ns "/" (name sym))
         methods (mapv (fn [[sig-sym arglist]]
                         (format-defprotocol-method-xt on-str sig-sym arglist))
@@ -211,7 +211,7 @@
                            "/"
                            (name sym)))
         typename   (or (:rt/tag (meta type-sym))
-                       (sym-fn (current-namespace) type-sym))
+                       (sym-fn (ns-current) type-sym))
 
         ctor-map    (into {"::" typename
                            "::/protocols" (mapv (fn [[proto-sym impl-map]]

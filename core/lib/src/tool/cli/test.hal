@@ -121,7 +121,6 @@
    {:id 'tool.cli/test :version 1}
    (fn [request context] (execute request))))
 
-^{:public true}
-(defn handler
+(defn ^{:public true} handler
   [request]
   (work/run work/default-host +command-work+ request))

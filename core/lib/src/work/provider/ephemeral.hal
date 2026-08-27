@@ -16,8 +16,7 @@
       (:state value)
       value)))
 
-^{:public true}
-(defn provider
+(defn ^{:public true} provider
   ([]
    (provider {}))
   ([options]
@@ -130,8 +129,7 @@
         (fn [reference run reason]
           (IWorkRun/work-cancel run reason))}}))))
 
-^{:public true}
-(defn ephemeral-host
+(defn ^{:public true} ephemeral-host
   ([]
    (ephemeral-host {}))
   ([options]

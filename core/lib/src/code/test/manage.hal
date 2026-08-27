@@ -23,7 +23,7 @@
   (let [setup (or (:setup settings) [])
         teardown (or (:teardown settings) [])]
     `(code.test.manage/set-suite-settings
-      (current-namespace)
+      (ns-current)
       {:before-all (fn [] ~@setup)
        :after-all (fn [] ~@teardown)})))
 

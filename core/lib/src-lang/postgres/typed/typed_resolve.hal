@@ -70,7 +70,7 @@
   (cond (symbol? fn-ref)
         (if (namespace fn-ref)
           (canonical-fn-sym fn-ref)
-          (symbol (str (current-namespace)) (name fn-ref)))
+          (symbol (str (ns-current)) (name fn-ref)))
         (metadata-fn-symbol fn-ref) (metadata-fn-symbol fn-ref)
         :else (deref-fn-symbol fn-ref)))
 

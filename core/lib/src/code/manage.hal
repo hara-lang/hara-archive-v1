@@ -26,7 +26,7 @@
     :construct
     {:input (fn [definition]
               (context/current-input operation
-                                     (current-namespace)
+                                     (ns-current)
                                      definition))}
     :main
     {:fn tasklet

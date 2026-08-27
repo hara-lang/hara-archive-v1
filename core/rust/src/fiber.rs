@@ -111,7 +111,7 @@ pub(crate) const COMPLETION_SYMBOLS: &[&str] = &[
     "constantly",
     "cos",
     "cosh",
-    "current-namespace",
+    "ns-current",
     "cycle",
     "dec",
     "declare",
@@ -216,7 +216,14 @@ pub(crate) const COMPLETION_SYMBOLS: &[&str] = &[
     "ns-alias-state",
     "ns-loaded?",
     "ns-state",
-    "ns:create",
+    "ns-create",
+    "ns-find",
+    "ns-info",
+    "ns-list",
+    "ns-aliases",
+    "ns-name",
+    "ns-publics",
+    "ns-vars",
     "nth",
     "not",
     "peek",
@@ -1510,14 +1517,12 @@ fn call(f: Rc<Function>, args: Vec<Value>, k: Cont) -> Step {
                 Some(
                     "macroexpand"
                         | "macroexpand-1"
-                        | "env-current"
-                        | "current-namespace"
+                        | "ns-current"
                         | "env-snapshot"
-                        | "env-vars"
-                        | "env-namespaces"
-                        | "env-namespace"
+                        | "ns-vars"
+                        | "ns-list"
+                        | "ns-info"
                         | "env-module"
-                        | "env-resolve"
                 )
             ));
     let namespace_scope = namespace_registry().ok().and_then(|registry| {

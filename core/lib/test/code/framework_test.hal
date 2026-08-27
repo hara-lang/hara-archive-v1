@@ -17,6 +17,17 @@
       ["value" true false]
       ["schema-answer" true false]])
 
+^{:refer code.framework/definition-info}
+(fact "form metadata does not publish a declaration"
+  (map
+   (fn [entry] [(:name entry) (:public entry)])
+   (:definitions
+    (framework/analyse-source
+     (str "(ns demo.core)\n"
+          "^{:public true} (defn legacy [] 1)\n"
+          "(defn ^{:public true} current [] 2)\n"))))
+  => [["legacy" false] ["current" true]])
+
 (fact "source analysis exposes stable definition metadata"
   (let [analysis (framework/analyse-source sample-source)]
     [(:namespace analysis)
@@ -89,5 +100,14 @@
       "^{:refer demo.core/value :added \"1.0\"}\n(fact \"Value\")"
       3
       1])
+
+^{:refer code.framework/binding-metadata}
+(fact "binding metadata reads only the declaration name"
+  (let [source "(ns demo.core)\n(defn ^{:public true :schema :int} answer [] 42)\n"
+        definition (first (:definitions (framework/analyse-structure source)))]
+    (framework/binding-metadata source
+                                (:form definition)
+                                (:name-record definition)))
+  => {:public true :schema :int})
 
 (pr-str (run {:namespace "code.framework-test"}))

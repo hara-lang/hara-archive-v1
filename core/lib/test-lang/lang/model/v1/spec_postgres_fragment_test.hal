@@ -19,7 +19,7 @@
 
 (defn current-module
   []
-  (symbol (str (current-namespace))))
+  (symbol (str (ns-current))))
 
 (defn compile-form
   [form]

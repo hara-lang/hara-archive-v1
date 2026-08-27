@@ -27,8 +27,9 @@ Do not make a helper public merely so an `intern-all` facade can reach it. Move
 unsupported helpers to an internal owner, and add their corresponding tests
 there.
 
-Mark supported, recommended API Vars at their owning definitions with
-`^{:public true}`. Autocomplete and documentation tools use this metadata to
+Mark supported, recommended API Vars on their owning definition symbols with
+`^{:public true}` (for example, `(defn ^{:public true} encode [value] ...)`).
+Autocomplete and documentation tools use this metadata to
 prioritize the intended public surface. It does not override `:internal`, grant
 access, or publish a Var by itself; facades still use `intern-all` or
 `intern-in`, which must preserve the owner's marker. Leave directly testable

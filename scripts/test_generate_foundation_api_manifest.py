@@ -133,6 +133,40 @@ const NATIVE_TYPES: &[&str] = &["File", "Json"];
                 ["File", "Json"],
             )
 
+    def test_runtime_config_reads_annotated_native_declarations(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "core/rust/src/kernel/generated.rs"
+            path.parent.mkdir(parents=True)
+            path.write_text(
+                '''
+const FOUNDATION_LIBRARIES: &[(&str, &str, &str)] = &[
+    ("string", "std.foundation.string", "str"),
+];
+'''
+            )
+            declarations = root / "core/rust/src/core/native_declarations.rs"
+            declarations.parent.mkdir(parents=True)
+            declarations.write_text(
+                '''
+#[hara_native(namespace = "std.native", name = "File", methods = ["read"], provider = native_file_provider)]
+struct File;
+#[hara_native(
+    namespace = "std.native",
+    name = "Json",
+    methods = ["read", "write"],
+    provider = native_json_provider
+)]
+struct Json;
+'''
+            )
+            aliases, native = module.parse_runtime_config(path)
+            self.assertEqual(aliases[0]["alias"], "str")
+            self.assertEqual(
+                [item["name"] for item in native],
+                ["File", "Json"],
+            )
+
     def test_digest_is_deterministic(self):
         self.assertEqual(
             module.digest({"b": 2, "a": 1}),

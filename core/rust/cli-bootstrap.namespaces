@@ -6,6 +6,7 @@ code.framework.source
 code.manage
 code.manage.automation
 code.manage.cli
+code.manage.context
 code.manage.editor
 code.manage.ns-format
 code.manage.ns-rename

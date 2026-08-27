@@ -8,7 +8,7 @@
 
 (defn current-module
   []
-  (symbol (str (current-namespace))))
+  (symbol (str (ns-current))))
 
 (defn macro-var?
   [symbol]

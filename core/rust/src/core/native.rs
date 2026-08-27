@@ -1571,12 +1571,38 @@ fn native_runtime_values(
                 }),
             ))))
         }
-        "the-ns" => match values.as_slice() {
-            [Value::Symbol(name)] if name.get_namespace().is_none() => Ok(namespace_registry()?
-                .find(name.as_str())
+        "ns-aliases" => {
+            let name = match values.as_slice() {
+                [value] => namespace_identifier(value.clone(), "std.native.Runtime/ns-aliases")?,
+                _ => return Err("std.native.Runtime/ns-aliases expects one namespace".into()),
+            };
+            let target = registry
+                .find(&name)
+                .ok_or_else(|| format!("No such namespace: {name}"))?;
+            let mut aliases = target.aliases();
+            aliases.sort_by(|(left, _), (right, _)| left.as_str().cmp(right.as_str()));
+            Ok(Value::OrderedMap(Box::new(POrderedMap::from_iter(
+                aliases.into_iter().map(|(alias, namespace)| {
+                    (Value::Symbol(alias), Value::Namespace(Rc::new(namespace)))
+                }),
+            ))))
+        }
+        "ns-find" => {
+            if values.len() != 1 {
+                return Err("std.native.Runtime/ns-find expects one namespace".into());
+            }
+            let name = namespace_identifier(values[0].clone(), "std.native.Runtime/ns-find")?;
+            Ok(registry
+                .find(&name)
                 .map(|namespace| Value::Namespace(Rc::new(namespace)))
-                .unwrap_or(Value::Nil)),
-            _ => Err("std.native.Runtime/the-ns expects an unqualified symbol".into()),
+                .unwrap_or(Value::Nil))
+        }
+        "ns-create" => match values.as_slice() {
+            [Value::Symbol(name)] if name.get_namespace().is_none() => {
+                let namespace = registry.find_or_create(name.as_str());
+                Ok(Value::Namespace(Rc::new(namespace)))
+            }
+            _ => Err("std.native.Runtime/ns-create expects an unqualified symbol".into()),
         },
         "ns-name" => match values.as_slice() {
             [Value::Namespace(namespace)] => Ok(Value::Symbol(namespace.name().clone())),

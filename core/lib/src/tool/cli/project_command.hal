@@ -159,7 +159,7 @@
       (throw (ex :host {} :ex/message "sync accepts at most one of --offline, --locked, or --frozen")))))
 
 (defn valid-empty-lock? [path]
-  (let [document (edn/read (project/read-text path))]
+  (let [document (Edn/read (project/read-text path))]
     (and (= "0.0.0-alpha" (:lock/format document))
          (= {} (:packages document)))))
 
