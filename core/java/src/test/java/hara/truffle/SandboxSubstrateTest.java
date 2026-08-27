@@ -201,7 +201,7 @@ public class SandboxSubstrateTest {
                   + "(nil? (resolve 'Host/call)) (nil? (resolve 'File/read)) "
                   + "(nil? (Base/resolve 'std.native.Runtime/resolve)) "
                   + "(nil? (resolve 'std.native.Kernel))])"));
-      assertEquals(null, eval(kernel, sandbox, "(the-ns 'std.native.Kernel)"));
+      assertEquals(null, eval(kernel, sandbox, "(ns-find 'std.native.Kernel)"));
       assertEquals(false, eval(kernel, sandbox, "(ns-loaded? 'std.native.Runtime)"));
       assertEquals(
           hara.lang.data.Keyword.create("unknown"),

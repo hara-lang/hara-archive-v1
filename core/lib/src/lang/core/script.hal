@@ -18,7 +18,7 @@
 
 (defn- namespace-symbol
   []
-  (symbol (str (current-namespace))))
+  (symbol (str (ns-current))))
 
 (defn- module-symbol
   []
@@ -312,7 +312,7 @@
 (defn- intern-form
   [target-symbol]
   (list 'intern-var
-        (list 'current-namespace)
+        (list 'ns-current)
         (list 'quote target-symbol)
         (list 'var (symbol "lang.core.script" (name target-symbol)))))
 
@@ -320,7 +320,7 @@
   [target-symbol]
   (let [qualified (symbol "lang.core.script" (name target-symbol))
         source (resolve qualified)]
-    (intern-var (current-namespace) target-symbol source)
+    (intern-var (ns-current) target-symbol source)
     target-symbol))
 
 (defn script-options

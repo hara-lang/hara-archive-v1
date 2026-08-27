@@ -46,7 +46,7 @@
           :grammar 'lang.common.emit-orchestration-test/symbolic-grammar})]
     [(= selected grammar)
      (= book symbolic-book)
-     (= namespace (current-namespace))])
+     (= namespace (ns-current))])
   => [true true true])
 
 (fact "routes public emission through the ported top-level emitter"

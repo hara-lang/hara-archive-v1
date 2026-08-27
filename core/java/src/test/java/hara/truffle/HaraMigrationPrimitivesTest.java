@@ -134,11 +134,47 @@ public class HaraMigrationPrimitivesTest {
                   + "   [(ns-name 'sample.alpha) "
                   + "    (nth first-entry 0) "
                   + "    (nth second-entry 0) "
-                  + "    (the-ns 'missing.namespace)])))");
+                  + "    (ns-find 'missing.namespace)])))");
       assertEquals("sample.alpha", result.getArrayElement(0).toString());
       assertEquals("alpha", result.getArrayElement(1).toString());
       assertEquals("zed", result.getArrayElement(2).toString());
       assertTrue(result.getArrayElement(3).isNull());
+    }
+  }
+
+  @Test
+  public void namespaceFindAndCreateUseCanonicalNamespaceHandles() {
+    try (Context context = Context.newBuilder(HaraLanguage.ID).build()) {
+      assertEquals(
+          "[:std.native.Namespace sample.created sample.created nil]",
+          context
+              .eval(
+                  HaraLanguage.ID,
+                  "(let [created (Runtime/ns-create 'sample.created)] "
+                      + "[(type created) "
+                      + " (Runtime/ns-name created) "
+                      + " (Runtime/ns-name (Runtime/ns-find 'sample.created)) "
+                      + " (Runtime/ns-find 'missing.namespace)])")
+              .toString());
+    }
+  }
+
+  @Test
+  public void removedNamespaceOperationNamesDoNotResolve() {
+    try (Context context = Context.newBuilder(HaraLanguage.ID).build()) {
+      assertEquals(
+          "[true true true true true true true]",
+          context
+              .eval(
+                  HaraLanguage.ID,
+                  "(mapv nil? [(resolve 'the-ns) "
+                      + "(resolve 'env-resolve) "
+                      + "(resolve 'ns:create) "
+                      + "(resolve 'ns:list) "
+                      + "(resolve 'ns:map) "
+                      + "(resolve 'ns:name) "
+                      + "(resolve 'ns:imports)])")
+              .toString());
     }
   }
 

@@ -4,7 +4,7 @@
 
 (defn current-module
   []
-  (symbol (str (current-namespace))))
+  (symbol (str (ns-current))))
 
 (def results
   [(fact "module records retain target and compiler metadata"

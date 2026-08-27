@@ -774,6 +774,24 @@ pub(crate) fn native_fiber_function(
     callback: impl Fn(Vec<Value>) -> Result<Value, String> + 'static,
     fiber_callback: impl Fn(Vec<Value>, Cont) -> Step + 'static,
 ) -> Value {
+    let fiber_callback = move |arguments: Vec<Value>, continuation: Cont| {
+        let valid = if variadic {
+            arguments.len() >= fixed_arity
+        } else {
+            arguments.len() == fixed_arity
+        };
+        if !valid {
+            let expectation = if variadic {
+                format!("at least {fixed_arity}")
+            } else {
+                fixed_arity.to_string()
+            };
+            return continuation(Err(format!(
+                "function expects {expectation} arguments"
+            )));
+        }
+        fiber_callback(arguments, continuation)
+    };
     let function = Rc::new(Function {
         params: (0..fixed_arity)
             .map(|index| format!("arg{index}"))

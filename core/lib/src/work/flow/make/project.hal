@@ -53,7 +53,7 @@
 (defn def-make-fn [definition-symbol config]
   (let [namespace-symbol (if (namespace definition-symbol)
                            (symbol (namespace definition-symbol))
-                           (symbol (str (current-namespace))))
+                           (symbol (str (ns-current))))
         value (common/make-config-fn
                (merge {:ns namespace-symbol}
                       (assoc config :id definition-symbol)))
@@ -70,7 +70,7 @@
         ~config))))
 
 (defn build-triggered
-  ([] (build-triggered (symbol (str (current-namespace)))))
+  ([] (build-triggered (symbol (str (ns-current)))))
   ([namespace]
    (artifact/with:compile-filter
     #{namespace}

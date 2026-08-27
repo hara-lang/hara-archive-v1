@@ -581,61 +581,61 @@
 (defn ^{:inline true :schema [:fn [:any] :symbol]}
   var-sym "Returns the qualified symbol naming variable." [variable] (Runtime/var-sym variable))
 
-(defn ^{:inline true :schema [:fn [] :symbol]}
-  env-current "Returns the active namespace symbol." [] (Runtime/current))
+(defn ^{:inline true :public true :schema [:fn [] :symbol]}
+  ns-current "Returns the active namespace symbol." [] (Runtime/current))
 
-(defn ^{:inline true :schema [:fn [] :symbol]}
-  current-namespace
-  "Returns the active namespace symbol."
-  []
-  (Runtime/current))
+(defn ^{:inline true :public true :schema [:fn [] :vector]}
+  ns-list "Returns descriptors for every known namespace." [] (Runtime/namespaces))
 
-(defn ^{:inline true :schema [:fn [] :map]}
-  env-snapshot "Returns a stable descriptor of the current environment." [] (Runtime/snapshot))
+(defn ^{:inline true :public true :schema [:fn [:any] :any]}
+  ns-info "Returns a namespace descriptor, or nil when unknown." [namespace] (Runtime/namespace namespace))
 
-(defn ^{:inline true
+(defn ^{:inline true :public true
         :schema [:function [:fn [] :map]
                            [:fn [:any] :map]]}
-  env-vars
+  ns-vars
   "Returns Vars owned by the active or supplied namespace."
   ([] (Runtime/vars))
   ([namespace] (Runtime/vars namespace)))
 
-(defn ^{:inline true :schema [:fn [] :vector]}
-  env-namespaces "Returns descriptors for every known namespace." [] (Runtime/namespaces))
+(defn ^{:inline true :public true :schema [:fn [] :map]}
+  env-snapshot "Returns a stable descriptor of the current environment." [] (Runtime/snapshot))
 
-(defn ^{:inline true :schema [:fn [:any] :any]}
-  env-namespace "Returns a namespace descriptor, or nil when unknown." [namespace] (Runtime/namespace namespace))
-
-(defn ^{:inline true :schema [:fn [:str] :any]}
+(defn ^{:inline true :public true :schema [:fn [:str] :any]}
   env-module "Returns the loaded module descriptor for path, or nil." [path] (Runtime/module path))
 
-(defn ^{:inline true :schema [:fn [:symbol] :any]}
+(defn ^{:inline true :public true :schema [:fn [:symbol] :any]}
   resolve "Resolves symbol without triggering namespace or package loading." [symbol] (Base/resolve symbol))
 
-(defn ^{:inline true :schema [:fn [:symbol] :any]}
-  env-resolve
-  "Compatibility alias for resolve."
-  [symbol]
-  (Base/resolve symbol))
-
-(defn ^{:inline true :schema [:fn [:any] :any]}
-  the-ns
-  "Returns the namespace identified by value, or nil when it is not loaded."
+(defn ^{:inline true :public true :schema [:fn [:any] :any]}
+  ns-find
+  "Returns the loaded namespace identified by value, or nil when unknown."
   [value]
-  (Runtime/the-ns value))
+  (Runtime/ns-find value))
 
-(defn ^{:inline true :schema [:fn [:any] :symbol]}
+(defn ^{:inline true :public true :schema [:fn [:symbol] :any]}
+  ns-create
+  "Creates and returns a namespace for an unqualified symbol."
+  [symbol]
+  (Runtime/ns-create symbol))
+
+(defn ^{:inline true :public true :schema [:fn [:any] :any]}
   ns-name
   "Returns the symbol naming a loaded namespace."
   [value]
   (Runtime/ns-name value))
 
-(defn ^{:inline true :schema [:fn [:any] :map]}
+(defn ^{:inline true :public true :schema [:fn [:any] :map]}
   ns-publics
   "Returns the public Vars owned by a loaded namespace."
   [value]
   (Runtime/ns-publics value))
+
+(defn ^{:inline true :public true :schema [:fn [:any] :map]}
+  ns-aliases
+  "Returns aliases declared by a loaded namespace."
+  [value]
+  (Runtime/ns-aliases value))
 
 (defn ^{:inline true
         :schema [:function [:fn [] :symbol]
@@ -3041,7 +3041,7 @@
   "Copies selected Vars into a namespace as its public façade."
   [target-or-entry & additional-entries]
   (let [implicit? (if (vector? target-or-entry) true (if (namespace target-or-entry) true false))
-        target (if implicit? (list 'current-namespace) target-or-entry)
+        target (if implicit? (list 'ns-current) target-or-entry)
         selected-entries (if implicit?
                            (apply list target-or-entry additional-entries)
                            additional-entries)]
@@ -3069,7 +3069,7 @@
       (map
        (fn [entry]
          (list 'intern-var
-               (list 'current-namespace)
+               (list 'ns-current)
                (list 'quote entry)
                (list 'var (symbol (str source) (name entry)))))
        (keys (Runtime/ns-publics source))))

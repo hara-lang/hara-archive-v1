@@ -66,7 +66,7 @@
 
 (defn route-map
   "Returns route names mapped to their fully qualified symbols."
-  ([] (route-map (symbol (str (current-namespace)))))
+  ([] (route-map (symbol (str (ns-current)))))
   ([module]
    (into {}
          (map (fn [entry]
@@ -88,12 +88,12 @@
 
 (defn route-list
   "Lists the fully qualified route symbols in a module."
-  ([] (route-list (symbol (str (current-namespace)))))
+  ([] (route-list (symbol (str (ns-current)))))
   ([module] (entry-list module :route)))
 
 (defn view-list
   "Lists the fully qualified view symbols in a module."
-  ([] (view-list (symbol (str (current-namespace)))))
+  ([] (view-list (symbol (str (ns-current)))))
   ([module] (entry-list module :view)))
 
 (def __tahto_load__ true)

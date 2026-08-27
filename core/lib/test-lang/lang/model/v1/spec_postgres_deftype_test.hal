@@ -57,7 +57,7 @@
 
 (defn current-module
   []
-  (symbol (str (current-namespace))))
+  (symbol (str (ns-current))))
 
 (defn registered-form
   [id]
@@ -227,4 +227,3 @@
      => (throws))])
 
 (pr-str (run '[lang.model.v1.spec-postgres-deftype-test]))
-

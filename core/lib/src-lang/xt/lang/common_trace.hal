@@ -16,7 +16,7 @@
         entry (:entry options)
         namespace (or (:namespace entry)
                       (:module entry)
-                      (current-namespace))
+                      (ns-current))
         id (:id entry)
         line (:line (meta form))]
     (merge {:meta/fn (str namespace "/" id)
@@ -118,7 +118,7 @@
   {:added "4.0"}
   [data & [tag]]
   (let [pos   (meta (preprocess/macro-form))
-        ns    (current-namespace)
+        ns    (ns-current)
         opts  (assoc (select-keys pos [:line :column])
                      :ns (str ns))]
     (list (quote xt.lang.common-trace/trace-log-add) data (or tag (str (gensym "trace-"))) opts)))

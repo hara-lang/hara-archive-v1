@@ -138,7 +138,7 @@ pub(crate) mod declarations {
         namespace = "std.native",
         name = "Runtime",
         methods = [
-            "load-string", "macroexpand-1", "gensym", "ns-publics", "the-ns", "ns-name", "var-sym",
+            "load-string", "macroexpand-1", "gensym", "ns-publics", "ns-aliases", "ns-find", "ns-create", "ns-name", "var-sym",
             "current", "snapshot", "vars", "namespaces", "namespace", "module", "resolve", "alias-state",
             "intern-var", "eval-in", "eval"
         ],

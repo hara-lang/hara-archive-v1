@@ -29,11 +29,11 @@ package-tier resources. `hara.compiler`, `hara.verify`, and
 
 Namespace inspection and dynamic evaluation live on `std.native.Runtime` and use
 the same transparent Foundation-wrapper contract. Foundation exposes
-`env-current`, `env-snapshot`, `env-vars`, `env-namespaces`, `env-namespace`,
-`env-module`, `resolve`, `ns-alias-state`, `intern-var`, `eval-in-ns`, and
-`eval`. `Runtime/eval` evaluates one form value in the current namespace;
+`ns-current`, `ns-list`, `ns-info`, `ns-vars`, `env-snapshot`, `env-module`,
+`resolve`, `ns-find`, `ns-create`, `ns-name`, `ns-publics`, `ns-aliases`,
+`ns-alias-state`, `intern-var`, `eval-in-ns`, and `eval`. `Runtime/eval`
+evaluates one form value in the current namespace;
 `Runtime/eval-in` evaluates a collection of form values in an existing namespace.
-`env-resolve` remains a compatibility alias for `resolve` during migration.
 Java and Rust must expose identical methods and evaluation behavior.
 
 The same inline-forwarding rule applies throughout the embedded Foundation

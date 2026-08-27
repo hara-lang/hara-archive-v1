@@ -1,6 +1,7 @@
 (ns lang.model.v1.spec-js.ts-test
   (:use code.test)
   (:require [std.foundation.string :as string]
+            [lang.core.script :as script]
             [lang.model.v1.spec-js.ts :as ts]
             [lang.model.v1.spec-js.ts-fixture]
             [lang.typed.xtalk-common :as types]
@@ -10,6 +11,36 @@
 (def shared-ns 'lang.model.v1.spec-js.ts-shared-fixture)
 (def analysis (parse/analyze-module fixture-ns))
 (def declarations (ts/emit-analysis-declarations analysis))
+
+^{:refer lang.typed.xtalk-parse/parse-fragment-spec :added "4.1"}
+(fact "reads direct schemas from macro fragment metadata"
+  (let [modules-before (deref script/+modules+)
+        specs-before (deref script/+specs+)
+        module 'demo.macro
+        symbol (with-meta 'expand
+                 {:schema [:fn [:xt/int] :xt/str]})
+        form (list 'defmacro symbol)
+        entry {:id 'expand
+               :module module
+               :form form
+               :schema [:fn [:xt/int] :xt/str]}]
+    (try
+      (reset! script/+modules+
+              {module {:id module
+                       :link {'- module}
+                       :fragment {'expand entry}
+                       :code {}}})
+      (reset! script/+specs+ {})
+      (select-keys (first (:specs (parse/analyze-module module)))
+                   [:ns :name :type])
+      (finally
+        (reset! script/+modules+ modules-before)
+        (reset! script/+specs+ specs-before))))
+  => {:ns "demo.macro"
+      :name "expand"
+      :type {:kind :fn
+             :inputs [{:kind :primitive :name :xt/int}]
+             :output {:kind :primitive :name :xt/str}}})
 
 ^{:refer lang.typed.xtalk-common/normalize-type :added "4.1"}
 (fact "normalizes portable XTalk type forms with module aliases"
@@ -31,21 +62,44 @@
         :optional? false}]})
 
 ^{:refer lang.typed.xtalk-parse/analyze-module :added "4.1"}
-(fact "analyzes defspec.xt and registered code without reading source files"
+(fact "analyzes schema metadata on XTalk declarations without defspec.xt"
   [(mapv :name (:specs analysis))
    (mapv :name (:functions analysis))
    (mapv :name (:values analysis))
+   (:spec (first (:functions analysis)))
    (mapv :type (:inputs (first (:functions analysis))))
    (:output (first (:functions analysis)))]
-  => [["DEFAULT-USER" "TokenBox" "User" "UserMap" "find-user"]
+  => [["TokenBox" "User" "UserMap"]
       ["find-user"]
       ["DEFAULT-USER"]
+      {:ns "lang.model.v1.spec-js.ts-fixture"
+       :name "find-user"
+       :type {:kind :fn
+              :inputs [{:kind :named
+                        :name 'lang.model.v1.spec-js.ts-fixture/UserMap}
+                       {:kind :primitive :name :xt/str}]
+              :output {:kind :maybe
+                       :item {:kind :named
+                              :name 'lang.model.v1.spec-js.ts-fixture/User}}}
+       :spec-meta {:schema [:fn [UserMap :xt/str]
+                            [:xt/maybe User]]}}
       [{:kind :named
         :name 'lang.model.v1.spec-js.ts-fixture/UserMap}
        {:kind :primitive :name :xt/str}]
       {:kind :maybe
        :item {:kind :named
               :name 'lang.model.v1.spec-js.ts-fixture/User}}])
+
+^{:refer lang.typed.xtalk-common/normalize-fn-inputs :added "4.1"}
+(fact "normalizes the XTalk rest marker as a typed trailing array"
+  (types/normalize-fn-inputs
+   '[:xt/int & :xt/str]
+   {:ns fixture-ns
+    :aliases {}})
+  => [{:kind :primitive :name :xt/int}
+      {:kind :array
+       :item {:kind :primitive :name :xt/str}
+       :rest true}])
 
 ^{:refer lang.model.v1.spec-js.ts/valid-ts-ident? :added "4.1"}
 (fact "validates and sanitizes TypeScript identifiers"

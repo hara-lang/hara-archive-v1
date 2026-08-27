@@ -82,7 +82,7 @@
     (if (or (nil? signer) (str/blank? signer))
       (throw (ex :host {} :ex/message "HARA_SIGNER must name an external signer command"))
       nil)
-    (let [response (edn/read (:stdout (run-process [signer] source)))
+    (let [response (Edn/read (:stdout (run-process [signer] source)))
           key-id (:key/id response)
           signature (:signature response)]
       (if (and (string? key-id) (string? signature))

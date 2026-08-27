@@ -40,7 +40,7 @@
 (defn block-record
   [source value fallback-start]
   (let [text (block/block-string value)
-        props (block/block-info value)
+        props (or (:props value) (block/block-info value))
         start (or (:start-offset props) fallback-start)
         end (or (:end-offset props)
                 (+ start (block-source-length value)))
@@ -299,8 +299,9 @@
     :exact #{"defonce"}
     :kind :once}
    {:id :hara/value
-    :origin :code.framework/native
+   :origin :code.framework/native
     :exact #{"def"}
+    :prefix #{"def."}
     :kind :value}
    {:id :hara/extended-definition
     :origin :code.framework/native

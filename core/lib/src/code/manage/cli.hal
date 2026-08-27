@@ -191,7 +191,7 @@
 
 
 (defn current-input
-  "Constructs the current-namespace input used by callable code.manage tasks."
+  "Constructs the ns-current input used by callable code.manage tasks."
   ([operation namespace]
    (context/current-input operation namespace))
   ([operation namespace invocation]

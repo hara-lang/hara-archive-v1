@@ -37,7 +37,7 @@ public class SyntaxEnvironmentResultTest {
                       + "(map? (std.foundation/env-snapshot)) "
                       + "(get (Runtime/namespace 'std.native.Runtime) :namespace/state) "
                       + "(Runtime/namespace 'std.native.Env) "
-                      + "(std.foundation/env-resolve 'std.native.Env/current) "
+                      + "(std.foundation/resolve 'std.native.Env/current) "
                       + "(result? (Result/create :success 1)) "
                       + "(Result/status (Result/create :success 1)) "
                       + "(Result/context (Result/create :success 1))]")

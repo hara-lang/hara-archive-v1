@@ -532,7 +532,7 @@ public final class HaraContext {
           "Runtime",
           exports,
           java.util.List.of(
-              "load-string", "macroexpand-1", "gensym", "ns-publics", "the-ns", "ns-name"),
+              "load-string", "macroexpand-1", "gensym", "ns-publics", "ns-aliases", "ns-find", "ns-create", "ns-name"),
           Map.of());
       installNativeExportGroup(
           "Printer", exports, HaraNativeDeclarations.methods("Printer"), Map.of());
@@ -677,7 +677,11 @@ public final class HaraContext {
     runtime.define(
         "ns-publics",
         new UnaryBuiltin("std.native.Runtime/ns-publics", this::namespacePublics));
-    runtime.define("the-ns", new UnaryBuiltin("std.native.Runtime/the-ns", this::theNamespace));
+    runtime.define(
+        "ns-aliases",
+        new UnaryBuiltin("std.native.Runtime/ns-aliases", this::namespaceAliases));
+    runtime.define("ns-find", new UnaryBuiltin("std.native.Runtime/ns-find", this::namespaceFind));
+    runtime.define("ns-create", new UnaryBuiltin("std.native.Runtime/ns-create", this::namespaceCreate));
     runtime.define("ns-name", new UnaryBuiltin("std.native.Runtime/ns-name", this::namespaceName));
     namespaceStates.put("std.native.Runtime", NamespaceLoadState.LOADED);
 
@@ -1126,6 +1130,13 @@ public final class HaraContext {
       if (!sandboxRestricted || !sandboxForbiddenNamespace(namespace)) {
         putAlias(namespaceAliases, name, namespace);
       }
+    }
+    if (sandboxRestricted) {
+      // ns-find is the one read-only Runtime operation exposed by the
+      // Foundation facade in a sandbox. Keep its ordinary Runtime alias so
+      // source-owned ns-find remains executable without exposing other native
+      // Runtime methods.
+      putAlias(namespaceAliases, "Runtime", "std.native.Runtime");
     }
   }
 
@@ -1844,7 +1855,12 @@ public final class HaraContext {
       namespaceName = currentAliases.getOrDefault(namespaceName, namespaceName);
       libraryLoader.ensure(this, namespaceName);
       if (alias) {
-        HaraNamespace required = requiredNamespace(namespaceName);
+        HaraNamespace required =
+            sandboxRestricted
+                    && "std.native.Runtime".equals(namespaceName)
+                    && "ns-find".equals(symbol.getName())
+                ? namespaces.get(namespaceName)
+                : requiredNamespace(namespaceName);
         if (required == null) return null;
       }
     }
@@ -1888,7 +1904,15 @@ public final class HaraContext {
 
   private static boolean sandboxForbidden(Symbol symbol) {
     String namespace = symbol.getNamespace();
-    if (namespace != null) return sandboxForbiddenNamespace(namespace);
+    if (namespace != null) {
+      // Namespace lookup is a read-only capability: the public ns-find wrapper
+      // must be able to report nil for a forbidden namespace without exposing
+      // the rest of the Runtime surface to a sandbox.
+      if ("std.native.Runtime".equals(namespace) && "ns-find".equals(symbol.getName())) {
+        return false;
+      }
+      return sandboxForbiddenNamespace(namespace);
+    }
     return switch (symbol.getName()) {
       case "Runtime", "Kernel", "Sandbox", "Package", "Crypto", "OS", "Process", "File", "Socket", "Host", "Work" -> true;
       default -> false;
@@ -2962,11 +2986,11 @@ public final class HaraContext {
               return resolveAvailable(symbol);
             }));
     target.define(
-        "current-namespace",
+        "ns-current",
         new VariadicBuiltin(
-            "current-namespace",
+            "ns-current",
             values -> {
-              requireMethodArity("current-namespace", values, 0);
+              requireMethodArity("ns-current", values, 0);
               return currentNamespace.name();
             }));
     target.define(
@@ -6899,16 +6923,25 @@ public final class HaraContext {
 
   private String namespaceIdentifier(Object value, String operation) {
     Object unwrapped = unwrapQuoted(HaraBox.unwrap(value));
+    if (unwrapped instanceof HaraNamespace namespace) return namespace.name();
     if (unwrapped instanceof Symbol symbol) return symbol.display();
     if (unwrapped instanceof String name) return name;
     throw new HaraException(operation + " expects a namespace symbol or string");
   }
 
-  private Object theNamespace(Object value) {
-    String name = namespaceIdentifier(value, "the-ns");
+  private Object namespaceFind(Object value) {
+    String name = namespaceIdentifier(value, "ns-find");
     if (sandboxRestricted && sandboxForbiddenNamespace(name)) return null;
-    if (!namespaces.containsKey(name)) return null;
-    return Symbol.create(name);
+    return namespaces.get(name);
+  }
+
+  private Object namespaceCreate(Object value) {
+    Object unwrapped = unwrapQuoted(HaraBox.unwrap(value));
+    if (!(unwrapped instanceof Symbol symbol) || symbol.getNamespace() != null) {
+      throw new HaraException("ns-create expects an unqualified symbol");
+    }
+    if (sandboxRestricted && sandboxForbiddenNamespace(symbol.display())) return null;
+    return namespace(symbol.display());
   }
 
   private Object namespaceName(Object value) {

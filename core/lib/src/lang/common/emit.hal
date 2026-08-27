@@ -590,7 +590,7 @@
                       grammar-value)
                     (:grammar book)
                     +test-grammar+)
-        namespace (or (:namespace metadata) (current-namespace))]
+        namespace (or (:namespace metadata) (ns-current))]
     [step grammar book namespace
      (select-keys metadata +option-keys+)]))
 

@@ -29,7 +29,7 @@
 (defn namespace-id
   [namespace]
   (cond (and (symbol? namespace)
-             (the-ns namespace))
+             (ns-find namespace))
         (ns-name namespace)
 
         :else
@@ -122,7 +122,7 @@
         stack
 
         (and (seq stack)
-             (same-site? (peek stack) current))
+             (same-site? (IPeekLast/peek-last stack) current))
         stack
 
         :else
