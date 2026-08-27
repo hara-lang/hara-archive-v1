@@ -1370,6 +1370,9 @@ public final class HaraContext {
   }
 
   private void referFoundation(HaraNamespace target) {
+    // Native namespaces expose only their catalogued runtime surface. They must
+    // not inherit Foundation Vars, or removed native names reappear as aliases.
+    if (target.name().startsWith("std.native.")) return;
     HaraNamespace core = namespace(FOUNDATION_NAMESPACE);
     for (Map.Entry<String, HaraVar> entry : core.vars.entrySet()) {
       if (target.lookup(entry.getKey()) == null) target.refer(entry.getKey(), entry.getValue());
