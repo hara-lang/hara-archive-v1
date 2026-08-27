@@ -77,9 +77,7 @@ fn direct_native_preserves_multimethods_across_evaluations_and_loads() {
         .eval_direct_native("(defmethod local-classify :ok [value] 41)")
         .unwrap();
     assert_eq!(
-        runtime
-            .eval_direct_native("(local-classify :ok)")
-            .unwrap(),
+        runtime.eval_direct_native("(local-classify :ok)").unwrap(),
         "41"
     );
 
@@ -153,7 +151,12 @@ fn async_direct_native_functions_preserve_the_promise_return_shape() {
 fn direct_native_evaluates_dynamic_runtime_forms_without_falling_back() {
     let mut runtime = Runtime::core();
     enable_native(&mut runtime);
-    assert_eq!(runtime.eval_direct_native("(Runtime/eval '(+ 1 2))").unwrap(), "3");
+    assert_eq!(
+        runtime
+            .eval_direct_native("(Runtime/eval '(+ 1 2))")
+            .unwrap(),
+        "3"
+    );
     assert_eq!(
         runtime
             .eval_direct_native("(Runtime/load-string \"(+ 19 23)\")")
@@ -184,9 +187,7 @@ fn direct_native_macroexpansion_preserves_macro_validation_errors() {
     let mut runtime = Runtime::new();
     enable_native(&mut runtime);
     runtime
-        .eval_native(
-            "(ns example.direct-macro (:require [std.lib.collection :as collection]))",
-        )
+        .eval_native("(ns example.direct-macro (:require [std.lib.collection :as collection]))")
         .expect("collection namespace must load");
     let source =
         "[(try (do (macroexpand (quote (collection/select {:a 1} :a))) false) (catch Throwable error true))

@@ -118,6 +118,12 @@
   [& entries]
   (apply std.native.Obj/new entries))
 
+(defn ^{:inline true :public true :schema [:fn [& :int] :bytes]}
+  bytes
+  "Creates an opaque byte buffer through std.native.Bytes/new."
+  [& values]
+  (apply std.native.Bytes/new values))
+
 (defn ^{:inline true :schema [:fn [:any] :vector]}
   vec "Converts value to a persistent vector." [value] (Base/vec value))
 
@@ -574,7 +580,14 @@
   (= (type value) :std.native.SchemaType))
 
 (defn ^{:inline true :schema [:fn [:any] :any]}
-  schema-of "Returns the compiled schema contract of variable." [variable] (Schema/of variable))
+  schema-of
+  "Returns the compiled schema contract of variable."
+  [variable]
+  (let [contract (Schema/of variable)]
+    (if contract
+      contract
+      (let [value (deref variable)]
+        (if (schema? value) value nil)))))
 
 ;; Runtime-backed namespace and evaluation operations remain ordinary functions for
 ;; first-class use while direct calls lower to the native Runtime object.

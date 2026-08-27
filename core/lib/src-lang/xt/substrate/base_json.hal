@@ -1,30 +1,12 @@
 (ns xt.substrate.base-json
-  (:require [lang.core :as l :refer [defspec.xt]]))
+  (:require [lang.core :as l]))
 
 (l/script :xtalk
   {:require [[xt.lang.spec-base :as xt]
              [xt.substrate.base-frame :as frame]
              [xt.substrate.base-router :as router]]})
 
-(defspec.xt frame-kind?
-  [:fn [[:xt/maybe :xt/str]] :xt/bool])
-
-(defspec.xt valid-frame?
-  [:fn [:xt/any] :xt/bool])
-
-(defspec.xt normalize-error
-  [:fn [:xt/any] :xt/any])
-
-(defspec.xt normalize-frame
-  [:fn [:xt/any] :xt/any])
-
-(defspec.xt encode-frame
-  [:fn [:xt/any] :xt/str])
-
-(defspec.xt decode-frame
-  [:fn [:xt/any] :xt/any])
-
-(defn.xt frame-kind?
+(defn.xt ^{:schema [:fn [[:xt/maybe :xt/str]] :xt/bool]} frame-kind?
   "checks whether the event kind is supported by the node JSON wire format"
   {:added "4.1"}
   [kind]
@@ -34,7 +16,7 @@
               (== kind router/KIND_SUBSCRIBE)
               (== kind router/KIND_UNSUBSCRIBE))))
 
-(defn.xt valid-frame?
+(defn.xt ^{:schema [:fn [:xt/any] :xt/bool]} valid-frame?
   "checks whether a value is a valid node/router event frame"
   {:added "4.1"}
   [value]
@@ -59,7 +41,7 @@
         :else
         (return (xt/x:is-string? (. value ["signal"])))))
 
-(defn.xt normalize-error
+(defn.xt ^{:schema [:fn [:xt/any] :xt/any]} normalize-error
   "normalizes wire errors into plain JSON-safe objects"
   {:added "4.1"}
   [err]
@@ -87,7 +69,7 @@
         :else
         (return {"message" (xt/x:to-string err)})))
 
-(defn.xt normalize-frame
+(defn.xt ^{:schema [:fn [:xt/any] :xt/any]} normalize-frame
   "normalizes a frame for JSON transport emission"
   {:added "4.1"}
   [frame]
@@ -102,7 +84,7 @@
                   (-/normalize-error (. out ["error"]))))
   (return out))
 
-(defn.xt encode-frame
+(defn.xt ^{:schema [:fn [:xt/any] :xt/str]} encode-frame
   "encodes a node/router frame as JSON"
   {:added "4.1"}
   [frame]
@@ -111,7 +93,7 @@
     (xt/x:err "invalid node json frame"))
   (return (xt/x:json-encode out)))
 
-(defn.xt decode-frame
+(defn.xt ^{:schema [:fn [:xt/any] :xt/any]} decode-frame
   "decodes JSON text into a validated node/router frame"
   {:added "4.1"}
   [input]

@@ -1,6 +1,6 @@
 (ns postgres.core.graph-walk
   (:config {:blank true})
-  (:require [std.foundation :refer :all]))
+  (:require [std.foundation :refer [reduce-kv]]))
 
 (defn- schema-attrs [entry]
   (if (vector? entry) (first entry) entry))

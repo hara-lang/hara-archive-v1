@@ -152,6 +152,17 @@
         (primitive-type form)
         {:kind :keyword :name form}))
 
+    (= :std.native.Var (type form))
+    {:kind :named
+     :name (resolve-type-symbol (Runtime/var-sym form) ctx)}
+
+    (and (list? form)
+         (= 2 (count form))
+         (= 'var (first form))
+         (symbol? (second form)))
+    {:kind :named
+     :name (resolve-type-symbol (second form) ctx)}
+
     (symbol? form)
     {:kind :named :name (resolve-type-symbol form ctx)}
 

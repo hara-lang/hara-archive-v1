@@ -1936,6 +1936,39 @@ fn native_runtime_values(
     }
 }
 
+#[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+fn eval_direct_native_source(source: &str) -> Result<Value, String> {
+    let context = DirectNativeContext::capture();
+    let forms = crate::kernel::read_forms(source).map_err(|error| error.to_string())?;
+    let has_namespace_form = forms.iter().any(|form| {
+        matches!(
+            form_without_metadata(&form.form),
+            Form::List(items)
+                if matches!(items.first(), Some(Form::Symbol(operator)) if operator == "ns" || operator == "ns+")
+        )
+    });
+    let config = if has_namespace_form {
+        crate::vm::source_namespace_config(&forms).map_err(|error| error.to_string())?
+    } else {
+        crate::kernel::GeneratedNamespaceConfig::defaults()
+    };
+    let namespaces = context.namespaces.clone();
+    let program = context.with(|| {
+        without_direct_native_execution(|| {
+            crate::vm::compile_source_with_config_allow_unbound_globals(source, &namespaces, config)
+        })
+    })
+    .map_err(|error| error.to_string())?;
+    let mut program = program;
+    if program.namespace.is_none() {
+        program.namespace = Some(context.namespace.clone());
+    }
+    let engine = crate::direct_native::NativeEngine::new();
+    context
+        .with(|| engine.execute_blocking_with_multimethods(Rc::new(program), context.multimethods.clone()))
+        .map(|report| report.value)
+}
+
 fn eval_value(value: Value, env: &mut HashMap<String, Value>) -> Result<Value, String> {
     #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
     if direct_native_execution() {

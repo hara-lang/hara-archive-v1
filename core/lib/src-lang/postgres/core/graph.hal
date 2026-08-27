@@ -1,7 +1,7 @@
 (ns postgres.core.graph
   (:config {:blank true})
   (:require [lang.core :as l]
-            [std.foundation :refer :all]
+            [std.foundation :refer [IDeref IComponent ex resolve]]
             [postgres.core.graph-base :as base]
             [postgres.core.graph-insert :as insert]
             [postgres.core.graph-query :as query]

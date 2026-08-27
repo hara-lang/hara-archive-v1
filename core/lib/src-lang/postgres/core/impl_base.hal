@@ -1,6 +1,6 @@
 (ns postgres.core.impl-base
   (:config {:blank true})
-  (:require [std.foundation :as foundation :refer :all :exclude [resolve]]
+  (:require [std.foundation :as foundation :refer [ex reduce-kv seq]]
             [lang.common.preprocess-base :as preprocess]
             [lang.common.util :as util]
             [lang.model.v1.spec-postgres.deftype.common :as table]

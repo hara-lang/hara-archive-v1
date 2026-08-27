@@ -300,10 +300,7 @@ fn arithmetic_errors() {
     assert_eq!(eval("(* 9223372036854775807 2)"), "18446744073709551614");
     assert_eval_error("(+ 1 \"a\")", "+ expects numbers [line 1, column 1]");
     assert_eq!(eval("(+ 1 1.5)"), "(double 2.5)");
-    assert_eval_error(
-        "(mod \"a\" 1)",
-        "mod expects numbers [line 1, column 1]",
-    );
+    assert_eval_error("(mod \"a\" 1)", "mod expects numbers [line 1, column 1]");
 }
 
 #[test]

@@ -61,7 +61,6 @@
   ([namespace] (script-annex/status-in namespace)))
 
 (def script-modules script/+modules+)
-(def script-specs script/+specs+)
 
 ;; Foundation-compatible runtime/bootstrap entry points.
 (def bootstrap runtime/bootstrap)
@@ -198,6 +197,7 @@
                         (or (meta declaration-symbol) {}))
         language (or explicit-language (:lang module-value) :xtalk)
         schema (or (:static/schema metadata)
+                   (:schema metadata)
                    (:schema module-value)
                    (first (get-in module-value [:static :all :schema])))
         entry
@@ -210,7 +210,11 @@
                 :op-key (keyword (name op))
                 :form form
                 :form-input form})
-        entry (if schema (assoc entry :static/schema schema) entry)
+        entry (if schema
+                (assoc (dissoc entry :schema)
+                       :static/schema
+                       (script/portable-schema-form schema))
+                entry)
         entry (if (has? metadata :public)
                 (assoc entry :static/public (:public metadata))
                 entry)]
@@ -595,14 +599,6 @@
           (vector '& 'body)
           nil)))
 
-(defn script-compatibility-macro-forms
-  [lang]
-  (if (= :xtalk lang)
-    ['(defmacro defspec.xt [symbol & body]
-        (macroexpand-1
-         (apply list 'lang.core/defspec.xt symbol body)))]
-    []))
-
 (defn script-macro-forms
   "Builds the complete Foundation grammar macro import surface for a language."
   [lang]
@@ -636,8 +632,7 @@
      (concat evaluator-forms
              special-forms
              definition-forms
-             highlight-forms
-             (script-compatibility-macro-forms lang)))))
+             highlight-forms))))
 
 (defn script-import-symbols
   "Lists every namespace-local macro installed by a script declaration."
@@ -683,20 +678,6 @@
 (defmacro script
   [lang & options]
   (lang.core/script-expansion lang options false))
-
-(defmacro defspec.xt [symbol & body]
-  (let [docstring (if (string? (first body)) (first body) nil)
-        remaining (if docstring (rest body) body)
-        attributes (if (map? (first remaining)) (first remaining) {})
-        remaining (if (map? (first remaining)) (rest remaining) remaining)
-        type-form (first remaining)
-        metadata (merge (meta symbol)
-                        attributes
-                        (if docstring {:docstring docstring} {}))]
-    (list 'lang.core.script/register-spec
-          (list 'quote symbol)
-          (list 'quote type-form)
-          (list 'quote metadata))))
 
 (defmacro script-
   [lang & options]

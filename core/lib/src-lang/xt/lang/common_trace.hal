@@ -1,5 +1,5 @@
 (ns xt.lang.common-trace
-  (:require [lang.core :as l :refer [defspec.xt]]
+  (:require [lang.core :as l]
             [lang.common.preprocess-base :as preprocess]))
 
 (l/script :xtalk

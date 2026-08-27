@@ -1130,11 +1130,6 @@
 
 (def +foundation-script-compatibility-ledger+
  [
-  {:surface 'defspec.xt
-   :authority 'lang.core/defspec.xt
-   :compatibility 'lang.core.script/defspec.xt
-   :disposition :retire-copy-after-contract-parity
-   :reason :grammar-derived-lang-core-publication-is-authoritative}
   {:surface 'defn.xt
    :authority 'lang.core/defn.xt
    :compatibility 'lang.core.script/defn.xt

@@ -124,96 +124,22 @@
        :definition/var "hidden"
        :definition/form "defn"}])
 
-^{:refer tool.migrate.common.transform/migrate-defspec}
-(fact "moves callable and named legacy specs to declaration metadata"
+^{:refer tool.migrate.common.transform/analyze}
+(fact "leaves binding-owned schemas to the declaration parser"
   (let [source
         (str "(ns demo)\n"
-             "(defspec.xt find-user [:fn [UserMap :xt/str] [:xt/maybe User]])\n"
-             "(defn.xt find-user [users id] (return nil))\n"
-             "(defspec.xt User [:xt/record [\"id\" :xt/str]])\n")
-        result (transform/migrate-defspec source)]
+             "(def ^{:schema [:xt/record [\"id\" :xt/str]]} User nil)\n"
+             "(defn.xt ^{:schema [:fn [:xt/int] :xt/str]} run [value] value)\n")
+        result (transform/analyze source
+                                  {:catalog catalog
+                                   :source/language :hara
+                                   :target/language :hara
+                                   :mode :safe})]
     [(:changed result)
-     (:moved result)
-     (:removed result)
-     (:diagnostics result)
-     (:output result)]
-    => [true
-        2
-        2
-        []
-        (str "(ns demo)\n\n"
-             "(defn.xt ^{:schema [:fn [UserMap :xt/str] [:xt/maybe User]]} "
-             "find-user [users id] (return nil))\n"
-             "(def.xt ^{:schema [:xt/record [\"id\" :xt/str]]} User nil)\n")]))
-
-^{:refer tool.migrate.common.transform/migrate-defspec}
-(fact "moves a legacy schema onto an existing declaration and is idempotent"
-  (let [source
-        (str "(ns demo)\n"
-             "(defspec.xt User [:xt/record [\"id\" :xt/str]])\n"
-             "(def.xt User {:id \"anonymous\"})\n"
-             "(defspec.xt run [:fn [:xt/int] :xt/str])\n"
-             "(defn.xt ^{:public true} run [value] value)\n")
-        result (transform/migrate-defspec source)
-        second-pass (transform/migrate-defspec (:output result))]
-    [(:diagnostics result)
      (:output result)
-     (:changed second-pass)
-     (:moved second-pass)
-     (:removed second-pass)]
-    => [[]
-        (str "(ns demo)\n\n"
-             "(def.xt ^{:schema [:xt/record [\"id\" :xt/str]]} User "
-             "{:id \"anonymous\"})\n\n"
-             "(defn.xt ^{:schema [:fn [:xt/int] :xt/str] :public true} "
-             "run [value] value)\n")
-        false
-        0
-        0]))
-
-^{:refer tool.migrate.common.transform/migrate-defspec}
-(fact "publishes an unpaired callable schema as a schema-only declaration"
-  (let [result
-        (transform/migrate-defspec
-         "(ns demo)\n(defspec.xt missing [:fn [:xt/int] :xt/str])\n")]
-    [(:changed result)
-     (:moved result)
-     (:removed result)
-     (:diagnostics result)
-     (:output result)]
-    => [true
-        1
-        1
-        []
-        "(ns demo)\n\n(def.xt ^{:schema [:fn [:xt/int] :xt/str]} missing nil)"]))
-
-^{:refer tool.migrate.common.transform/migrate-defspec}
-(fact "removes legacy nil specs without inventing a declaration"
-  (let [result
-        (transform/migrate-defspec
-         "(ns demo)\n(defspec.xt native-op nil)\n")]
-    [(:changed result)
-     (:moved result)
-     (:removed result)
-     (:diagnostics result)
-     (:output result)]
-    => [true 0 1 [] "(ns demo)\n\n"]))
-
-^{:refer tool.migrate.common.transform/migrate-defspec}
-(fact "moves callable schemas onto macro declarations"
-  (let [source
-        (str "(ns demo)\n"
-             "(defspec.xt expand [:fn [:xt/int] :xt/str])\n"
-             "(defmacro.xt ^{:standalone true} expand\n"
-             "  ([value] (list (quote str) value)))\n")
-        result (transform/migrate-defspec source)]
-    [(:diagnostics result)
-     (:output result)]
-    => [[]
-        (str "(ns demo)\n\n"
-             "(defmacro.xt ^{:schema [:fn [:xt/int] :xt/str] :standalone true} "
-             "expand\n"
-             "  ([value] (list (quote str) value)))\n")]))
+     (:schema/moved result)
+     (:schema/removed result)]
+    => [false source nil nil]))
 
 (def results
   [(test-check

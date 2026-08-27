@@ -1025,14 +1025,14 @@ pub(crate) fn call_function(function: &Function, arguments: Vec<Value>) -> Resul
     let tracing = tracing_enabled();
     if tracing {
         TRACE_STACK.with(|stack| {
-            stack.borrow_mut().push(TraceFrame {
-                name: function
+            stack.borrow_mut().push(trace_frame_label(
+                function
                     .name
                     .clone()
                     .unwrap_or_else(|| "<anonymous>".into()),
-                namespace: function.namespace.clone(),
-                site: current_exception_site(),
-            })
+                function.namespace.clone(),
+                current_exception_site(),
+            ))
         });
     }
     let caller_scoped_foundation = function.namespace.as_deref() == Some("std.foundation")

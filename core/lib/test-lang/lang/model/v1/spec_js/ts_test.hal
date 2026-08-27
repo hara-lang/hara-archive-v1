@@ -13,9 +13,8 @@
 (def declarations (ts/emit-analysis-declarations analysis))
 
 ^{:refer lang.typed.xtalk-parse/parse-fragment-spec :added "4.1"}
-(fact "reads direct schemas from macro fragment metadata"
+(fact "reads binding-owned schemas from macro fragment metadata"
   (let [modules-before (deref script/+modules+)
-        specs-before (deref script/+specs+)
         module 'demo.macro
         symbol (with-meta 'expand
                  {:schema [:fn [:xt/int] :xt/str]})
@@ -23,24 +22,31 @@
         entry {:id 'expand
                :module module
                :form form
-               :schema [:fn [:xt/int] :xt/str]}]
+               }]
     (try
       (reset! script/+modules+
               {module {:id module
                        :link {'- module}
                        :fragment {'expand entry}
                        :code {}}})
-      (reset! script/+specs+ {})
       (select-keys (first (:specs (parse/analyze-module module)))
                    [:ns :name :type])
       (finally
-        (reset! script/+modules+ modules-before)
-        (reset! script/+specs+ specs-before))))
+        (reset! script/+modules+ modules-before))))
   => {:ns "demo.macro"
       :name "expand"
       :type {:kind :fn
              :inputs [{:kind :primitive :name :xt/int}]
              :output {:kind :primitive :name :xt/str}}})
+
+^{:refer lang.typed.xtalk-parse/parse-decl-preamble :added "4.1"}
+(fact "rejects schemas placed on the declaration form"
+  (try
+    (parse/parse-decl-preamble '({:schema :xt/str} nil) 'Value)
+    :accepted
+    (catch Throwable error
+      (ex-message error)))
+  => ":schema must be attached to the declaration symbol")
 
 ^{:refer lang.typed.xtalk-common/normalize-type :added "4.1"}
 (fact "normalizes portable XTalk type forms with module aliases"
@@ -62,7 +68,7 @@
         :optional? false}]})
 
 ^{:refer lang.typed.xtalk-parse/analyze-module :added "4.1"}
-(fact "analyzes schema metadata on XTalk declarations without defspec.xt"
+(fact "analyzes binding schema metadata on XTalk declarations"
   [(mapv :name (:specs analysis))
    (mapv :name (:functions analysis))
    (mapv :name (:values analysis))

@@ -10,8 +10,8 @@
     {:identity (str (:project/id document))
      :version (str (:project/version document))}))
 
-(defn package-build [path output]
-  (Kernel/package-build path output))
+(defn package-build [path output package profile]
+  (Kernel/package-build path output package profile))
 
 (defn package-inspect [path]
   (Kernel/package-inspect path))

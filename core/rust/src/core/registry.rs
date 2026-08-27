@@ -248,6 +248,7 @@ pub struct RuntimeSchema {
 #[derive(Clone)]
 struct PackageCatalogEntry {
     descriptor: Value,
+    name: Option<String>,
     namespaces: Vec<String>,
     state: String,
     pending: Option<Promise>,
@@ -259,11 +260,18 @@ pub struct PackageCatalog {
 }
 
 impl PackageCatalog {
-    pub fn register(&self, coordinate: String, descriptor: Value, namespaces: Vec<String>) {
+    pub fn register(
+        &self,
+        coordinate: String,
+        name: Option<String>,
+        descriptor: Value,
+        namespaces: Vec<String>,
+    ) {
         self.entries.borrow_mut().insert(
             coordinate,
             PackageCatalogEntry {
                 descriptor,
+                name,
                 namespaces,
                 state: "available".into(),
                 pending: None,
@@ -293,6 +301,7 @@ impl PackageCatalog {
             .iter()
             .find_map(|(coordinate, entry)| {
                 (coordinate == target
+                    || entry.name.as_deref() == Some(target)
                     || entry.namespaces.iter().any(|namespace| namespace == target))
                 .then(|| {
                     (

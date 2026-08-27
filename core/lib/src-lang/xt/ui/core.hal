@@ -1,15 +1,15 @@
 (ns xt.ui.core
-  (:require [lang.core :as l :refer [defspec.xt]]))
+  (:require [lang.core :as l]))
 
 (l/script :xtalk
   {:require [[xt.lang.spec-base :as xt]
              [xt.lang.common-data :as xtd]
              [xt.lang.spec-promise :as promise]]})
 
-(defspec.xt UiNode :xt/any)
-(defspec.xt UiComponentContract :xt/any)
-(defspec.xt UiRegistry :xt/any)
-(defspec.xt UiRuntime :xt/any)
+(def ^{:schema :xt/any} UiNode nil)
+(def ^{:schema :xt/any} UiComponentContract nil)
+(def ^{:schema :xt/any} UiRegistry nil)
+(def ^{:schema :xt/any} UiRuntime nil)
 
 (def$.xt PORTABLE "portable")
 (def$.xt EXTENSION "extension")

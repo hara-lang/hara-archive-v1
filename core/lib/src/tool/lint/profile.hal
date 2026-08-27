@@ -41,6 +41,7 @@
       partition interpose interleave map filter remove take drop mapcat keep
       cycle zip reduce apply concat vec set list hash-map count empty
       str pr-str print println name namespace symbol keyword
+      schema schema? schema-of
       long double bit-and bit-or bit-xor bit-not bit-shift-left bit-shift-right
       abs acos acosh asin asinh atan atan2 atanh ceil cos cosh exp floor pow
       sin sinh sqrt tan tanh

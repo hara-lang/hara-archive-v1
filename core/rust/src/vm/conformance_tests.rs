@@ -36,8 +36,8 @@ fn bytecode_vm_conformance_corpus() {
     ))
     .expect("bytecode VM conformance corpus is readable");
     let manifest = kernel::parse_forms(&corpus)
-    .expect("bytecode VM conformance corpus parses")
-    .remove(0);
+        .expect("bytecode VM conformance corpus parses")
+        .remove(0);
     let Form::Map(manifest) = manifest else {
         panic!("bytecode VM conformance corpus must be a map")
     };

@@ -1,105 +1,32 @@
 (ns xt.event.base-listener
-  (:require [lang.core :as l :refer [defspec.xt]]))
+  (:require [lang.core :as l]))
 
 (l/script :xtalk
   {:require [[xt.lang.spec-base :as xt]
              [xt.lang.common-data :as xtd]]})
 
-(defspec.xt EventPayload
-  :xt/any)
+(def ^{:schema :xt/any} EventPayload nil)
 
-(defspec.xt EventListenerMeta
-  :xt/any)
+(def ^{:schema :xt/any} EventListenerMeta nil)
 
-(defspec.xt EventListenerCallback
-  [:fn [EventPayload] :xt/any])
+(def ^{:schema [:fn [EventPayload] :xt/any]} EventListenerCallback nil)
 
-(defspec.xt EventListenerEntry
-  [:xt/record
+(def ^{:schema [:xt/record
    ["callback" EventListenerCallback]
    ["meta" EventListenerMeta]
-   ["pred" [:xt/maybe [:fn [:xt/any] :xt/bool]]]])
+   ["pred" [:xt/maybe [:fn [:xt/any] :xt/bool]]]]} EventListenerEntry nil)
 
-(defspec.xt EventListenerMap
-  [:xt/dict :xt/str EventListenerEntry])
+(def ^{:schema [:xt/dict :xt/str EventListenerEntry]} EventListenerMap nil)
 
-(defspec.xt EventListenerGroups
-  [:xt/dict :xt/str EventListenerMap])
+(def ^{:schema [:xt/dict :xt/str EventListenerMap]} EventListenerGroups nil)
 
-(defspec.xt EventTypeIndex
-  [:xt/dict :xt/str [:xt/array :xt/str]])
+(def ^{:schema [:xt/dict :xt/str [:xt/array :xt/str]]} EventTypeIndex nil)
 
-(defspec.xt EventContainer
-  [:xt/record
+(def ^{:schema [:xt/record
    ["::" :xt/str]
-   ["listeners" EventListenerMap]])
+   ["listeners" EventListenerMap]]} EventContainer nil)
 
-(defspec.xt blank-container
-  [:fn [:xt/str [:xt/dict :xt/str :xt/any]] EventContainer])
-
-(defspec.xt make-container
-  [:fn [:xt/any :xt/str [:xt/dict :xt/str :xt/any]] EventContainer])
-
-(defspec.xt make-listener-entry
-  [:fn [:xt/str :xt/str
-        EventListenerCallback
-        [:xt/maybe EventListenerMeta]
-        [:xt/maybe [:fn [:xt/any] :xt/bool]]]
-       EventListenerEntry])
-
-(defspec.xt arrayify-path
-  [:fn [:xt/any] [:xt/array :xt/any]])
-
-(defspec.xt clear-listeners
-  [:fn [EventContainer] EventListenerMap])
-
-(defspec.xt add-listener
-  [:fn [EventContainer
-        :xt/str
-        :xt/str
-        EventListenerCallback
-        [:xt/maybe EventListenerMeta]
-        [:xt/maybe [:fn [:xt/any] :xt/bool]]]
-       EventListenerEntry])
-
-(defspec.xt remove-listener
-  [:fn [EventContainer :xt/str] [:xt/maybe EventListenerEntry]])
-
-(defspec.xt list-listeners
-  [:fn [EventContainer] [:xt/array :xt/str]])
-
-(defspec.xt list-listener-types
-  [:fn [EventContainer] EventTypeIndex])
-
-(defspec.xt trigger-entry
-  [:fn [EventListenerEntry EventPayload] [:xt/maybe :xt/any]])
-
-(defspec.xt trigger-listeners
-  [:fn [EventContainer [:xt/maybe EventPayload]] [:xt/array :xt/str]])
-
-(defspec.xt add-keyed-listener
-  [:fn [EventContainer
-        :xt/str
-        :xt/str
-        :xt/str
-        EventListenerCallback
-        [:xt/maybe EventListenerMeta]
-        [:xt/maybe [:fn [:xt/any] :xt/bool]]]
-       EventListenerEntry])
-
-(defspec.xt remove-keyed-listener
-  [:fn [EventContainer :xt/str :xt/str] [:xt/maybe EventListenerEntry]])
-
-(defspec.xt list-keyed-listeners
-  [:fn [EventContainer :xt/str] [:xt/array :xt/str]])
-
-(defspec.xt all-keyed-listeners
-  [:fn [EventContainer] [:xt/dict :xt/str [:xt/array :xt/str]]])
-
-(defspec.xt trigger-keyed-listeners
-  [:fn [EventContainer :xt/str [:xt/maybe EventPayload]] [:xt/array :xt/str]])
-
-(defn.xt blank-container
+(defn.xt ^{:schema [:fn [:xt/str [:xt/dict :xt/str :xt/any]] EventContainer]} blank-container
   "creates a blank container"
   {:added "4.0"}
   [type-name opts]
@@ -109,7 +36,7 @@
                   opts))
   (return container))
 
-(defn.xt make-container
+(defn.xt ^{:schema [:fn [:xt/any :xt/str [:xt/dict :xt/str :xt/any]] EventContainer]} make-container
   "makes a container"
   {:added "4.0"}
   [initial type-name opts]
@@ -126,7 +53,11 @@
                   opts))
   (return container))
 
-(defn.xt make-listener-entry
+(defn.xt ^{:schema [:fn [:xt/str :xt/str
+        EventListenerCallback
+        [:xt/maybe EventListenerMeta]
+        [:xt/maybe [:fn [:xt/any] :xt/bool]]]
+       EventListenerEntry]} make-listener-entry
   "makes a listener entry"
   {:added "4.0"}
   [listener-id listener-type callback meta pred]
@@ -145,7 +76,7 @@
   (return (and (xt/x:not-nil? entry)
                (xt/x:is-function? (. entry ["callback"])))))
 
-(defn.xt arrayify-path
+(defn.xt ^{:schema [:fn [:xt/any] [:xt/array :xt/any]]} arrayify-path
   "normalizes event path-like inputs, treating empty objects as empty arrays"
   {:added "4.1"}
   [x]
@@ -180,7 +111,7 @@
     (return (. event ["t"])))
   (return nil))
 
-(defn.xt clear-listeners
+(defn.xt ^{:schema [:fn [EventContainer] EventListenerMap]} clear-listeners
   "clears all listeners"
   {:added "4.0"}
   [container]
@@ -194,7 +125,13 @@
    (xt/x:set-key container "listeners" kept)
    (return cleared))
 
-(defn.xt add-listener
+(defn.xt ^{:schema [:fn [EventContainer
+        :xt/str
+        :xt/str
+        EventListenerCallback
+        [:xt/maybe EventListenerMeta]
+        [:xt/maybe [:fn [:xt/any] :xt/bool]]]
+       EventListenerEntry]} add-listener
   "adds a listener to container"
   {:added "4.0"}
   [container listener-id listener-type callback meta pred]
@@ -203,7 +140,7 @@
   (xt/x:set-key listeners listener-id entry)
   (return entry))
 
-(defn.xt remove-listener
+(defn.xt ^{:schema [:fn [EventContainer :xt/str] [:xt/maybe EventListenerEntry]]} remove-listener
   "removes a listener"
   {:added "4.0"}
   [container listener-id]
@@ -214,7 +151,7 @@
   (xt/x:del-key listeners listener-id)
   (return entry))
 
-(defn.xt list-listeners
+(defn.xt ^{:schema [:fn [EventContainer] [:xt/array :xt/str]]} list-listeners
   "lists all current listeners"
   {:added "4.0"}
   [container]
@@ -225,7 +162,7 @@
       (xt/x:arr-push out id)))
   (return out))
 
-(defn.xt list-listener-types
+(defn.xt ^{:schema [:fn [EventContainer] EventTypeIndex]} list-listener-types
   "lists listeners by their type"
   {:added "4.0"}
   [container]
@@ -242,7 +179,7 @@
       (xt/x:arr-push arr id)))
   (return out))
 
-(defn.xt trigger-entry
+(defn.xt ^{:schema [:fn [EventListenerEntry EventPayload] [:xt/maybe :xt/any]]} trigger-entry
   "triggers the individual entry"
   {:added "4.0"}
   [entry event]
@@ -260,7 +197,7 @@
       (-/callback-time event)
       nmeta))))
 
-(defn.xt trigger-listeners
+(defn.xt ^{:schema [:fn [EventContainer [:xt/maybe EventPayload]] [:xt/array :xt/str]]} trigger-listeners
   "triggers listeners given event"
   {:added "4.0"}
   [container event]
@@ -274,12 +211,18 @@
       (xt/x:arr-push triggered id)))
   (return triggered))
 
-
 ;;
 ;;
 ;;
 
-(defn.xt add-keyed-listener
+(defn.xt ^{:schema [:fn [EventContainer
+        :xt/str
+        :xt/str
+        :xt/str
+        EventListenerCallback
+        [:xt/maybe EventListenerMeta]
+        [:xt/maybe [:fn [:xt/any] :xt/bool]]]
+       EventListenerEntry]} add-keyed-listener
   "adds a keyed entry"
   {:added "4.0"}
   [container key listener-id listener-type callback meta pred]
@@ -292,7 +235,7 @@
   (xt/x:set-key group listener-id entry)
   (return entry))
 
-(defn.xt remove-keyed-listener
+(defn.xt ^{:schema [:fn [EventContainer :xt/str :xt/str] [:xt/maybe EventListenerEntry]]} remove-keyed-listener
   "removes a keyed listener"
   {:added "4.0"}
   [container key listener-id]
@@ -307,7 +250,7 @@
     (xt/x:del-key listeners key))
   (return entry))
 
-(defn.xt list-keyed-listeners
+(defn.xt ^{:schema [:fn [EventContainer :xt/str] [:xt/array :xt/str]]} list-keyed-listeners
   "lists all listeners under and key"
   {:added "4.0"}
   [container key]
@@ -318,7 +261,7 @@
     (return []))
   (return (xt/x:obj-keys group)))
 
-(defn.xt all-keyed-listeners
+(defn.xt ^{:schema [:fn [EventContainer] [:xt/dict :xt/str [:xt/array :xt/str]]]} all-keyed-listeners
   "lists all listeners"
   {:added "4.0"}
   [container]
@@ -329,7 +272,7 @@
       (xt/x:set-key out key (-/list-keyed-listeners container key))))
   (return out))
 
-(defn.xt trigger-keyed-listeners
+(defn.xt ^{:schema [:fn [EventContainer :xt/str [:xt/maybe EventPayload]] [:xt/array :xt/str]]} trigger-keyed-listeners
   "triggers listeners under a key"
   {:added "4.0"}
   [container key event]

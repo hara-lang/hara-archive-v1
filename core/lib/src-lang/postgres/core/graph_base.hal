@@ -1,6 +1,6 @@
 (ns postgres.core.graph-base
   (:config {:blank true})
-  (:require [std.foundation :refer :all]
+  (:require [std.foundation :refer [ex reduce-kv]]
             [lang.common.util :as util]
             [postgres.core.impl-base :as base]
             [postgres.core.impl-main :as main]

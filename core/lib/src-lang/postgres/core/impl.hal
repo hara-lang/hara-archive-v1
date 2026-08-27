@@ -1,7 +1,7 @@
 (ns postgres.core.impl
   (:config {:blank true})
   (:require [lang.core :as l]
-            [std.foundation :refer :all]
+            [std.foundation :refer [ex resolve]]
             [postgres.core.impl-main :as main]
             [postgres.core.impl-insert :as insert]
             [postgres.core.impl-update :as update]))

@@ -1,5 +1,4 @@
-(ns postgres.gen.rpc
-  (:require [std.foundation :refer :all]))
+(ns postgres.gen.rpc)
 
 (def +entity-aggregates+
   ["User" "Brand" "Campaign" "Topic"])

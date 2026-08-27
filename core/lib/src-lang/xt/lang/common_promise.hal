@@ -1,14 +1,11 @@
 (ns xt.lang.common-promise
-  (:config {:blank true})
-  (:require [lang.core :as l :refer [defspec.xt]]
-            [std.foundation :refer :all :exclude [do if fn quote try promise]]))
+  (:config {:override [promise]})
+  (:require [lang.core :as l]))
 
 (l/script :xtalk
   {:require [[xt.lang.spec-base :as xt]]})
 
-(defspec.xt promise-native? [:fn [:xt/any] :xt/bool])
-
-(defn.xt promise-native?
+(defn.xt ^{:schema [:fn [:xt/any] :xt/bool]} promise-native?
   "checks for the common xt.promise wrapper"
   {:added "4.1"}
   [value]
@@ -123,9 +120,7 @@
       (catch err
         (return (-/internal-settle-action child "rejected" err drive-fn))))))
 
-(defspec.xt promise [:fn [[:xt/fn]] :xt/promise])
-
-(defn.xt promise
+(defn.xt ^{:schema [:fn [[:xt/fn]] :xt/promise]} promise
   "wraps thunk execution in the common xt.promise model"
   {:added "4.1"}
   [thunk]
@@ -146,9 +141,7 @@
     (catch err
         (return (-/make-rejected-state err)))))
 
-(defspec.xt promise-new [:fn [[:xt/fn]] :xt/promise])
-
-(defn.xt promise-new
+(defn.xt ^{:schema [:fn [[:xt/fn]] :xt/promise]} promise-new
   "creates a common promise via an executor (fn [resolve reject] ...)"
   {:added "4.1"}
   [thunk]
@@ -163,9 +156,7 @@
     (catch err
       (return (-/make-rejected-state err)))))
 
-(defspec.xt promise-run [:fn [:xt/any] :xt/promise])
-
-(defn.xt promise-run
+(defn.xt ^{:schema [:fn [:xt/any] :xt/promise]} promise-run
   "normalises plain values and common wrappers"
   {:added "4.1"}
   [value]
@@ -173,9 +164,7 @@
     (return value)
     (return (-/make-resolve-state value))))
 
-(defspec.xt promise-then [:fn [:xt/promise [:xt/fn]] :xt/promise])
-
-(defn.xt promise-then
+(defn.xt ^{:schema [:fn [:xt/promise [:xt/fn]] :xt/promise]} promise-then
   "chains a success callback onto a common promise"
   {:added "4.1"}
   [promise thunk]
@@ -183,9 +172,7 @@
   (var child (-/make-pending-state nil))
   (return (-/internal-link-action current child thunk nil -/internal-drive-action)))
 
-(defspec.xt promise-catch [:fn [:xt/promise [:xt/fn]] :xt/promise])
-
-(defn.xt promise-catch
+(defn.xt ^{:schema [:fn [:xt/promise [:xt/fn]] :xt/promise]} promise-catch
   "chains an error callback onto a common promise"
   {:added "4.1"}
   [promise thunk]
@@ -193,9 +180,7 @@
   (var child (-/make-pending-state nil))
   (return (-/internal-link-action current child nil thunk -/internal-drive-action)))
 
-(defspec.xt promise-all [:fn [[:xt/array :xt/any]] :xt/promise])
-
-(defn.xt promise-all
+(defn.xt ^{:schema [:fn [[:xt/array :xt/any]] :xt/promise]} promise-all
   "waits for all promise values in order"
   {:added "4.1"}
   [promises]
@@ -219,9 +204,7 @@
      (fn [_]
        (return out)))))
 
-(defspec.xt with-delay [:fn [:xt/int [:xt/fn]] :xt/promise])
-
-(defn.xt with-delay
+(defn.xt ^{:schema [:fn [:xt/int [:xt/fn]] :xt/promise]} with-delay
   "delays thunk execution inside the common xt.promise model"
   {:added "4.1"}
   [ms thunk]
@@ -233,9 +216,7 @@
         (:= start start))
       (return (xt/x:apply thunk []))))))
 
-(defspec.xt promise-finally [:fn [:xt/promise [:xt/fn]] :xt/promise])
-
-(defn.xt promise-finally
+(defn.xt ^{:schema [:fn [:xt/promise [:xt/fn]] :xt/promise]} promise-finally
   "runs a finalizer and preserves the original settlement unless cleanup fails"
   {:added "4.1"}
   [promise thunk]

@@ -186,9 +186,9 @@ pub fn source_uses_dynamic_evaluation(source: &str) -> Result<bool, CompileError
     fn contains(form: &Form) -> bool {
         match crate::core::form_without_metadata(form) {
             Form::List(values) => {
-                values.first().is_some_and(|value| {
-                    matches!(value, Form::Symbol(name) if dynamic_symbol(name))
-                }) || values.iter().any(contains)
+                values.first().is_some_and(
+                    |value| matches!(value, Form::Symbol(name) if dynamic_symbol(name)),
+                ) || values.iter().any(contains)
             }
             Form::Vector(values) | Form::Set(values) => values.iter().any(contains),
             Form::Map(entries) => entries

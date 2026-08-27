@@ -29,7 +29,7 @@
  :adaptations
  [{:id :registry-analysis
    :foundation "Reads and parses JVM project/source files."
-   :hara "Analyzes binding-owned :schema metadata on defn.xt/def.xt code entries; defspec.xt is legacy input only."
+   :hara "Analyzes binding-owned :schema metadata on defn.xt/def.xt code entries."
    :reason
    "Canonical HAL module state is authoritative and available on both JVM and Rust hosts; declaration generation must not depend on Clojure tools.reader, code.project, or java.io."}
   {:id :plain-analysis-data
@@ -52,7 +52,7 @@
   :module
   [:type-only-imports :namespace-alias-resolution :d-ts-sidecar]
   :analysis
-  [:binding-schema :schema-only-def.xt :defspec.xt-compatibility
+  [:binding-schema :schema-only-def
    :same-name-spec-attachment]}
 
  :boundary

@@ -1,5 +1,5 @@
 (ns xt.substrate.base-request
-  (:require [lang.core :as l :refer [defspec.xt]]))
+  (:require [lang.core :as l]))
 
 (l/script :xtalk
   {:require [[xt.lang.spec-base :as xt]
@@ -7,50 +7,23 @@
              [xt.substrate.base-frame :as frame]
              [xt.substrate.base-space :as space]]})
 
-(defspec.xt RequestResolve
-  [:fn [:xt/any] :xt/any])
+(def ^{:schema [:fn [:xt/any] :xt/any]} RequestResolve nil)
 
-(defspec.xt RequestReject
-  [:fn [:xt/any] :xt/any])
+(def ^{:schema [:fn [:xt/any] :xt/any]} RequestReject nil)
 
-(defspec.xt RequestHandler
-  [:fn [space/NodeSpace
+(def ^{:schema [:fn [space/NodeSpace
         [:xt/maybe [:xt/array :xt/any]]
         frame/NodeFrame
         :xt/any]
-       :xt/any])
+       :xt/any]} RequestHandler nil)
 
-(defspec.xt PendingEntry
-  [:xt/record
+(def ^{:schema [:xt/record
    ["resolve" RequestResolve]
    ["reject" RequestReject]
    ["request" frame/NodeFrame]
-   ["meta" [:xt/maybe [:xt/dict :xt/str :xt/any]]]])
+   ["meta" [:xt/maybe [:xt/dict :xt/str :xt/any]]]]} PendingEntry nil)
 
-(defspec.xt ensure-promise
-  [:fn [:xt/any] :xt/promise])
-
-(defspec.xt add-pending
-  [:fn [:xt/any
-        frame/NodeFrame
-        RequestResolve
-        RequestReject
-        [:xt/maybe [:xt/dict :xt/str :xt/any]]]
-       PendingEntry])
-
-(defspec.xt remove-pending
-  [:fn [:xt/any :xt/str] [:xt/maybe PendingEntry]])
-
-(defspec.xt settle-pending
-  [:fn [:xt/any frame/NodeFrame] [:xt/maybe PendingEntry]])
-
-(defspec.xt invoke-handler
-  [:fn [:xt/any frame/NodeFrame] :xt/promise])
-
-(defspec.xt response-body
-  [:fn [:xt/any] :xt/promise])
-
-(defn.xt ensure-promise
+(defn.xt ^{:schema [:fn [:xt/any] :xt/promise]} ensure-promise
   "wraps sync values in a native host promise; leaves thenables/native promises as-is"
   {:added "4.1"}
   [value]
@@ -60,7 +33,12 @@
     (return value)
     (return (promise/x:promise-run value))))
 
-(defn.xt add-pending
+(defn.xt ^{:schema [:fn [:xt/any
+        frame/NodeFrame
+        RequestResolve
+        RequestReject
+        [:xt/maybe [:xt/dict :xt/str :xt/any]]]
+       PendingEntry]} add-pending
   "adds a pending request entry to a node"
   {:added "4.1"}
   [node request resolve reject meta]
@@ -73,7 +51,7 @@
   (xt/x:set-key pending id entry)
   (return entry))
 
-(defn.xt remove-pending
+(defn.xt ^{:schema [:fn [:xt/any :xt/str] [:xt/maybe PendingEntry]]} remove-pending
   "removes a pending request entry"
   {:added "4.1"}
   [node request-id]
@@ -82,7 +60,7 @@
   (xt/x:del-key pending request-id)
   (return entry))
 
-(defn.xt settle-pending
+(defn.xt ^{:schema [:fn [:xt/any frame/NodeFrame] [:xt/maybe PendingEntry]]} settle-pending
   "settles a pending request using a response frame"
   {:added "4.1"}
   [node response]
@@ -96,7 +74,7 @@
     (reject response))
   (return entry))
 
-(defn.xt invoke-handler
+(defn.xt ^{:schema [:fn [:xt/any frame/NodeFrame] :xt/promise]} invoke-handler
   "invokes a node handler for a request"
   {:added "4.1"}
   [node request]
@@ -117,7 +95,7 @@
                  request
                  node]))))
 
-(defn.xt response-body
+(defn.xt ^{:schema [:fn [:xt/any] :xt/promise]} response-body
   "normalises a response frame into request output"
   {:added "4.1"}
   [response]

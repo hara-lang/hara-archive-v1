@@ -1,6 +1,6 @@
 (ns postgres.core.impl-update
   (:config {:blank true})
-  (:require [std.foundation :refer :all]
+  (:require [std.foundation :refer [ex seq]]
             [postgres.core.impl-base :as base]
             [lang.common.util :as util]))
 

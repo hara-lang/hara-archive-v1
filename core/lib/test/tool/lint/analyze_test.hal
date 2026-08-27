@@ -28,4 +28,123 @@
        {}))))]
   => [1 0])
 
+^{:refer tool.lint.analyze/parse-require-entry}
+(fact "records wildcard imports and exclusions"
+  (select-keys
+   (analyze/parse-require-entry
+    '[std.foundation :as foundation :refer :all :exclude [resolve]])
+   [:namespace :alias :refers :refer-all? :excludes])
+  => {:namespace 'std.foundation
+      :alias 'foundation
+      :refers #{}
+      :refer-all? true
+      :excludes #{'resolve}})
+
+^{:refer tool.lint.analyze/namespace-info}
+(fact "retains namespace policy configuration and parsed requirements"
+  (let [info
+        (:namespace
+         (analyze/scan-source
+          (str "(ns demo.core\n"
+               "  (:config {:override [value]})\n"
+               "  (:require [std.foundation :as foundation :refer :all :exclude [resolve]]))\n")
+          {}))]
+    (select-keys info [:name :config :requirements :requires]))
+  => {:name 'demo.core
+      :config {:override ['value]}
+      :requirements [{:namespace 'std.foundation
+                      :alias 'foundation
+                      :refers #{}
+                      :refer-all? true
+                      :excludes #{'resolve}}]
+      :requires ['std.foundation]})
+
+^{:refer tool.lint.analyze/src-lang-path?}
+(fact "recognizes source-language paths without matching similarly named paths"
+  [(analyze/src-lang-path? "src-lang/xt/lang/common.hal")
+   (analyze/src-lang-path? "core/lib/src-lang/xt/lang/common.hal")
+   (analyze/src-lang-path? "core/lib/src-lang")
+   (analyze/src-lang-path? "core/lib/src-langish/common.hal")
+   (analyze/src-lang-path? "core/lib/src/lang/common.hal")]
+  => [true true true false false])
+
+(def valid-src-lang-scan
+  (analyze/scan-source
+   (str "(ns xt.lang.demo\n"
+        "  (:config {:override [constant function generator]}))\n"
+        "(def.xt constant 1)\n"
+        "(defn.xt function [] nil)\n"
+        "(defgen.xt generator [] nil)\n"
+        "(defmacro.xt macro [] nil)\n")
+   {:file "src-lang/xt/lang/demo.hal"}))
+
+^{:refer tool.lint.analyze/src-lang-override-finding}
+(fact "accepts overrides for local source-language declarations"
+  (analyze/src-lang-override-finding valid-src-lang-scan)
+  => nil)
+
+^{:refer tool.lint.analyze/src-lang-override-finding}
+(fact "rejects special forms and unrelated declarations in overrides"
+  (select-keys
+   (analyze/src-lang-override-finding
+    (analyze/scan-source
+     (str "(ns xt.lang.demo (:config {:override [do function macro stale]}))\n"
+          "(defn.xt function [] nil)\n"
+          "(defmacro.xt macro [] nil)\n")
+     {:file "src-lang/xt/lang/demo.hal"}))
+   [:type :override :spec/requirement])
+  => {:type :tool.lint/src-lang-invalid-override
+      :override ['do 'macro 'stale]
+      :spec/requirement :tool.source-analysis/src-lang-override-policy})
+
+^{:refer tool.lint.analyze/src-lang-foundation-findings}
+(fact "reports wildcard Foundation imports in source-language namespaces"
+  (map :type
+       (analyze/src-lang-foundation-findings
+        (analyze/scan-source
+         "(ns xt.lang.demo (:require [std.foundation :refer :all :exclude [resolve]]))"
+         {:file "src-lang/xt/lang/demo.hal"})))
+  => [:tool.lint/src-lang-foundation-refer-all])
+
+^{:refer tool.lint.analyze/spec-schema-placement-findings}
+(fact "requires spec schemas on the defmacro.xt declaration"
+  [(count
+    (analyze/spec-schema-placement-findings
+     (analyze/scan-source
+      (str "(ns xt.lang.spec-demo)\n"
+           "(def ^{:schema [:fn [] :xt/str]} x nil)\n")
+      {:file "src-lang/xt/lang/spec_demo.hal"})))
+   (count
+    (analyze/spec-schema-placement-findings
+     (analyze/scan-source
+      (str "(ns xt.lang.spec-demo)\n"
+           "(defmacro.xt ^{:schema [:fn [] :xt/str]} x [] nil)\n")
+      {:file "src-lang/xt/lang/spec_demo.hal"})))]
+  => [1 0])
+
+^{:refer tool.lint.analyze/src-lang-policy-findings}
+(fact "does not apply source-language policy outside src-lang"
+  (analyze/src-lang-policy-findings
+   (analyze/scan-source
+    (str "(ns xt.lang.demo (:config {:override [do]}))\n"
+         "(defn.xt value [] nil)\n"
+         "(def ^{:schema [:fn [] :xt/str]} x nil)\n"
+         "(ns ignored (:require [std.foundation :refer :all]))\n")
+    {:file "core/lib/src/lang/demo.hal"}))
+  => [])
+
+^{:refer tool.lint.analyze/analyze-scan}
+(fact "publishes source-language policy findings through a completed scan"
+  (map :type
+       (:findings
+        (analyze/analyze-scan
+         (analyze/scan-source
+          (str "(ns xt.lang.spec-demo (:config {:override [do]}))\n"
+               "(defn.xt value [] nil)\n"
+               "(def ^{:schema [:fn [] :xt/str]} x nil)\n")
+          {:file "src-lang/xt/lang/demo.hal"})
+         {})))
+  => [:tool.lint/src-lang-invalid-override
+      :tool.lint/spec-schema-placement])
+
 (pr-str (run {:namespace "tool.lint.analyze-test"}))

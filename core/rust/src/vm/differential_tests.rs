@@ -50,9 +50,7 @@ fn differential(runtime: &mut Runtime, source: &str) {
 }
 
 fn shared_runtime_corpus_path() -> PathBuf {
-    crate::spec_registry::require(
-        "01-lang/001-language/draft/conformance/parity/jvm-truffle.edn",
-    )
+    crate::spec_registry::require("01-lang/001-language/draft/conformance/parity/jvm-truffle.edn")
 }
 
 fn shared_core_language_corpus_path() -> PathBuf {

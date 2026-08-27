@@ -204,38 +204,18 @@ fn uuid_from_value(value: &Value) -> Result<uuid::Uuid, String> {
     }
 }
 
-<<<<<<< Updated upstream
 fn random_uuid() -> uuid::Uuid {
     let mut bytes = [0u8; 16];
     getrandom::getrandom(&mut bytes)
         .unwrap_or_else(|_| panic!("could not retrieve random bytes for uuid"));
-=======
-#[cfg(feature = "raw-wasm")]
-fn uuid_new_v4() -> uuid::Uuid {
-    let mut bytes = [0u8; 16];
-    if getrandom::getrandom(&mut bytes).is_err() {
-        return uuid::Uuid::nil();
-    }
->>>>>>> Stashed changes
     bytes[6] = (bytes[6] & 0x0f) | 0x40;
     bytes[8] = (bytes[8] & 0x3f) | 0x80;
     uuid::Uuid::from_bytes(bytes)
 }
 
-<<<<<<< Updated upstream
 pub(crate) fn uuid_value(values: &[Value]) -> Result<Value, String> {
     let value = match values {
         [] => random_uuid(),
-=======
-#[cfg(not(feature = "raw-wasm"))]
-fn uuid_new_v4() -> uuid::Uuid {
-    uuid::Uuid::new_v4()
-}
-
-pub(crate) fn uuid_value(values: &[Value]) -> Result<Value, String> {
-    let value = match values {
-        [] => uuid_new_v4(),
->>>>>>> Stashed changes
         [value] => uuid_from_value(value)?,
         [Value::Number(most), Value::Number(least)] => uuid_from_parts(*most, *least),
         _ if values.len() == 2 => {
@@ -2058,6 +2038,35 @@ thread_local! {
     static GENSYM_COUNTER: Cell<u64> = const { Cell::new(0) };
 }
 
+pub(crate) fn trace_stack_snapshot() -> Vec<String> {
+    TRACE_STACK.with(|stack| stack.borrow().clone())
+}
+
+pub(crate) fn with_trace_stack<R>(trace: &[String], operation: impl FnOnce() -> R) -> R {
+    let previous = TRACE_STACK.with(|stack| {
+        std::mem::replace(&mut *stack.borrow_mut(), trace.to_vec())
+    });
+    let result = operation();
+    TRACE_STACK.with(|stack| {
+        *stack.borrow_mut() = previous;
+    });
+    result
+}
+
+pub(crate) fn trace_frame_label(
+    name: String,
+    namespace: Option<String>,
+    site: Option<ExceptionSite>,
+) -> String {
+    let label = namespace
+        .map(|namespace| format!("{namespace}/{name}"))
+        .unwrap_or(name);
+    match site {
+        Some(site) if site.line > 0 => format!("{label} @ {}:{}", site.line, site.column),
+        _ => label,
+    }
+}
+
 #[cfg(feature = "evaluation-journal")]
 fn journal_preview(value: &Value) -> crate::journal::ValuePreview {
     EVALUATION_JOURNAL.with(|active| {
@@ -2189,7 +2198,7 @@ fn tracing_enabled() -> bool {
     TRACE_ENABLED.with(Cell::get)
 }
 
-fn append_trace(error: String) -> String {
+pub(crate) fn append_trace(error: String) -> String {
     if !tracing_enabled() {
         return error;
     }

@@ -1,5 +1,5 @@
 (ns xt.substrate
-  (:require [lang.core :as l :refer [defspec.xt]]))
+  (:require [lang.core :as l]))
 
 (l/script :xtalk
   {:require [[xt.lang.spec-base :as xt]
@@ -39,47 +39,38 @@
 (def.xt ^{:arglists '([node action handler meta])} register-handler base-util/register-handler)
 (def.xt ^{:arglists '([node space action args meta])} request base-util/request)
 
-(defspec.xt NodeTriggerHandler
-  [:fn [node-space/NodeSpace frame/NodeFrame :xt/any] :xt/any])
+(def ^{:schema [:fn [node-space/NodeSpace frame/NodeFrame :xt/any] :xt/any]} NodeTriggerHandler nil)
 
-(defspec.xt NodeHandlerEntry
-  [:xt/record
+(def ^{:schema [:xt/record
    ["id" :xt/str]
    ["fn" node-request/RequestHandler]
-   ["meta" [:xt/maybe [:xt/dict :xt/str :xt/any]]]])
+   ["meta" [:xt/maybe [:xt/dict :xt/str :xt/any]]]]} NodeHandlerEntry nil)
 
-(defspec.xt NodeTriggerEntry
-  [:xt/record
+(def ^{:schema [:xt/record
    ["id" :xt/str]
    ["fn" NodeTriggerHandler]
-   ["meta" [:xt/maybe [:xt/dict :xt/str :xt/any]]]])
+   ["meta" [:xt/maybe [:xt/dict :xt/str :xt/any]]]]} NodeTriggerEntry nil)
 
-(defspec.xt NodeTransportListener
-  [:fn [frame/NodeFrame
+(def ^{:schema [:fn [frame/NodeFrame
         [:xt/maybe [:xt/dict :xt/str :xt/any]]]
-   :xt/promise])
+   :xt/promise]} NodeTransportListener nil)
 
-(defspec.xt NodeTransportSendFn
-  [:fn [frame/NodeFrame] :xt/any])
+(def ^{:schema [:fn [frame/NodeFrame] :xt/any]} NodeTransportSendFn nil)
 
-(defspec.xt NodeTransportStartFn
-  [:fn [NodeTransportListener] :xt/any])
+(def ^{:schema [:fn [NodeTransportListener] :xt/any]} NodeTransportStartFn nil)
 
-(defspec.xt NodeTransportStopFn
-  [:fn [:xt/any] :xt/any])
+(def ^{:schema [:fn [:xt/any] :xt/any]} NodeTransportStopFn nil)
 
-(defspec.xt NodeTransport
-  [:xt/record
+(def ^{:schema [:xt/record
    ["::" :xt/str]
    ["id" :xt/str]
    ["listener" [:xt/maybe :xt/any]]
    ["meta" [:xt/maybe [:xt/dict :xt/str :xt/any]]]
    ["send_fn" [:xt/maybe NodeTransportSendFn]]
    ["start_fn" [:xt/maybe NodeTransportStartFn]]
-   ["stop_fn" [:xt/maybe NodeTransportStopFn]]])
+   ["stop_fn" [:xt/maybe NodeTransportStopFn]]]} NodeTransport nil)
 
-(defspec.xt EventNode
-  [:xt/record
+(def ^{:schema [:xt/record
    ["::" :xt/str]
    ["id" :xt/str]
    ["listeners" event-common/EventListenerMap]
@@ -90,152 +81,54 @@
    ["pending" [:xt/dict :xt/str node-request/PendingEntry]]
    ["router" router/RouterState]
    ["transports" [:xt/dict :xt/str NodeTransport]]
-   ["meta" [:xt/maybe [:xt/dict :xt/str :xt/any]]]])
+   ["meta" [:xt/maybe [:xt/dict :xt/str :xt/any]]]]} EventNode nil)
 
-(defspec.xt node?
-  [:fn [:xt/any] :xt/bool])
-
-(defspec.xt transport?
-  [:fn [:xt/any] :xt/bool])
-
-(defspec.xt transport-create
-  [:fn [:xt/str
-        [:xt/maybe [:xt/dict :xt/str :xt/any]]]
-   NodeTransport])
-
-(defspec.xt node-configure
-  [:fn [EventNode
-        [:xt/maybe [:xt/dict :xt/str :xt/any]]]
-   EventNode])
-
-(defspec.xt node-create
-  [:fn [[:xt/maybe [:xt/dict :xt/str :xt/any]]] EventNode])
-
-(defspec.xt register-handler
-  [:fn [EventNode
+(def ^{:schema [:fn [EventNode
         :xt/str
         node-request/RequestHandler
         [:xt/maybe [:xt/dict :xt/str :xt/any]]]
-   NodeHandlerEntry])
+   NodeHandlerEntry]} register-handler nil)
 
-(defspec.xt get-services
-  [:fn [EventNode] [:xt/dict :xt/str :xt/any]])
+(def ^{:schema [:fn [EventNode :xt/str] [:xt/maybe NodeHandlerEntry]]} unregister-handler nil)
 
-(defspec.xt get-service
-  [:fn [EventNode :xt/str] :xt/any])
+(def ^{:schema [:fn [EventNode :xt/str] [:xt/maybe NodeHandlerEntry]]} get-handler nil)
 
-(defspec.xt set-service
-  [:fn [EventNode :xt/str :xt/any] :xt/any])
+(def ^{:schema [:fn [EventNode] [:xt/array :xt/str]]} list-handlers nil)
 
-(defspec.xt unregister-handler
-  [:fn [EventNode :xt/str] [:xt/maybe NodeHandlerEntry]])
-
-(defspec.xt get-handler
-  [:fn [EventNode :xt/str] [:xt/maybe NodeHandlerEntry]])
-
-(defspec.xt list-handlers
-  [:fn [EventNode] [:xt/array :xt/str]])
-
-(defspec.xt register-trigger
-  [:fn [EventNode
+(def ^{:schema [:fn [EventNode
         :xt/str
         NodeTriggerHandler
         [:xt/maybe [:xt/dict :xt/str :xt/any]]]
-   NodeTriggerEntry])
+   NodeTriggerEntry]} register-trigger nil)
 
-(defspec.xt unregister-trigger
-  [:fn [EventNode :xt/str] [:xt/maybe NodeTriggerEntry]])
+(def ^{:schema [:fn [EventNode :xt/str] [:xt/maybe NodeTriggerEntry]]} unregister-trigger nil)
 
-(defspec.xt get-trigger
-  [:fn [EventNode :xt/str] [:xt/maybe NodeTriggerEntry]])
+(def ^{:schema [:fn [EventNode :xt/str] [:xt/maybe NodeTriggerEntry]]} get-trigger nil)
 
-(defspec.xt list-triggers
-  [:fn [EventNode] [:xt/array :xt/str]])
+(def ^{:schema [:fn [EventNode] [:xt/array :xt/str]]} list-triggers nil)
 
-(defspec.xt list-subscriptions
-  [:fn [EventNode
+(def ^{:schema [:fn [EventNode
         [:xt/maybe :xt/str]
         [:xt/maybe :xt/str]]
    [:or router/RouterSubscriptions
     router/RouterSpaceSubscriptions
-    [:xt/array :xt/str]]])
+    [:xt/array :xt/str]]]} list-subscriptions nil)
 
-(defspec.xt broadcast-transport
-  [:fn [EventNode
-        frame/NodeFrame
-        [:xt/maybe :xt/str]]
-   :xt/promise])
-
-(defspec.xt route-stream
-  [:fn [EventNode
-        frame/NodeFrame
-        [:xt/maybe :xt/str]]
-   :xt/promise])
-
-(defspec.xt attach-transport
-  [:fn [EventNode
-        :xt/str
-        [:or NodeTransport
-         [:xt/dict :xt/str :xt/any]]]
-   :xt/promise])
-
-(defspec.xt detach-transport
-  [:fn [EventNode :xt/str] :xt/promise])
-
-(defspec.xt receive-request
-  [:fn [EventNode
-        frame/NodeFrame
-        [:xt/maybe [:xt/dict :xt/str :xt/any]]]
-   :xt/promise])
-
-(defspec.xt receive-response
-  [:fn [EventNode frame/NodeFrame] :xt/promise])
-
-(defspec.xt request
-  [:fn [EventNode
+(def ^{:schema [:fn [EventNode
         [:xt/maybe :xt/str]
         :xt/str
         [:xt/maybe [:xt/array :xt/any]]
         [:xt/maybe [:xt/dict :xt/str :xt/any]]]
-   :xt/promise])
+   :xt/promise]} request nil)
 
-(defspec.xt subscribe
-  [:fn [EventNode
-        [:xt/maybe :xt/str]
-        :xt/str
-        [:xt/maybe :xt/str]
-        [:xt/maybe [:xt/dict :xt/str :xt/any]]]
-   :xt/promise])
-
-(defspec.xt unsubscribe
-  [:fn [EventNode
-        [:xt/maybe :xt/str]
-        :xt/str
-        [:xt/maybe :xt/str]
-        [:xt/maybe [:xt/dict :xt/str :xt/any]]]
-   :xt/promise])
-
-(defspec.xt publish
-  [:fn [EventNode
+(def ^{:schema [:fn [EventNode
         [:xt/maybe :xt/str]
         :xt/str
         :xt/any
         [:xt/maybe [:xt/dict :xt/str :xt/any]]]
-   :xt/promise])
+   :xt/promise]} publish nil)
 
-(defspec.xt receive-publish
-  [:fn [EventNode
-        frame/NodeFrame
-        [:xt/maybe [:xt/dict :xt/str :xt/any]]]
-   :xt/promise])
-
-(defspec.xt receive-frame
-  [:fn [EventNode
-        frame/NodeFrame
-        [:xt/maybe [:xt/dict :xt/str :xt/any]]]
-   :xt/promise])
-
-(defn.xt node?
+(defn.xt ^{:schema [:fn [:xt/any] :xt/bool]} node?
   "checks if a value is a node runtime"
   {:added "4.1"}
   [obj]
@@ -243,7 +136,7 @@
                (== "substrate"
                    (. obj ["::"])))))
 
-(defn.xt transport?
+(defn.xt ^{:schema [:fn [:xt/any] :xt/bool]} transport?
   "checks if a value is a node transport"
   {:added "4.1"}
   [obj]
@@ -251,7 +144,9 @@
                (== "substrate.transport"
                    (. obj ["::"])))))
 
-(defn.xt transport-create
+(defn.xt ^{:schema [:fn [:xt/str
+        [:xt/maybe [:xt/dict :xt/str :xt/any]]]
+   NodeTransport]} transport-create
   "wraps a transport implementation"
   {:added "4.1"}
   [transport-id impl]
@@ -262,21 +157,21 @@
      :listener nil}
     (or impl {}))))
 
-(defn.xt get-services
+(defn.xt ^{:schema [:fn [EventNode] [:xt/dict :xt/str :xt/any]]} get-services
   "gets registered node services"
   {:added "4.1"}
   [node]
   (return (or (. node ["services"])
               {})))
 
-(defn.xt get-service
+(defn.xt ^{:schema [:fn [EventNode :xt/str] :xt/any]} get-service
   "gets a registered node service"
   {:added "4.1"}
   [node service-id]
   (return (xt/x:get-key (-/get-services node)
                         service-id)))
 
-(defn.xt set-service
+(defn.xt ^{:schema [:fn [EventNode :xt/str :xt/any] :xt/any]} set-service
   "sets a shared service on the node"
   {:added "4.1"}
   [node service-id service]
@@ -294,7 +189,10 @@
                 service-id)
   (return service))
 
-(defn.xt broadcast-transport
+(defn.xt ^{:schema [:fn [EventNode
+        frame/NodeFrame
+        [:xt/maybe :xt/str]]
+   :xt/promise]} broadcast-transport
   "broadcasts a frame across attached transports"
   {:added "4.1"}
   [node frame exclude-id]
@@ -304,7 +202,10 @@
                                                exclude-id
                                                0)))
 
-(defn.xt route-stream
+(defn.xt ^{:schema [:fn [EventNode
+        frame/NodeFrame
+        [:xt/maybe :xt/str]]
+   :xt/promise]} route-stream
   "routes a stream to transports subscribed for the matching space and signal"
   {:added "4.1"}
   [node stream exclude-id]
@@ -316,7 +217,10 @@
                                        exclude-id
                                        0)))
 
-(defn.xt receive-request
+(defn.xt ^{:schema [:fn [EventNode
+        frame/NodeFrame
+        [:xt/maybe [:xt/dict :xt/str :xt/any]]]
+   :xt/promise]} receive-request
   "receives and handles an inbound request"
   {:added "4.1"}
   [node request ctx]
@@ -334,14 +238,19 @@
     (catch err
       (return (base-util/response-error node request err nil ctx)))))
 
-(defn.xt receive-response
+(defn.xt ^{:schema [:fn [EventNode frame/NodeFrame] :xt/promise]} receive-response
   "receives an inbound response"
   {:added "4.1"}
   [node response]
   (node-request/settle-pending node response)
   (return (promise/x:promise-run response)))
 
-(defn.xt subscribe
+(defn.xt ^{:schema [:fn [EventNode
+        [:xt/maybe :xt/str]
+        :xt/str
+        [:xt/maybe :xt/str]
+        [:xt/maybe [:xt/dict :xt/str :xt/any]]]
+   :xt/promise]} subscribe
   "constructs and optionally sends a subscribe control frame"
   {:added "4.1"}
   [node space signal subscription-id meta]
@@ -356,7 +265,12 @@
       (fn [_]
         (return event))))))
 
-(defn.xt unsubscribe
+(defn.xt ^{:schema [:fn [EventNode
+        [:xt/maybe :xt/str]
+        :xt/str
+        [:xt/maybe :xt/str]
+        [:xt/maybe [:xt/dict :xt/str :xt/any]]]
+   :xt/promise]} unsubscribe
   "constructs and optionally sends an unsubscribe control frame"
   {:added "4.1"}
   [node space signal subscription-id meta]
@@ -371,7 +285,10 @@
       (fn [_]
         (return event))))))
 
-(defn.xt receive-publish
+(defn.xt ^{:schema [:fn [EventNode
+        frame/NodeFrame
+        [:xt/maybe [:xt/dict :xt/str :xt/any]]]
+   :xt/promise]} receive-publish
   "receives an inbound stream frame"
   {:added "4.1"}
   [node stream ctx]
@@ -384,7 +301,10 @@
                               stream
                               (. ctx ["transport_id"])))))))
 
-(defn.xt receive-frame
+(defn.xt ^{:schema [:fn [EventNode
+        frame/NodeFrame
+        [:xt/maybe [:xt/dict :xt/str :xt/any]]]
+   :xt/promise]} receive-frame
   "demultiplexes node frames"
   {:added "4.1"}
   [node event ctx]
@@ -407,7 +327,11 @@
         :else
         (return (promise/x:promise-run event))))
 
-(defn.xt attach-transport
+(defn.xt ^{:schema [:fn [EventNode
+        :xt/str
+        [:or NodeTransport
+         [:xt/dict :xt/str :xt/any]]]
+   :xt/promise]} attach-transport
   "attaches and optionally starts a transport"
   {:added "4.1"}
   [node transport-id transport]
@@ -436,7 +360,7 @@
       (xt/x:set-key transport "listener" listener)
       (return transport)))))
 
-(defn.xt detach-transport
+(defn.xt ^{:schema [:fn [EventNode :xt/str] :xt/promise]} detach-transport
   "detaches and optionally stops a transport"
   {:added "4.1"}
   [node transport-id]
@@ -456,7 +380,9 @@
     (fn [_]
       (return transport)))))
 
-(defn.xt node-configure
+(defn.xt ^{:schema [:fn [EventNode
+        [:xt/maybe [:xt/dict :xt/str :xt/any]]]
+   EventNode]} node-configure
   "applies declarative spaces, handlers, and triggers to a node"
   {:added "4.1"}
   [node opts]
@@ -480,7 +406,7 @@
                         (. entry ["meta"])))
   (return node))
 
-(defn.xt node-create
+(defn.xt ^{:schema [:fn [[:xt/maybe [:xt/dict :xt/str :xt/any]]] EventNode]} node-create
   "creates a transport-agnostic node runtime, optionally from declarative config"
   {:added "4.1"}
   [opts]

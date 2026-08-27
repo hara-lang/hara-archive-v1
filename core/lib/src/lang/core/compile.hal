@@ -142,7 +142,9 @@
   [module]
   (let [schema (:schema module)]
     (if (map? schema)
-      (vec (sort-by (fn [pair] (str (key pair))) schema))
+      (vec
+       (map (fn [schema-id] [schema-id (get schema schema-id)])
+            (sort-by str (keys schema))))
       [])))
 
 (defn schema-diagnostics
@@ -153,8 +155,8 @@
     (fn [state module-id]
       (reduce
        (fn [inner pair]
-         (let [schema-id (key pair)
-               definition (val pair)
+         (let [schema-id (first pair)
+               definition (second pair)
                previous (get (:seen inner) schema-id)]
            (cond
              (nil? previous)
