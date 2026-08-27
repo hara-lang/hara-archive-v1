@@ -7,6 +7,21 @@ fn previously_failed_error(registry: &NamespaceRegistry<Value>, namespace: &str)
     message
 }
 
+fn eval_source_form(
+    namespace: &str,
+    form: &crate::kernel::SpannedForm,
+    env: &mut HashMap<String, Value>,
+) -> Result<Value, String> {
+    let site = ExceptionSite {
+        namespace: Some(namespace.to_owned()),
+        resource: None,
+        line: form.span.start.line,
+        column: form.span.start.column,
+    };
+    let form = exception_located_form(form);
+    with_exception_site(site, || eval(&form, env))
+}
+
 fn ensure_namespace(
     registry: &NamespaceRegistry<Value>,
     env: &mut HashMap<String, Value>,
@@ -80,18 +95,32 @@ fn ensure_namespace(
         let resource = NAMESPACE_SOURCE_PROVIDER
             .with(|active| active.borrow().as_ref().and_then(|provider| provider(name)))
             .ok_or_else(|| format!("Cannot require missing namespace: {name}"))?;
-        match resource {
+        #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+        let loaded_directly = if let Some(loader) = direct_native_namespace_loader() {
+            loader(name, resource.clone(), env)?;
+            true
+        } else {
+            false
+        };
+        #[cfg(not(all(feature = "direct-native", not(target_arch = "wasm32"))))]
+        let loaded_directly = false;
+        if !loaded_directly {
+            match resource {
             NamespaceResource::Source(source) => {
-                let forms = crate::kernel::parse_forms(&source)?;
+                let forms = crate::kernel::read_forms(&source)
+                    .map_err(|error| error.to_string())?;
                 let mut start = 0;
-                if forms.first().is_some_and(top_level_namespace_form) {
-                    eval(&forms[0], env)
+                if forms
+                    .first()
+                    .is_some_and(|form| top_level_namespace_form(&form.form))
+                {
+                    eval_source_form(name, &forms[0], env)
                         .map_err(|error| format!("{name}: top-level form 1: {error}"))?;
                     start = 1;
                 }
                 let declarations = forms[start..]
                     .iter()
-                    .filter_map(top_level_definition_name)
+                    .filter_map(|form| top_level_definition_name(&form.form))
                     .map(|name| Form::Symbol(name.to_owned()))
                     .collect::<Vec<_>>();
                 if !declarations.is_empty() {
@@ -104,7 +133,7 @@ fn ensure_namespace(
                         .map_err(|error| format!("{name}: top-level predeclaration: {error}"))?;
                 }
                 for (index, form) in forms.into_iter().enumerate().skip(start) {
-                    eval(&form, env).map_err(|error| {
+                    eval_source_form(name, &form, env).map_err(|error| {
                         format!("{name}: top-level form {}: {error}", index + 1)
                     })?;
                 }
@@ -114,11 +143,10 @@ fn ensure_namespace(
                 namespace_form,
                 artifact,
             } => {
-                for (index, form) in crate::kernel::parse_forms(&namespace_form)?
-                    .into_iter()
-                    .enumerate()
-                {
-                    eval(&form, env).map_err(|error| {
+                let forms = crate::kernel::read_forms(&namespace_form)
+                    .map_err(|error| error.to_string())?;
+                for (index, form) in forms.into_iter().enumerate() {
+                    eval_source_form(name, &form, env).map_err(|error| {
                         format!("{name}: namespace form {}: {error}", index + 1)
                     })?;
                 }
@@ -126,6 +154,7 @@ fn ensure_namespace(
                 registry.set_current(name);
                 crate::vm::execute_program_with_globals(program, registry)
                     .map_err(|error| error.to_string())?;
+            }
             }
         }
         if registry.find(name).is_none() {
@@ -310,12 +339,17 @@ fn eval_require_spec(
         }
     }
     let deferred = lazy && !reload;
+    #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+    let direct_reload = !deferred && direct_native_namespace_loader().is_some()
+        && namespace_has_interpreted_functions(registry, &target);
+    #[cfg(not(all(feature = "direct-native", not(target_arch = "wasm32"))))]
+    let direct_reload = false;
     if deferred {
         if registry.load_state(&target).is_none() {
             registry.set_load_state(&target, NamespaceLoadState::Unloaded);
         }
-    } else if !crate::kernel::generated::known_namespace(&target) {
-        ensure_namespace(registry, env, &target, reload)?;
+    } else if !crate::kernel::generated::known_namespace(&target) || direct_reload {
+        ensure_namespace(registry, env, &target, reload || direct_reload)?;
     }
     let requiring = registry.current().name().as_str().to_owned();
     if requiring != target && registry.load_state(&requiring) == Some(NamespaceLoadState::Loading) {
@@ -461,6 +495,18 @@ fn eval_require_specs(
     }
     refresh_namespace_environment(registry, env);
     Ok(())
+}
+
+#[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+fn namespace_has_interpreted_functions(
+    registry: &NamespaceRegistry<Value>,
+    name: &str,
+) -> bool {
+    registry.find(name).is_some_and(|namespace| {
+        namespace.mappings().into_iter().any(|(_, var)| {
+            matches!(var.deref_value(), Value::Function(function) if !is_direct_native_function(&function))
+        })
+    })
 }
 
 fn force_lazy_alias(
@@ -666,6 +712,49 @@ pub(crate) fn prepare_namespace_form(form: &Form) -> Result<(), String> {
         return Err("namespace declaration must start with ns or ns+".into());
     }
     eval_namespace_form(forms, &mut HashMap::new()).map(|_| ())
+}
+
+/// Applies a namespace-management form retained in a validated bytecode
+/// constant. This is intentionally separate from `eval_bytecode_declaration`:
+/// `ns`, `ns+`, and `require` need the namespace registry's management
+/// semantics, but must not re-enter the tree evaluator when a VM or direct
+/// native program executes them.
+pub(crate) fn eval_bytecode_management(value: &Value) -> Result<Value, String> {
+    let registry = namespace_registry()?;
+    let mut environment = registry
+        .current()
+        .mappings()
+        .into_iter()
+        .map(|(name, var)| (name.as_str().to_owned(), Value::Var(var)))
+        .collect();
+    refresh_namespace_environment(&registry, &mut environment);
+    let result = eval_bytecode_management_in(value, &mut environment)?;
+    save_namespace_environment(&registry, &mut environment);
+    Ok(result)
+}
+
+/// Applies a validated namespace-management value against a caller-owned
+/// compatibility environment. Namespace loaders use this form so a direct
+/// native frame can prepare `ns`/`require` without entering the tree
+/// evaluator. The environment is intentionally borrowed: selecting a module
+/// must save the requiring namespace before switching to the loaded one.
+pub(crate) fn eval_bytecode_management_in(
+    value: &Value,
+    environment: &mut HashMap<String, Value>,
+) -> Result<Value, String> {
+    let form = value_to_form(value)?;
+    let Form::List(forms) = form_without_metadata(&form) else {
+        return Err("namespace-management instruction expects a list".into());
+    };
+    let Some(Form::Symbol(operator)) = forms.first() else {
+        return Err("namespace-management instruction expects a symbol operator".into());
+    };
+    if !matches!(operator.as_str(), "ns" | "ns+" | "require") {
+        return Err(format!(
+            "namespace-management instruction does not support {operator}"
+        ));
+    }
+    eval_namespace_form(forms, environment)
 }
 
 #[inline(never)]

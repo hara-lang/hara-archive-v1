@@ -181,6 +181,27 @@ impl RuntimeBroker {
         )
     }
 
+    /// Starts a full broker with the requested ordinary evaluation backend.
+    /// Library callers retain the interpreter-default `start_with` entrypoint;
+    /// command-line frontends use this method to make native execution explicit
+    /// while preserving an interpreter escape hatch.
+    pub fn start_with_backend(
+        root: Option<PathBuf>,
+        native_sockets: bool,
+        allow_process: bool,
+        allow_postgres: bool,
+        execution_backend: &str,
+    ) -> Result<Self, String> {
+        Self::start_with_bootstrap_and_backend(
+            root,
+            native_sockets,
+            allow_process,
+            allow_postgres,
+            RuntimeBootstrap::Full,
+            execution_backend,
+        )
+    }
+
     fn start_with_bootstrap(
         root: Option<PathBuf>,
         native_sockets: bool,
@@ -188,6 +209,26 @@ impl RuntimeBroker {
         allow_postgres: bool,
         bootstrap: RuntimeBootstrap,
     ) -> Result<Self, String> {
+        Self::start_with_bootstrap_and_backend(
+            root,
+            native_sockets,
+            allow_process,
+            allow_postgres,
+            bootstrap,
+            "interpreter",
+        )
+    }
+
+    fn start_with_bootstrap_and_backend(
+        root: Option<PathBuf>,
+        native_sockets: bool,
+        allow_process: bool,
+        allow_postgres: bool,
+        bootstrap: RuntimeBootstrap,
+        execution_backend: &str,
+    ) -> Result<Self, String> {
+        crate::validate_execution_backend(execution_backend)?;
+        let execution_backend = execution_backend.to_owned();
         let (sender, receiver) = mpsc::channel();
         std::thread::Builder::new()
             .name("hara-runtime-broker".into())
@@ -200,6 +241,7 @@ impl RuntimeBroker {
                     allow_process,
                     allow_postgres,
                     bootstrap,
+                    execution_backend,
                 )
             })
             .map_err(|error| format!("runtime broker failed: {error}"))?;
@@ -431,11 +473,15 @@ fn runtime(
     allow_process: bool,
     allow_postgres: bool,
     bootstrap: RuntimeBootstrap,
+    execution_backend: &str,
 ) -> Runtime {
     let mut runtime = match bootstrap {
         RuntimeBootstrap::Full => Runtime::new(),
         RuntimeBootstrap::Core => Runtime::core(),
     };
+    runtime
+        .configure_execution_backend(execution_backend)
+        .expect("validated execution backend must configure");
     if let Some(root) = root {
         runtime.install_native_file_provider(root.to_string_lossy().as_ref());
     }
@@ -460,8 +506,10 @@ fn run(
     allow_process: bool,
     allow_postgres: bool,
     bootstrap: RuntimeBootstrap,
+    execution_backend: String,
 ) {
     let runtime_root = root.clone();
+    let runtime_backend = execution_backend.clone();
     let runtime_factory: Rc<dyn Fn() -> Runtime> = Rc::new(move || {
         runtime(
             runtime_root.as_ref(),
@@ -469,6 +517,7 @@ fn run(
             allow_process,
             allow_postgres,
             bootstrap,
+            &runtime_backend,
         )
     });
     let root_runtime = runtime_factory();
@@ -482,10 +531,12 @@ fn run(
                 reply,
             } => {
                 let result = broker_session_id(&session).and_then(|id| {
-                    kernel
-                        .session_mut(&id)?
-                        .runtime_mut()?
-                        .eval_native_traced(&source)
+                    let runtime = kernel.session_mut(&id)?.runtime_mut()?;
+                    if execution_backend == "direct-native" {
+                        runtime.eval_native(&source)
+                    } else {
+                        runtime.eval_native_traced(&source)
+                    }
                 });
                 let _ = reply.send(result);
             }

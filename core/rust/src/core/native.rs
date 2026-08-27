@@ -418,7 +418,9 @@ fn native_test_run(
             let metadata = map_value(case, &Value::Keyword("meta".into())).cloned();
             let result = match (test, expected) {
                 (Some(test), Some(expected)) => match &check_function {
-                    Some(check) => match call_value(check.clone(), vec![test, expected]) {
+                    Some(check) => match call_value(check.clone(), vec![test, expected])
+                        .and_then(native_test_await)
+                    {
                         Ok(checked) => native_test_checked_result(name, metadata, checked),
                         Err(error) => {
                             let failed =
@@ -1476,7 +1478,7 @@ fn native_host_values(operation: &str, values: Vec<Value>) -> Result<Value, Stri
     })
 }
 
-fn namespace_identifier(value: Value, operation: &str) -> Result<String, String> {
+pub(crate) fn namespace_identifier(value: Value, operation: &str) -> Result<String, String> {
     match value {
         Value::Symbol(name) if name.get_namespace().is_none() => Ok(name.as_str().to_owned()),
         Value::String(name) => Ok(name),
@@ -1740,6 +1742,10 @@ fn native_runtime_values(
             let [Value::String(source)] = values.as_slice() else {
                 return Err("std.native.Runtime/load-string expects one string".into());
             };
+            #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+            if direct_native_execution() {
+                return eval_direct_native_source(source);
+            }
             eval_value_text(source, env)
         }
         "var-sym" => {
@@ -1781,13 +1787,34 @@ fn native_runtime_values(
                 .collect::<Result<Vec<_>, _>>()?;
             let previous = registry.current().name().as_str().to_owned();
             select_namespace_environment(&registry, env, &target);
-            let result = (|| {
+            #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+            let result = if direct_native_execution() {
+                let source = if forms.is_empty() {
+                    "nil".to_owned()
+                } else {
+                    Form::List(
+                        std::iter::once(Form::Symbol("do".into()))
+                            .chain(forms.iter().cloned())
+                            .collect(),
+                    )
+                    .to_string()
+                };
+                eval_direct_native_source(&source)
+            } else {
                 let mut result = Value::Nil;
                 for form in &forms {
                     result = eval(form, env)?;
                 }
                 Ok(result)
-            })();
+            };
+            #[cfg(not(all(feature = "direct-native", not(target_arch = "wasm32"))))]
+            let result = {
+                let mut result = Value::Nil;
+                for form in &forms {
+                    result = eval(form, env)?;
+                }
+                Ok(result)
+            };
             select_namespace_environment(&registry, env, &previous);
             result
         }
@@ -1898,6 +1925,10 @@ fn native_runtime_values(
 }
 
 fn eval_value(value: Value, env: &mut HashMap<String, Value>) -> Result<Value, String> {
+    #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+    if direct_native_execution() {
+        return eval_direct_native_source(&value_to_form(&value)?.to_string());
+    }
     eval(&value_to_form(&value)?, env)
 }
 
@@ -2152,4 +2183,103 @@ pub fn with_namespace_source<R>(
         *active.borrow_mut() = previous;
         result
     })
+}
+
+/// Installs the direct-native namespace loader for one runtime evaluation.
+/// The ordinary source/bytecode loader remains the default; this hook lets a
+/// Runtime replace only the execution of a materialized namespace while the
+/// shared namespace transaction, dependency tracking, and rollback logic stay
+/// in one place.
+#[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+pub(crate) fn with_direct_native_namespace_loader<R>(
+    loader: Rc<dyn Fn(&str, NamespaceResource, &mut HashMap<String, Value>) -> Result<(), String>>,
+    action: impl FnOnce() -> R,
+) -> R {
+    ACTIVE_DIRECT_NATIVE_NAMESPACE_LOADER.with(|active| {
+        let previous = active.borrow_mut().replace(loader);
+        let result = action();
+        *active.borrow_mut() = previous;
+        result
+    })
+}
+
+/// Marks the duration of generated direct-native code. Native helpers may
+/// still call one another during this scope, but any attempt to invoke the
+/// tree evaluator through a helper is rejected at the shared boundary.
+#[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+pub(crate) fn with_direct_native_execution<R>(action: impl FnOnce() -> R) -> R {
+    ACTIVE_DIRECT_NATIVE_EXECUTION.with(|active| {
+        let previous = active.replace(true);
+        let result = action();
+        active.set(previous);
+        result
+    })
+}
+
+/// Temporarily leaves the generated-code execution scope while compiling a
+/// nested program. Macro expansion and namespace configuration are
+/// compilation-time compatibility seams; they may use the tree evaluator,
+/// but the validated program must re-enter the direct guard before execution.
+#[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+pub(crate) fn without_direct_native_execution<R>(action: impl FnOnce() -> R) -> R {
+    ACTIVE_DIRECT_NATIVE_EXECUTION.with(|active| {
+        let previous = active.replace(false);
+        let result = action();
+        active.set(previous);
+        result
+    })
+}
+
+#[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+fn direct_native_namespace_loader(
+) -> Option<Rc<dyn Fn(&str, NamespaceResource, &mut HashMap<String, Value>) -> Result<(), String>>> {
+    ACTIVE_DIRECT_NATIVE_NAMESPACE_LOADER.with(|active| active.borrow().clone())
+}
+
+#[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+pub(crate) fn direct_native_execution() -> bool {
+    ACTIVE_DIRECT_NATIVE_EXECUTION.with(Cell::get)
+}
+
+/// Runtime state captured when a VM closure crosses the synchronous machine
+/// boundary. The no-op shape keeps ordinary VM and wasm builds free of
+/// direct-native dependencies while native callbacks and resumptions can
+/// restore providers, namespace selection, protocols, and the evaluator
+/// guard on native builds.
+#[derive(Clone, Default)]
+pub(crate) struct NativeCallbackContext {
+    #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+    scope: Option<crate::direct_native::NativeExecutionScope>,
+    #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+    context: Option<DirectNativeContext>,
+}
+
+impl NativeCallbackContext {
+    pub(crate) fn capture() -> Self {
+        #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+        {
+            let scope = crate::direct_native::capture_execution_scope();
+            let context = scope.as_ref().map(|_| DirectNativeContext::capture());
+            return Self { scope, context };
+        }
+        #[cfg(not(all(feature = "direct-native", not(target_arch = "wasm32"))))]
+        {
+            Self::default()
+        }
+    }
+
+    pub(crate) fn with<R>(&self, action: impl FnOnce() -> R) -> R {
+        #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+        {
+            return crate::direct_native::with_captured_context(
+                self.scope.as_ref(),
+                self.context.as_ref(),
+                action,
+            );
+        }
+        #[cfg(not(all(feature = "direct-native", not(target_arch = "wasm32"))))]
+        {
+            action()
+        }
+    }
 }

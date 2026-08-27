@@ -1298,6 +1298,17 @@ fn protocol_coroutine_resume(arguments: &[Value]) -> Result<Value, String> {
     fiber::coroutine::resume_sync(coroutine.clone(), arguments[1..].to_vec())
 }
 
+/// Fiber-aware protocol entry for coroutine resumption. The synchronous
+/// protocol callback remains available to callers that explicitly request a
+/// blocking value, while native bytecode and EvalFiber can retain a pending
+/// await inside the coroutine instead of entering the tree evaluator.
+pub(crate) fn protocol_coroutine_resume_fiber(arguments: Vec<Value>, k: Cont) -> Step {
+    let Some(Value::Coroutine(coroutine)) = arguments.first() else {
+        return k(protocol_coroutine_resume(&arguments));
+    };
+    fiber::coroutine::coroutine_resume(coroutine.clone(), arguments[1..].to_vec(), k)
+}
+
 fn protocol_watch_add(arguments: &[Value]) -> Result<Value, String> {
     match arguments {
         [Value::Atom(atom), key, Value::Function(function)] => {
@@ -1777,14 +1788,14 @@ fn protocol_conj(arguments: &[Value]) -> Result<Value, String> {
 }
 
 pub(crate) fn protocol_call(protocol: &str, method: &str, arguments: &[Value]) -> Result<Value, String> {
-    ACTIVE_PROTOCOLS.with(|active| {
+    let registry = ACTIVE_PROTOCOLS.with(|active| {
         active
             .borrow()
             .as_ref()
             .cloned()
             .unwrap_or_else(ProtocolRegistry::core)
-            .invoke(protocol, method, arguments)
-    })
+    });
+    registry.invoke(protocol, method, arguments)
 }
 
 pub(crate) fn protocol_intrinsic_call(
@@ -1803,14 +1814,14 @@ fn extension_protocol_call(
     method: &str,
     arguments: &[Value],
 ) -> Result<Value, String> {
-    ACTIVE_PROTOCOLS.with(|active| {
+    let registry = ACTIVE_PROTOCOLS.with(|active| {
         active
             .borrow()
             .as_ref()
             .cloned()
             .unwrap_or_else(ProtocolRegistry::core)
-            .invoke_extension(receiver, protocol, method, arguments)
-    })
+    });
+    registry.invoke_extension(receiver, protocol, method, arguments)
 }
 
 fn mutable_collection_satisfies(
@@ -2051,10 +2062,14 @@ impl Value {
         )
     }
     fn supports_native_iassoc(value: &Self) -> bool {
-        Self::supports_native_map(value)
+            Self::supports_native_map(value)
             || matches!(
                 value,
-                Self::Tuple(_) | Self::Vector(_) | Self::Struct(_) | Self::MutableCollection(_)
+                Self::Deque(_)
+                    | Self::Tuple(_)
+                    | Self::Vector(_)
+                    | Self::Struct(_)
+                    | Self::MutableCollection(_)
             )
     }
     fn supports_native_idissoc(value: &Self) -> bool {
@@ -2321,14 +2336,14 @@ fn native_protocol_supports(protocol: &str, value: &Value) -> bool {
 }
 
 fn protocol_satisfies(protocol: &GuestProtocol, value: &Value) -> bool {
-    ACTIVE_PROTOCOLS.with(|active| {
+    let registry = ACTIVE_PROTOCOLS.with(|active| {
         active
             .borrow()
             .as_ref()
             .cloned()
             .unwrap_or_else(ProtocolRegistry::core)
-            .satisfies(protocol, value)
-    })
+    });
+    registry.satisfies(protocol, value)
 }
 
 fn promise_state_value(promise: &Promise) -> Value {

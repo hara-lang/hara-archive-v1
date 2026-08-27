@@ -145,7 +145,7 @@ pub fn current_work_context() -> Option<WorkContext> {
     CURRENT_WORK_CONTEXT.with(|current| current.borrow().clone())
 }
 
-pub(super) fn with_current_work_context<T>(
+pub(crate) fn with_current_work_context<T>(
     context: WorkContext,
     function: impl FnOnce() -> T,
 ) -> T {

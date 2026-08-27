@@ -365,6 +365,30 @@ fn with_exception_site_step(site: ExceptionSite, step: Step) -> Step {
     }
 }
 
+fn with_trace_stack_step(trace: Vec<TraceFrame>, step: Step) -> Step {
+    match step {
+        Step::Continue(next) => Step::Continue(Box::new(move || {
+            let step = with_trace_stack(&trace, next);
+            with_trace_stack_step(trace, step)
+        })),
+        Step::Wait(promise, resume) => Step::Wait(
+            promise,
+            Box::new(move |state| {
+                let step = with_trace_stack(&trace, || resume(state));
+                with_trace_stack_step(trace, step)
+            }),
+        ),
+        Step::Yield(value, resume) => Step::Yield(
+            value,
+            Box::new(move |value| {
+                let step = with_trace_stack(&trace, || resume(value));
+                with_trace_stack_step(trace, step)
+            }),
+        ),
+        Step::Done(result) => Step::Done(result),
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum EvalFiberState {
     Running,
@@ -1217,6 +1241,13 @@ fn parse_catch_clause(parts: &[Form]) -> Result<(Option<String>, usize, usize), 
         [_, Form::Symbol(name), _] if name != "Exception" && name != "Throwable" => {
             Ok((None, 1, 2))
         }
+        [_, Form::Symbol(name), body, ..]
+            if name != "Exception"
+                && name != "Throwable"
+                && !matches!(body, Form::Symbol(_)) =>
+        {
+            Ok((None, 1, 2))
+        }
         [_, Form::Symbol(class), Form::Symbol(_), _, ..] => {
             Ok((Some(class.clone()), 2, 3))
         }
@@ -1286,11 +1317,9 @@ fn application(v: Vec<Form>, env: Rc<RefCell<HashMap<String, Value>>>, k: Cont) 
     if let Some(name) = head_symbol {
         if let Ok(registry) = namespace_registry() {
             let mut environment = env.borrow_mut();
-            if let Err(error) = ensure_foundation_namespace_for_symbol(
-                &registry,
-                &mut environment,
-                name,
-            ) {
+            if let Err(error) =
+                ensure_foundation_namespace_for_symbol(&registry, &mut environment, name)
+            {
                 return k(Err(error));
             }
         }
@@ -1387,7 +1416,9 @@ fn application(v: Vec<Form>, env: Rc<RefCell<HashMap<String, Value>>>, k: Cont) 
     )
 }
 
-fn execution_context(environment: HashMap<String, Value>) -> (NamespaceRegistry<Value>, HashMap<String, Value>) {
+fn execution_context(
+    environment: HashMap<String, Value>,
+) -> (NamespaceRegistry<Value>, HashMap<String, Value>) {
     if let Ok(registry) = namespace_registry() {
         return (registry, environment);
     }
@@ -1462,6 +1493,16 @@ fn call(f: Rc<Function>, args: Vec<Value>, k: Cont) -> Step {
             f.params.len()
         )));
     }
+    let tracing = tracing_enabled();
+    if tracing {
+        TRACE_STACK.with(|stack| {
+            stack.borrow_mut().push(TraceFrame {
+                name: f.name.clone().unwrap_or_else(|| "<anonymous>".into()),
+                namespace: f.namespace.clone(),
+                site: current_exception_site(),
+            })
+        });
+    }
     let caller_scoped_foundation = f.namespace.as_deref() == Some("std.foundation")
         && (f.is_macro
             || matches!(
@@ -1498,6 +1539,15 @@ fn call(f: Rc<Function>, args: Vec<Value>, k: Cont) -> Step {
         if let Err(error) =
             crate::core::bind_pattern(pattern, value.clone(), &mut env, &mut bound, None)
         {
+            if let Some((registry, previous)) = namespace_scope {
+                registry.set_current(&previous);
+            }
+            let error = append_trace(error);
+            if tracing {
+                TRACE_STACK.with(|stack| {
+                    stack.borrow_mut().pop();
+                });
+            }
             return k(Err(format!("function destructuring failed: {error}")));
         }
     }
@@ -1508,6 +1558,15 @@ fn call(f: Rc<Function>, args: Vec<Value>, k: Cont) -> Step {
         if let Some(pattern) = &f.variadic_pattern {
             if let Err(error) = crate::core::bind_pattern(pattern, rest, &mut env, &mut bound, None)
             {
+                if let Some((registry, previous)) = namespace_scope {
+                    registry.set_current(&previous);
+                }
+                let error = append_trace(error);
+                if tracing {
+                    TRACE_STACK.with(|stack| {
+                        stack.borrow_mut().pop();
+                    });
+                }
                 return k(Err(format!("function destructuring failed: {error}")));
             }
         }
@@ -1522,11 +1581,23 @@ fn call(f: Rc<Function>, args: Vec<Value>, k: Cont) -> Step {
                 if let Some((registry, previous)) = namespace_scope {
                     registry.set_current(&previous);
                 }
-                k(Err("recur must be inside loop".into()))
+                let result = append_trace("recur must be inside loop".into());
+                if tracing {
+                    TRACE_STACK.with(|stack| {
+                        stack.borrow_mut().pop();
+                    });
+                }
+                k(Err(result))
             }
             r => {
                 if let Some((registry, previous)) = namespace_scope {
                     registry.set_current(&previous);
+                }
+                let r = r.map_err(append_trace);
+                if tracing {
+                    TRACE_STACK.with(|stack| {
+                        stack.borrow_mut().pop();
+                    });
                 }
                 k(r)
             }

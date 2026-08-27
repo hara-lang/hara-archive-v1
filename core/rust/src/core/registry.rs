@@ -583,6 +583,16 @@ pub(crate) fn canonical_intrinsic_protocol_symbol(symbol: &str) -> Option<String
 /// their aliases are installed from the protocol declaration registry and
 /// ordinary namespace resolution must handle them like every other alias.
 pub(crate) fn canonical_native_symbol(symbol: &str) -> Option<String> {
+    // `file/*` is the long-standing lowercase spelling used by the portable
+    // Hara library.  Keep it as a compatibility alias for the annotated
+    // `std.native.File` surface so source compilation and tree evaluation
+    // agree on the same callable identity.
+    if let Some(method) = symbol.strip_prefix("file/") {
+        return Some(format!("std.native.File/{method}"));
+    }
+    if let Some(method) = symbol.strip_prefix("os/") {
+        return Some(format!("std.native.OS/{method}"));
+    }
     if NATIVE_DECLARATIONS
         .iter()
         .any(|declaration| declaration.name == symbol)
@@ -671,6 +681,20 @@ pub fn builtin_protocol_method_values() -> Vec<(String, String, Value)> {
                             move |arguments| protocol_call(&protocol_name, &method_name, &arguments)
                         },
                         protocol_deref_fiber,
+                    )
+                } else if protocol_name == "std.protocol.icoroutine.ICoroutine"
+                    && method.name == "resume"
+                {
+                    native_fiber_function(
+                        &display_name,
+                        minimum_arity,
+                        maximum_arity.is_none(),
+                        {
+                            let protocol_name = protocol_name.clone();
+                            let method_name = method_name.clone();
+                            move |arguments| protocol_call(&protocol_name, &method_name, &arguments)
+                        },
+                        protocol_coroutine_resume_fiber,
                     )
                 } else {
                     native_variadic_function(&display_name, move |arguments| {
@@ -775,6 +799,14 @@ mod native_work_protocol_tests {
         assert_eq!(
             canonical_native_symbol("Coroutine"),
             Some("std.native.Coroutine".into())
+        );
+        assert_eq!(
+            canonical_native_symbol("file/join"),
+            Some("std.native.File/join".into())
+        );
+        assert_eq!(
+            canonical_native_symbol("os/cwd"),
+            Some("std.native.OS/cwd".into())
         );
     }
 

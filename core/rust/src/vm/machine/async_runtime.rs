@@ -125,13 +125,16 @@ impl Machine {
         machine.scheduler = Rc::downgrade(&scheduler);
         machine.scheduler_owner = None;
         let result = Promise::new();
+        let context = crate::core::NativeCallbackContext::capture();
         let poll = scheduler.clone();
+        let poll_context = context.clone();
         result.set_poller(Rc::new(move || {
-            Self::poll_scheduler(&poll);
+            poll_context.with(|| Self::poll_scheduler(&poll));
         }));
         let wait = scheduler.clone();
+        let wait_context = context.clone();
         result.set_waiter(Rc::new(move || {
-            Self::poll_scheduler(&wait);
+            wait_context.with(|| Self::poll_scheduler(&wait));
         }));
         let cancel_scheduler = scheduler.clone();
         let cancel_identity = result.identity_address();
@@ -165,13 +168,16 @@ pub(super) fn async_result_from_outcome(mut machine: Machine, outcome: VmOutcome
     machine.scheduler = Rc::downgrade(&scheduler);
     machine.scheduler_owner = None;
     let result = Promise::new();
+    let context = crate::core::NativeCallbackContext::capture();
     let poll = scheduler.clone();
+    let poll_context = context.clone();
     result.set_poller(Rc::new(move || {
-        Machine::poll_scheduler(&poll);
+        poll_context.with(|| Machine::poll_scheduler(&poll));
     }));
     let wait = scheduler.clone();
+    let wait_context = context.clone();
     result.set_waiter(Rc::new(move || {
-        Machine::poll_scheduler(&wait);
+        wait_context.with(|| Machine::poll_scheduler(&wait));
     }));
     let cancel_scheduler = scheduler.clone();
     let cancel_identity = result.identity_address();

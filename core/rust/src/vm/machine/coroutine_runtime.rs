@@ -1,29 +1,41 @@
 use super::*;
 
-fn vm_fiber_step(fiber: Rc<RefCell<VmFiber>>, continuation: Cont) -> Step {
+fn vm_fiber_step(
+    fiber: Rc<RefCell<VmFiber>>,
+    continuation: Cont,
+    context: crate::core::NativeCallbackContext,
+) -> Step {
     let state = fiber.borrow().state();
     match state {
-        VmFiberState::Completed(value) => continuation(Ok(value)),
-        VmFiberState::Failed(error) => continuation(Err(error.message)),
-        VmFiberState::Cancelled => continuation(Err("cancelled".into())),
-        VmFiberState::Running => continuation(Err("bytecode fiber remained running".into())),
+        VmFiberState::Completed(value) => context.with(|| continuation(Ok(value))),
+        VmFiberState::Failed(error) => context.with(|| continuation(Err(error.message))),
+        VmFiberState::Cancelled => context.with(|| continuation(Err("cancelled".into()))),
+        VmFiberState::Running => {
+            context.with(|| continuation(Err("bytecode fiber remained running".into())))
+        }
         VmFiberState::Suspended => {
             let Some(promise) = fiber.borrow().pending() else {
-                return continuation(Err("bytecode fiber suspended without promise".into()));
+                return context.with(|| {
+                    continuation(Err("bytecode fiber suspended without promise".into()))
+                });
             };
             Step::Wait(
                 promise,
                 Box::new(move |state| {
-                    fiber.borrow_mut().resume(state);
-                    vm_fiber_step(fiber, continuation)
+                    context.with(|| {
+                        fiber.borrow_mut().resume(state);
+                        vm_fiber_step(fiber, continuation, context.clone())
+                    })
                 }),
             )
         }
         VmFiberState::Yielded(value) => Step::Yield(
             value,
             Box::new(move |resume_value| {
-                fiber.borrow_mut().resume_yield(resume_value);
-                vm_fiber_step(fiber, continuation)
+                context.with(|| {
+                    fiber.borrow_mut().resume_yield(resume_value);
+                    vm_fiber_step(fiber, continuation, context.clone())
+                })
             }),
         ),
     }
@@ -37,6 +49,8 @@ impl Machine {
         let async_function = proto.async_function;
         let name = proto.name.clone();
         let registry = crate::core::namespace_registry().ok();
+        let callback_context = crate::core::NativeCallbackContext::capture();
+        let fiber_context = callback_context.clone();
         let callback_program = program.clone();
         let callback_closure = closure.clone();
         let callback_registry = registry.clone();
@@ -68,10 +82,10 @@ impl Machine {
                     }
                 }
             };
-            match &callback_registry {
+            callback_context.with(|| match &callback_registry {
                 Some(registry) => with_namespace_registry(registry, run),
                 None => run(),
-            }
+            })
         };
         let fiber_callback = move |args: Vec<Value>, continuation: Cont| {
             let start = || {
@@ -86,12 +100,12 @@ impl Machine {
                         .map(|slot| Self::into_value(program.clone(), slot))
                         .collect(),
                 )));
-                vm_fiber_step(fiber, continuation)
+                vm_fiber_step(fiber, continuation, fiber_context.clone())
             };
-            match &registry {
+            fiber_context.with(|| match &registry {
                 Some(registry) => with_namespace_registry(registry, start),
                 None => start(),
-            }
+            })
         };
         native_fiber_function(
             name.as_deref().unwrap_or("fn"),

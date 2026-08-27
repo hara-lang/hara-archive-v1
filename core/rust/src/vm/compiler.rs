@@ -60,7 +60,7 @@ use scope::ScopeStack;
 /// operator position they report as unsupported rather than as unbound
 /// symbols; everything else unbound reports as an unbound symbol,
 /// matching the evaluator.
-const UNSUPPORTED_OPERATORS: &[&str] = &["in-ns", "require", "await"];
+const UNSUPPORTED_OPERATORS: &[&str] = &["in-ns", "await"];
 
 /// Compiles source text into a validated program. Multiple top-level
 /// forms compile as an implicit `do`. Without a namespace registry the
@@ -73,14 +73,15 @@ pub fn compile_source(source: &str) -> Result<Program, CompileError> {
 
 fn compile_spanned_forms(forms: &[SpannedForm]) -> Result<Program, CompileError> {
     prepare_top_level_namespaces(forms)?;
-    compile_spanned_forms_without_namespace_preparation(forms, HashSet::new())
+    compile_spanned_forms_without_namespace_preparation(forms, HashSet::new(), false)
 }
 
 fn compile_spanned_forms_without_namespace_preparation(
     forms: &[SpannedForm],
     excluded_foundation_libraries: HashSet<String>,
- ) -> Result<Program, CompileError> {
-    let mut compiler = Compiler::new(excluded_foundation_libraries);
+    allow_unbound_globals: bool,
+) -> Result<Program, CompileError> {
+    let mut compiler = Compiler::new(excluded_foundation_libraries, allow_unbound_globals);
     compiler.predeclare_top_level(forms);
     let children = compiler.children(forms);
     compiler.compile_sequence(&children, true)?;
@@ -127,6 +128,18 @@ pub fn compile_source_with(
     compile_spanned_forms_with_config(&forms, registry, config, true)
 }
 
+/// Variant of [`compile_source_with`] for direct runtime evaluation. It keeps
+/// source namespace configuration intact while allowing late-bound globals
+/// which a preceding dynamic form may define.
+pub fn compile_source_with_allow_unbound_globals(
+    source: &str,
+    registry: &crate::kernel::NamespaceRegistry<crate::core::Value>,
+) -> Result<Program, CompileError> {
+    let forms = crate::kernel::read_forms(source)?;
+    let config = source_namespace_config(&forms)?;
+    compile_spanned_forms_with_config_options(&forms, registry, config, true, true)
+}
+
 /// Compiles source against a caller-owned registry and namespace configuration.
 /// The configuration is applied to parsed forms before bytecode lowering so
 /// aliases remain source-positioned and the VM does not need an evaluator or
@@ -141,11 +154,69 @@ pub fn compile_source_with_config(
     compile_spanned_forms_with_config(&forms, registry, config, true)
 }
 
+/// Compiles source for a direct-native runtime escape hatch. Dynamic Hara
+/// evaluation may define a Var before a later form in the same native frame
+/// reads it, so unresolved names are emitted as late-bound global reads. The
+/// direct runtime still fails at the read if the Var was not actually
+/// materialized; no evaluator fallback is introduced.
+pub fn compile_source_with_config_allow_unbound_globals(
+    source: &str,
+    registry: &crate::kernel::NamespaceRegistry<crate::core::Value>,
+    config: crate::kernel::GeneratedNamespaceConfig,
+) -> Result<Program, CompileError> {
+    let forms = crate::kernel::read_forms(source)?;
+    compile_spanned_forms_with_config_options(&forms, registry, config, true, true)
+}
+
+/// Reports whether source contains a language-level dynamic evaluation
+/// boundary. Direct-native callers use this to permit late-bound reads which
+/// may be materialized by `Runtime/eval`, `load-string`, or `defonce` during
+/// execution. The scan is deliberately structural so a string containing the
+/// word `eval` does not change compilation policy.
+pub fn source_uses_dynamic_evaluation(source: &str) -> Result<bool, CompileError> {
+    let forms = crate::kernel::read_forms(source)?;
+
+    fn dynamic_symbol(name: &str) -> bool {
+        matches!(
+            name.rsplit_once('/').map_or(name, |(_, local)| local),
+            "defonce" | "eval" | "eval-in" | "eval-in-ns" | "load-string" | "with-ns"
+        )
+    }
+
+    fn contains(form: &Form) -> bool {
+        match crate::core::form_without_metadata(form) {
+            Form::List(values) => {
+                values.first().is_some_and(|value| {
+                    matches!(value, Form::Symbol(name) if dynamic_symbol(name))
+                }) || values.iter().any(contains)
+            }
+            Form::Vector(values) | Form::Set(values) => values.iter().any(contains),
+            Form::Map(entries) => entries
+                .iter()
+                .any(|(key, value)| contains(key) || contains(value)),
+            Form::Tagged(_, value) => contains(value),
+            _ => false,
+        }
+    }
+
+    Ok(forms.iter().any(|form| contains(&form.form)))
+}
+
 fn compile_spanned_forms_with_config(
+    forms: &[SpannedForm],
+    registry: &crate::kernel::NamespaceRegistry<crate::core::Value>,
+    config: crate::kernel::GeneratedNamespaceConfig,
+    prepare_namespaces: bool,
+) -> Result<Program, CompileError> {
+    compile_spanned_forms_with_config_options(forms, registry, config, prepare_namespaces, false)
+}
+
+fn compile_spanned_forms_with_config_options(
     forms: &[SpannedForm],
     registry: &crate::kernel::NamespaceRegistry<crate::core::Value>,
     mut config: crate::kernel::GeneratedNamespaceConfig,
     prepare_namespaces: bool,
+    allow_unbound_globals: bool,
 ) -> Result<Program, CompileError> {
     crate::core::with_namespace_registry(registry, || {
         if prepare_namespaces {
@@ -159,6 +230,7 @@ fn compile_spanned_forms_with_config(
         compile_spanned_forms_without_namespace_preparation(
             &rewritten,
             config.excluded_foundation_libraries().clone(),
+            allow_unbound_globals,
         )
     })
 }
@@ -239,7 +311,8 @@ fn sync_registry_global_aliases(
                     .as_str()
                     .strip_prefix("std.foundation.")
                     .unwrap_or_default();
-                !excluded_foundation_libraries.contains(library) && !excluded_foundation.contains(library)
+                !excluded_foundation_libraries.contains(library)
+                    && !excluded_foundation.contains(library)
             })
             .map(|(alias, namespace)| (alias.as_str().to_owned(), namespace.as_str().to_owned())),
     );
@@ -423,6 +496,10 @@ struct Compiler {
     /// This is checked before the process-wide global alias registry so an
     /// excluded `str/` (or equivalent) cannot be resurrected by lookup.
     excluded_foundation_libraries: HashSet<String>,
+    /// Direct runtime evaluation can materialize a global after the current
+    /// source has already been compiled. Such names use the same late-bound
+    /// `GetGlobal` instruction but are allowed through the compile-time check.
+    allow_unbound_globals: bool,
     /// Source-level forwarding shims opted into call-site lowering with
     /// `^{:inline target/name}`.
     inline_globals: HashMap<String, String>,
@@ -461,6 +538,7 @@ fn placeholder(
 impl Compiler {
     fn predeclare_top_level(&mut self, forms: &[SpannedForm]) {
         for spanned in forms {
+            self.predeclare_nested_definitions(&spanned.form);
             let Form::List(items) = crate::core::form_without_metadata(&spanned.form) else {
                 continue;
             };
@@ -506,7 +584,69 @@ impl Compiler {
         }
     }
 
-    fn new(excluded_foundation_libraries: HashSet<String>) -> Compiler {
+    /// Nested `defn` forms still intern namespace-owned Vars at runtime. Make
+    /// their names visible during the enclosing function's free-variable pass
+    /// so calls resolve as late-bound globals instead of being mistaken for
+    /// captures. Definitions inside quoted data and syntax templates are data,
+    /// not executable declarations.
+    fn predeclare_nested_definitions(&mut self, form: &Form) {
+        let form = crate::core::form_without_metadata(form);
+        match form {
+            Form::List(items) => {
+                let Some(Form::Symbol(operator)) = items.first() else {
+                    return;
+                };
+                if matches!(operator.as_str(), "quote" | "syntax-quote" | "comment") {
+                    return;
+                }
+                // `defonce` is a Foundation macro which lowers to a runtime
+                // `(def ...)`.  Unlike an ordinary `defn`, the definition is
+                // hidden behind the macro expansion and therefore cannot be
+                // discovered by the normal top-level declaration pass.  It
+                // still establishes a namespace-owned global before later
+                // forms in the same function execute (the evaluator permits
+                // this because it compiles/evaluates one form at a time).
+                if matches!(operator.as_str(), "defonce" | "std.foundation/defonce") {
+                    if let Some(Form::Symbol(name)) =
+                        items.get(1).map(crate::core::form_without_metadata)
+                    {
+                        if !name.contains('/') {
+                            self.declare_program_global(name);
+                        }
+                    }
+                }
+                if matches!(operator.as_str(), "defn" | "defn-") {
+                    if let Some(Form::Symbol(name)) =
+                        items.get(1).map(crate::core::form_without_metadata)
+                    {
+                        if !name.contains('/') {
+                            self.declare_program_global(name);
+                        }
+                    }
+                }
+                for child in items {
+                    self.predeclare_nested_definitions(child);
+                }
+            }
+            Form::Vector(values) | Form::Set(values) => {
+                for child in values {
+                    self.predeclare_nested_definitions(child);
+                }
+            }
+            Form::Map(entries) => {
+                for (key, value) in entries {
+                    self.predeclare_nested_definitions(key);
+                    self.predeclare_nested_definitions(value);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn new(
+        excluded_foundation_libraries: HashSet<String>,
+        allow_unbound_globals: bool,
+    ) -> Compiler {
         let mut scopes = ScopeStack::new();
         scopes.push_scope();
         Compiler {
@@ -534,6 +674,7 @@ impl Compiler {
             }],
             globals: Vec::new(),
             excluded_foundation_libraries,
+            allow_unbound_globals,
             inline_globals: HashMap::new(),
             var_metadata: Vec::new(),
             top_level: true,
@@ -856,7 +997,14 @@ impl Compiler {
                 );
                 Ok(())
             }
-            Form::Metadata(_, value) => self.compile_form(value, span, None, tail),
+            Form::Metadata(_, value) => {
+                // Metadata wraps the form without changing its lexical or
+                // top-level position.  Restore the position after the
+                // dispatch prologue above; otherwise a top-level `^{...}
+                // (defn ...)` is mistaken for a nested definition.
+                self.top_level = top;
+                self.compile_form(value, span, None, tail)
+            }
             Form::Symbol(name) => match self.ctx().scopes.resolve(name) {
                 Some(slot) => {
                     self.emit(Instruction::LoadLocal(slot), Some(span.start));
@@ -865,15 +1013,17 @@ impl Compiler {
                 None if self.visible_global(name) => self.emit_get_global(name, span),
                 None if IntrinsicOp::from_symbol(name).is_some() => {
                     let target = self.name_constant(name, span)?;
-                    self.emit(
-                        Instruction::IntrinsicValue(target),
-                        Some(span.start),
-                    );
+                    self.emit(Instruction::IntrinsicValue(target), Some(span.start));
                     Ok(())
                 }
                 None if self.visible_bytecode_callable(name) => {
                     let index = self.name_constant(name, span)?;
                     self.emit(Instruction::BuiltinValue(index), Some(span.start));
+                    Ok(())
+                }
+                None if self.visible_namespace(name) => {
+                    let index = self.name_constant(name, span)?;
+                    self.emit(Instruction::NamespaceValue(index), Some(span.start));
                     Ok(())
                 }
                 None => Err(CompileError::new(
@@ -889,12 +1039,16 @@ impl Compiler {
                 let children = self.list_children(elements, span, children);
                 match &elements[0] {
                     Form::Symbol(name)
-                        if top
-                            && matches!(
-                                name.as_str(),
-                                "defprotocol" | "extend-type" | "defmulti" | "defmethod"
-                            ) =>
+                        if matches!(
+                            name.as_str(),
+                            "defprotocol" | "extend-type" | "defmulti" | "defmethod"
+                        ) =>
                     {
+                        if matches!(name.as_str(), "defprotocol" | "defmulti") {
+                            if let Some(Form::Symbol(declared)) = elements.get(1) {
+                                self.declare_program_global(declared);
+                            }
+                        }
                         let value = crate::core::form_to_value(form).map_err(|message| {
                             CompileError::new(
                                 CompileErrorKind::UnsupportedForm,
@@ -1003,6 +1157,20 @@ impl Compiler {
                     Form::Symbol(name) if name == "set!" => self.compile_set(&children, span),
                     Form::Symbol(name) if name == "defstruct" || name == "defmutable" => {
                         self.compile_named_definition(&children, span, name == "defmutable")
+                    }
+                    Form::Symbol(name)
+                        if name == "require" || (matches!(name.as_str(), "ns" | "ns+") && !top) =>
+                    {
+                        let value = crate::core::form_to_value(form).map_err(|message| {
+                            CompileError::new(
+                                CompileErrorKind::UnsupportedForm,
+                                message,
+                                Some(span.start),
+                            )
+                        })?;
+                        let index = self.constant_index_of(value, span)?;
+                        self.emit(Instruction::NamespaceOperation(index), Some(span.start));
+                        Ok(())
                     }
                     Form::Symbol(name) if name == "ns" || name == "ns+" => {
                         if !top {

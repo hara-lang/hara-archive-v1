@@ -163,6 +163,7 @@ impl PromiseHandle {
 pub struct Runtime {
     execution: RuntimeExecutionState,
     test_runner: String,
+    execution_backend: String,
     protocols: core::ProtocolRegistry,
     extensions: core::ExtensionRegistry,
     wasm_extensions: HashMap<String, extension::WasmExtension>,
@@ -192,6 +193,10 @@ pub struct Runtime {
         Option<Rc<dyn Fn(String, String, Vec<core::Value>) -> Result<core::Value, String>>>,
     #[cfg(not(target_arch = "wasm32"))]
     native_modules: native_module::Registry,
+    #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+    direct_native: crate::direct_native::NativeEngine,
+    #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+    direct_native_multimethods: core::MultiMethodRegistry,
     #[cfg(not(target_arch = "wasm32"))]
     extension_roots: Vec<std::path::PathBuf>,
 }

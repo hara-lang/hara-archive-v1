@@ -110,9 +110,10 @@ impl Machine {
             Instruction::IntrinsicCall { target, argc }
             | Instruction::ProtocolCall { target, argc } => {
                 let Some(name) = constant_string(program, *target) else {
-                    return Dispatch::Failed(
-                        self.error(function, format!("intrinsic target constant {target} is invalid")),
-                    );
+                    return Dispatch::Failed(self.error(
+                        function,
+                        format!("intrinsic target constant {target} is invalid"),
+                    ));
                 };
                 let argc = usize::from(*argc);
                 if self.stack.len() < argc {
@@ -120,6 +121,12 @@ impl Machine {
                         Ok(target) => return Dispatch::Unwound(target),
                         Err(error) => return Dispatch::Failed(error),
                     }
+                }
+                #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+                if matches!(instruction, Instruction::ProtocolCall { .. })
+                    || crate::core::IntrinsicOp::from_symbol(name).is_some()
+                {
+                    crate::direct_native::record_native_target(name);
                 }
                 if matches!(instruction, Instruction::ProtocolCall { .. })
                     && name == "std.protocol.ideref.IDeref/deref"
@@ -145,9 +152,7 @@ impl Machine {
                             VmSlot::InlineClosure {
                                 identity: right, ..
                             },
-                        ) => {
-                            Ok(VmSlot::Bool(left == right))
-                        }
+                        ) => Ok(VmSlot::Bool(left == right)),
                         (VmSlot::MultiArity(left), VmSlot::MultiArity(right)) => {
                             Ok(VmSlot::Bool(Rc::ptr_eq(&left, &right)))
                         }
@@ -259,6 +264,32 @@ impl Machine {
                     }
                 }
             }
+            Instruction::NamespaceValue(index) => {
+                let Some(name) = constant_string(program, *index) else {
+                    return Dispatch::Failed(self.error(
+                        function,
+                        format!("namespace name constant {index} is invalid"),
+                    ));
+                };
+                match crate::core::vm_resolve_namespace_value(name) {
+                    Ok(value) => self.stack.push(value.into()),
+                    Err(message) => return Dispatch::Failed(self.error(function, message)),
+                }
+            }
+            Instruction::NamespaceOperation(index) => {
+                let Some(value) = program.constants.get(*index as usize) else {
+                    return Dispatch::Failed(
+                        self.error(function, format!("constant index {index} out of range")),
+                    );
+                };
+                match crate::core::eval_bytecode_management(value) {
+                    Ok(value) => self.stack.push(value.into()),
+                    Err(message) => match self.raise(function, message) {
+                        Ok(target) => return Dispatch::Unwound(target),
+                        Err(error) => return Dispatch::Failed(error),
+                    },
+                }
+            }
             Instruction::DynamicBind(index) => {
                 let Some(Value::String(name)) = program.constants.get(*index as usize) else {
                     return Dispatch::Failed(self.error(
@@ -351,16 +382,15 @@ impl Machine {
                 let value = Self::into_value(program.clone(), value);
                 let position = function.source_map.position(self.ip);
                 let site = position.map(|position| crate::core::ExceptionSite {
-                        namespace: program.namespace.clone(),
-                        resource: None,
-                        line: position.line,
-                        column: position.column,
-                    });
+                    namespace: program.namespace.clone(),
+                    resource: None,
+                    line: position.line,
+                    column: position.column,
+                });
                 if !matches!(value, Value::ExceptionInfo(_)) {
-                    return Dispatch::Failed(self.error(
-                        function,
-                        "throw expects an Exception value created by ex",
-                    ));
+                    return Dispatch::Failed(
+                        self.error(function, "throw expects an Exception value created by ex"),
+                    );
                 }
                 let message = crate::core::thrown_error_at(value, site);
                 match self.raise(function, message) {

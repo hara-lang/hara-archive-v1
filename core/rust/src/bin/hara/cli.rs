@@ -9,11 +9,43 @@ mod hara;
 #[path = "cli/project.rs"]
 mod project;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ExecutionBackend {
+    Interpreter,
+    Native,
+}
+
+impl Default for ExecutionBackend {
+    fn default() -> Self {
+        Self::Native
+    }
+}
+
+impl ExecutionBackend {
+    fn parse(value: &str) -> Result<Self, String> {
+        match value {
+            "interpreter" => Ok(Self::Interpreter),
+            "native" => Ok(Self::Native),
+            _ => Err(format!(
+                "unknown backend {value}; expected interpreter or native"
+            )),
+        }
+    }
+
+    pub(crate) fn runtime_name(self) -> &'static str {
+        match self {
+            Self::Interpreter => "interpreter",
+            Self::Native => "direct-native",
+        }
+    }
+}
+
 #[derive(Default)]
 pub(crate) struct Options {
     pub(crate) root: Option<PathBuf>,
     pub(crate) project: Option<PathBuf>,
     pub(crate) lite_project: Option<PathBuf>,
+    pub(crate) backend: ExecutionBackend,
     pub(crate) native_sockets: bool,
     pub(crate) allow_file: bool,
     pub(crate) allow_process: bool,
@@ -54,6 +86,9 @@ pub(crate) fn parse_options() -> Result<Options, String> {
             }
             "--root" => options.root = Some(PathBuf::from(required(&mut args, "--root")?)),
             "--project" => options.project = Some(PathBuf::from(required(&mut args, "--project")?)),
+            "--backend" => {
+                options.backend = ExecutionBackend::parse(&required(&mut args, "--backend")?)?
+            }
             "--native-sockets" | "--allow-net" => options.native_sockets = true,
             "--allow-file" => options.allow_file = true,
             "--allow-process" => options.allow_process = true,
@@ -80,6 +115,9 @@ pub(crate) fn parse_options() -> Result<Options, String> {
             }
             value if value.starts_with("--project=") => {
                 options.project = Some(PathBuf::from(option_value(value, "--project")?))
+            }
+            value if value.starts_with("--backend=") => {
+                options.backend = ExecutionBackend::parse(option_value(value, "--backend")?)?
             }
             value if value.starts_with("--host=") => {
                 options.host = option_value(value, "--host")?.to_owned()
@@ -221,6 +259,7 @@ pub(crate) fn usage_lite() {
     println!();
     println!("Options:");
     println!("  --project PATH, --root PATH");
+    println!("  --backend native|interpreter (default: native)");
     println!("  --allow-file, --allow-net, --allow-process, --allow-postgres");
     println!("  --no-history, --no-splash, --no-color");
 }
@@ -244,4 +283,29 @@ pub(crate) fn error_exit_code(error: &str) -> i32 {
 pub(crate) fn exit_error(message: &str, status: i32) -> ! {
     eprintln!("hara: {message}");
     std::process::exit(status)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ExecutionBackend, Options};
+
+    #[test]
+    fn native_is_the_cli_backend_default() {
+        assert_eq!(Options::default().backend, ExecutionBackend::Native);
+    }
+
+    #[test]
+    fn cli_backend_names_map_to_runtime_backends() {
+        assert_eq!(
+            ExecutionBackend::parse("native").unwrap().runtime_name(),
+            "direct-native"
+        );
+        assert_eq!(
+            ExecutionBackend::parse("interpreter")
+                .unwrap()
+                .runtime_name(),
+            "interpreter"
+        );
+        assert!(ExecutionBackend::parse("unknown").is_err());
+    }
 }

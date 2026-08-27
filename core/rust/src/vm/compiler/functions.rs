@@ -371,7 +371,8 @@ impl Compiler {
                 } else if self.ctx().scopes.resolve(name).is_some()
                     || (!self.visible_global(name)
                         && IntrinsicOp::from_symbol(name).is_none()
-                        && !self.visible_bytecode_callable(name))
+                        && !self.visible_bytecode_callable(name)
+                        && !self.visible_namespace(name))
                 {
                     // An enclosing lexical binding always wins over a Var or
                     // builtin with the same name. Everything else that is not
@@ -454,7 +455,7 @@ impl Compiler {
                         // (catch name body) or (catch Class name body...).
                         "catch" => {
                             let marked = bound.len();
-                            if matches!(children.get(1).map(|child| child.form), Some(Form::Symbol(name)) if name != "Exception" && name != "Throwable")
+                            if matches!(children.get(1).map(|child| child.form), Some(Form::Symbol(name)) if !matches!(name.as_str(), "Exception" | "Throwable" | "std.native.Exception" | "std.native.Throwable"))
                             {
                                 if let Form::Symbol(name) = children[1].form {
                                     bound.push(name.clone());
@@ -658,6 +659,10 @@ impl Compiler {
                             }
                             bound.truncate(marked);
                         }
+                        // Namespace management is structural data consumed by
+                        // NamespaceOperation; its symbols are not lexical
+                        // references in the surrounding function.
+                        "ns" | "ns+" | "require" => {}
                         // Rejected by the compiler later; nothing to collect.
                         "defn" | "var" => {}
                         _ if IntrinsicOp::from_symbol(head).is_some()
@@ -674,7 +679,8 @@ impl Compiler {
                                 && !free.iter().any(|(f, _)| f == head)
                                 && (self.ctx().scopes.resolve(head).is_some()
                                     || (!self.visible_global(head)
-                                        && !self.visible_bytecode_callable(head)))
+                                        && !self.visible_bytecode_callable(head)
+                                        && !self.visible_namespace(head)))
                             {
                                 free.push((head.clone(), Some(children[0].span.start)));
                             }

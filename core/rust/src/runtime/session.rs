@@ -12,6 +12,7 @@ pub struct SessionKernel {
     sandbox_registry: SandboxRegistry,
     runtime_factory: Rc<dyn Fn() -> Runtime>,
     test_runner: String,
+    execution_backend: String,
 }
 
 #[derive(Default)]
@@ -175,6 +176,14 @@ impl Session {
             .unwrap_or_else(|| self.last_namespace.clone())
     }
 
+    #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+    pub fn native_execution_telemetry(
+        &self,
+    ) -> Result<crate::direct_native::NativeExecutionTelemetry, String> {
+        self.ensure_active()?;
+        Ok(self.runtime()?.native_execution_telemetry())
+    }
+
     pub fn authority(&self) -> SessionAuthorityPolicy {
         self.authority
     }
@@ -291,11 +300,24 @@ impl SessionKernel {
         Self::with_runtime_factory(Runtime::new(), Rc::new(Runtime::new))
     }
 
+    #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+    /// Creates an isolated-session kernel with a shared direct-native program
+    /// cache. The cache is useful for short-lived session owners such as the
+    /// Hara test runner; no namespace or mutable value state is shared.
+    pub fn new_with_native_engine(engine: crate::direct_native::NativeEngine) -> Self {
+        let factory_engine = engine.clone();
+        Self::with_runtime_factory(
+            Runtime::with_native_engine(engine),
+            Rc::new(move || Runtime::with_native_engine(factory_engine.clone())),
+        )
+    }
+
     pub(crate) fn with_runtime_factory(
         root_runtime: Runtime,
         runtime_factory: Rc<dyn Fn() -> Runtime>,
     ) -> Self {
         let root_id = SessionId::parse("ROOT").expect("ROOT is a valid session identifier");
+        let execution_backend = root_runtime.execution_backend.clone();
         Self {
             session_registry: SessionRegistry {
                 entries: HashMap::from([(
@@ -319,6 +341,7 @@ impl SessionKernel {
             },
             runtime_factory,
             test_runner: "code.test".into(),
+            execution_backend,
         }
     }
 
@@ -331,6 +354,17 @@ impl SessionKernel {
         Ok(())
     }
 
+    /// Selects the ordinary evaluation backend for every existing and future
+    /// session owned by this kernel.
+    pub fn set_execution_backend(&mut self, backend: &str) -> Result<(), String> {
+        validate_execution_backend(backend)?;
+        for session in self.session_registry.entries.values_mut() {
+            session.runtime_mut()?.configure_execution_backend(backend)?;
+        }
+        self.execution_backend = backend.into();
+        Ok(())
+    }
+
     pub fn create_session(&mut self, id: SessionId) -> Result<(), String> {
         let spec = SessionSpec::new(id, SessionAuthorityPolicy::ZERO);
         if self.session_registry.entries.contains_key(spec.id.as_str()) {
@@ -338,6 +372,7 @@ impl SessionKernel {
         }
         let mut runtime = (self.runtime_factory)();
         runtime.configure_test_runner(&self.test_runner)?;
+        runtime.configure_execution_backend(&self.execution_backend)?;
         for (resource, source) in &self.development_resources.entries {
             runtime.register_resource(resource, source);
         }
@@ -378,6 +413,18 @@ impl SessionKernel {
             .get(id.as_str())
             .map(Session::current_namespace)
             .ok_or_else(|| format!("NO_SESSION {id}"))
+    }
+
+    #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+    pub fn native_execution_telemetry(
+        &self,
+        id: &SessionId,
+    ) -> Result<crate::direct_native::NativeExecutionTelemetry, String> {
+        self.session_registry
+            .entries
+            .get(id.as_str())
+            .ok_or_else(|| format!("NO_SESSION {id}"))?
+            .native_execution_telemetry()
     }
 
     pub fn eval(&mut self, id: &SessionId, source: &str) -> Result<String, String> {

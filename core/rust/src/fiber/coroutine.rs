@@ -38,16 +38,30 @@ pub fn run_coroutine(step: Step, coroutine: Rc<Coroutine>, k: Cont) -> Step {
             k(Err(e))
         }
         Step::Yield(value, resume) => {
-            *coroutine.state.borrow_mut() = CoroutineState::Suspended(resume);
+            let trace = trace_stack_snapshot();
+            *coroutine.state.borrow_mut() = CoroutineState::Suspended(Box::new(move |value| {
+                let step = with_trace_stack(&trace, || resume(value));
+                with_trace_stack_step(trace, step)
+            }));
             k(Ok(value))
         }
         Step::Continue(next) => {
-            Step::Continue(Box::new(move || run_coroutine(next(), coroutine, k)))
+            let trace = trace_stack_snapshot();
+            Step::Continue(Box::new(move || {
+                let step = with_trace_stack(&trace, next);
+                run_coroutine(step, coroutine, k)
+            }))
         }
-        Step::Wait(promise, resume) => Step::Wait(
-            promise,
-            Box::new(move |state| run_coroutine(resume(state), coroutine, k)),
-        ),
+        Step::Wait(promise, resume) => {
+            let trace = trace_stack_snapshot();
+            Step::Wait(
+                promise,
+                Box::new(move |state| {
+                    let step = with_trace_stack(&trace, || resume(state));
+                    run_coroutine(step, coroutine, k)
+                }),
+            )
+        }
     }
 }
 

@@ -50,6 +50,10 @@ impl Compiler {
                 let index = self.name_constant(name, span)?;
                 self.emit(Instruction::BuiltinValue(index), Some(span.start))
             }
+            None if self.visible_namespace(name) => {
+                let index = self.name_constant(name, span)?;
+                self.emit(Instruction::NamespaceValue(index), Some(span.start))
+            }
             None => {
                 return Err(CompileError::new(
                     CompileErrorKind::UnboundSymbol,

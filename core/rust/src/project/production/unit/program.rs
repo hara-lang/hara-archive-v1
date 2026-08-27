@@ -36,7 +36,9 @@ pub(super) fn scan_program(program: &Program, analysis: &mut UnitAnalysis) {
                     } else {
                         noncanonical_root(
                             analysis,
-                            format!("intrinsic instruction has no string identity at constant {target}"),
+                            format!(
+                                "intrinsic instruction has no string identity at constant {target}"
+                            ),
                         );
                     }
                 }
@@ -49,6 +51,38 @@ pub(super) fn scan_program(program: &Program, analysis: &mut UnitAnalysis) {
                             analysis,
                             format!(
                                 "builtin instruction has no string identity at constant {index}"
+                            ),
+                        );
+                    }
+                }
+                Instruction::NamespaceValue(index) => {
+                    if let Some(name) = string_constant(program, *index) {
+                        analysis.runtime_edges.insert(name.to_owned());
+                    } else {
+                        noncanonical_root(
+                            analysis,
+                            format!(
+                                "namespace instruction has no string identity at constant {index}"
+                            ),
+                        );
+                    }
+                }
+                Instruction::NamespaceOperation(index) => {
+                    if let Some(value) = program.constants.get(*index as usize) {
+                        if let Ok(form) = core::value_to_form(value) {
+                            if let Form::List(items) = core::form_without_metadata(&form) {
+                                if let Some(Form::Symbol(operator)) = items.first() {
+                                    analysis
+                                        .runtime_edges
+                                        .insert(format!("namespace-operation:{operator}"));
+                                }
+                            }
+                        }
+                    } else {
+                        noncanonical_root(
+                            analysis,
+                            format!(
+                                "namespace-management instruction has no form at constant {index}"
                             ),
                         );
                     }

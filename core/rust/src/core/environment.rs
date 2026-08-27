@@ -775,6 +775,187 @@ thread_local! {
     static NAMESPACE_SOURCE_PROVIDER: RefCell<Option<Rc<dyn Fn(&str) -> Option<NamespaceResource>>>> = const { RefCell::new(None) };
     static ACTIVE_THROWN_VALUE: RefCell<Option<(String, Value)>> = const { RefCell::new(None) };
     static ACTIVE_MULTIMETHODS: RefCell<HashMap<String, Rc<RefCell<MultiMethod>>>> = RefCell::new(HashMap::new());
+    #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+    static ACTIVE_DIRECT_NATIVE_NAMESPACE_LOADER: RefCell<Option<Rc<dyn Fn(&str, NamespaceResource, &mut HashMap<String, Value>) -> Result<(), String>>>> = const { RefCell::new(None) };
+    #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+    static ACTIVE_DIRECT_NATIVE_EXECUTION: Cell<bool> = const { Cell::new(false) };
+}
+
+#[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+pub(crate) type MultiMethodRegistry =
+    Rc<RefCell<HashMap<String, Rc<RefCell<MultiMethod>>>>>;
+
+#[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+#[derive(Clone)]
+pub(crate) struct DirectNativeContext {
+    pub(crate) namespaces: NamespaceRegistry<Value>,
+    /// The namespace in which the frame was compiled. Namespace registries
+    /// share their mutable current pointer, so a suspended child must restore
+    /// this selection explicitly when it resumes instead of inheriting a
+    /// caller which happened to run in the meantime.
+    pub(crate) namespace: String,
+    pub(crate) protocols: ProtocolRegistry,
+    pub(crate) promise_provider: Rc<dyn PromiseProvider>,
+    pub(crate) file_provider: Option<Rc<dyn FileProvider>>,
+    pub(crate) socket_provider: Option<Rc<dyn SocketProvider>>,
+    pub(crate) process_allowed: bool,
+    pub(crate) kernel_provider: Option<Rc<KernelProvider>>,
+    pub(crate) package_catalog: PackageCatalog,
+    pub(crate) macros: Rc<RefCell<HashMap<(String, String), Rc<Function>>>>,
+    pub(crate) namespace_source:
+        Option<Rc<dyn Fn(&str) -> Option<NamespaceResource>>>,
+    pub(crate) host_handler:
+        Option<Rc<dyn Fn(String, String, Vec<Value>) -> Result<Value, String>>>,
+    pub(crate) test_runner: String,
+    pub(crate) definition_origin: VarOrigin,
+    pub(crate) multimethods: MultiMethodRegistry,
+    pub(crate) native_namespace_loader: Option<
+        Rc<dyn Fn(
+            &str,
+            NamespaceResource,
+            &mut HashMap<String, Value>,
+        ) -> Result<(), String>>,
+    >,
+    pub(crate) work_context: Option<crate::work::WorkContext>,
+}
+
+#[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+impl DirectNativeContext {
+    pub(crate) fn capture() -> Self {
+        let multimethods = Rc::new(RefCell::new(
+            ACTIVE_MULTIMETHODS.with(|active| active.borrow().clone()),
+        ));
+        Self::capture_with_multimethods(multimethods)
+    }
+
+    pub(crate) fn capture_with_multimethods(multimethods: MultiMethodRegistry) -> Self {
+        let namespaces = namespace_registry()
+            .unwrap_or_else(|_| NamespaceRegistry::new("user"));
+        let namespace = namespaces.current().name().as_str().to_owned();
+        let protocols = ACTIVE_PROTOCOLS
+            .with(|active| active.borrow().clone())
+            .unwrap_or_else(ProtocolRegistry::core);
+        let promise_provider = ACTIVE_PROMISE_PROVIDER
+            .with(|active| active.borrow().clone())
+            .unwrap_or_else(|| Rc::new(LocalPromiseProvider));
+        let file_provider = ACTIVE_FILE_PROVIDER.with(|active| active.borrow().clone());
+        let socket_provider = ACTIVE_SOCKET_PROVIDER.with(|active| active.borrow().clone());
+        let process_allowed = ACTIVE_PROCESS_ALLOWED.get();
+        let kernel_provider = ACTIVE_KERNEL_PROVIDER.with(|active| active.borrow().clone());
+        let package_catalog = ACTIVE_PACKAGE_CATALOG
+            .with(|active| active.borrow().clone())
+            .unwrap_or_default();
+        let macros = ACTIVE_MACROS.with(|active| {
+            active
+                .borrow()
+                .clone()
+                .unwrap_or_else(|| Rc::new(RefCell::new(HashMap::new())))
+        });
+        let namespace_source = NAMESPACE_SOURCE_PROVIDER
+            .with(|active| active.borrow().clone());
+        let host_handler = HOST_CALL_HANDLER.with(|active| active.borrow().clone());
+        let test_runner = ACTIVE_TEST_RUNNER.with(|active| active.borrow().clone());
+        let definition_origin = ACTIVE_DEFINITION_ORIGIN.with(Cell::get);
+        let native_namespace_loader = ACTIVE_DIRECT_NATIVE_NAMESPACE_LOADER
+            .with(|active| active.borrow().clone());
+        let work_context = crate::work::current_work_context();
+        Self {
+            namespaces,
+            namespace,
+            protocols,
+            promise_provider,
+            file_provider,
+            socket_provider,
+            process_allowed,
+            kernel_provider,
+            package_catalog,
+            macros,
+            namespace_source,
+            host_handler,
+            test_runner,
+            definition_origin,
+            multimethods,
+            native_namespace_loader,
+            work_context,
+        }
+    }
+
+    pub(crate) fn with<R>(&self, operation: impl FnOnce() -> R) -> R {
+        let namespaces = self.namespaces.clone();
+        let namespace = self.namespace.clone();
+        let run = || {
+            let previous = namespaces.current().name().as_str().to_owned();
+            namespaces.set_current(&namespace);
+            let result = with_test_runner(&self.test_runner, || {
+                with_capability_providers(
+                    self.file_provider.clone(),
+                    self.socket_provider.clone(),
+                    self.process_allowed,
+                    self.kernel_provider.clone(),
+                    || {
+                        with_package_catalog(&self.package_catalog, || {
+                            with_promise_provider(self.promise_provider.clone(), || {
+                                with_macros(self.macros.clone(), || {
+                                    with_namespace_registry(&self.namespaces, || {
+                                        with_definition_origin(self.definition_origin, || {
+                                            with_protocols(&self.protocols, || {
+                                                with_direct_native_context_values(self, operation)
+                                            })
+                                        })
+                                    })
+                                })
+                            })
+                        })
+                    },
+                )
+            });
+            namespaces.set_current(&previous);
+            result
+        };
+        if let Some(context) = self.work_context.clone() {
+            crate::work::with_current_work_context(context, run)
+        } else {
+            run()
+        }
+    }
+}
+
+#[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+fn with_direct_native_context_values<R>(
+    context: &DirectNativeContext,
+    operation: impl FnOnce() -> R,
+) -> R {
+    let run_with_multimethods = || {
+        ACTIVE_MULTIMETHODS.with(|active| {
+            let previous = std::mem::replace(
+                &mut *active.borrow_mut(),
+                context.multimethods.borrow().clone(),
+            );
+            let result = operation();
+            *context.multimethods.borrow_mut() = active.borrow().clone();
+            *active.borrow_mut() = previous;
+            result
+        })
+    };
+    let run_with_loader = || {
+        if let Some(loader) = context.native_namespace_loader.clone() {
+            with_direct_native_namespace_loader(loader, run_with_multimethods)
+        } else {
+            run_with_multimethods()
+        }
+    };
+    let run_with_source = || {
+        if let Some(provider) = context.namespace_source.clone() {
+            with_namespace_source(provider, run_with_loader)
+        } else {
+            run_with_loader()
+        }
+    };
+    if let Some(handler) = context.host_handler.clone() {
+        with_host_calls(handler, run_with_source)
+    } else {
+        run_with_source()
+    }
 }
 
 pub(crate) fn with_test_runner<R>(runner: &str, f: impl FnOnce() -> R) -> R {
@@ -803,6 +984,22 @@ pub(crate) fn restore_multimethods(snapshot: HashMap<String, MultiMethod>) {
             .map(|(name, state)| (name, Rc::new(RefCell::new(state))))
             .collect();
     });
+}
+
+pub(crate) fn register_multimethod(name: String, state: Rc<RefCell<MultiMethod>>) {
+    ACTIVE_MULTIMETHODS.with(|active| {
+        active.borrow_mut().insert(name, state);
+    });
+}
+
+pub(crate) fn multimethod_state(name: &str) -> Option<Rc<RefCell<MultiMethod>>> {
+    ACTIVE_MULTIMETHODS.with(|active| active.borrow().get(name).cloned())
+}
+
+pub(crate) fn active_protocol_registry() -> Result<ProtocolRegistry, String> {
+    ACTIVE_PROTOCOLS
+        .with(|active| active.borrow().clone())
+        .ok_or_else(|| "protocol registry is unavailable".into())
 }
 
 #[derive(Clone)]
@@ -1044,6 +1241,35 @@ pub(crate) fn vm_resolve_global(name: &str) -> Result<KernelVar<Value>, String> 
         }
     }
     Err(format!("unbound symbol: {name}"))
+}
+
+/// Resolves a bare namespace symbol as the evaluator does. Namespace aliases
+/// are values (and therefore callable through their `run` Var), but they are
+/// not Vars themselves and cannot be represented by `vm_resolve_global`.
+/// Lazy aliases are materialized at execution time so compiled programs keep
+/// the same load boundary as interpreted forms.
+pub(crate) fn vm_resolve_namespace_value(name: &str) -> Result<Value, String> {
+    let registry = namespace_registry()?;
+    if let Some(namespace) = registry
+        .current()
+        .aliases()
+        .into_iter()
+        .find_map(|(alias, namespace)| (alias.as_str() == name).then_some(namespace))
+    {
+        return Ok(Value::Namespace(Rc::new(namespace)));
+    }
+    if let Some(target) = registry.current().lazy_target(name) {
+        require_namespace(&registry, &mut HashMap::new(), target.as_str())?;
+        let namespace = registry
+            .find(target.as_str())
+            .ok_or_else(|| format!("Cannot require missing namespace: {target}"))?;
+        registry.current().alias(name, namespace.clone());
+        return Ok(Value::Namespace(Rc::new(namespace)));
+    }
+    registry
+        .find(name)
+        .map(|namespace| Value::Namespace(Rc::new(namespace)))
+        .ok_or_else(|| format!("unbound symbol: {name}"))
 }
 
 fn validate_named_definition(kind: &str, name: &str, fields: &[NamedField]) -> Result<(), String> {
@@ -1446,7 +1672,12 @@ pub fn save_namespace_environment(
         .collect::<Vec<_>>();
     for (name, value) in locals {
         let path = format!("{namespace_name}/{name}");
-        if matches!(&value, Value::Var(var) if var.symbol().get_namespace().is_some() && var.symbol().get_namespace() != Some(namespace_name.as_str()))
+        if matches!(&value, Value::Var(var) if
+            (var.symbol().get_namespace().is_some()
+                && var.symbol().get_namespace() != Some(namespace_name.as_str()))
+                || var.symbol().as_str().starts_with("std.native.")
+                || var.symbol().as_str().starts_with("std.protocol.")
+        )
         {
             continue;
         }
