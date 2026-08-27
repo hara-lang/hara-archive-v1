@@ -1,0 +1,85 @@
+(ns lang.model.v1.spec-lisp-common-test
+  (:use code.test)
+  (:require [lang.model.v1.spec-lisp-common :as common]))
+
+^{:refer lang.model.v1.spec-lisp-common/prepare-top-level}
+(fact "prepare-top-level unwraps a singleton bulk form"
+  [(pr-str (common/prepare-top-level
+            (quote begin)
+            (with-meta [1] {:bulk true})))
+   (pr-str (common/prepare-top-level
+            (quote begin)
+            (with-meta [1 2] {:bulk true})))
+   (common/prepare-top-level (quote begin) [1 2])]
+  => ["1" "(begin 1 2)" [1 2]])
+
+^{:refer lang.model.v1.spec-lisp-common/expand-form}
+(fact "expand-form applies hard links and macros"
+  [(pr-str (common/expand-form
+            {(quote foo) {:emit :hard-link :raw (quote bar)}}
+            '(foo 1)))
+   (pr-str (common/expand-form
+            {(quote macro) {:emit :macro
+                             :macro (fn [form]
+                                      (list (quote expanded)
+                                            (second form)))} }
+            '(macro 1)))]
+  => ["(bar 1)" "(expanded 1)"])
+
+^{:refer lang.model.v1.spec-lisp-common/parse-def-assign-bindings}
+(fact "parse-def-assign-bindings recognizes assignment markers"
+  (pr-str (common/parse-def-assign-bindings
+           '(a := 1 b 2)))
+  => "[[a 1] [b 2]]")
+
+^{:refer lang.model.v1.spec-lisp-common/target-symbols}
+(fact "target-symbols removes placeholders from vector targets"
+  [(pr-str (common/target-symbols (quote value)))
+   (pr-str (common/target-symbols '[a _ b]))
+   (common/target-symbols 7)]
+  => ["[value]" "[a b]" []])
+
+^{:refer lang.model.v1.spec-lisp-common/ordered-distinct}
+(fact "ordered-distinct keeps first occurrence order"
+  (pr-str (common/ordered-distinct '[a b a c b]))
+  => "[a b c]")
+
+^{:refer lang.model.v1.spec-lisp-common/key-literal}
+(fact "key-literal normalizes keyword and symbol keys"
+  [(common/key-literal :hello)
+   (common/key-literal (quote hello))
+   (common/key-literal 3)]
+  => ["hello" "hello" 3])
+
+^{:refer lang.model.v1.spec-lisp-common/key-kind}
+(fact "key-kind classifies literal and transformed keys"
+  [(common/key-kind :hello (quote other))
+   (common/key-kind 3 (quote other))
+   (common/key-kind (quote qualified/name) "name")
+   (common/key-kind (quote qualified/name) (quote name))]
+  => [:key :idx :key :idx])
+
+^{:refer lang.model.v1.spec-lisp-common/split-try-clauses}
+(fact "split-try-clauses separates body catch and finally"
+  (let [result (common/split-try-clauses
+                '(body (catch err (handle err)) (finally (cleanup))))]
+    [(pr-str (:body result))
+     (pr-str (:catch result))
+     (pr-str (:finally result))])
+  => ["(body)" "(catch err (handle err))" "(finally (cleanup))"])
+
+^{:refer lang.model.v1.spec-lisp-common/unpack-form?}
+(fact "unpack-form? recognizes the two-item unpack form"
+  [(common/unpack-form? '(x:unpack value))
+   (common/unpack-form? '(x:unpack value extra))
+   (common/unpack-form? '(other value))]
+  => [true false false])
+
+^{:refer lang.model.v1.spec-lisp-common/transform-form}
+(fact "transform-form delegates operator-specific transformations"
+  (pr-str
+   (common/transform-form
+    {:reserved {}
+     :not-equal-form (fn [args] (cons (quote neq*) args))}
+    '(not= a b)))
+  => "(neq* a b)")

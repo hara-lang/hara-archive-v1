@@ -1,0 +1,20 @@
+(ns lang.model.v1.sql.spec-common.form-deftype-test
+  (:require [lang.model.v1.sql.spec-common.form-deftype :refer :all])
+  (:use code.test))
+
+^{:refer lang.model.v1.sql.spec-common.form-deftype/sql-deftype-format :added "4.1"}
+(fact "formats SQL table metadata"
+  (let [[metadata form] (sql-deftype-format '(deftype Account [:id {:type :uuid}] {}))]
+    [(get metadata :static/dbtype) (first form) (second form)])
+  => [:table 'deftype 'Account])
+
+^{:refer lang.model.v1.sql.spec-common.form-deftype/sql-deftype :added "4.1"}
+(fact "emits SQL tables"
+  (sql-deftype [:deftype 'Account
+                [:id {:type :uuid :primary true}
+                 :name {:type :text :required true}]
+                nil]
+               {:dialect {:identifier-style :quoted
+                          :type-alias {:uuid "UUID" :text "TEXT"}}}
+               {})
+  => "CREATE TABLE \"Account\" (\n  \"id\" UUID PRIMARY KEY,\n  \"name\" TEXT NOT NULL\n);")

@@ -1,0 +1,54 @@
+(ns std.block.template-test
+  (:use code.test)
+  (:require [std.block.template :as template]))
+
+(defn template-probe
+  [value]
+  (template/$ (list ~value)))
+
+^{:refer std.block.template/template-expand-children}
+(fact "template expansion splices marked children"
+  (template/template-expand-children
+   [1 [:template/splice [2 3]] 4])
+  => [1 2 3 4])
+
+^{:refer std.block.template/template-replace-unquotes}
+(fact "template replacement resolves unquote and splice forms"
+  (pr-str
+   (template/template-replace-unquotes
+    '(do (unquote value) (unquote-splicing items))
+    {(quote value) 7 (quote items) [8 9]}))
+  => "(do 7 8 9)")
+
+^{:refer std.block.template/$}
+(fact "template macro captures caller locals"
+  (pr-str (template-probe (quote x)))
+  => "(list x)")
+
+^{:refer std.block.template/get-template}
+(fact "template parser records interpolation parameters"
+  (pr-str (:params (template/get-template "(foo ~x ~@xs)")))
+  => "((unquote x) (unquote-splicing xs))")
+
+^{:refer std.block.template/fill-template}
+(fact "template filler renders interpolated values"
+  (template/fill-template
+   (template/get-template "(foo ~x ~@xs)")
+   {(quote x) 7 (quote xs) [8 9]})
+  => "(foo 7 8 9)")
+
+^{:refer std.block.template/defn-form}
+(fact "defn form builder preserves function shape"
+  (pr-str
+   (template/defn-form
+    {(quote fsym) (quote sample)
+     (quote doc) "doc"
+     (quote base-args) (quote [x])
+     (quote opts-args) (quote [])
+     (quote body-form) (quote x)}))
+  => "(defn sample \"doc\" ([x] (sample x {})) ([] x))")
+
+^{:refer std.block.template-test/template-probe}
+(fact "template probe returns the expanded form"
+  (pr-str (template-probe 7))
+  => "(list 7)")

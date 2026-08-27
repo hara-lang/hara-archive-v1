@@ -1,0 +1,6 @@
+(ns lang.model.v1.spec-js.rewrite)
+
+(defn js-rewrite-stage
+  "Provides a stable JavaScript staging rewrite hook."
+  [form _opts]
+  form)

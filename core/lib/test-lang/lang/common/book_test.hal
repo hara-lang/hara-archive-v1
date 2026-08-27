@@ -408,4 +408,9 @@
     [(entry/book-entry? result) (:form result) (:form-input result) (:deps result)])
   => [true '(def value 2) '(def value 1) #{'L.other/value}])
 
-(pr-str (run {:namespace "lang.common.book-test"}))
+^{:refer lang.common.book/book :added "4.1"}
+(fact "book preserves file metadata"
+  (get-in (book/book {:lang :sql :grammar {:tag :sql}
+                      :file {:suffix "sql"}})
+          [:file :suffix])
+  => "sql")

@@ -106,7 +106,7 @@
         (:target/namespace (first inventory)) (:target/namespace (last inventory))
         (count (filter (fn [unit] (= :pending (:status unit))) inventory))])
      => [39 "lib/src/lang/model/v1/spec_xtalk.hal"
-         "lang.model.v1.spec-xtalk" "lang.model.v1.spec-xtalk.fn-scheme" 28])
+         "lang.model.v1.spec-xtalk" "lang.model.v1.spec-xtalk.fn-scheme" 14])
 
    ^{:refer tool.migrate.policy.foundation.core/rewrite-lang-model-v1-source}
    (fact "model rewrite preserves canonical names and is idempotent"

@@ -1,0 +1,37 @@
+(ns lang.model.v1.sql.spec-common.form-defn-test
+  (:require [lang.model.v1.sql.spec-common.form-defn :refer :all])
+  (:use code.test))
+
+^{:refer lang.model.v1.sql.spec-common.form-defn/sql-defn-format :added "4.1"}
+(fact "formats SQL function metadata"
+  (let [[metadata form] (sql-defn-format '(defn answer [:integer value] (return value)))]
+    [(get metadata :static/dbtype) (first form) (second form)])
+  => [:function 'defn 'answer])
+
+^{:refer lang.model.v1.sql.spec-common.form-defn/sql-arg-entry :added "4.1"}
+(fact "normalises typed and untyped SQL arguments"
+  [(sql-arg-entry 'value)
+   (sql-arg-entry '[:integer value])
+   (sql-arg-entry 1)]
+  => [['value [:text]] '[value [:integer]] '[1 [:text]]])
+
+^{:refer lang.model.v1.sql.spec-common.form-defn/sql-normalize-args :added "4.1"}
+(fact "normalises argument containers"
+  [(sql-normalize-args '[:integer value])
+   (sql-normalize-args '(value other))]
+  => '[[value] [value other]])
+
+^{:refer lang.model.v1.sql.spec-common.form-defn/sql-arg-str :added "4.1"}
+(fact "renders SQL arguments"
+  (sql-arg-str '([:integer lhs] [:text rhs])
+               {:dialect {:identifier-style :quoted :type-alias {:integer "INTEGER" :text "TEXT"}}}
+               {})
+  => "\"lhs\" INTEGER, \"rhs\" TEXT")
+
+^{:refer lang.model.v1.sql.spec-common.form-defn/sql-defn :added "4.1"}
+(fact "emits SQL functions"
+  (sql-defn [:defn 'add '[:integer lhs :integer rhs] "RETURN lhs + rhs"]
+            {:dialect {:identifier-style :quoted
+                       :type-alias {:integer "INTEGER"}}}
+            {})
+  => "CREATE FUNCTION \"add\"(\"lhs\" INTEGER, \"rhs\" INTEGER)\nRETURNS TEXT\nBEGIN\n  RETURN lhs + rhs;\nEND;")

@@ -1,0 +1,159 @@
+(ns lang.model.v1.spec-go
+  (:require [std.foundation.string :as string]
+            [lang.common.book :as book]
+            [lang.common.book-meta :as book-meta]
+            [lang.common.emit :as emit]
+            [lang.common.emit-data :as data]
+            [lang.common.emit-fn :as emit-fn]
+            [lang.common.emit-helper :as helper]
+            [lang.common.grammar :as grammar]
+            [lang.common.util :as ut]
+            [lang.model.v1.spec-xtalk]
+            [lang.model.v1.spec-xtalk.fn-go :as fn-go]
+            [std.lib.collection :as collection]))
+
+(defn go-typesystem
+  "Handles generic Go types."
+  [arr grammar-value mopts]
+  (let [[_ type & args] arr]
+    (cond
+      (= 'slice type)
+      (str "[]" (emit/emit-main (first args) grammar-value mopts))
+
+      (= 'map type)
+      (str "map[" (emit/emit-main (first args) grammar-value mopts) "]"
+           (emit/emit-main (second args) grammar-value mopts))
+
+      :else
+      (str (emit/emit-main type grammar-value mopts)
+           "["
+           (string/join ", "
+                        (map (fn [item]
+                               (emit/emit-main item grammar-value mopts))
+                             args))
+           "]"))))
+
+(defn go-vector
+  "Emits a Go vector or slice."
+  [arr grammar-value mopts]
+  (let [sym (first arr)]
+    (if (= :> sym)
+      (go-typesystem arr grammar-value mopts)
+      (str "[]any{"
+           (string/join ", "
+                        (map (fn [item]
+                               (emit/emit-main item grammar-value mopts))
+                             arr))
+           "}"))))
+
+(defn tf-go-arrow
+  "Transforms a Go channel operation."
+  [[_ & args]]
+  (if (= 1 (count args))
+    (list :% (list :- "<-") (first args))
+    (list :% (first args) (list :- " <- ") (second args))))
+
+(defn go-defstruct
+  "Emits a Go struct definition."
+  [[_ sym fields] grammar-value mopts]
+  (str "type " (emit/emit-main sym grammar-value mopts) " struct {\n"
+       (string/join
+        "\n"
+        (map (fn [field]
+               (if (vector? field)
+                 (let [[n t & tags] field
+                       tag-str (if (seq tags)
+                                 (str " `" (string/join " " tags) "`")
+                                 "")]
+                   (str "  " (emit/emit-main n grammar-value mopts) " "
+                        (emit/emit-main t grammar-value mopts)
+                        tag-str))
+                 (str "  " (emit/emit-main field grammar-value mopts))))
+             fields))
+       "\n}"))
+
+(defn go-definterface
+  "Emits a Go interface definition."
+  [[_ sym methods] grammar-value mopts]
+  (str "type " (emit/emit-main sym grammar-value mopts) " interface {\n"
+       (string/join
+        "\n"
+        (map (fn [method]
+               (str "  " (emit/emit-main method grammar-value mopts)))
+             methods))
+       "\n}"))
+
+(def +features+
+  (-> (grammar/build)
+      (merge (grammar/build-xtalk))
+      (grammar/build:override
+       {:var {:symbol (set [(quote var)]) :raw "var"}
+        :new {:symbol (set [(quote new)]) :raw "new" :emit :call}})
+      (grammar/build:override fn-go/+go+)
+      (grammar/build:extend
+       {:go-chan {:op :go-chan
+                  :symbol (set [(quote chan)])
+                  :raw "chan "
+                  :emit :pre}
+        :go-arrow {:op :go-arrow
+                   :symbol (set [(quote <-)])
+                   :macro tf-go-arrow
+                   :emit :macro}
+        :go {:op :go
+             :symbol (set [(quote go)])
+             :raw "go "
+             :emit :pre}
+        :defer {:op :defer
+                :symbol (set [(quote defer)])
+                :raw "defer "
+                :emit :pre}
+        :make {:op :make
+               :symbol (set [(quote make)])
+               :raw "make"
+               :emit :invoke}
+        :defstruct {:op :defstruct
+                    :symbol (set [(quote defstruct)])
+                    :type :def
+                    :section :code
+                    :emit go-defstruct}
+        :definterface {:op :definterface
+                       :symbol (set [(quote definterface)])
+                       :type :def
+                       :section :code
+                       :emit go-definterface}})))
+
+(def +template+
+  (-> (emit/default-grammar)
+      (collection/merge-nested
+       {:banned #{:set :regex}
+        :highlight (set [(quote return) (quote break)
+                         (quote continue) (quote fallthrough)])
+        :default {:common {:statement ""}
+                  :function {:prefix "func"
+                             :raw ""
+                             :args {:sep ", "}}
+                  :typehint {:enabled true :assign "" :space " " :after true}
+                  :invoke {:reversed true :hint ""}
+                  :block {:start " {" :end "}"}}
+        :token {:symbol {:replace {\- "_"}}}
+        :data {:vector {:custom go-vector}
+               :map {:start "map[string]any{" :end "}" :space ""}}
+        :xtalk {:notify {:custom true}}})))
+
+(def +grammar+
+  (grammar/grammar :go
+                   (grammar/to-reserved +features+)
+                   +template+))
+
+(def +meta+
+  (book-meta/book-meta
+   {:module-current (fn [] nil)
+    :module-import (fn [name _ opts]
+                     (list :- "import" (str "\"" name "\"")))}))
+
+(def +book+
+  (book/book {:lang :go
+              :meta +meta+
+              :grammar +grammar+}))
+
+(def +init+ +book+)

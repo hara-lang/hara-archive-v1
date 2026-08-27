@@ -1,0 +1,31 @@
+(ns lang.model.v1.sql.spec-common.form-defenum
+  (:require [std.foundation.string :as str]
+            [lang.model.v1.sql.spec-common.common :as common]
+            [lang.common.grammar-spec :as grammar-spec]))
+
+(defn sql-defenum-format
+  "Formats a SQL enum form."
+  [form]
+  (let [[mdefn [op sym values]] (grammar-spec/format-defn form)
+        msym (assoc (common/sql-sym-meta sym)
+                    :static/dbtype :enum
+                    :static/enum-values values)]
+    [(merge mdefn msym)
+     (list op (with-meta sym msym) values)]))
+
+(defn sql-defenum
+  "Emits dialect-specific enum support."
+  [[_ sym values] grammar mopts]
+  (let [{:keys [schema]} (meta sym)
+        {:keys [comment-prefix enum-mode]
+         :or {comment-prefix "--" enum-mode :native}}
+        (common/sql-dialect grammar mopts)]
+    (case enum-mode
+      :comment
+      (str comment-prefix " ENUM "
+           (common/sql-qualified-ident sym schema grammar mopts) ": "
+           (str/join ", " (common/sql-enum-values values)))
+      (str "CREATE TYPE "
+           (common/sql-qualified-ident sym schema grammar mopts)
+           " AS ENUM ("
+           (str/join ", " (common/sql-enum-values values)) ");"))))

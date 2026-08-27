@@ -1,0 +1,902 @@
+(ns lang.model.v1.spec-xtalk.fn-dart-test
+  (:require [std.foundation.string :as string]
+            [lang.model.v1.spec-xtalk.fn-dart :refer :all])
+  (:use code.test))
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-method0 :added "4.1"}
+(fact "builds a zero-argument Dart method form"
+  (dart-method0 'obj 'ceil)
+  => '(:% (:- "(") obj (:- ").") ceil (:- "()")))
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-call :added "4.1"}
+(fact "builds a Dart Function.apply call"
+  (dart-call 'f 1 2)
+  => '(Function.apply f [1 2]))
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-runtime-type-string :added "4.1"}
+(fact "gets the Dart runtime type string"
+  (let [out (pr-str (dart-runtime-type-string 'obj))]
+    [(string/includes? out "runtimeType")
+     (string/includes? out "toString")])
+  => [true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-string-compare-expr :added "4.1"}
+(fact "builds a Dart string comparison expression"
+  (let [out (pr-str (dart-string-compare-expr 'a 'b))]
+    [(string/includes? out "compareTo")
+     (string/includes? out "a")
+     (string/includes? out "b")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-comparison-form :added "4.1"}
+(fact "selects string or numeric comparison semantics"
+  (let [out (pr-str (dart-comparison-form 'a 'b '< '<))]
+    [(string/includes? out "String")
+     (string/includes? out "compareTo")
+     (string/includes? out "<")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-is-map :added "4.1"}
+(fact "checks Dart map type"
+  (string/includes? (pr-str (dart-is-map 'obj)) "is Map")
+  => true)
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-map-get :added "4.1"}
+(fact "gets a Dart map value by key"
+  (let [out (pr-str (dart-map-get 'obj "key"))]
+    [(string/includes? out "as Map")
+     (string/includes? out "key")])
+  => [true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-xt-exception? :added "4.1"}
+(fact "recognizes the portable exception marker"
+  (let [out (pr-str (dart-xt-exception? 'obj))]
+    [(string/includes? out "is Map")
+     (string/includes? out "xt.exception")])
+  => [true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-len :added "4.1"}
+(fact "gets collection length"
+  (dart-tf-x-len '[_ arr])
+  => '(. arr length))
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-cat :added "4.1"}
+(fact "concatenates values"
+  (dart-tf-x-cat '[_ "a" "b"])
+  => '(+ "a" "b"))
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-print :added "4.1"}
+(fact "prints a single value through a Dart closure"
+  (let [out (pr-str (dart-tf-x-print '[_ "hello"]))]
+    [(string/includes? out "print")
+     (string/includes? out "hello")
+     (string/includes? out "return")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-arr-push :added "4.1"}
+(fact "pushes an item to a Dart array"
+  (dart-tf-x-arr-push '[_ arr item])
+  => '(. arr (add item)))
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-apply :added "4.1"}
+(fact "applies a function to a Dart argument list"
+  (dart-tf-x-apply '[_ f args])
+  => '(Function.apply f args))
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-construct :added "4.1"}
+(fact "constructs through Function.apply"
+  (dart-tf-x-construct '[_ Widget args])
+  => '(Function.apply Widget args))
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-now-ms :added "4.1"}
+(fact "builds a current-time expression"
+  (let [out (pr-str (dart-tf-x-now-ms '[_]))]
+    [(string/includes? out "DateTime.now")
+     (string/includes? out "millisecondsSinceEpoch")])
+  => [true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-random :added "4.1"}
+(fact "builds a Dart random-number expression"
+  (let [out (pr-str (dart-tf-x-random '[_]))]
+    [(string/includes? out "math.Random")
+     (string/includes? out "nextDouble")])
+  => [true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-type-native :added "4.1"}
+(fact "classifies runtime values using Dart type strings"
+  (let [out (pr-str (dart-tf-x-type-native '[_ obj]))]
+    [(string/includes? out "runtimeType")
+     (string/includes? out "String")
+     (string/includes? out "List")
+     (string/includes? out "Map")])
+  => [true true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-del :added "4.1"}
+(fact "deletes a property or a map value"
+  [(dart-tf-x-del '[_ (. obj [key])])
+   (dart-tf-x-del '[_ obj])]
+  => ['(. obj (remove key)) '(. obj (remove nil))])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-eval :added "4.1"}
+(fact "reports that Dart evaluation is unsupported"
+  (dart-tf-x-eval '[_ s])
+  => '(throw "eval not supported in Dart"))
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-ex-native? :added "4.1"}
+(fact "delegates native exception recognition"
+  (let [out (pr-str (dart-tf-x-ex-native? '[_ value]))]
+    [(string/includes? out "xt.exception")
+     (string/includes? out "__type__")])
+  => [true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-ex-new :added "4.1"}
+(fact "creates the portable exception map"
+  (let [message 'message
+        data 'data]
+    (dart-tf-x-ex-new '[_ message data]))
+  => {"__type__" "xt.exception" "message" 'message "data" 'data})
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-ex-message :added "4.1"}
+(fact "extracts an exception message"
+  (string/includes? (pr-str (dart-tf-x-ex-message '[_ value])) "message")
+  => true)
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-ex-data :added "4.1"}
+(fact "extracts exception data"
+  (string/includes? (pr-str (dart-tf-x-ex-data '[_ value])) "data")
+  => true)
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-has-key? :added "4.1"}
+(fact "checks keys with and without a value guard"
+  (let [checked (pr-str (dart-tf-x-has-key? '[_ obj key value]))
+        present (pr-str (dart-tf-x-has-key? '[_ obj key nil]))]
+    [(string/includes? checked "containsKey")
+     (string/includes? checked "value")
+     (string/includes? present "containsKey")
+     (string/includes? present "==")])
+  => [true true true false])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-del-key :added "4.1"}
+(fact "deletes a map key"
+  (dart-tf-x-del-key '[_ obj key])
+  => '(. obj (remove key)))
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-lt :added "4.1"}
+(fact "lowers less-than comparison"
+  (string/includes? (pr-str (dart-tf-x-lt '[_ a b])) "<")
+  => true)
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-lte :added "4.1"}
+(fact "lowers less-than-or-equal comparison"
+  (string/includes? (pr-str (dart-tf-x-lte '[_ a b])) "<=")
+  => true)
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-gt :added "4.1"}
+(fact "lowers greater-than comparison"
+  (string/includes? (pr-str (dart-tf-x-gt '[_ a b])) ">")
+  => true)
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-gte :added "4.1"}
+(fact "lowers greater-than-or-equal comparison"
+  (string/includes? (pr-str (dart-tf-x-gte '[_ a b])) ">=")
+  => true)
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-m-abs :added "4.1"}
+(fact "wraps receivers for absolute value"
+  (string/includes? (pr-str (dart-tf-x-m-abs '[_ x])) "abs")
+  => true)
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-m-ceil :added "4.1"}
+(fact "emits ceiling"
+  (string/includes? (pr-str (dart-tf-x-m-ceil '[_ x])) "ceil")
+  => true)
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-m-floor :added "4.1"}
+(fact "emits floor"
+  (string/includes? (pr-str (dart-tf-x-m-floor '[_ x])) "floor")
+  => true)
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-m-sin :added "4.1"}
+(fact "emits sine"
+  (string/includes? (pr-str (dart-tf-x-m-sin '[_ x])) "math.sin")
+  => true)
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-m-cos :added "4.1"}
+(fact "emits cosine"
+  (string/includes? (pr-str (dart-tf-x-m-cos '[_ x])) "math.cos")
+  => true)
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-m-tan :added "4.1"}
+(fact "emits tangent"
+  (string/includes? (pr-str (dart-tf-x-m-tan '[_ x])) "math.tan")
+  => true)
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-m-asin :added "4.1"}
+(fact "emits arc sine"
+  (string/includes? (pr-str (dart-tf-x-m-asin '[_ x])) "math.asin")
+  => true)
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-m-acos :added "4.1"}
+(fact "emits arc cosine"
+  (string/includes? (pr-str (dart-tf-x-m-acos '[_ x])) "math.acos")
+  => true)
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-m-atan :added "4.1"}
+(fact "emits arc tangent"
+  (string/includes? (pr-str (dart-tf-x-m-atan '[_ x])) "math.atan")
+  => true)
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-m-sqrt :added "4.1"}
+(fact "emits square root"
+  (string/includes? (pr-str (dart-tf-x-m-sqrt '[_ x])) "math.sqrt")
+  => true)
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-m-exp :added "4.1"}
+(fact "emits exponential"
+  (string/includes? (pr-str (dart-tf-x-m-exp '[_ x])) "math.exp")
+  => true)
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-m-loge :added "4.1"}
+(fact "emits natural logarithm"
+  (string/includes? (pr-str (dart-tf-x-m-loge '[_ x])) "math.log")
+  => true)
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-m-log10 :added "4.1"}
+(fact "emits base ten logarithm"
+  (let [out (pr-str (dart-tf-x-m-log10 '[_ x]))]
+    [(string/includes? out "math.log")
+     (string/includes? out "math.ln10")])
+  => [true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-m-max :added "4.1"}
+(fact "selects the greater value"
+  (let [out (pr-str (dart-tf-x-m-max '[_ a b]))]
+    [(string/includes? out ">")
+     (string/includes? out "a")
+     (string/includes? out "b")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-m-min :added "4.1"}
+(fact "selects the lesser value"
+  (let [out (pr-str (dart-tf-x-m-min '[_ a b]))]
+    [(string/includes? out "<")
+     (string/includes? out "a")
+     (string/includes? out "b")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-m-mod :added "4.1"}
+(fact "emits modulo"
+  (string/includes? (pr-str (dart-tf-x-m-mod '[_ a b])) "%")
+  => true)
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-m-pow :added "4.1"}
+(fact "emits power"
+  (string/includes? (pr-str (dart-tf-x-m-pow '[_ a b])) "math.pow")
+  => true)
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-m-quot :added "4.1"}
+(fact "emits integer quotient"
+  (string/includes? (pr-str (dart-tf-x-m-quot '[_ a b])) "~/")
+  => true)
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-m-cosh :added "4.1"}
+(fact "emits hyperbolic cosine from exponentials"
+  (let [out (pr-str (dart-tf-x-m-cosh '[_ x]))]
+    [(string/includes? out "math.exp")
+     (string/includes? out "/")])
+  => [true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-m-sinh :added "4.1"}
+(fact "emits hyperbolic sine from exponentials"
+  (let [out (pr-str (dart-tf-x-m-sinh '[_ x]))]
+    [(string/includes? out "math.exp")
+     (string/includes? out "/")])
+  => [true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-m-tanh :added "4.1"}
+(fact "emits hyperbolic tangent from exponentials"
+  (let [out (pr-str (dart-tf-x-m-tanh '[_ x]))]
+    [(string/includes? out "math.exp")
+     (string/includes? out "/")])
+  => [true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-to-string :added "4.1"}
+(fact "converts a value to string"
+  (string/includes? (pr-str (dart-tf-x-to-string '[_ x])) "toString")
+  => true)
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-to-number :added "4.1"}
+(fact "converts a value to number"
+  (string/includes? (pr-str (dart-tf-x-to-number '[_ x])) "num.parse")
+  => true)
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-is-string? :added "4.1"}
+(fact "checks Dart strings"
+  (string/includes? (pr-str (dart-tf-x-is-string? '[_ x])) "String")
+  => true)
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-is-number? :added "4.1"}
+(fact "checks Dart numeric types"
+  (let [out (pr-str (dart-tf-x-is-number? '[_ x]))]
+    [(string/includes? out "int")
+     (string/includes? out "double")
+     (string/includes? out "num")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-is-integer? :added "4.1"}
+(fact "checks Dart integers"
+  (string/includes? (pr-str (dart-tf-x-is-integer? '[_ x])) "int")
+  => true)
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-is-boolean? :added "4.1"}
+(fact "checks Dart booleans"
+  (string/includes? (pr-str (dart-tf-x-is-boolean? '[_ x])) "bool")
+  => true)
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-is-function? :added "4.1"}
+(fact "checks Dart functions"
+  (let [out (pr-str (dart-tf-x-is-function? '[_ x]))]
+    [(string/includes? out "Function")
+     (string/includes? out "Closure")])
+  => [true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-is-object? :added "4.1"}
+(fact "checks Dart maps"
+  (let [out (pr-str (dart-tf-x-is-object? '[_ x]))]
+    [(string/includes? out "Map")
+     (string/includes? out "LinkedMap")])
+  => [true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-is-array? :added "4.1"}
+(fact "checks Dart lists"
+  (let [out (pr-str (dart-tf-x-is-array? '[_ x]))]
+    [(string/includes? out "List")
+     (string/includes? out "GrowableList")])
+  => [true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-str-char :added "4.1"}
+(fact "gets a string code unit"
+  (let [out (pr-str (dart-tf-x-str-char '[_ s i]))]
+    [(string/includes? out "codeUnitAt")
+     (string/includes? out "x:offset")])
+  => [true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-str-split :added "4.1"}
+(fact "splits strings"
+  (string/includes? (pr-str (dart-tf-x-str-split '[_ s sep])) "split")
+  => true)
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-str-join :added "4.1"}
+(fact "joins strings"
+  (string/includes? (pr-str (dart-tf-x-str-join '[_ sep arr])) "join")
+  => true)
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-str-index-of :added "4.1"}
+(fact "finds a string index with the portable offset"
+  (let [out (pr-str (dart-tf-x-str-index-of '[_ s sub]))]
+    [(string/includes? out "indexOf")
+     (string/includes? out "x:offset")])
+  => [true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-str-last-index-of :added "4.1"}
+(fact "finds the last string index"
+  (string/includes? (pr-str (dart-tf-x-str-last-index-of '[_ s sub])) "lastIndexOf")
+  => true)
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-str-substring :added "4.1"}
+(fact "extracts a substring"
+  (let [out (pr-str (dart-tf-x-str-substring '[_ s start end]))]
+    [(string/includes? out "substring")
+     (string/includes? out "x:offset")])
+  => [true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-str-to-upper :added "4.1"}
+(fact "uppercases strings"
+  (string/includes? (pr-str (dart-tf-x-str-to-upper '[_ s])) "toUpperCase")
+  => true)
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-str-to-lower :added "4.1"}
+(fact "lowercases strings"
+  (string/includes? (pr-str (dart-tf-x-str-to-lower '[_ s])) "toLowerCase")
+  => true)
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-str-to-fixed :added "4.1"}
+(fact "formats fixed precision strings"
+  (string/includes? (pr-str (dart-tf-x-str-to-fixed '[_ s n])) "toStringAsFixed")
+  => true)
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-str-replace :added "4.1"}
+(fact "replaces string values"
+  (string/includes? (pr-str (dart-tf-x-str-replace '[_ s pattern replacement])) "replaceAll")
+  => true)
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-str-trim :added "4.1"}
+(fact "trims strings"
+  (string/includes? (pr-str (dart-tf-x-str-trim '[_ s])) "trim")
+  => true)
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-str-trim-left :added "4.1"}
+(fact "trims strings on the left"
+  (string/includes? (pr-str (dart-tf-x-str-trim-left '[_ s])) "trimLeft")
+  => true)
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-str-trim-right :added "4.1"}
+(fact "trims strings on the right"
+  (string/includes? (pr-str (dart-tf-x-str-trim-right '[_ s])) "trimRight")
+  => true)
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-str-starts-with? :added "4.1"}
+(fact "checks string prefixes"
+  (string/includes? (pr-str (dart-tf-x-str-starts-with? '[_ s prefix])) "startsWith")
+  => true)
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-str-ends-with? :added "4.1"}
+(fact "checks string suffixes"
+  (string/includes? (pr-str (dart-tf-x-str-ends-with? '[_ s suffix])) "endsWith")
+  => true)
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-str-includes? :added "4.1"}
+(fact "checks string containment"
+  (string/includes? (pr-str (dart-tf-x-str-includes? '[_ s sub])) "contains")
+  => true)
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-lu-create :added "4.1"}
+(fact "creates a lookup map literal"
+  (dart-tf-x-lu-create '[_])
+  => '{} )
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-lu-get :added "4.1"}
+(fact "gets a lookup value"
+  (dart-tf-x-lu-get '[_ lu obj])
+  => '(. lu [obj]))
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-lu-set :added "4.1"}
+(fact "sets a lookup value"
+  (dart-tf-x-lu-set '[_ lu obj gid])
+  => '(:= (. lu [obj]) gid))
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-lu-del :added "4.1"}
+(fact "deletes a lookup value"
+  (dart-tf-x-lu-del '[_ lu obj])
+  => '(. lu (remove obj)))
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-json-compact-expr :added "4.1"}
+(fact "builds the compact JSON expression"
+  (let [out (pr-str (dart-json-compact-expr 'value))]
+    [(string/includes? out "omitNilKeys")
+     (string/includes? out "Function")
+     (string/includes? out "compact")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-obj-keys :added "4.1"}
+(fact "lists object keys"
+  (let [out (pr-str (dart-tf-x-obj-keys '[_ obj]))]
+    [(string/includes? out "List<dynamic>")
+     (string/includes? out "keys")])
+  => [true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-obj-vals :added "4.1"}
+(fact "lists object values"
+  (let [out (pr-str (dart-tf-x-obj-vals '[_ obj]))]
+    [(string/includes? out "List<dynamic>")
+     (string/includes? out "values")])
+  => [true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-obj-pairs :added "4.1"}
+(fact "lists object entries"
+  (let [out (pr-str (dart-tf-x-obj-pairs '[_ obj]))]
+    [(string/includes? out "List<List<dynamic>>")
+     (string/includes? out "entries")])
+  => [true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-arr-pop :added "4.1"}
+(fact "pops the last array item"
+  (string/includes? (pr-str (dart-tf-x-arr-pop '[_ arr])) "removeLast")
+  => true)
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-arr-slice :added "4.1"}
+(fact "slices arrays"
+  (let [out (pr-str (dart-tf-x-arr-slice '[_ arr start end]))]
+    [(string/includes? out "sublist")
+     (string/includes? out "x:offset")])
+  => [true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-arr-push-first :added "4.1"}
+(fact "pushes an array item to the front"
+  (dart-tf-x-arr-push-first '[_ arr item])
+  => '(. arr (insert 0 item)))
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-arr-pop-first :added "4.1"}
+(fact "pops the first array item"
+  (dart-tf-x-arr-pop-first '[_ arr])
+  => '(. arr (removeAt 0)))
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-arr-insert :added "4.1"}
+(fact "inserts an array item"
+  (dart-tf-x-arr-insert '[_ arr idx item])
+  => '(. arr (insert idx item)))
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-arr-remove :added "4.1"}
+(fact "removes an array item"
+  (dart-tf-x-arr-remove '[_ arr idx])
+  => '(. arr (removeAt idx)))
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-arr-sort :added "4.1"}
+(fact "sorts arrays with a comparator callback"
+  (let [out (pr-str (dart-tf-x-arr-sort '[_ arr key-fn comp-fn]))]
+    [(string/includes? out "sort")
+     (string/includes? out "key-fn")
+     (string/includes? out "comp-fn")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-str-comp :added "4.1"}
+(fact "compares strings by their Dart ordering"
+  (let [out (pr-str (dart-tf-x-str-comp '[_ a b]))]
+    [(string/includes? out "compareTo")
+     (string/includes? out "<")])
+  => [true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-iter-eq :added "4.1"}
+(fact "compares iterators with a returnable loop"
+  (let [out (pr-str (dart-tf-x-iter-eq '[_ a b eq-fn]))]
+    [(string/includes? out "while")
+     (string/includes? out "moveNext")
+     (string/includes? out "current")
+     (string/includes? out "return")])
+  => [true true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-iter-from :added "4.1"}
+(fact "gets an iterator from a value"
+  (dart-tf-x-iter-from '[_ x])
+  => '(. x iterator))
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-iter-from-arr :added "4.1"}
+(fact "gets an iterator from an array"
+  (dart-tf-x-iter-from-arr '[_ arr])
+  => '(. arr iterator))
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-iter-from-obj :added "4.1"}
+(fact "iterates object entries as key value pairs"
+  (let [out (pr-str (dart-tf-x-iter-from-obj '[_ obj]))]
+    [(string/includes? out "entries")
+     (string/includes? out "key")
+     (string/includes? out "value")
+     (string/includes? out "iterator")])
+  => [true true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-iter-has? :added "4.1"}
+(fact "recognizes iterable and collection iterator types"
+  (let [out (pr-str (dart-tf-x-iter-has? '[_ iter]))]
+    [(string/includes? out "Iterable")
+     (string/includes? out "List")
+     (string/includes? out "Set")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-iter-native? :added "4.1"}
+(fact "recognizes native Dart iterators"
+  (let [out (pr-str (dart-tf-x-iter-native? '[_ iter]))]
+    [(string/includes? out "Iterator")
+     (string/includes? out "not=")])
+  => [true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-iter-next :added "4.1"}
+(fact "gets the current iterator value"
+  (dart-tf-x-iter-next '[_ iter])
+  => '(. iter current))
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-iter-null :added "4.1"}
+(fact "creates an empty iterator"
+  (dart-tf-x-iter-null '[_])
+  => '(. [] iterator))
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-prototype-create :added "4.1"}
+(fact "creates a prototype from a map"
+  (dart-tf-x-prototype-create '[_ m])
+  => 'm)
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-prototype-get :added "4.1"}
+(fact "gets attached prototype metadata"
+  (let [out (pr-str (dart-tf-x-prototype-get '[_ obj]))]
+    [(string/includes? out "x:get-key")
+     (string/includes? out "_xt_proto")])
+  => [true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-prototype-set :added "4.1"}
+(fact "stores attached prototype metadata"
+  (let [out (pr-str (dart-tf-x-prototype-set '[_ obj prototype]))]
+    [(string/includes? out "x:set-key")
+     (string/includes? out "_xt_proto")
+     (string/includes? out "prototype")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-prototype-method :added "4.1"}
+(fact "looks up direct methods before prototype methods"
+  (let [out (pr-str (dart-tf-x-prototype-method '[_ obj key]))]
+    [(string/includes? out "direct")
+     (string/includes? out "proto")
+     (string/includes? out "x:get-key")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-prototype-tostring :added "4.1"}
+(fact "names the prototype string method"
+  (dart-tf-x-prototype-tostring '[_ obj])
+  => '"toString")
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-return-encode :added "4.1"}
+(fact "encodes return values through JSON"
+  (let [out (pr-str (dart-tf-x-return-encode '[_ out id key]))]
+    [(string/includes? out "json.encode")
+     (string/includes? out "return")
+     (string/includes? out "compact")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-return-wrap :added "4.1"}
+(fact "wraps return handlers with fallback encoding"
+  (let [out (pr-str (dart-tf-x-return-wrap '[_ f encode-fn]))]
+    [(string/includes? out "Function.apply")
+     (string/includes? out "json.encode")
+     (string/includes? out "catch")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-return-eval :added "4.1"}
+(fact "reports unsupported return evaluation"
+  (dart-tf-x-return-eval '[_ s wrap-fn])
+  => '(throw "eval not supported in Dart"))
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-with-delay :added "4.1"}
+(fact "builds a delayed future"
+  (let [out (pr-str (dart-tf-x-with-delay '[_ ms thunk]))]
+    [(string/includes? out "Future.delayed")
+     (string/includes? out "Duration")
+     (string/includes? out "milliseconds")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-async-run :added "4.1"}
+(fact "starts an asynchronous future"
+  (dart-tf-x-async-run '[_ thunk])
+  => '(Future.sync thunk))
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-promise :added "4.1"}
+(fact "starts a promise future"
+  (dart-tf-x-promise '[_ thunk])
+  => '(Future.sync thunk))
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-promise-new :added "4.1"}
+(fact "creates a completer-backed promise"
+  (let [out (pr-str (dart-tf-x-promise-new '[_ thunk]))]
+    [(string/includes? out "Completer<dynamic>")
+     (string/includes? out "completer.complete")
+     (string/includes? out "completer.completeError")
+     (string/includes? out "completer")])
+  => [true true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-promise-all :added "4.1"}
+(fact "waits for all promises"
+  (let [out (pr-str (dart-tf-x-promise-all '[_ promises]))]
+    [(string/includes? out "Future.wait")
+     (string/includes? out "List<Future<dynamic>>")
+     (string/includes? out "Future.sync")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-promise-then :added "4.1"}
+(fact "chains a promise success callback"
+  (let [out (pr-str (dart-tf-x-promise-then '[_ promise thunk]))]
+    [(string/includes? out "Future.sync")
+     (string/includes? out "then")
+     (string/includes? out "value")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-promise-catch :added "4.1"}
+(fact "chains a promise error callback"
+  (let [out (pr-str (dart-tf-x-promise-catch '[_ promise thunk]))]
+    [(string/includes? out "try")
+     (string/includes? out "catch")
+     (string/includes? out "err")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-promise-finally :added "4.1"}
+(fact "chains a promise cleanup callback"
+  (let [out (pr-str (dart-tf-x-promise-finally '[_ promise thunk]))]
+    [(string/includes? out "whenComplete")
+     (string/includes? out "Future.sync")])
+  => [true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-promise-native? :added "4.1"}
+(fact "recognizes native Dart futures"
+  (let [out (pr-str (dart-tf-x-promise-native? '[_ value]))]
+    [(string/includes? out "Future")
+     (string/includes? out "Future<")
+     (string/includes? out "not=")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-socket-connect :added "4.1"}
+(fact "connects sockets and forwards callbacks"
+  (let [out (pr-str (dart-tf-x-socket-connect '[_ host port opts cb]))]
+    [(string/includes? out "Socket.connect")
+     (string/includes? out "then")
+     (string/includes? out "catchError")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-socket-send :added "4.1"}
+(fact "writes socket data"
+  (let [out (pr-str (dart-tf-x-socket-send '[_ conn s]))]
+    [(string/includes? out "write")
+     (string/includes? out "conn")])
+  => [true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-socket-close :added "4.1"}
+(fact "flushes and destroys sockets"
+  (let [out (pr-str (dart-tf-x-socket-close '[_ conn]))]
+    [(string/includes? out "flush")
+     (string/includes? out "destroy")
+     (string/includes? out "then")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-notify-http :added "4.1"}
+(fact "posts an HTTP notification"
+  (let [out (pr-str (dart-tf-x-notify-http '[_ host port value id key opts]))]
+    [(string/includes? out "HttpClient")
+     (string/includes? out "post")
+     (string/includes? out "catchError")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-pwd :added "4.1"}
+(fact "resolves the process working directory"
+  (let [out (pr-str (dart-tf-x-pwd '[_]))]
+    [(string/includes? out "Platform.environment")
+     (string/includes? out "Directory.current.path")])
+  => [true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-file-resolve :added "4.1"}
+(fact "resolves relative file paths"
+  (let [out (pr-str (dart-tf-x-file-resolve '[_ root path]))]
+    [(string/includes? out "startsWith")
+     (string/includes? out "/")
+     (string/includes? out "base")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-file-slurp :added "4.1"}
+(fact "reads file content and forwards failures"
+  (let [out (pr-str (dart-tf-x-file-slurp '[_ filename cb]))]
+    [(string/includes? out "File")
+     (string/includes? out "readAsString")
+     (string/includes? out "catchError")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-file-spit :added "4.1"}
+(fact "writes file content and forwards failures"
+  (let [out (pr-str (dart-tf-x-file-spit '[_ filename s cb]))]
+    [(string/includes? out "create")
+     (string/includes? out "writeAsString")
+     (string/includes? out "catchError")])
+  => [true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/dart-tf-x-shell :added "4.1"}
+(fact "runs shell commands through Dart Process.run"
+  (let [out (pr-str (dart-tf-x-shell '[_ s root cb]))]
+    [(string/includes? out "Process.run")
+     (string/includes? out "shell_command")
+     (string/includes? out "stdout")
+     (string/includes? out "stderr")
+     (string/includes? out "catchError")])
+  => [true true true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/+dart-core+ :added "4.1"}
+(fact "registers the Dart core operator table"
+  [(count +dart-core+)
+   (has? +dart-core+ :x-print)
+   (has? +dart-core+ :x-ex-new)
+   (has? +dart-core+ :x-unpack)]
+  => [22 true true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/+dart-type+ :added "4.1"}
+(fact "registers the Dart type operator table"
+  [(count +dart-type+)
+   (has? +dart-type+ :x-is-number?)
+   (has? +dart-type+ :x-is-array?)]
+  => [9 true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/+dart-str+ :added "4.1"}
+(fact "registers the Dart string operator table"
+  [(count +dart-str+)
+   (has? +dart-str+ :x-str-substring)
+   (has? +dart-str+ :x-str-trim-right)]
+  => [12 true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/+dart-lu+ :added "4.1"}
+(fact "registers the Dart lookup operator table"
+  [(count +dart-lu+)
+   (has? +dart-lu+ :x-lu-set)]
+  => [4 true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/+dart-obj+ :added "4.1"}
+(fact "registers the Dart object operator table"
+  [(count +dart-obj+)
+   (has? +dart-obj+ :x-obj-pairs)]
+  => [3 true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/+dart-json+ :added "4.1"}
+(fact "registers the Dart JSON aliases"
+  [(count +dart-json+)
+   (get-in +dart-json+ [:x-json-encode :raw])
+   (get-in +dart-json+ [:x-json-decode :raw])]
+  => [2 'jsonEncode 'jsonDecode])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/+dart-math+ :added "4.1"}
+(fact "registers the Dart math operator table"
+  [(count +dart-math+)
+   (has? +dart-math+ :x-m-cosh)
+   (has? +dart-math+ :x-m-tanh)]
+  => [21 true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/+dart-arr+ :added "4.1"}
+(fact "registers the Dart array operator table"
+  [(count +dart-arr+)
+   (has? +dart-arr+ :x-arr-sort)
+   (has? +dart-arr+ :x-str-comp)]
+  => [9 true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/+dart-iter+ :added "4.1"}
+(fact "registers the Dart iterator operator table"
+  [(count +dart-iter+)
+   (has? +dart-iter+ :x-iter-eq)
+   (has? +dart-iter+ :x-iter-null)]
+  => [8 true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/+dart-proto+ :added "4.1"}
+(fact "registers the Dart prototype operator table"
+  [(count +dart-proto+)
+   (has? +dart-proto+ :prototype-method)]
+  => [5 true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/+dart-return+ :added "4.1"}
+(fact "registers the Dart return operator table"
+  [(count +dart-return+)
+   (has? +dart-return+ :x-return-wrap)]
+  => [3 true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/+dart-promise+ :added "4.1"}
+(fact "registers the Dart promise operator table"
+  [(count +dart-promise+)
+   (has? +dart-promise+ :x-promise-new)
+   (has? +dart-promise+ :x-promise-native?)]
+  => [8 true true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/+dart-thread+ :added "4.1"}
+(fact "registers the Dart thread operator table"
+  [(count +dart-thread+)
+   (has? +dart-thread+ :x-with-delay)]
+  => [1 true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/+dart-socket+ :added "4.1"}
+(fact "registers the Dart socket operator table"
+  [(count +dart-socket+)
+   (has? +dart-socket+ :x-socket-connect)]
+  => [3 true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/+dart-http+ :added "4.1"}
+(fact "registers the Dart HTTP operator table"
+  [(count +dart-http+)
+   (has? +dart-http+ :x-notify-http)]
+  => [1 true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/+dart-file+ :added "4.1"}
+(fact "registers the Dart file operator table"
+  [(count +dart-file+)
+   (has? +dart-file+ :x-file-resolve)]
+  => [1 true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/+dart-shell+ :added "4.1"}
+(fact "registers the Dart shell operator table"
+  [(count +dart-shell+)
+   (has? +dart-shell+ :x-shell)]
+  => [2 true])
+
+^{:refer lang.model.v1.spec-xtalk.fn-dart/+dart+ :added "4.1"}
+(fact "combines all Dart operator groups"
+  [(count +dart+)
+   (has? +dart+ :x-len)
+   (has? +dart+ :x-str-trim)
+   (has? +dart+ :x-promise-all)
+   (has? +dart+ :x-shell)]
+  => [113 true true true true])

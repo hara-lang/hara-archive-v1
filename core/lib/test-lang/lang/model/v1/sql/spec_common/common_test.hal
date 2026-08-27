@@ -1,0 +1,122 @@
+(ns lang.model.v1.sql.spec-common.common-test
+  (:require [lang.model.v1.sql.spec-common.common :refer :all])
+  (:use code.test))
+
+(def +dialect+ {:dialect {:identifier-style :quoted
+                           :type-alias {:uuid "UUID" :text "TEXT"}
+                           :bool-literal {true "TRUE" false "FALSE"}}})
+
+^{:refer lang.model.v1.sql.spec-common.common/sql-dialect :added "4.1"}
+(fact "merges grammar and option dialects"
+  (sql-dialect {:dialect {:identifier-style :plain}}
+               {:dialect {:type-alias {:uuid "UUID"}}})
+  => {:identifier-style :plain :type-alias {:uuid "UUID"}})
+
+^{:refer lang.model.v1.sql.spec-common.common/sql-string :added "4.1"}
+(fact "quotes SQL strings"
+  (sql-string "hello") => "'hello'")
+
+^{:refer lang.model.v1.sql.spec-common.common/sql-ident-base :added "4.1"}
+(fact "normalises identifier punctuation"
+  [(sql-ident-base :hello-world) (sql-ident-base 'hello-world) (sql-ident-base 10)]
+  => ["hello_world" "hello_world" "10"])
+
+^{:refer lang.model.v1.sql.spec-common.common/sql-ident :added "4.1"}
+(fact "renders identifier styles"
+  [(sql-ident :hello-world {:dialect {:identifier-style :plain}} {})
+   (sql-ident :hello-world {:dialect {:identifier-style :upper}} {})
+   (sql-ident :hello-world nil nil)]
+  => ["hello_world" "HELLO_WORLD" "\"hello_world\""])
+
+^{:refer lang.model.v1.sql.spec-common.common/sql-qualified-ident :added "4.1"}
+(fact "renders qualified identifiers"
+  (sql-qualified-ident :users :public {:dialect {:identifier-style :plain}} {})
+  => "public.users")
+
+^{:refer lang.model.v1.sql.spec-common.common/sql-type-name :added "4.1"}
+(fact "renders aliased and compound types"
+  [(sql-type-name :uuid nil +dialect+)
+   (sql-type-name [:array :uuid] nil +dialect+)
+   (sql-type-name 'Status nil +dialect+)]
+  => ["UUID" "ARRAY UUID" "\"Status\""])
+
+^{:refer lang.model.v1.sql.spec-common.common/sql-sym-meta :added "4.1"}
+(fact "normalises return metadata"
+  (select-keys (sql-sym-meta (with-meta 'answer {:- [:integer] :schema :public}))
+               [:- :schema :static/return])
+  => {:- [:integer] :schema :public :static/return [:integer]})
+
+^{:refer lang.model.v1.sql.spec-common.common/sql-hydrate :added "4.1"}
+(fact "hydrates reserved static metadata"
+  (sql-hydrate '[defn answer]
+               {:reserved (hash-map (quote defn) {:static/dbtype :function})}
+               {})
+  => [{:static/dbtype :function} '(defn answer)])
+
+^{:refer lang.model.v1.sql.spec-common.common/sql-indent :added "4.1"}
+(fact "indents nonblank SQL lines"
+  (sql-indent "a\n\nb" 2) => "  a\n\n  b")
+
+^{:refer lang.model.v1.sql.spec-common.common/sql-resolve-entry :added "4.1"}
+(fact "returns nil for an unresolved entry"
+  (sql-resolve-entry 'missing/value) => nil)
+
+^{:refer lang.model.v1.sql.spec-common.common/sql-enum-entry :added "4.1"}
+(fact "returns nil for a non-enum entry"
+  (sql-enum-entry 'missing/value) => nil)
+
+^{:refer lang.model.v1.sql.spec-common.common/sql-enum-values-from-type :added "4.1"}
+(fact "returns nil when the type is not an enum"
+  (sql-enum-values-from-type 'missing/value) => nil)
+
+^{:refer lang.model.v1.sql.spec-common.common/sql-render :added "4.1"}
+(fact "renders SQL literals and identifiers"
+  [(sql-render nil nil +dialect+)
+   (sql-render :pending nil +dialect+)
+   (sql-render true nil +dialect+)
+   (sql-render 12 nil +dialect+)
+   (sql-render 'answer nil +dialect+)]
+  => ["NULL" "'pending'" "TRUE" "12" "\"answer\""])
+
+^{:refer lang.model.v1.sql.spec-common.common/sql-body :added "4.1"}
+(fact "terminates SQL body statements"
+  (sql-body ["RETURN 1" "RETURN 2;"] nil {})
+  => "RETURN 1;\nRETURN 2;")
+
+^{:refer lang.model.v1.sql.spec-common.common/sql-column-spec :added "4.1"}
+(fact "pairs column specifications"
+  (sql-column-spec [:id {:type :uuid} :name {:type :text}])
+  => [[:id {:type :uuid}] [:name {:type :text}]])
+
+^{:refer lang.model.v1.sql.spec-common.common/sql-column-name :added "4.1"}
+(fact "adds an ID suffix for references"
+  [(sql-column-name :user {:type :ref} nil +dialect+)
+   (sql-column-name :name {:type :text} nil +dialect+)]
+  => ["\"user_id\"" "\"name\""])
+
+^{:refer lang.model.v1.sql.spec-common.common/sql-column-type :added "4.1"}
+(fact "resolves reference and ordinary column types"
+  [(sql-column-type {:type :ref :ref-type :integer} nil +dialect+)
+   (sql-column-type {:type :text} nil +dialect+)]
+  => ["INTEGER" "TEXT"])
+
+^{:refer lang.model.v1.sql.spec-common.common/sql-reference-target :added "4.1"}
+(fact "renders reference targets"
+  [(sql-reference-target {:table :users} nil +dialect+)
+   (sql-reference-target {:table {:name :users :schema :public}} nil +dialect+)]
+  => ["\"users\"" "\"public\".\"users\""])
+
+^{:refer lang.model.v1.sql.spec-common.common/sql-reference-column :added "4.1"}
+(fact "defaults references to ID"
+  [(sql-reference-column {} nil +dialect+)
+   (sql-reference-column {:column :account-id} nil +dialect+)]
+  => ["\"id\"" "\"account_id\""])
+
+^{:refer lang.model.v1.sql.spec-common.common/sql-column-definition :added "4.1"}
+(fact "renders column constraints"
+  (sql-column-definition [:id {:type :uuid :primary true :required true}] nil +dialect+)
+  => "\"id\" UUID PRIMARY KEY NOT NULL")
+
+^{:refer lang.model.v1.sql.spec-common.common/sql-enum-values :added "4.1"}
+(fact "renders enum literals"
+  (sql-enum-values [:pending 'done "failed"]) => ["'pending'" "'done'" "'failed'"])

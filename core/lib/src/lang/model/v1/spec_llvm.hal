@@ -1,0 +1,195 @@
+(ns lang.model.v1.spec-llvm
+  (:require [std.foundation.string :as string]
+            [lang.common.book :as book]
+            [lang.common.book-meta :as book-meta]
+            [lang.common.emit :as emit]
+            [lang.common.emit-common :as common]
+            [lang.common.emit-preprocess :as preprocess]
+            [lang.common.preprocess-base :as preprocess-base]
+            [lang.common.grammar :as grammar]
+            [lang.common.util :as ut]
+            [std.lib.collection :as collection]))
+
+(defn tf-define
+  "Transforms an LLVM define form."
+  [[_ ret-type name args & body]]
+  (let [args-str (if (vector? args)
+                   (str "("
+                        (string/join ", "
+                                     (map (fn [[t n]]
+                                            (str (common/emit-common
+                                                  t preprocess-base/*macro-grammar* {})
+                                                 " "
+                                                 (common/emit-common
+                                                  n preprocess-base/*macro-grammar* {})))
+                                          (partition 2 args)))
+                        ")")
+                   (common/emit-common args preprocess-base/*macro-grammar* {}))
+        name-str (common/emit-common name preprocess-base/*macro-grammar* {})]
+    (list :- "define" ret-type (str name-str args-str)
+          (list :- "{"
+                (list \\ \\ (list \| (apply list 'do body)))
+                (list :- "\n}")))))
+
+(defn tf-declare
+  "Transforms an LLVM declare form."
+  [[_ ret-type name args]]
+  (let [args-str (if (vector? args)
+                   (str "("
+                        (string/join ", "
+                                     (map (fn [item]
+                                            (common/emit-common
+                                             item preprocess-base/*macro-grammar* {}))
+                                          args))
+                        ")")
+                   (common/emit-common args preprocess-base/*macro-grammar* {}))
+        name-str (common/emit-common name preprocess-base/*macro-grammar* {})]
+    (list :- "declare" ret-type (str name-str args-str))))
+
+(defn tf-label
+  "Transforms an LLVM label."
+  [[_ name]]
+  (list :- (str (common/emit-common name preprocess-base/*macro-grammar* {}) ":")))
+
+(defn tf-ret
+  "Transforms an LLVM return instruction."
+  [[_ type val]]
+  (if val
+    (list :- "ret" type val)
+    (list :- "ret" type)))
+
+(defn tf-assign
+  "Transforms an LLVM assignment."
+  [[_ left right]]
+  (list :- left "=" right))
+
+(defn tf-inst-bin
+  "Creates a transformer for an LLVM binary instruction."
+  [op]
+  (fn [[_ type op1 op2]]
+    (list :- op type
+          (str (common/emit-common op1 preprocess-base/*macro-grammar* {}) ",")
+          op2)))
+
+(defn tf-icmp
+  "Transforms an LLVM integer comparison."
+  [[_ cond type op1 op2]]
+  (list :- "icmp" cond type
+        (str (common/emit-common op1 preprocess-base/*macro-grammar* {}) ",")
+        op2))
+
+(defn tf-br
+  "Transforms an LLVM branch."
+  [[_ & args]]
+  (if (= 1 (count args))
+    (list :- "br" "label" (first args))
+    (let [[cond true-label false-label] args
+          cond-str (str (common/emit-common cond preprocess-base/*macro-grammar* {}) ",")
+          true-label-str (str "label "
+                              (common/emit-common true-label preprocess-base/*macro-grammar* {})
+                              ",")
+          false-label-str (str "label "
+                               (common/emit-common false-label preprocess-base/*macro-grammar* {}))]
+      (list :- "br" "i1" cond-str true-label-str false-label-str))))
+
+(defn tf-call
+  "Transforms an LLVM call."
+  [[_ ret-type name args]]
+  (let [args-str (str "("
+                      (string/join ", "
+                                   (map (fn [arg]
+                                          (if (vector? arg)
+                                            (let [[t v] arg]
+                                              (str (common/emit-common
+                                                    t preprocess-base/*macro-grammar* {})
+                                                   " "
+                                                   (common/emit-common
+                                                    v preprocess-base/*macro-grammar* {})))
+                                            (common/emit-common
+                                             arg preprocess-base/*macro-grammar* {})))
+                                        args))
+                      ")")]
+    (list :- "call" ret-type
+          (str (common/emit-common name preprocess-base/*macro-grammar* {})
+               args-str))))
+
+(defn tf-alloca
+  "Transforms an LLVM alloca instruction."
+  [[_ type & [item-count]]]
+  (if item-count
+    (list :- "alloca" type "," (first item-count) (second item-count))
+    (list :- "alloca" type)))
+
+(defn tf-store
+  "Transforms an LLVM store instruction."
+  [[_ type val ptr-type ptr]]
+  (list :- "store" type
+        (str (common/emit-common val preprocess-base/*macro-grammar* {}) ",")
+        ptr-type ptr))
+
+(defn tf-load
+  "Transforms an LLVM load instruction."
+  [[_ type ptr-type ptr]]
+  (list :- "load"
+        (str (common/emit-common type preprocess-base/*macro-grammar* {}) ",")
+        ptr-type ptr))
+
+(def +features+
+  (-> (grammar/build :include [:builtin :builtin-helper :free-control :control-base])
+      (grammar/build:extend
+       {:define {:op :define
+                 :symbol (set [(quote define)])
+                 :macro tf-define
+                 :emit :macro
+                 :section :code
+                 :type :def}
+        :declare {:op :declare
+                  :symbol (set [(quote declare)])
+                  :macro tf-declare
+                  :emit :macro
+                  :section :code
+                  :type :def}
+        :label {:op :label :symbol (set [(quote label)]) :macro tf-label :emit :macro}
+        :ret {:op :ret :symbol (set [(quote ret)]) :macro tf-ret :emit :macro}
+        :assign {:op :assign :symbol (set [(quote :=)]) :macro tf-assign :emit :macro}
+        :add {:op :add :symbol (set [(quote add)]) :macro (tf-inst-bin "add") :emit :macro}
+        :sub {:op :sub :symbol (set [(quote sub)]) :macro (tf-inst-bin "sub") :emit :macro}
+        :mul {:op :mul :symbol (set [(quote mul)]) :macro (tf-inst-bin "mul") :emit :macro}
+        :div {:op :div
+              :symbol (set [(quote sdiv) (quote udiv) (quote fdiv)])
+              :macro (fn [[sym & args]]
+                       (apply (tf-inst-bin (name sym)) nil args))
+              :emit :macro}
+        :rem {:op :rem
+              :symbol (set [(quote srem) (quote urem) (quote frem)])
+              :macro (fn [[sym & args]]
+                       (apply (tf-inst-bin (name sym)) nil args))
+              :emit :macro}
+        :icmp {:op :icmp :symbol (set [(quote icmp)]) :macro tf-icmp :emit :macro}
+        :br {:op :br :symbol (set [(quote br)]) :macro tf-br :emit :macro}
+        :call {:op :call :symbol (set [(quote call)]) :macro tf-call :emit :macro}
+        :alloca {:op :alloca :symbol (set [(quote alloca)]) :macro tf-alloca :emit :macro}
+        :store {:op :store :symbol (set [(quote store)]) :macro tf-store :emit :macro}
+        :load {:op :load :symbol (set [(quote load)]) :macro tf-load :emit :macro}})))
+
+(def +template+
+  (->> {:default {:common {:statement "" :start "" :end "" :sep "\n"}
+                  :block {:statement "" :start "" :end "" :sep "\n"}
+                  :define {:raw ""}
+                  :function {:raw ""}}
+        :token {:symbol {:replace {\- "_"}}}}
+       (collection/merge-nested (emit/default-grammar))))
+
+(def +grammar+
+  (grammar/grammar :llvm
+                   (grammar/to-reserved +features+)
+                   +template+))
+
+(def +meta+ (book-meta/book-meta {}))
+
+(def +book+
+  (book/book {:lang :llvm
+              :meta +meta+
+              :grammar +grammar+}))
+
+(def +init+ +book+)

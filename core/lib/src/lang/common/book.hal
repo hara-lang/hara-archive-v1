@@ -5,7 +5,7 @@
             [lang.common.emit-template :as template]))
 
 (defstruct Book [id version lang grammar grammar-coordinate coordinate selection compiler
-                 modules meta parent merged referenced revision])
+                 modules meta parent merged referenced revision file])
 
 (defn book?
   [value]
