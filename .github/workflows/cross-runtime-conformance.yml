@@ -20,7 +20,7 @@ on:
       specs_ref:
         description: Exact hara-specs-registry branch, tag, or commit to test
         required: false
-        default: 16fc136e07231771e0985afd152485483d874cf0
+        default: 7ccb219a94a6c89a777be947c7188a528361c8f5
 
 permissions:
   contents: read
@@ -30,7 +30,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  DEFAULT_SPECS_REF: 16fc136e07231771e0985afd152485483d874cf0
+  DEFAULT_SPECS_REF: 7ccb219a94a6c89a777be947c7188a528361c8f5
 
 jobs:
   interfaces:
