@@ -204,38 +204,18 @@ fn uuid_from_value(value: &Value) -> Result<uuid::Uuid, String> {
     }
 }
 
-<<<<<<< Updated upstream
 fn random_uuid() -> uuid::Uuid {
     let mut bytes = [0u8; 16];
     getrandom::getrandom(&mut bytes)
         .unwrap_or_else(|_| panic!("could not retrieve random bytes for uuid"));
-=======
-#[cfg(feature = "raw-wasm")]
-fn uuid_new_v4() -> uuid::Uuid {
-    let mut bytes = [0u8; 16];
-    if getrandom::getrandom(&mut bytes).is_err() {
-        return uuid::Uuid::nil();
-    }
->>>>>>> Stashed changes
     bytes[6] = (bytes[6] & 0x0f) | 0x40;
     bytes[8] = (bytes[8] & 0x3f) | 0x80;
     uuid::Uuid::from_bytes(bytes)
 }
 
-<<<<<<< Updated upstream
 pub(crate) fn uuid_value(values: &[Value]) -> Result<Value, String> {
     let value = match values {
         [] => random_uuid(),
-=======
-#[cfg(not(feature = "raw-wasm"))]
-fn uuid_new_v4() -> uuid::Uuid {
-    uuid::Uuid::new_v4()
-}
-
-pub(crate) fn uuid_value(values: &[Value]) -> Result<Value, String> {
-    let value = match values {
-        [] => uuid_new_v4(),
->>>>>>> Stashed changes
         [value] => uuid_from_value(value)?,
         [Value::Number(most), Value::Number(least)] => uuid_from_parts(*most, *least),
         _ if values.len() == 2 => {
@@ -438,6 +418,59 @@ pub(crate) struct MultiMethod {
     dispatch: Rc<Function>,
     methods: Vec<(Value, Rc<Function>)>,
     default: Option<Rc<Function>>,
+}
+
+pub(crate) fn native_multimethod(
+    qualified: &str,
+    dispatch: Rc<Function>,
+) -> (Value, Rc<RefCell<MultiMethod>>) {
+    let state = Rc::new(RefCell::new(MultiMethod {
+        dispatch,
+        methods: Vec::new(),
+        default: None,
+    }));
+    let invoke_state = state.clone();
+    let value = native_variadic_function(qualified, move |arguments| {
+        let state = invoke_state.borrow();
+        let key = call_function(&state.dispatch, arguments.clone())?;
+        let method = state
+            .methods
+            .iter()
+            .find(|(candidate, _)| *candidate == key)
+            .map(|(_, method)| method.clone())
+            .or_else(|| state.default.clone())
+            .ok_or_else(|| {
+                format!(
+                    "No multimethod method for dispatch value {}",
+                    key.display()
+                )
+            })?;
+        call_function(&method, arguments)
+    });
+    (value, state)
+}
+
+pub(crate) fn multimethod_set_method(
+    state: &Rc<RefCell<MultiMethod>>,
+    key: Value,
+    function: Rc<Function>,
+) {
+    let mut state = state.borrow_mut();
+    if matches!(
+        &key,
+        Value::Keyword(keyword)
+            if keyword.get_namespace().is_none() && keyword.get_name() == "default"
+    ) {
+        state.default = Some(function);
+    } else if let Some((_, existing)) = state
+        .methods
+        .iter_mut()
+        .find(|(candidate, _)| *candidate == key)
+    {
+        *existing = function;
+    } else {
+        state.methods.push((key, function));
+    }
 }
 
 impl std::fmt::Debug for Function {
@@ -963,6 +996,22 @@ pub(crate) fn exception_function_values() -> Vec<(&'static str, Value)> {
 
 pub(crate) fn direct_function_value(name: &str) -> Option<Value> {
     match name {
+        "disj" => Some(native_variadic_function("disj", |arguments| {
+            let (collection, values) = arguments
+                .split_first()
+                .ok_or_else(|| "disj expects a collection".to_string())?;
+            let mut output = collection.clone();
+            for value in values {
+                if matches!(output, Value::Nil) {
+                    break;
+                }
+                output = crate::core::protocol_intrinsic_call(
+                    "std.protocol.idissoc.IDissoc/dissoc",
+                    &[output, value.clone()],
+                )?;
+            }
+            Ok(output)
+        })),
         "quot" => Some(native_function("quot", 2, |arguments| {
             numeric::numeric_quotient(&arguments[0], &arguments[1])
         })),
@@ -1911,6 +1960,10 @@ pub(crate) fn eval_bytecode_declaration(
             "{expected_operator} instruction contains the wrong declaration"
         ));
     }
+    #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+    if direct_native_execution() {
+        return eval_direct_native_declaration(expected_operator, &form);
+    }
     let mut env = HashMap::new();
     if let Ok(registry) = namespace_registry() {
         env.extend(
@@ -1932,6 +1985,193 @@ pub(crate) fn eval_bytecode_declaration(
         save_namespace_environment(&registry, &mut env);
     }
     Ok(result)
+}
+
+/// Evaluates a source form through the Hara bytecode VM while the native
+/// substrate guard is active. Compilation temporarily leaves the guard so
+/// macro expansion and namespace preparation can use their compatibility
+/// evaluator; execution immediately re-enters the guarded VM boundary.
+#[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+pub(crate) fn eval_direct_native_source(source: &str) -> Result<Value, String> {
+    let registry = namespace_registry()?;
+    let program = without_direct_native_execution(|| {
+        crate::vm::compile_source_with_allow_unbound_globals(source, &registry)
+    })
+    .map_err(|error| format!("native bytecode compilation failed: {error}"))?;
+    crate::direct_native::record_bytecode_program(&program);
+    crate::vm::execute_program_with_globals(Rc::new(program), &registry)
+        .map_err(|error| format!("native bytecode execution failed: {error}"))
+}
+
+#[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+fn eval_direct_native_form(form: &Form) -> Result<Value, String> {
+    eval_direct_native_source(&form.to_string())
+}
+
+#[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+fn eval_direct_native_function(
+    parts: &[Form],
+    declaration: &str,
+) -> Result<Rc<Function>, String> {
+    let mut function = Vec::with_capacity(parts.len() + 1);
+    function.push(Form::Symbol("fn".into()));
+    function.extend_from_slice(parts);
+    let value = eval_direct_native_form(&Form::List(function))?;
+    match value {
+        Value::Function(function) => Ok(function),
+        _ => Err(format!("{declaration} function did not produce a callable")),
+    }
+}
+
+/// Handles declaration instructions without routing their nested expressions
+/// or function bodies back through the tree evaluator. These forms mutate
+/// protocol/multimethod registries, so the compiler keeps their declaration
+/// form as a constant and this VM-side adapter performs the mutation.
+#[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+fn eval_direct_native_declaration(expected_operator: &str, form: &Form) -> Result<Value, String> {
+    let Form::List(items) = form_without_metadata(form) else {
+        unreachable!("declaration validation checked the form shape")
+    };
+    match expected_operator {
+        "defprotocol" => {
+            if items.len() < 3 {
+                return Err("defprotocol expects a name and method declarations".into());
+            }
+            let name = match form_without_metadata(&items[1]) {
+                Form::Symbol(name) if !name.contains('/') => name.clone(),
+                _ => return Err("defprotocol name must be an unqualified symbol".into()),
+            };
+            let mut methods = HashMap::new();
+            for declaration in &items[2..] {
+                let Form::List(parts) = form_without_metadata(declaration) else {
+                    return Err("defprotocol method declaration must be a list".into());
+                };
+                if parts.len() != 2
+                    || !matches!(form_without_metadata(&parts[0]), Form::Symbol(_))
+                    || !matches!(form_without_metadata(&parts[1]), Form::Vector(_))
+                {
+                    return Err(
+                        "defprotocol method declaration expects a name and parameter vector"
+                            .into(),
+                    );
+                }
+                let Form::Symbol(method) = form_without_metadata(&parts[0]) else {
+                    unreachable!()
+                };
+                let Form::Vector(arguments) = form_without_metadata(&parts[1]) else {
+                    unreachable!()
+                };
+                if arguments.is_empty()
+                    || methods.insert(method.clone(), arguments.len()).is_some()
+                {
+                    return Err("protocol methods must be unique and take a receiver".into());
+                }
+            }
+            publish_guest_protocol(&name, methods, Vec::new(), &mut HashMap::new())
+        }
+        "extend-type" => {
+            if items.len() < 4 {
+                return Err(
+                    "extend-type expects a type, protocol, and method implementations".into(),
+                );
+            }
+            let type_value = eval_direct_native_form(&items[1])?;
+            let type_name = match type_value {
+                Value::StructType(ty) => ty.name.clone(),
+                Value::MutableType(ty) => ty.name.clone(),
+                _ => return Err("extend-type expects a struct or mutable type".into()),
+            };
+            let protocol = match eval_direct_native_form(&items[2])? {
+                Value::Protocol(protocol) => protocol,
+                _ => return Err("extend-type expects a protocol".into()),
+            };
+            let mut seen = HashSet::new();
+            let mut implementations = Vec::with_capacity(items.len() - 3);
+            for implementation in &items[3..] {
+                let Form::List(parts) = form_without_metadata(implementation) else {
+                    return Err("extend-type implementations must be method forms".into());
+                };
+                if parts.len() < 3 {
+                    return Err("extend-type implementations require a body".into());
+                }
+                let Form::Symbol(method) = form_without_metadata(&parts[0]) else {
+                    return Err("extended method name must be a symbol".into());
+                };
+                let Form::Vector(arguments) = form_without_metadata(&parts[1]) else {
+                    return Err("extended method arguments must be a vector".into());
+                };
+                if !seen.insert(method.clone()) {
+                    return Err("Duplicate extended method".into());
+                }
+                let valid_arity = protocol.methods.get(method).is_some_and(|expected| {
+                    *expected == arguments.len()
+                        || (*expected == usize::MAX && !arguments.is_empty())
+                });
+                if !valid_arity {
+                    return Err(format!("invalid protocol method implementation: {method}"));
+                }
+                implementations.push((
+                    method.clone(),
+                    eval_direct_native_function(&parts[1..], "extend-type")?,
+                ));
+            }
+            let registry = active_protocol_registry()?;
+            for (method, function) in implementations {
+                registry.register_guest(
+                    protocol.name.clone(),
+                    type_name.clone(),
+                    method,
+                    function,
+                );
+            }
+            Ok(Value::Protocol(protocol))
+        }
+        "defmulti" => {
+            if items.len() != 3 {
+                return Err("defmulti expects a name and dispatch function".into());
+            }
+            let Form::Symbol(name) = form_without_metadata(&items[1]) else {
+                return Err("defmulti name must be an unqualified symbol".into());
+            };
+            if name.contains('/') {
+                return Err("defmulti name must be an unqualified symbol".into());
+            }
+            let Value::Function(dispatch) = eval_direct_native_form(&items[2])? else {
+                return Err("defmulti dispatch function must be callable".into());
+            };
+            let registry = namespace_registry()?;
+            let namespace = registry.current();
+            let qualified = format!("{}/{}", namespace.name().as_str(), name);
+            let (value, state) = native_multimethod(&qualified, dispatch);
+            let var = namespace.intern(name, value.clone());
+            var.set_origin(definition_origin());
+            register_multimethod(qualified, state);
+            Ok(value)
+        }
+        "defmethod" => {
+            if items.len() < 5 {
+                return Err(
+                    "defmethod expects a multifn, dispatch value, parameters, and body".into(),
+                );
+            }
+            let Form::Symbol(name) = form_without_metadata(&items[1]) else {
+                return Err("defmethod multifn must be a symbol".into());
+            };
+            let namespace = namespace_registry()?.current().name().as_str().to_owned();
+            let qualified = if name.contains('/') {
+                name.clone()
+            } else {
+                format!("{namespace}/{name}")
+            };
+            let key = eval_direct_native_form(&items[2])?;
+            let function = eval_direct_native_function(&items[3..], "defmethod")?;
+            let state = multimethod_state(&qualified)
+                .ok_or_else(|| "defmethod expects an existing multifn".to_string())?;
+            multimethod_set_method(&state, key, function);
+            Ok(Value::Nil)
+        }
+        _ => Err(format!("unsupported native declaration: {expected_operator}")),
+    }
 }
 
 pub(crate) fn bytecode_dynamic_bind(name: &str, value: Value) -> Result<(), String> {
@@ -2048,7 +2288,7 @@ pub(crate) fn vm_macroexpand(form: &Form) -> Result<Form, String> {
 
 thread_local! {
     static TRACE_ENABLED: Cell<bool> = const { Cell::new(false) };
-    static TRACE_STACK: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+    static TRACE_STACK: RefCell<Vec<TraceFrame>> = const { RefCell::new(Vec::new()) };
     #[cfg(feature = "evaluation-journal")]
     static EVALUATION_JOURNAL: RefCell<Option<crate::journal::JournalCollector>> = const { RefCell::new(None) };
     #[cfg(feature = "evaluation-journal")]
@@ -2056,6 +2296,26 @@ thread_local! {
     static ACTIVE_MACROS: RefCell<Option<Rc<RefCell<HashMap<(String, String), Rc<Function>>>>>> =
         const { RefCell::new(None) };
     static GENSYM_COUNTER: Cell<u64> = const { Cell::new(0) };
+}
+
+#[derive(Clone)]
+struct TraceFrame {
+    name: String,
+    namespace: Option<String>,
+    site: Option<ExceptionSite>,
+}
+
+fn trace_stack_snapshot() -> Vec<TraceFrame> {
+    TRACE_STACK.with(|stack| stack.borrow().clone())
+}
+
+fn with_trace_stack<R>(trace: &[TraceFrame], operation: impl FnOnce() -> R) -> R {
+    TRACE_STACK.with(|stack| {
+        let previous = std::mem::replace(&mut *stack.borrow_mut(), trace.to_vec());
+        let result = operation();
+        *stack.borrow_mut() = previous;
+        result
+    })
 }
 
 #[cfg(feature = "evaluation-journal")]
@@ -2189,6 +2449,30 @@ fn tracing_enabled() -> bool {
     TRACE_ENABLED.with(Cell::get)
 }
 
+fn trace_frame_name(frame: &TraceFrame) -> String {
+    match frame.namespace.as_deref() {
+        Some(namespace) if !frame.name.contains('/') => format!("{namespace}/{}", frame.name),
+        _ => frame.name.clone(),
+    }
+}
+
+fn trace_frame_location(site: &ExceptionSite) -> String {
+    let source = site
+        .resource
+        .as_deref()
+        .or(site.namespace.as_deref())
+        .unwrap_or("<source>");
+    format!("{source}:{}:{}", site.line, site.column)
+}
+
+fn format_trace_frame(frame: &TraceFrame) -> String {
+    let name = trace_frame_name(frame);
+    match frame.site.as_ref() {
+        Some(site) => format!("{name} ({})", trace_frame_location(site)),
+        None => name,
+    }
+}
+
 fn append_trace(error: String) -> String {
     if !tracing_enabled() {
         return error;
@@ -2204,7 +2488,7 @@ fn append_trace(error: String) -> String {
         "{error}\n[hara stack]\n{}",
         frames
             .iter()
-            .map(|frame| format!("  at {frame}"))
+            .map(|frame| format!("  at {}", format_trace_frame(frame)))
             .collect::<Vec<_>>()
             .join("\n")
     )
