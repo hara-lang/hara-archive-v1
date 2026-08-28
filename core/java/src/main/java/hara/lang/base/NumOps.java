@@ -500,6 +500,7 @@ public interface NumOps {
 
     @Override
     public Number remainder(Number x, Number y) {
+      if (x.longValue() == Long.MIN_VALUE && y.longValue() == -1) return Num.num(0);
       return Num.num(x.longValue() % y.longValue());
     }
 

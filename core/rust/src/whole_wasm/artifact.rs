@@ -198,7 +198,10 @@ pub(crate) fn native_function_capabilities(program: &Program) -> Vec<bool> {
         .functions
         .iter()
         .enumerate()
-        .map(|(id, function)| lower_function(program, id as FunctionId, function).is_ok())
+        .map(|(id, function)| {
+            !has_unrepresentable_integer_constant(program, function)
+                && lower_function(program, id as FunctionId, function).is_ok()
+        })
         .collect::<Vec<_>>();
     loop {
         let previous = capabilities.clone();
@@ -222,6 +225,21 @@ pub(crate) fn native_function_capabilities(program: &Program) -> Vec<bool> {
             return capabilities;
         }
     }
+}
+
+fn has_unrepresentable_integer_constant(
+    program: &Program,
+    function: &crate::vm::FunctionPrototype,
+) -> bool {
+    function.code.iter().any(|instruction| {
+        let Instruction::Constant(index) = instruction else {
+            return false;
+        };
+        program
+            .constants
+            .get(*index as usize)
+            .is_some_and(crate::numeric::is_big_integer_value)
+    })
 }
 
 fn replace_with_fallback_stub(function: &mut crate::vm::FunctionPrototype) {

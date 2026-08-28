@@ -205,13 +205,13 @@ jobs:
         run: |
           cargo clippy --manifest-path core/rust/Cargo.toml \
             --features code-vm-conformance \
-            --lib --no-deps
+            --package hara-runtime --lib --no-deps
           cargo test --manifest-path core/rust/Cargo.toml \
             --features code-vm-conformance \
-            vm::session:: --lib
+            --package hara-runtime vm::session:: --lib
           cargo test --manifest-path core/rust/Cargo.toml \
             --features code-vm-conformance \
-            vm::conformance:: --lib
+            --package hara-runtime vm::conformance:: --lib
           cargo run --manifest-path core/rust/Cargo.toml \
             --features code-vm-conformance \
             --bin hara-code-vm-conformance -- check
@@ -221,4 +221,4 @@ jobs:
           cargo check --manifest-path core/rust/Cargo.toml \
             --target wasm32-unknown-unknown \
             --features code-vm-conformance \
-            --lib
+            --package hara-runtime --lib

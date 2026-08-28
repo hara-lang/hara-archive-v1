@@ -40,7 +40,7 @@ impl NativeModule {
 }
 
 fn decode_arguments(request: &[u8]) -> Result<Vec<Value>, String> {
-    match crate::hta::decode(request)? {
+    match crate::hta::decode_canonical(request)? {
         Value::List(values) => Ok(values.iter().cloned().collect()),
         Value::Tuple(values) => Ok(values.iter().cloned().collect()),
         Value::Vector(values) => Ok(values.iter().cloned().collect()),

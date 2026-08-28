@@ -1,5 +1,8 @@
 #![cfg(feature = "bytecode-vm")]
 
+use hara_wasm::core::Value;
+use hara_wasm::vm::{compile_source, decode_program, encode_program, Instruction};
+use num_bigint::BigInt;
 use hara_wasm::Runtime;
 
 fn eval(runtime: &mut Runtime, source: &str) -> String {
@@ -55,15 +58,29 @@ fn public_runtime_covers_globals_arities_destructuring_and_named_values() {
 #[test]
 fn namespace_and_module_forms_stay_at_the_runtime_boundary() {
     let runtime = Runtime::core();
-    for (source, operator) in [("(ns demo)", "ns"), ("(require demo)", "require")] {
-        let error = runtime
-            .compile_bytecode(source)
-            .expect_err("namespace forms must not become VM instructions");
-        assert!(
-            error.contains(&format!("unsupported operator: {operator}")),
-            "unexpected {operator} diagnostic: {error}"
-        );
-    }
+    let namespace = runtime
+        .compile_bytecode("(ns demo)")
+        .expect("namespace declarations are loader configuration");
+    assert!(
+        namespace.functions[0]
+            .code
+            .iter()
+            .all(|instruction| matches!(instruction, Instruction::Nil | Instruction::Return)),
+        "the namespace declaration must not become an executable VM operation: {:?}",
+        namespace.functions[0].code
+    );
+
+    let require = runtime
+        .compile_bytecode("(require demo)")
+        .expect("require is an explicit runtime namespace operation");
+    assert!(
+        require.functions[0]
+            .code
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::NamespaceOperation(_))),
+        "require must remain an explicit runtime namespace operation: {:?}",
+        require.functions[0].code
+    );
 }
 
 #[test]
@@ -76,4 +93,16 @@ fn named_multi_arity_is_supported_but_anonymous_multi_arity_is_not_language_surf
         error.contains("fn multi-arity is not supported"),
         "unexpected anonymous multi-arity diagnostic: {error}"
     );
+}
+
+#[test]
+fn hbc_constants_round_trip_with_canonical_integer_widths() {
+    let mut program = compile_source("42").expect("literal must compile");
+    assert_eq!(program.constants.len(), 1);
+    program.constants[0] = Value::BigInteger(BigInt::from(42_i64));
+
+    let encoded = encode_program(&program).expect("program must encode");
+    let decoded = decode_program(&encoded).expect("program must decode");
+    assert_eq!(decoded.constants, vec![Value::Number(42)]);
+    assert_eq!(encode_program(&decoded).unwrap(), encoded);
 }

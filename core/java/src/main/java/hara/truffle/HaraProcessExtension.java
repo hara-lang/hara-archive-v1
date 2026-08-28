@@ -246,7 +246,7 @@ final class HaraProcessExtension implements HaraExtensionRuntime {
     if (length <= 0 || length > MAX_FRAME_BYTES) {
       throw new HaraException("hta/process-frame-size: " + length);
     }
-    return HtaValueCodec.decode(source.readNBytes(length));
+    return HtaValueCodec.decodeCanonical(source.readNBytes(length));
   }
 
   private synchronized void failWorker(HaraException error) {

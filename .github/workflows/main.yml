@@ -48,13 +48,13 @@ jobs:
     - name: Run raw HTA VM integration tests
       run: cargo test --manifest-path core/rust/raw/Cargo.toml --features bytecode-vm
     - name: Run bytecode VM tests
-      run: "cargo test --manifest-path core/rust/Cargo.toml --features bytecode-vm vm:: --lib"
+      run: "cargo test --manifest-path core/rust/Cargo.toml --package hara-runtime --features bytecode-vm vm:: --lib"
     - name: Verify Rust-produced HBC0 conformance artifact
       run: cargo run --quiet --manifest-path core/rust/Cargo.toml --features bytecode-vm --bin hara-bytecode-conformance-artifact -- check
     - name: Run checked tracing JIT tests
-      run: "cargo test --manifest-path core/rust/Cargo.toml --features tracing-jit jit:: --lib"
+      run: "cargo test --manifest-path core/rust/Cargo.toml --package hara-runtime --features tracing-jit jit:: --lib"
     - name: Run native tracing JIT tests
-      run: "cargo test --manifest-path core/rust/Cargo.toml --features native-jit jit:: --lib"
+      run: "cargo test --manifest-path core/rust/Cargo.toml --package hara-runtime --features native-jit jit:: --lib"
     - name: Verify generated parity corpus
       run: ./scripts/runtime/generate-wasm-truffle-parity && git diff --exit-code -- hara-specs-registry/01-lang/001-language/draft/conformance/parity/wasm-truffle.edn
     - name: Build raw Rust WASM extension artifact

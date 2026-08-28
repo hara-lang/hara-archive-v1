@@ -177,7 +177,7 @@ mod tests {
         .unwrap();
         let result = sandbox_call(&mut kernel, sandbox, "std.foundation/+", &arguments).unwrap();
         assert_eq!(
-            crate::hta::decode(&result).unwrap(),
+            crate::hta::decode_canonical(&result).unwrap(),
             core::Value::Number(42)
         );
         let inert_source = "(do (def injected 99) :executed)";
@@ -188,7 +188,7 @@ mod tests {
         let result =
             sandbox_call(&mut kernel, sandbox, "std.foundation/identity", &arguments).unwrap();
         assert_eq!(
-            crate::hta::decode(&result).unwrap(),
+            crate::hta::decode_canonical(&result).unwrap(),
             core::Value::String(inert_source.into())
         );
         assert_eq!(

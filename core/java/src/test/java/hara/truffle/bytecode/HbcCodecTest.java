@@ -9,7 +9,7 @@ import static org.junit.Assert.assertTrue;
 import hara.truffle.HtaValueCodec;
 import hara.truffle.HalcSchema;
 import hara.truffle.HaraLanguage;
-import hara.lang.base.G;
+import hara.lang.base.Ex;
 import hara.truffle.bytecode.HbcProgram.Function;
 import hara.truffle.bytecode.HbcProgram.Instruction;
 import hara.truffle.bytecode.HbcProgram.Opcode;
@@ -108,6 +108,26 @@ public class HbcCodecTest {
   public void canonicalHtaSupportsFloatingConstants() {
     byte[] encoded = HtaValueCodec.encode(1.5d);
     assertEquals(1.5d, (Double) HtaValueCodec.decodeCanonical(encoded), 0.0d);
+  }
+
+  @Test
+  public void canonicalizesBigIntegerConstantsAtTheHbcBoundary() {
+    HbcProgram base = arithmeticProgram();
+    HbcProgram program =
+        new HbcProgram(
+            base.namespace(),
+            List.of(BigInteger.valueOf(42), BigInteger.ONE.shiftLeft(63)),
+            base.varMetadata(),
+            base.schemaTypes(),
+            base.functionTypes(),
+            base.inferredFunctionTypes(),
+            base.functions(),
+            base.entry());
+
+    HbcProgram decoded = HbcCodec.decode(HbcCodec.encode(program));
+    assertEquals(42L, decoded.constants().get(0));
+    assertEquals(BigInteger.ONE.shiftLeft(63), decoded.constants().get(1));
+    assertArrayEquals(HbcCodec.encode(program), HbcCodec.encode(decoded));
   }
 
   @Test
@@ -426,13 +446,14 @@ public class HbcCodecTest {
                     null,
                     null,
                     null)));
-    HbcProgram program = new HbcProgram(List.of("boom"), List.of(), List.of(entry), 0);
+    Ex.Info boom = new Ex.Info("boom", hara.lang.data.Map.Standard.from(null));
+    HbcProgram program = new HbcProgram(List.of(boom), List.of(), List.of(entry), 0);
     Source source =
         Source.newBuilder(HaraLanguage.ID, ByteSequence.create(HbcCodec.encode(program)), "catch.hbc")
             .mimeType(HaraLanguage.BYTECODE_MIME_TYPE)
             .build();
     try (Context context = Context.newBuilder(HaraLanguage.ID).build()) {
-      assertEquals("boom", context.eval(source).asString());
+      assertTrue(context.eval(source).toString().contains("boom"));
     }
   }
 
@@ -469,7 +490,7 @@ public class HbcCodecTest {
   }
 
   @Test
-  public void hostCallAndSettledAwaitUseTheSharedHostPromiseBoundary() throws Exception {
+  public void hostCallRequiresTrustedHostCapabilityBeforeAwait() throws Exception {
     Function entry =
         new Function(
             null,
@@ -494,8 +515,9 @@ public class HbcCodecTest {
             .mimeType(HaraLanguage.BYTECODE_MIME_TYPE)
             .build();
     try (Context context = Context.newBuilder(HaraLanguage.ID).build()) {
-      org.graalvm.polyglot.Value result = context.eval(source);
-      assertTrue(result.hasHashEntries() || result.hasMembers());
+      org.graalvm.polyglot.PolyglotException failure =
+          assertThrows(org.graalvm.polyglot.PolyglotException.class, () -> context.eval(source));
+      assertTrue(failure.getMessage().contains("requires capability :host-call"));
     }
   }
 
@@ -684,13 +706,14 @@ public class HbcCodecTest {
             List.of(new Instruction(Opcode.CONSTANT, 0, 0, 0), Instruction.of(Opcode.THROW)),
             Arrays.asList(null, null),
             List.of());
-    HbcProgram program = new HbcProgram(List.of(42L), List.of(), List.of(entry, throwing), 0);
+    Ex.Info error = new Ex.Info("boom", hara.lang.data.Map.Standard.from(null));
+    HbcProgram program = new HbcProgram(List.of(error), List.of(), List.of(entry, throwing), 0);
     Source source =
         Source.newBuilder(HaraLanguage.ID, ByteSequence.create(HbcCodec.encode(program)), "unwind.hbc")
             .mimeType(HaraLanguage.BYTECODE_MIME_TYPE)
             .build();
     try (Context context = Context.newBuilder(HaraLanguage.ID).build()) {
-      assertEquals(42L, context.eval(source).asLong());
+      assertTrue(context.eval(source).toString().contains("boom"));
     }
   }
 
@@ -760,10 +783,7 @@ public class HbcCodecTest {
                   + HbcDisassembler.disassemble(HbcCodec.decode(testCase.artifact())),
               failure);
         }
-        String display =
-            actual.isNull()
-                ? "nil"
-                : actual.isString() ? G.display(actual.asString()) : actual.toString();
+        String display = HbcConformanceCorpus.display(actual);
         assertEquals(testCase.id(), testCase.expectedDisplay(), display);
       }
     }

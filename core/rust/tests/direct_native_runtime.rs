@@ -40,6 +40,24 @@ fn runtime_backend_executes_ordinary_hara_functions_in_the_vm() {
 }
 
 #[test]
+fn direct_native_preserves_the_long_bigint_boundary() {
+    let mut runtime = Runtime::core();
+    enable_native(&mut runtime);
+    assert_eq!(
+        runtime
+            .eval_direct_native("[(std.native.Base/long? 9223372036854775807) (std.native.Base/type 9223372036854775808)]")
+            .unwrap(),
+        "[true :std.native.BigInteger]"
+    );
+    assert_eq!(
+        runtime
+            .eval_direct_native("(+ 9223372036854775807 1)")
+            .unwrap(),
+        "9223372036854775808"
+    );
+}
+
+#[test]
 fn direct_native_keeps_the_disj_core_intrinsic_available() {
     let mut runtime = Runtime::core();
     enable_native(&mut runtime);

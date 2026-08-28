@@ -816,7 +816,7 @@ impl HtaProviderState {
             &[Val::I32(pointer as i32), Val::I32(size as i32)],
             "hta_dealloc",
         )?;
-        hta::decode(&bytes)
+        hta::decode_canonical(&bytes)
             .map(Some)
             .map_err(|error| format!("hta/event-malformed: {error}"))
     }

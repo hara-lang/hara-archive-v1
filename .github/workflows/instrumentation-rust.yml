@@ -105,17 +105,17 @@ jobs:
       - name: Test shared instrumentation hub and delivery
         run: |
           cargo test --locked --manifest-path core/rust/Cargo.toml \
-            --lib instrumentation
+            --package hara-runtime --lib instrumentation
 
       - name: Test authoritative interpreter probes
         run: |
           cargo test --locked --manifest-path core/rust/Cargo.toml \
-            --lib core::fiber::coroutine
+            --package hara-runtime --lib core::fiber::coroutine
 
       - name: Test authoritative HBC probes
         run: |
           cargo test --locked --manifest-path core/rust/Cargo.toml \
-            --lib vm::machine::instrumentation
+            --package hara-runtime --lib vm::machine::instrumentation
 
       - name: Check feature-minimal library
         run: |

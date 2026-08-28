@@ -129,9 +129,9 @@ jobs:
       - name: Test live evaluator boundaries and snapshots
         run: |
           cargo test --manifest-path core/rust/Cargo.toml \
-            core::fiber::coroutine --lib
+            --package hara-runtime core::fiber::coroutine --lib
 
       - name: Compile live evaluator for browser Wasm
         run: |
           cargo check --manifest-path core/rust/Cargo.toml \
-            --target wasm32-unknown-unknown --lib
+            --target wasm32-unknown-unknown --package hara-runtime --lib

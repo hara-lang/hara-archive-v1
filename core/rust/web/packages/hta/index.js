@@ -95,6 +95,10 @@ export function decodeHta(input) {
   const reader = new Reader(bytes, 4);
   const value = reader.value(0);
   if (reader.cursor !== bytes.length) throw new Error("hta/value-malformed: trailing bytes");
+  const canonical = encodeHta(value);
+  if (canonical.length !== bytes.length || canonical.some((byte, index) => byte !== bytes[index])) {
+    throw new Error("hta/value-noncanonical: frame bytes are not canonical");
+  }
   return value;
 }
 
@@ -312,6 +316,7 @@ function writeValue(output, value, depth=0) {
   } else if (Number.isSafeInteger(value) && !Object.is(value, -0)) {
   output.push(TAG.i64); writeI64(output, BigInt(value));
   } else if (typeof value === "number") {
+    if (!Number.isFinite(value)) throw new Error("hta/non-finite number");
     output.push(TAG.f64); writeF64(output, value);
   } else if (typeof value === "string") { output.push(TAG.string); writeBytes(output, encoder.encode(value)); }
   else if (value instanceof Uint8Array) { output.push(TAG.bytes); writeBytes(output, value); }
@@ -376,7 +381,7 @@ class Reader {
     if(tag===TAG.nil)return null;if(tag===TAG.false)return false;if(tag===TAG.true)return true;
     if(tag===TAG.i64){const bytes=this.take(8);let value=0n;for(const byte of bytes)value=(value<<8n)|BigInt(byte);value=BigInt.asIntN(64,value);return canonicalInteger(value);}
     if(tag===TAG.bigInteger){const text=decoder.decode(this.data());if(!/^-?(0|[1-9][0-9]*)$/.test(text)||text==="-0")throw new Error("hta/value-malformed: invalid big integer");return canonicalInteger(BigInt(text));}
-    if(tag===TAG.f64){const bytes=this.take(8);return new DataView(bytes.buffer,bytes.byteOffset,8).getFloat64(0,false);}
+    if(tag===TAG.f64){const bytes=this.take(8);const value=new DataView(bytes.buffer,bytes.byteOffset,8).getFloat64(0,false);if(!Number.isFinite(value))throw new Error("hta/non-finite number");return value;}
     if(tag===TAG.string)return decoder.decode(this.data());if(tag===TAG.bytes)return this.data().slice();
     if(tag===TAG.keyword)return new HtaKeyword(decoder.decode(this.data()));if(tag===TAG.symbol)return new HtaSymbol(decoder.decode(this.data()));
     if(tag===TAG.namespace)return new HtaNamespace(decoder.decode(this.data()));

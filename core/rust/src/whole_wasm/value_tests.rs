@@ -191,7 +191,7 @@ fn hta_is_the_portable_boundary_for_dynamic_whole_wasm_calls() {
     let response = native
         .call_hta(function, &request)
         .expect("portable HTA whole-Wasm call");
-    let output = crate::hta::decode(&response).expect("HTA response");
+    let output = crate::hta::decode_canonical(&response).expect("HTA response");
 
     assert_eq!(output, expected);
 }
@@ -247,7 +247,8 @@ fn typed_struct_schema_round_trips_through_the_hta_boundary() {
     let response = native
         .call_hta(function, &request)
         .expect("typed struct HTA call");
-    let Value::Struct(output) = crate::hta::decode(&response).expect("HTA response") else {
+    let Value::Struct(output) = crate::hta::decode_canonical(&response).expect("HTA response")
+    else {
         panic!("typed struct response")
     };
 
@@ -336,10 +337,10 @@ fn scalar_entry_calls_keep_the_existing_abi() {
 }
 
 #[test]
-fn scalar_entry_modulo_uses_true_modulo_semantics() {
+fn scalar_entry_modulo_uses_canonical_remainder_semantics() {
     let mut native = module("(mod -7 3)");
-    assert_eq!(native.call_entry_i64(), Ok(2));
+    assert_eq!(native.call_entry_i64(), Ok(-1));
 
     let mut native = module("(mod 7 -3)");
-    assert_eq!(native.call_entry_i64(), Ok(-2));
+    assert_eq!(native.call_entry_i64(), Ok(1));
 }

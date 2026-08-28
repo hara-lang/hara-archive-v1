@@ -28,7 +28,7 @@ fn run() -> Result<(), String> {
     let java = read_report(&java_path)?;
     for report in [&rust, &java] {
         if report.get("schema").and_then(Value::as_str)
-            != Some("hara.instrumentation.conformance-report/0-alpha")
+            != Some("hara.instrumentation.conformance-report/1")
         {
             return Err("unsupported instrumentation report schema".into());
         }

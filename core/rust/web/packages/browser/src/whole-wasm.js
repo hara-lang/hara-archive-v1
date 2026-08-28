@@ -8,6 +8,13 @@ const HNW0_OPERATION_REGISTRY_DIGEST =
   "d8b2cd6097d17600d5a534186d27ea2744f4c8057b779b2c6d0b7f9727623e2a";
 const HNW0_ABI_VERSION = 0;
 
+function fallbackValue(value) {
+  if (typeof value === "string" && /^-?(0|[1-9][0-9]*)$/.test(value)) {
+    return BigInt(value);
+  }
+  return value;
+}
+
 function readU32(bytes, offset) {
   return new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
     .getUint32(offset, false);
@@ -211,7 +218,7 @@ export async function instantiateWholeWasm(product, Host, fallback) {
         if (typeof fallback !== "function") {
           throw new Error("whole-Wasm entry requires its validated HBC fallback");
         }
-        return fallback(hbc);
+        return fallbackValue(fallback(hbc));
       }
       instance.exports[names.errorGlobal].value = 0;
       instance.exports[names.heapGlobal].value = heapBase;
@@ -219,6 +226,9 @@ export async function instantiateWholeWasm(product, Host, fallback) {
         return instance.exports[names.entrypoint](...arguments_.map(BigInt));
       } catch (error) {
         const message = ERRORS.get(instance.exports[names.errorGlobal].value);
+        if (message === "integer overflow" && typeof fallback === "function") {
+          return fallbackValue(fallback(hbc));
+        }
         throw new Error(message ?? `whole-Wasm trap: ${error.message}`);
       }
     },

@@ -16,6 +16,7 @@ import hara.truffle.bytecode.HbcProgram.Function;
 import hara.truffle.bytecode.HbcProgram.Instruction;
 import hara.truffle.bytecode.HbcProgram.Primitive;
 import org.graalvm.polyglot.Context;
+import java.math.BigInteger;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -69,10 +70,67 @@ public class HbcNativeExecutionTest {
   }
 
   @Test
+  public void generatedTierAppliesHaraTruthinessToConditionalValues() {
+    try (SessionKernel kernel = new SessionKernel(false, false)) {
+      SessionKernel.Session session = kernel.create(SessionModel.SessionId.parse("hbc-truthy"));
+      assertEquals(
+          11L,
+          session.executeHbc(
+              truthinessProgram(
+                  new Instruction(HbcProgram.Opcode.CONSTANT, 2, 0, 0),
+                  List.of(11L, 22L, 0L))));
+      assertEquals(
+          11L,
+          session.executeHbc(
+              truthinessProgram(
+                  new Instruction(HbcProgram.Opcode.CONSTANT, 2, 0, 0),
+                  List.of(11L, 22L, ""))));
+      assertEquals(
+          22L,
+          session.executeHbc(truthinessProgram(Instruction.of(HbcProgram.Opcode.NIL), List.of(11L, 22L))));
+    }
+  }
+
+  @Test
   public void eligibleStaticCallsStayInTheGeneratedTier() {
     try (SessionKernel kernel = new SessionKernel(false, false)) {
       SessionKernel.Session session = kernel.create(SessionModel.SessionId.parse("hbc-static"));
       assertEquals(42L, session.executeHbc(staticCallProgram()));
+    }
+  }
+
+  @Test
+  public void generatedTierFallbackPreservesArbitraryPrecisionResults() {
+    try (SessionKernel kernel = new SessionKernel(false, false)) {
+      SessionKernel.Session session = kernel.create(SessionModel.SessionId.parse("hbc-bigint"));
+      Function entry =
+          new Function(
+              null,
+              false,
+              0,
+              false,
+              0,
+              0,
+              2,
+              List.of(
+                  new Instruction(HbcProgram.Opcode.CONSTANT, 0, 0, 0),
+                  new Instruction(HbcProgram.Opcode.CONSTANT, 1, 0, 0),
+                  new Instruction(HbcProgram.Opcode.PRIMITIVE, Primitive.ADD.id(), 2, 0),
+                  Instruction.of(HbcProgram.Opcode.RETURN)),
+              Arrays.asList(null, null, null, null),
+              List.of());
+      HbcProgram program =
+          new HbcProgram(
+              "hbc-bigint",
+              List.of(BigInteger.valueOf(Long.MAX_VALUE), BigInteger.ONE),
+              List.of(),
+              Map.of(),
+              Map.of(),
+              Map.of(),
+              List.of(entry),
+              0);
+
+      assertEquals(BigInteger.ONE.shiftLeft(63), HaraBox.unwrap(session.executeHbc(program)));
     }
   }
 
@@ -303,6 +361,29 @@ public class HbcNativeExecutionTest {
         Map.of(),
         List.of(entry),
         0);
+  }
+
+  private static HbcProgram truthinessProgram(Instruction condition, List<Object> constants) {
+    Function entry =
+        new Function(
+            null,
+            false,
+            0,
+            false,
+            0,
+            0,
+            1,
+            List.of(
+                condition,
+                new Instruction(HbcProgram.Opcode.JUMP_IF_FALSE, 4, 0, 0),
+                new Instruction(HbcProgram.Opcode.CONSTANT, 0, 0, 0),
+                new Instruction(HbcProgram.Opcode.JUMP, 5, 0, 0),
+                new Instruction(HbcProgram.Opcode.CONSTANT, 1, 0, 0),
+                Instruction.of(HbcProgram.Opcode.RETURN)),
+            Arrays.asList(null, null, null, null, null, null),
+            List.of());
+    return new HbcProgram(
+        "native-truthiness", constants, List.of(), Map.of(), Map.of(), Map.of(), List.of(entry), 0);
   }
 
   private static HbcProgram loopProgram() {

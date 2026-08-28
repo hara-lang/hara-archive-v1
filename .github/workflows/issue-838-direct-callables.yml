@@ -130,15 +130,16 @@ jobs:
 
       - name: Run focused evaluator and VM machine suites
         run: |
-          cargo test --locked --manifest-path core/rust/Cargo.toml fiber:: --lib
           cargo test --locked --manifest-path core/rust/Cargo.toml \
-            --features bytecode-vm vm::machine:: --lib
+            --package hara-runtime fiber:: --lib
+          cargo test --locked --manifest-path core/rust/Cargo.toml \
+            --package hara-runtime --features bytecode-vm vm::machine:: --lib
 
       - name: Run bytecode VM execution suite (baseline has pre-existing failures)
         continue-on-error: true
         run: |
           cargo test --locked --manifest-path core/rust/Cargo.toml \
-            --features bytecode-vm vm::execution_tests --lib
+            --package hara-runtime --features bytecode-vm vm::execution_tests --lib
 
   foundation:
     name: Specs-owned Foundation and Wasm targets
@@ -236,6 +237,7 @@ jobs:
 
       - name: Run Work protocol, evaluator, and compiler suites
         run: |
-          cargo test --locked --manifest-path core/rust/Cargo.toml work:: --lib
           cargo test --locked --manifest-path core/rust/Cargo.toml \
-            --features bytecode-vm work --lib
+            --package hara-runtime work:: --lib
+          cargo test --locked --manifest-path core/rust/Cargo.toml \
+            --package hara-runtime --features bytecode-vm work --lib

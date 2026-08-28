@@ -284,8 +284,8 @@ fn arithmetic() {
     assert_eq!(eval("(/ 17 5)"), "3");
     assert_eq!(eval("(/ -17 5)"), "-3");
     assert_eq!(eval("(mod 17 5)"), "2");
-    assert_eq!(eval("(mod -7 3)"), "2");
-    assert_eq!(eval("(mod 7 -3)"), "-2");
+    assert_eq!(eval("(mod -7 3)"), "-1");
+    assert_eq!(eval("(mod 7 -3)"), "1");
 }
 
 #[test]

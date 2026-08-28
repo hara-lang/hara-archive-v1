@@ -46,6 +46,9 @@ hara-abi = { path = "abi" }
 
 [lib]
 crate-type = ["cdylib", "rlib"]
+# The delivery facade has no implementation unit-test graph. Runtime unit
+# tests are owned by the internal hara-runtime package below.
+test = false
 
 [features]
 # The shared instrumentation hub is always present. The default native runtime

@@ -97,7 +97,7 @@ impl Dispatcher {
 
     fn dispatch(&self, event: ReaderEvent) {
         match event {
-            ReaderEvent::Frame(bytes) => match hta::decode(&bytes).and_then(Self::response) {
+            ReaderEvent::Frame(bytes) => match hta::decode_canonical(&bytes).and_then(Self::response) {
                 Ok((request, result)) => {
                     if let Some(pending) = self.pending.borrow_mut().remove(&request) {
                         match result {
@@ -333,7 +333,7 @@ impl WasmExtensionProvider for ProcessExtensionProvider {
             ]),
         )?;
         let mut input = BufReader::new(stdout);
-        let ready = hta::decode(&Self::read(&mut input)?)?;
+        let ready = hta::decode_canonical(&Self::read(&mut input)?)?;
         let values = match &ready {
             Value::List(values) => values.iter().collect::<Vec<_>>(),
             Value::Vector(values) => values.iter().collect(),

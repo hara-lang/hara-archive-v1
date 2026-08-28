@@ -85,6 +85,25 @@ fn portable_record_order_uses_the_runtime_canonical_key_sort() {
 }
 
 #[test]
+fn runtime_codec_compacts_big_integer_widths_and_rejects_noncanonical_frames() {
+    for (value, tag) in [
+        (BigInt::from(i64::MIN), 3_u8),
+        (BigInt::from(42_i64), 3_u8),
+        (BigInt::from(i64::MAX), 3_u8),
+        (BigInt::from(i64::MAX) + BigInt::from(1_i64), 20_u8),
+    ] {
+        let encoded = hta::encode(&Value::BigInteger(value)).unwrap();
+        assert_eq!(encoded[4], tag);
+        assert_eq!(hta::decode_canonical(&encoded).unwrap(), hta::decode(&encoded).unwrap());
+    }
+
+    let noncanonical = b"HTA0\x14\0\0\0\x02\x34\x32";
+    assert!(hta::decode_canonical(noncanonical)
+        .unwrap_err()
+        .starts_with("hta/value-noncanonical:"));
+}
+
+#[test]
 fn registry_golden_vector_matches_rust_encoding() {
     let source = std::fs::read_to_string(spec_registry::require(
         "02-platform/000050-transport-hta/draft/conformance/transport-hta.edn",

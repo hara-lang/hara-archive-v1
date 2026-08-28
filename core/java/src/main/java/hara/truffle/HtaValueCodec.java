@@ -14,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 import java.math.BigInteger;
 import java.util.regex.Pattern;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -74,9 +75,20 @@ public final class HtaValueCodec {
     return decode(bytes, false);
   }
 
-  /** Decodes list and vector tags to their distinct Hara persistent values for HBC0 constants. */
+  /**
+   * Decodes a canonical frame and materializes Hara persistent collections for
+   * HBC0 constants.
+   *
+   * <p>The ordinary decoder remains permissive for trusted legacy state. Wire
+   * and artifact boundaries must use this method so alternate BigInteger text,
+   * map/set ordering, and other noncanonical representations are rejected.
+   */
   public static Object decodeCanonical(byte[] bytes) {
-    return decode(bytes, true);
+    Object value = decode(bytes, true);
+    if (!Arrays.equals(bytes, encode(value))) {
+      throw noncanonical();
+    }
+    return value;
   }
 
   private static Object decode(byte[] bytes, boolean canonicalCollections) {
@@ -325,6 +337,10 @@ public final class HtaValueCodec {
 
   private static HaraException malformed(String message) {
     return new HaraException("hta/value-malformed: " + message);
+  }
+
+  private static HaraException noncanonical() {
+    return new HaraException("hta/value-noncanonical: frame bytes are not canonical");
   }
 
   private static Map<Object, Object> exceptionProvenance(hara.lang.base.Ex.Info info) {

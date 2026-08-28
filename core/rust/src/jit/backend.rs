@@ -126,29 +126,20 @@ impl TraceBackend for CheckedBackend {
                             IntrinsicOp::Add => left.checked_add(right).map(TraceValue::I64),
                             IntrinsicOp::Subtract => left.checked_sub(right).map(TraceValue::I64),
                             IntrinsicOp::Multiply => left.checked_mul(right).map(TraceValue::I64),
-                            IntrinsicOp::Divide
-                            | IntrinsicOp::Remainder
-                            | IntrinsicOp::Modulo
+                            IntrinsicOp::Divide | IntrinsicOp::Remainder | IntrinsicOp::Modulo
                                 if right == 0 =>
                             {
                                 return exit(ExitReason::DivisionByZero)
                             }
                             IntrinsicOp::Divide => left.checked_div(right).map(TraceValue::I64),
-                            IntrinsicOp::Remainder => left.checked_rem(right).map(TraceValue::I64),
-                            IntrinsicOp::Modulo => {
+                            IntrinsicOp::Remainder | IntrinsicOp::Modulo => {
                                 if left == i64::MIN && right == -1 {
                                     Some(TraceValue::I64(0))
                                 } else {
                                     let Some(remainder) = left.checked_rem(right) else {
                                         return exit(ExitReason::Overflow);
                                     };
-                                    Some(TraceValue::I64(
-                                        if remainder == 0 || (remainder < 0) == (right < 0) {
-                                            remainder
-                                        } else {
-                                            remainder + right
-                                        },
-                                    ))
+                                    Some(TraceValue::I64(remainder))
                                 }
                             }
                             IntrinsicOp::Less => Some(TraceValue::Bool(left < right)),

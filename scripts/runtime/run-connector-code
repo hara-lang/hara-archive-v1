@@ -7,7 +7,9 @@ case "$language" in
   rust)
     cargo fmt --manifest-path core/rust/Cargo.toml --all -- --check
     cargo clippy --manifest-path core/rust/Cargo.toml --all-targets
+    cargo clippy --manifest-path core/rust/Cargo.toml --package hara-runtime --all-targets
     cargo test --manifest-path core/rust/Cargo.toml
+    cargo test --manifest-path core/rust/Cargo.toml --package hara-runtime --lib
     cargo test --manifest-path core/rust/raw/Cargo.toml
     cargo run --manifest-path core/rust/Cargo.toml --bin hara -- eval '(+ 19 23)'
     ;;

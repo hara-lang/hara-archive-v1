@@ -674,7 +674,7 @@ final class HaraWasmExtension implements HaraExtensionRuntime {
     byte[] bytes = new byte[(int) size];
     for (int i = 0; i < bytes.length; i++) bytes[i] = memory.readBufferByte(pointer + i);
     deallocator.execute((int) pointer, bytes.length);
-    return bindHandles(HtaValueCodec.decode(bytes));
+    return bindHandles(HtaValueCodec.decodeCanonical(bytes));
   }
 
   private Object bindHandles(Object value) {

@@ -32,6 +32,7 @@ public final class HbcCodegenPlan {
     for (int index = 0; index < program.functions().size(); index++) {
       plans.add(analyzeFunction(program, index));
     }
+    rejectRecursiveStaticCalls(program, plans);
     boolean changed;
     do {
       changed = false;
@@ -50,6 +51,44 @@ public final class HbcCodegenPlan {
       }
     } while (changed);
     return new HbcCodegenPlan(program, plans);
+  }
+
+  private static void rejectRecursiveStaticCalls(
+      HbcProgram program, ArrayList<FunctionPlan> plans) {
+    int[] state = new int[plans.size()];
+    ArrayList<Integer> path = new ArrayList<>();
+    for (int index = 0; index < plans.size(); index++) {
+      if (state[index] == 0) visitStaticCallGraph(program, plans, index, state, path);
+    }
+  }
+
+  private static void visitStaticCallGraph(
+      HbcProgram program,
+      ArrayList<FunctionPlan> plans,
+      int index,
+      int[] state,
+      ArrayList<Integer> path) {
+    if (state[index] != 0 || !plans.get(index).eligible()) return;
+    state[index] = 1;
+    path.add(index);
+    for (HbcProgram.Instruction instruction : program.functions().get(index).code()) {
+      if (instruction.opcode() != HbcProgram.Opcode.CALL_STATIC) continue;
+      int target = Math.toIntExact(instruction.first());
+      if (!plans.get(target).eligible()) continue;
+      if (state[target] == 0) {
+        visitStaticCallGraph(program, plans, target, state, path);
+      } else if (state[target] == 1) {
+        int cycleStart = path.lastIndexOf(target);
+        for (int cycleIndex = cycleStart; cycleIndex < path.size(); cycleIndex++) {
+          int cycleFunction = path.get(cycleIndex);
+          plans.set(
+              cycleFunction,
+              reject(plans.get(cycleFunction), "recursive static call requires portable machine"));
+        }
+      }
+    }
+    path.remove(path.size() - 1);
+    state[index] = 2;
   }
 
   public HbcProgram program() {
