@@ -68,6 +68,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.contract.outputs.head_sha }}
+          fetch-depth: 0
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
@@ -87,6 +88,10 @@ jobs:
 
       - name: Run committed Rust validation
         shell: bash
+        env:
+          CONNECTOR_BASE_SHA: ${{ needs.contract.outputs.base_sha }}
+          CONNECTOR_HEAD_SHA: ${{ needs.contract.outputs.head_sha }}
+          CONNECTOR_FORMAT_SCOPE: changed
         run: bash scripts/runtime/run-connector-code rust
 
       - name: Capture Rust evidence

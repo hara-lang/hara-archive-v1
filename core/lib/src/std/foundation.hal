@@ -57,11 +57,11 @@
   "Returns the value associated with key, or the supplied default."
   ([value key]
    (if (= (type value) :std.native.Object)
-     (std.native.Obj/get value key)
+     (Obj/get value key)
      (ILookup/lookup value key)))
   ([value key not-found]
    (if (= (type value) :std.native.Object)
-     (std.native.Obj/get value key not-found)
+     (Obj/get value key not-found)
      (ILookup/lookup value key not-found))))
 
 (defn ^{:inline true :schema [:fn [:any] :long]}
@@ -110,19 +110,19 @@
   array
   "Creates a mutable array from values."
   [& values]
-  (apply std.native.Arr/new values))
+  (apply Arr/new values))
 
 (defn ^{:inline true :schema [:fn [& :any] :any]}
   object
   "Creates a mutable object from alternating keys and values."
   [& entries]
-  (apply std.native.Obj/new entries))
+  (apply Obj/new entries))
 
 (defn ^{:inline true :public true :schema [:fn [& :int] :bytes]}
   bytes
-  "Creates an opaque byte buffer through std.native.Bytes/new."
+  "Creates an opaque byte buffer through Bytes/new."
   [& values]
-  (apply std.native.Bytes/new values))
+  (apply Bytes/new values))
 
 (defn ^{:inline true :schema [:fn [:any] :vector]}
   vec "Converts value to a persistent vector." [value] (Base/vec value))

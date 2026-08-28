@@ -2,8 +2,8 @@
 
 use hara_wasm::core::Value;
 use hara_wasm::vm::{compile_source, decode_program, encode_program, Instruction};
-use num_bigint::BigInt;
 use hara_wasm::Runtime;
+use num_bigint::BigInt;
 
 fn eval(runtime: &mut Runtime, source: &str) -> String {
     runtime

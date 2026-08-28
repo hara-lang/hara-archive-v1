@@ -3,9 +3,34 @@ set -euo pipefail
 
 language="${1:-}"
 
+check_rust_format() {
+  local base_sha="${CONNECTOR_BASE_SHA:-}"
+  local head_sha="${CONNECTOR_HEAD_SHA:-}"
+
+  if [[ "${CONNECTOR_FORMAT_SCOPE:-all}" != "changed" \
+    || -z "$base_sha" || -z "$head_sha" ]] \
+    || ! git cat-file -e "${base_sha}^{commit}" 2>/dev/null \
+    || ! git cat-file -e "${head_sha}^{commit}" 2>/dev/null; then
+    cargo fmt --manifest-path core/rust/Cargo.toml --all -- --check
+    return
+  fi
+
+  local -a rust_files=()
+  local file
+  while IFS= read -r file; do
+    if [[ "$file" == *.rs && -f "$file" ]]; then
+      rust_files+=("$file")
+    fi
+  done < <(git diff --name-only "$base_sha" "$head_sha" -- core/rust)
+
+  if ((${#rust_files[@]})); then
+    rustfmt --edition 2021 --check "${rust_files[@]}"
+  fi
+}
+
 case "$language" in
   rust)
-    cargo fmt --manifest-path core/rust/Cargo.toml --all -- --check
+    check_rust_format
     cargo clippy --manifest-path core/rust/Cargo.toml --all-targets
     cargo clippy --manifest-path core/rust/Cargo.toml --package hara-runtime --all-targets
     cargo test --manifest-path core/rust/Cargo.toml

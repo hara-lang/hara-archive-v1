@@ -27,3 +27,7 @@ impl NativeInstrumentation {
 #[cfg(test)]
 #[path = "native_identity/tests.rs"]
 mod tests;
+
+#[cfg(all(test, feature = "whole-wasm", not(target_arch = "wasm32")))]
+#[path = "native_identity/whole_wasm_tests.rs"]
+mod whole_wasm_tests;

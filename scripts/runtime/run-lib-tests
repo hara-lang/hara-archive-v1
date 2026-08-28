@@ -5,6 +5,32 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PROJECT_ROOT="$REPO_ROOT/core"
 cd "$REPO_ROOT"
 
+backend=""
+while (($#)); do
+    case "$1" in
+        --backend)
+            if (($# < 2)); then
+                echo "Missing value for --backend" >&2
+                exit 2
+            fi
+            backend="$2"
+            shift 2
+            ;;
+        --backend=*)
+            backend="${1#*=}"
+            shift
+            ;;
+        *)
+            break
+            ;;
+    esac
+done
+
+if [[ -n "$backend" && "$backend" != "interpreter" && "$backend" != "native" ]]; then
+    echo "Unsupported Hara test backend: $backend" >&2
+    exit 2
+fi
+
 collect_root() {
     local root="$1"
     if [ -d "$root" ]; then
@@ -52,8 +78,13 @@ for test_file in "${TEST_FILES[@]}"; do
     fi
 done
 
+HARA_TEST_ARGS=(--root "$PROJECT_ROOT")
+if [[ -n "$backend" ]]; then
+    HARA_TEST_ARGS+=(--backend "$backend")
+fi
+
 exec cargo run --quiet \
     --manifest-path "$REPO_ROOT/core/rust/Cargo.toml" \
     --bin hara-test -- \
-    --root "$PROJECT_ROOT" \
+    "${HARA_TEST_ARGS[@]}" \
     "${ABSOLUTE_TEST_FILES[@]}"

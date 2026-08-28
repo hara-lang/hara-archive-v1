@@ -27,7 +27,7 @@
         (let [byte (bytes/get source index)]
           (recur (inc index)
                  (if (unreserved? byte)
-                   (str output (str/decode-utf8 (std.native.Bytes/new byte)))
+                   (str output (str/decode-utf8 (Bytes/new byte)))
                    (str output "%"
                         (str (str/char-at +hex+ (Bits/shift-right byte 4)))
                         (str (str/char-at +hex+ (Bits/and byte 15)))))))))))
@@ -56,7 +56,7 @@
   (let [length (str/length source)]
     (loop [index 0 output []]
       (if (= index length)
-        (str/decode-utf8 (apply std.native.Bytes/new output))
+        (str/decode-utf8 (apply Bytes/new output))
         (let [character (str/char-at source index)]
           (if (= character \%)
             (if (> (+ index 3) length)

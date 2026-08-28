@@ -22,7 +22,7 @@ concurrency:
 
 env:
   SPECS_FIXTURE: 01-lang/004-foundation/draft/conformance/fixtures/foundation_behavioral.hal
-  SPECS_REVISION: f0c9f72c6c22ef7b9a3df4f996dc35e72e35fe44
+  SPECS_REVISION: 3306ae2c616e7c8d4f4392ad4a510d9c911a397a
 
 jobs:
   catalog:

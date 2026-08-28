@@ -47,7 +47,7 @@ while read -r kind relative limit extra; do
         failed=1
         continue
       fi
-      current_lines="$(wc -l < "$root/$relative")"
+      current_lines="$(wc -l < "$root/$relative" | tr -d '[:space:]')"
       if (( current_lines <= maximum_lines )); then
         echo "Resolved line baseline entry: $relative now has $current_lines lines; remove it from the baseline" >&2
         failed=1
@@ -81,7 +81,7 @@ while IFS= read -r source; do
       ;;
   esac
 
-  lines="$(wc -l < "$source")"
+  lines="$(wc -l < "$source" | tr -d '[:space:]')"
   allowed="$(baseline_limit "$relative")"
   if [[ -z "$allowed" ]]; then
     allowed="$maximum_lines"

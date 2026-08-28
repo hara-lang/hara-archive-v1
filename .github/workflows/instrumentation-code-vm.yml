@@ -133,10 +133,10 @@ jobs:
           grep -Fx 'code.vm.instrument.trace' core/rust/standard-library.namespaces
 
       - name: Run portable instrumentation contract tests
-        run: ./scripts/runtime/run-lib-tests core/lib/test/code/vm/instrument_test.hal
+        run: ./scripts/runtime/run-lib-tests --backend interpreter core/lib/test/code/vm/instrument_test.hal
 
       - name: Run passive live trace conversion tests
-        run: ./scripts/runtime/run-lib-tests core/lib/test/code/vm/instrument/trace_test.hal
+        run: ./scripts/runtime/run-lib-tests --backend interpreter core/lib/test/code/vm/instrument/trace_test.hal
 
       - name: Reject control or runtime ownership from pure trace namespace
         run: |
