@@ -1,0 +1,108 @@
+(ns lang.seedgen.common-infile-test
+  (:use code.test)
+  (:require [std.foundation.string :as str]
+            [std.fs :as fs]
+            [lang.seedgen.common-infile :as subject]))
+
+^{:refer lang.seedgen.common-infile/fact-lang-entry}
+(fact "reads fact-level seedgen configuration for a runtime"
+  [(subject/fact-lang-entry
+    (with-meta '(fact "TODO")
+               {:seedgen/base {:all {:timeout 1000}
+                               :python {:suppress true}}})
+    :python)
+   (subject/fact-lang-entry '(fact "TODO") :python)]
+  => [{:timeout 1000 :suppress true} nil])
+
+^{:refer lang.seedgen.common-infile/seedgen-root}
+(fact "returns the root runtime and an explicit missing-file result"
+  (let [path (fs/temp-file "/" {:prefix "seedgen-infile-root-"})]
+    (fs/delete path {:missing-ok? true})
+    (try
+      (fs/write-bytes
+       path
+       (str/encode-utf8
+        (str "(ns sample-test\n"
+             "  (:require [tahto.core :as l]))\n\n"
+             "^{:seedgen/root true}\n"
+             "(l/script- :js {:runtime :basic})\n")))
+      (let [lookup (fn [value]
+                     (when (= value 'sample-test)
+                       path))]
+        [(subject/seedgen-root 'sample {} lookup {})
+         (subject/seedgen-root 'missing {} lookup {})])
+      (finally
+        (fs/delete path {:missing-ok? true}))))
+  => [:js {:status :error :data :no-test-file}])
+
+^{:refer lang.seedgen.common-infile/seedgen-list}
+(fact "returns declared non-root runtimes and handles a missing test file"
+  (let [path (fs/temp-file "/" {:prefix "seedgen-infile-list-"})]
+    (fs/delete path {:missing-ok? true})
+    (try
+      (fs/write-bytes
+       path
+       (str/encode-utf8
+        (str "(ns sample-test\n"
+             "  (:require [tahto.core :as l]))\n\n"
+             "^{:seedgen/root true}\n"
+             "(l/script- :js {:runtime :basic})\n\n"
+             "(l/script- :lua {:runtime :basic})\n\n"
+             "(l/script- :python {:runtime :basic})\n")))
+      (let [lookup (fn [value]
+                     (when (= value 'sample-test)
+                       path))]
+        [(subject/seedgen-list 'sample {} lookup {})
+         (subject/seedgen-list 'missing {} lookup {})])
+      (finally
+        (fs/delete path {:missing-ok? true}))))
+  => [[:lua :python] {:status :error :data :no-test-file}])
+
+^{:refer lang.seedgen.common-infile/seedgen-incomplete}
+(fact "reports facts not covered by the root runtime and honors suppression"
+  (let [path (fs/temp-file "/" {:prefix "seedgen-infile-incomplete-"})]
+    (fs/delete path {:missing-ok? true})
+    (try
+      (fs/write-bytes
+       path
+       (str/encode-utf8
+        (str "(ns sample-incomplete-test\n"
+             "  (:require [tahto.core :as l]))\n\n"
+             "^{:seedgen/root true}\n"
+             "(l/script- :js {:runtime :basic})\n\n"
+             "^{:refer xt.lang.spec-base/example.A\n"
+             "  :setup [(!.js (+ 1 2 3))]}\n"
+             "(fact \"covered from setup\" \"TODO\")\n\n"
+             "^{:refer xt.lang.spec-base/example.B}\n"
+             "(fact \"not covered\" \"TODO\")\n\n"
+             "^{:refer xt.lang.spec-base/example.C\n"
+             "  :teardown [(!.lua (+ 1 2 3))]}\n"
+             "(fact \"covered by another runtime\" \"TODO\")\n\n"
+             "^{:refer xt.lang.spec-base/example.D}\n"
+             "(fact \"not covered by notify\"\n"
+             "  (notify/wait-on :dt (repl/notify 1))\n"
+             "  \"TODO\")\n\n"
+             "^{:refer xt.lang.spec-base/example.E}\n"
+             "(fact \"covered from notify\"\n"
+             "  (notify/wait-on :js (repl/notify 1))\n"
+             "  \"TODO\")\n\n"
+             "^{:refer xt.lang.spec-base/example.F\n"
+             "  :seedgen/base {:all {:suppress true}}}\n"
+             "(fact \"suppressed\" \"TODO\")\n")))
+      (let [lookup (fn [value]
+                     (when (= value 'sample-incomplete-test)
+                       path))
+            result (subject/seedgen-incomplete
+                    'sample-incomplete {} lookup {})]
+        [(set (keys result))
+         (set (map :status (vals result)))
+         (subject/seedgen-incomplete 'missing {} lookup {})])
+      (finally
+        (fs/delete path {:missing-ok? true}))))
+  => [#{'xt.lang.spec-base/example.B
+        'xt.lang.spec-base/example.C
+        'xt.lang.spec-base/example.D}
+      #{:incomplete}
+      {:status :error :data :no-test-file}])
+
+(pr-str (run {:namespace "lang.seedgen.common-infile-test"}))

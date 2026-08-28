@@ -23,6 +23,12 @@
      :item/display "changed"
      :elapsed 3}]})
 
+(def +progress-line+
+  (str " 1/2  :alpha    ok  changed"
+       (str/repeat " " 51)
+       "3ms"
+       (str/repeat " " 7)))
+
 ^{:refer std.lib.format.report/contains-value?}
 (fact "checks membership without requiring a collection"
   [(report/contains-value? [:a :b] :a)
@@ -196,7 +202,7 @@
    (map :line/text
         (report/section-content-lines
          {:section/kind :text :section/entries ["hello"]}))]
-  => [["1/2  :alpha  ok  changed  3ms"] ["hello"]])
+  => [[+progress-line+] ["hello"]])
 
 ^{:refer std.lib.format.report/section-selected?}
 (fact "applies include and exclude section filters"
@@ -211,7 +217,7 @@
    (report/section-lines
     {:section/id :empty :section/entries []}
     {:include-section-titles true})]
-  => [["ITEMS" "1/2  :alpha  ok  changed  3ms"] []])
+  => [["ITEMS" +progress-line+] []])
 
 ^{:refer std.lib.format.report/add-group}
 (fact "joins non-empty line groups with one separator"
@@ -228,26 +234,100 @@
         {:report/title "REPORT"
          :report/sections [+progress+]
          :report/annotations ["Done"]}))
-  => ["REPORT" "" "ITEMS" "1/2  :alpha  ok  changed  3ms" "" "Done"])
+  => ["REPORT" "" "ITEMS" +progress-line+ "" "Done"])
 
 ^{:refer std.lib.format.report/report}
 (fact "renders report lines as plain text"
   (report/report
    {:report/title "REPORT"
     :report/sections [+progress+]})
-  => "REPORT\n\nITEMS\n1/2  :alpha  ok  changed  3ms")
+  => (str "REPORT\n\nITEMS\n" +progress-line+))
 
 ^{:refer std.lib.format.report/render-report}
 (fact "renders report lines through the terminal boundary"
   (report/render-report
    {:report/title "REPORT"
     :report/sections [+progress+]})
-  => "REPORT\n\nITEMS\n1/2  :alpha  ok  changed  3ms")
+  => (str "REPORT\n\nITEMS\n" +progress-line+))
 
 (fact "marks the supported report operations public"
   [(:public (meta (get (ns-publics 'std.lib.format.report) 'report-lines)))
    (:public (meta (get (ns-publics 'std.lib.format.report) 'render-report)))
    (:public (meta (get (ns-publics 'std.lib.format.report) 'report)))]
   => [true true nil])
+
+^{:refer std.lib.format.report/progress-layout}
+(fact "derives one shared layout from every progress record"
+  [(report/progress-layout
+    [{:item/id "a" :item/index 0 :item/total 2}
+     {:item/id "long-name" :item/index 1 :item/total 2}])
+   (report/progress-layout
+    [{:item/id "a" :item/index 0 :item/total 2
+      :item/index-width 8
+      :item/id-width 14
+      :item/result-width 24
+      :item/time-width 6}
+     {:item/id "b" :item/index 1 :item/total 2
+      :item/result-width 30
+      :item/time-width 8}])]
+  => [{:item/index-width 4
+       :item/id-width 11
+       :item/result-width 60
+       :item/time-width 10}
+      {:item/index-width 8
+       :item/id-width 14
+       :item/result-width 30
+       :item/time-width 8}])
+
+^{:refer std.lib.format.report/progress-lines}
+(fact "aligns status and diagnostic columns across progress rows"
+  (let [records
+        [{:item/id "a"
+          :item/index 0
+          :item/total 2
+          :status :passed
+          :item/count 1}
+         {:item/id "long-name"
+          :item/index 1
+          :item/total 2
+          :status :failed
+          :item/count 20
+          :error "broken"}]
+        lines (report/progress-lines records)
+        texts (vec (map :line/text lines))
+        explicit-lines
+        (report/progress-lines
+         [(assoc (first records)
+                 :item/index-width 4
+                 :item/id-width 4
+                 :item/result-width 20
+                 :item/time-width 2)
+          (assoc (second records)
+                 :item/index-width 8
+                 :item/id-width 14
+                 :item/result-width 30
+                 :item/time-width 8)])
+        explicit-texts (vec (map :line/text explicit-lines))]
+    [(vec (map (fn [text] (str/index-of text "passed")) texts))
+     (vec (map (fn [text] (str/index-of text "failed")) texts))
+     (vec (map (fn [text] (str/index-of text "broken")) texts))
+     (vec (map (fn [text] (str/index-of text "passed")) explicit-texts))
+     (vec (map (fn [text] (str/index-of text "failed")) explicit-texts))
+     (vec (map (fn [text] (str/index-of text "broken")) explicit-texts))
+     (vec
+      (map
+       (fn [line]
+         (vec (map (fn [cell] (:cell/role cell)) (:line/cells line))))
+       lines))
+     (vec (map :line/role lines))])
+  => [[19 -1]
+      [-1 19]
+      [-1 32]
+      [26 -1]
+      [-1 26]
+      [-1 39]
+      [[:index :default :default :default :success]
+       [:index :default :default :default :error]]
+      [:success :error]])
 
 (pr-str (run {:namespace "std.lib.format.report-test"}))

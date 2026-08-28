@@ -1,0 +1,274 @@
+(ns tool.migrate.policy.foundation.seedgen
+  (:config {:role :internal})
+  (:require [std.foundation.string :as str]
+            [tool.migrate.common.project :as project]
+            [tool.migrate.common.write :as write]
+            [work.base :as work :refer [def.work]]
+            [work.flow.task]))
+
+(def foundation-repository "foundation-base")
+(def foundation-revision "f909a44ad504cc6c9f44248d59ec3148261a48d7")
+(def source-root "src/tahto")
+(def target-root "core/lib/src/lang")
+(def source-test-root "test/tahto")
+(def target-test-root "core/lib/test-lang/lang")
+
+(def +seedgen-units+
+  [{:id :seedgen
+    :source/path "src/tahto/seedgen.clj"
+    :source/namespace 'tahto.seedgen
+    :target/path "core/lib/src/lang/seedgen.hal"
+    :target/namespace 'lang.seedgen
+    :test/source-path "test/tahto/seedgen_test.clj"
+    :test/target-path "core/lib/test-lang/lang/seedgen_test.hal"
+    :dependency/rank 6
+    :migration/status :migrated}
+   {:id :seedgen/cli
+    :source/path "src/tahto/seedgen/cli.clj"
+    :source/namespace 'tahto.seedgen.cli
+    :target/path "core/lib/src/lang/seedgen/cli.hal"
+    :target/namespace 'lang.seedgen.cli
+    :test/source-path "test/tahto/seedgen/cli_test.clj"
+    :test/target-path "core/lib/test-lang/lang/seedgen/cli_test.hal"
+    :dependency/rank 7
+    :migration/status :migrated}
+   {:id :seedgen/common-infile
+    :source/path "src/tahto/seedgen/common_infile.clj"
+    :source/namespace 'tahto.seedgen.common-infile
+    :target/path "core/lib/src/lang/seedgen/common_infile.hal"
+    :target/namespace 'lang.seedgen.common-infile
+    :test/source-path "test/tahto/seedgen/common_infile_test.clj"
+    :test/target-path "core/lib/test-lang/lang/seedgen/common_infile_test.hal"
+    :dependency/rank 2
+    :migration/status :migrated}
+   {:id :seedgen/common-meta
+    :source/path "src/tahto/seedgen/common_meta.clj"
+    :source/namespace 'tahto.seedgen.common-meta
+    :target/path "core/lib/src/lang/seedgen/common_meta.hal"
+    :target/namespace 'lang.seedgen.common-meta
+    :test/source-path "test/tahto/seedgen/common_meta_test.clj"
+    :test/target-path "core/lib/test-lang/lang/seedgen/common_meta_test.hal"
+    :dependency/rank 0
+    :migration/status :migrated}
+   {:id :seedgen/common-util
+    :source/path "src/tahto/seedgen/common_util.clj"
+    :source/namespace 'tahto.seedgen.common-util
+    :target/path "core/lib/src/lang/seedgen/common_util.hal"
+    :target/namespace 'lang.seedgen.common-util
+    :test/source-path "test/tahto/seedgen/common_util_test.clj"
+    :test/target-path "core/lib/test-lang/lang/seedgen/common_util_test.hal"
+    :dependency/rank 1
+    :migration/status :migrated}
+   {:id :seedgen/common-xtalk
+    :source/path "src/tahto/seedgen/common_xtalk.clj"
+    :source/namespace 'tahto.seedgen.common-xtalk
+    :target/path "core/lib/src/lang/seedgen/common_xtalk.hal"
+    :target/namespace 'lang.seedgen.common-xtalk
+    :test/source-path "test/tahto/seedgen/common_xtalk_test.clj"
+    :test/target-path "core/lib/test-lang/lang/seedgen/common_xtalk_test.hal"
+    :dependency/rank 4
+    :migration/status :migrated}
+   {:id :seedgen/form-bench
+    :source/path "src/tahto/seedgen/form_bench.clj"
+    :source/namespace 'tahto.seedgen.form-bench
+    :target/path "core/lib/src/lang/seedgen/form_bench.hal"
+    :target/namespace 'lang.seedgen.form-bench
+    :test/source-path "test/tahto/seedgen/form_bench_test.clj"
+    :test/target-path "core/lib/test-lang/lang/seedgen/form_bench_test.hal"
+    :dependency/rank 4
+    :migration/status :migrated}
+   {:id :seedgen/form-common
+    :source/path "src/tahto/seedgen/form_common.clj"
+    :source/namespace 'tahto.seedgen.form-common
+    :target/path "core/lib/src/lang/seedgen/form_common.hal"
+    :target/namespace 'lang.seedgen.form-common
+    :test/source-path "test/tahto/seedgen/form_common_test.clj"
+    :test/target-path "core/lib/test-lang/lang/seedgen/form_common_test.hal"
+    :dependency/rank 1
+    :migration/status :migrated}
+   {:id :seedgen/form-infile
+    :source/path "src/tahto/seedgen/form_infile.clj"
+    :source/namespace 'tahto.seedgen.form-infile
+    :target/path "core/lib/src/lang/seedgen/form_infile.hal"
+    :target/namespace 'lang.seedgen.form-infile
+    :test/source-path "test/tahto/seedgen/form_infile_test.clj"
+    :test/target-path "core/lib/test-lang/lang/seedgen/form_infile_test.hal"
+    :dependency/rank 3
+    :migration/status :migrated}
+   {:id :seedgen/form-parse
+    :source/path "src/tahto/seedgen/form_parse.clj"
+    :source/namespace 'tahto.seedgen.form-parse
+    :target/path "core/lib/src/lang/seedgen/form_parse.hal"
+    :target/namespace 'lang.seedgen.form-parse
+    :test/source-path "test/tahto/seedgen/seed_readforms_test.clj"
+    :test/target-path "core/lib/test-lang/lang/seedgen/form_parse_test.hal"
+    :dependency/rank 2
+    :migration/status :migrated}
+   {:id :seedgen/metrics
+    :source/path "src/tahto/seedgen/metrics.clj"
+    :source/namespace 'tahto.seedgen.metrics
+    :target/path "core/lib/src/lang/seedgen/metrics.hal"
+    :target/namespace 'lang.seedgen.metrics
+    :test/source-path "test/tahto/seedgen/metrics_test.clj"
+    :test/target-path "core/lib/test-lang/lang/seedgen/metrics_test.hal"
+    :dependency/rank 0
+    :migration/status :migrated}])
+
+(defn route-namespace
+  [namespace]
+  (let [text (str namespace)]
+    (if (or (= text "tahto.seedgen")
+            (str/starts-with? text "tahto.seedgen."))
+      (symbol
+       (str "lang.seedgen"
+            (str/slice text (count "tahto.seedgen") (count text))))
+      namespace)))
+
+(defn hal-path
+  [path]
+  (if (str/ends-with? path ".clj")
+    (str (str/slice path 0 (- (count path) 4)) ".hal")
+    path))
+
+(defn route-path
+  [path]
+  (let [source-prefix (str source-root "/")
+        test-prefix (str source-test-root "/")
+        target-prefix (str target-root "/")
+        target-test-prefix (str target-test-root "/")]
+    (cond
+      (str/starts-with? path source-prefix)
+      (hal-path
+       (str target-prefix
+            (str/slice path (count source-prefix) (count path))))
+
+      (str/starts-with? path test-prefix)
+      (hal-path
+       (str target-test-prefix
+            (str/slice path (count test-prefix) (count path))))
+
+      :else path)))
+
+(defn unit-for
+  [path]
+  (first
+   (filter
+    (fn [unit]
+      (= path (:source/path unit)))
+    +seedgen-units+)))
+
+(defn rewrite-common-meta
+  [source]
+  (let [source
+        (str/replace
+         source
+         "(ns tahto.seedgen.common-meta)"
+         (str "(ns lang.seedgen.common-meta\n"
+              "  (:config {:role :internal}))"))
+        names
+        ["normalize-runtime-lang" "runtime-lang-config"
+         "runtime-script-lang" "runtime-dispatch-symbol"
+         "runtime-type" "runtime-check-mode"
+         "runtime-suite-groups" "runtime-lang-suffix"]
+        source
+        (reduce
+         (fn [output name]
+           (str/replace output
+                        (str "(defn " name)
+                        (str "(defn ^{:public true} " name)))
+         source
+         names)
+        old-group
+        (str "(defn ^{:public true} runtime-suite-groups\n"
+             "  [langs]\n"
+             "  (->> langs\n"
+             "       (map normalize-runtime-lang)\n"
+             "       distinct\n"
+             "       sort\n"
+             "       (group-by runtime-check-mode)\n"
+             "       (into (sorted-map)\n"
+             "             (map (fn [[mode entries]]\n"
+             "                    [mode (vec entries)])))))")
+        new-group
+        (str "(defn ^{:public true} runtime-suite-groups\n"
+             "  [langs]\n"
+             "  (->> langs\n"
+             "       (map normalize-runtime-lang)\n"
+             "       distinct\n"
+             "       sort\n"
+             "       (group-by runtime-check-mode)\n"
+             "       (map (fn [[mode entries]]\n"
+             "              [mode (vec entries)]))\n"
+             "       (into {})))")]
+    (str/replace source old-group new-group)))
+
+(defn migration-input
+  ([source-text target-text]
+   (migration-input source-text target-text {}))
+  ([source-text target-text options]
+   (let [unit (unit-for "src/tahto/seedgen/common_meta.clj")]
+     {:units
+      [(assoc unit
+              :source/text source-text
+              :target/text target-text
+              :source/root (or (:source/root options) ".")
+              :target/root (or (:target/root options) ".")
+              :source/sha256
+              (str "sha256:" (Crypto/sha256
+                               (str/encode-utf8 source-text)))
+              :translation/recipe
+              {:id :foundation/seedgen-common-meta
+               :output (rewrite-common-meta source-text)})]})))
+
+(defn ^{:public true} plan
+  ([source-text target-text]
+   (plan source-text target-text {}))
+  ([source-text target-text options]
+   (project/plan (migration-input source-text target-text options))))
+
+(def validate-write-plan write/validate-write-plan)
+(def apply-plan write/apply-plan)
+
+(def.work migration
+  [:task]
+  {:task/type :tool.migrate/seedgen
+   :item
+   {:list
+    (fn [input context]
+      (vec
+       (map
+        (fn [unit]
+          {:item/id (:id unit)
+           :item/value unit})
+        (sort-by
+         (fn [unit]
+           [(or (:dependency/rank unit) 2147483647)
+            (str (:id unit))])
+         (:units input)))))
+    :run
+    (fn [unit context]
+      (if (and (= :pilot (:migration/status unit))
+               (string? (:source/text unit)))
+        (let [result
+              (plan (:source/text unit)
+                    (:target/text unit)
+                    {:source/root (:source/root unit)
+                     :target/root (:target/root unit)})]
+          {:status (if (empty? (:errors result)) :return :error)
+           :data (first (:edits result))})
+        {:status :return
+         :data {:source/path (:source/path unit)
+                :target/path (:target/path unit)
+                :migration/status (or (:migration/status unit) :pending)
+                :migration/state (case (:migration/status unit)
+                                   :migrated :verified
+                                   :pilot :awaiting-source
+                                   :pending :pending
+                                   :pending)
+                :changed false
+                :write false
+                :diagnostics []}}))}
+   :execution {:order :input :parallel false :fail-fast false}
+   :return {:select :all :package :map}})
+
+(def ^{:public true} seedgen-migration migration)

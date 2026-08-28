@@ -55,4 +55,61 @@
        :task/selector? true
        :task/params {}}])
 
+^{:refer work.flow.task.engine/manifest}
+(fact "task manifests carry one shared progress layout"
+  (let [entries
+        (engine/manifest
+         [{:item/id "a"} {:item/id "long-name"}]
+         :all
+         {})]
+    [(vec (map :item/id entries))
+     (vec
+      (map
+       (fn [entry]
+         (select-keys
+          (:item/value entry)
+          [:task/index :task/total
+           :item/index-width :item/id-width
+           :item/result-width :item/time-width]))
+       entries))])
+  => [["a" "long-name"]
+      [{:task/index 0
+        :task/total 2
+        :item/index-width 4
+        :item/id-width 11
+        :item/result-width 60
+        :item/time-width 10}
+       {:task/index 1
+        :task/total 2
+        :item/index-width 4
+        :item/id-width 11
+        :item/result-width 60
+        :item/time-width 10}]])
+
+^{:refer work.flow.task.engine/unit-options}
+(fact "task item metadata preserves progress layout widths"
+  (select-keys
+   ((:item/meta
+     (engine/unit-options {:task/version 1 :item {:status? false}}))
+    {:task/item-id "long-name"
+     :task/index 1
+     :task/source-index 1
+     :task/total 2
+     :item/index-width 4
+     :item/id-width 11
+     :item/result-width 60
+     :item/time-width 10}
+    {})
+   [:item/id :item/index :item/source-index :item/total :item/status?
+    :item/index-width :item/id-width :item/result-width :item/time-width])
+  => {:item/id "long-name"
+      :item/index 1
+      :item/source-index 1
+      :item/total 2
+      :item/status? false
+      :item/index-width 4
+      :item/id-width 11
+      :item/result-width 60
+      :item/time-width 10})
+
 (pr-str (run {:namespace "work.flow.task.engine-test"}))

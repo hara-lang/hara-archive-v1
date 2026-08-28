@@ -1,41 +1,864 @@
 (ns lang.seedgen.cli
-  (:require [tool.cli.model :as model]
+  (:config {:role :internal})
+  (:require [code.manage.unit :as unit]
             [code.project :as project]
-            [lang.seedgen :as seedgen]))
+            [code.test.artifact :as artifact]
+            [lang.seedgen :as seedgen]
+            [lang.seedgen.common-util :as common]
+            [lang.seedgen.form-bench :as form-bench]
+            [lang.seedgen.metrics :as metrics]
+            [std.foundation.string :as str]
+            [std.fs :as fs]
+            [std.fs.path :as path]
+            [tool.cli.model :as model]
+            [tool.cli.template :as template]
+            [tool.cli.test.runner :as test-runner]))
 
-(def +operations+ #{:root :list :incomplete :benchadd})
+(def +compatibility-path+
+  "config/xtalk/xtalk_compatibility.edn")
 
-(defn parse-arguments [arguments]
+(def +operations+
+  #{:root :list :readforms :benchlist :incomplete :langremove :langadd
+    :benchadd :benchremove})
+
+(declare parse-command-params load-compatibility)
+
+(defn read-arg
+  "Reads one CLI token as EDN and removes a leading quote form."
+  [value]
+  (if (not (string? value))
+    value
+    (try
+      (let [parsed (Edn/read value)]
+        (if (and (list? parsed) (= 'quote (first parsed)))
+          (second parsed)
+          parsed))
+      (catch Throwable _ value))))
+
+(defn ^{:public true} collect-selector
+  "Collects consecutive selectors following :only."
+  [arguments]
+  (if (empty? arguments)
+    [nil []]
+    (if (= :only (read-arg (first arguments)))
+      (let [remaining (vec (rest arguments))
+            values (vec (take-while
+                        (fn [value]
+                          (not (keyword? (read-arg value))))
+                        remaining))]
+        [(vec (map read-arg values))
+         (vec (drop (inc (count values)) arguments))])
+      [(read-arg (first arguments))
+       (vec (rest arguments))])))
+
+(defn ^{:public true} parse-test-args
+  "Parses arguments following the seedgen test command."
+  [arguments]
+  (let [[selector more] (collect-selector arguments)
+        [langs extra]
+        (cond
+          (and (= ":with" (first more))
+               (second more))
+          [(read-arg (second more)) (vec (drop 2 more))]
+
+          (seq more)
+          [(read-arg (first more)) (vec (rest more))]
+
+          :else
+          [nil more])]
+    {:selector selector
+     :langs (if (keyword? langs) [langs] langs)
+     :extra extra
+     :params (parse-command-params extra)}))
+
+(defn project-root
+  [current-project]
+  (or (:project/root current-project)
+      (:root current-project)
+      (OS/cwd)))
+
+(defn normalise-project
+  [value]
+  (if (map? value)
+    (seedgen/seedgen-project {:project value})
+    (seedgen/seedgen-project {:root (or value (OS/cwd))})))
+
+(defn project-records
+  [current-project]
+  (let [provided (or (:seedgen/records current-project)
+                     (:records current-project))]
+    (if provided
+      (vec provided)
+      (try
+        (project/project-file-records current-project)
+        (catch Throwable _ [])))))
+
+(defn path-has-root?
+  [file-path root-name]
+  (let [value (str file-path)
+        root-name (str root-name)]
+    (or (= value root-name)
+        (str/starts-with? value (str root-name "/"))
+        (str/includes? value (str "/" root-name "/")))))
+
+(defn seedgen-test-area?
+  [file-path]
+  (some (fn [root-name]
+          (path-has-root? file-path root-name))
+        ["test-lang/xt" "test-lang/kmi"
+         "lib/test-lang/xt" "lib/test-lang/kmi"]))
+
+(defn seedgen-skip-record?
+  [record]
+  (or (= true (:seedgen/skip record))
+      (and (string? (:source record))
+           (str/includes? (:source record) ":seedgen/skip"))
+      (if (:path record)
+        (try (common/seedgen-skip? (:path record))
+             (catch Throwable _ false))
+        false)))
+
+(defn source-namespaces
+  "Returns xt.* test namespaces not marked as seedgen/skip."
+  ([] (source-namespaces (normalise-project nil)))
+  ([current-project]
+   (let [current-project (normalise-project current-project)]
+     (->> (project-records current-project)
+          (filter (fn [record]
+                    (and (:namespace record)
+                         (seedgen-test-area? (:path record))
+                         (or (nil? (:type record))
+                             (= :test (:type record)))
+                         (not (seedgen-skip-record? record)))))
+          (map :namespace)
+          distinct
+          sort
+          vec))))
+
+(defn ^{:public true} prefix-matches?
+  "Returns true when a namespace starts with one of the prefixes."
+  [namespace prefixes]
+  (boolean
+   (some (fn [prefix]
+           (str/starts-with? (str namespace) (str prefix)))
+         (or prefixes []))))
+
+(defn language-rules
+  "Computes include and exclude namespace prefixes for a language."
+  [language config]
+  (let [rules (get config language)]
+    (if (nil? rules)
+      (throw
+       (ex :dependency {:lang language :path +compatibility-path+}
+           :ex/message "Language not in compatibility config"))
+      (let [include (or (:include rules) :all)
+            exclude (vec (map str (or (:exclude rules) [])))]
+        {:include (if (= :all include)
+                    ["xt."]
+                    (vec (map str include)))
+         :exclude exclude}))))
+
+(defn selector-prefixes
+  "Normalises a namespace selector into prefix strings."
+  [selector]
+  (cond
+    (= :all selector) ["xt."]
+    (symbol? selector) [(str selector)]
+    (or (vector? selector) (list? selector) (set? selector))
+    (vec (map str selector))
+    (keyword? selector) [(name selector)]
+    (nil? selector) []
+    :else [(str selector)]))
+
+(defn compatible-namespaces
+  "Returns test namespaces compatible with a selected language."
+  [language selector config current-project]
+  (let [all (source-namespaces current-project)
+        rules (language-rules language config)
+        selector-prefs (selector-prefixes selector)]
+    (->> all
+         (filter (fn [namespace]
+                   (prefix-matches? namespace selector-prefs)))
+         (filter (fn [namespace]
+                   (prefix-matches? namespace (:include rules))))
+         (remove (fn [namespace]
+                   (prefix-matches? namespace (:exclude rules))))
+         vec)))
+
+(defn compatible-report
+  "Returns each selected source namespace and its compatible languages."
+  ([selector]
+   (let [current-project (normalise-project nil)]
+     (compatible-report selector
+                        (load-compatibility current-project)
+                        current-project)))
+  ([selector config current-project]
+   (let [current-project (normalise-project current-project)
+         languages (vec (sort (keys config)))]
+     (reduce
+      (fn [output namespace]
+        (let [compatible
+              (vec
+               (sort
+                (filter (fn [language]
+                          (seq (compatible-namespaces language
+                                                     namespace
+                                                     config
+                                                     current-project)))
+                        languages)))]
+          (if (empty? compatible)
+            output
+            (assoc output namespace compatible))))
+      {}
+      (filter (fn [namespace]
+                (prefix-matches? namespace (selector-prefixes selector)))
+              (source-namespaces current-project))))))
+
+(defn generated-namespace
+  "Computes an xtbench namespace from a source namespace and language."
+  [source-namespace language]
+  (let [value (str source-namespace)]
+    (symbol
+     (cond
+       (str/starts-with? value "xt.")
+       (str "xtbench." (name language) "." (str/slice value 3))
+
+       (str/starts-with? value "kmi.")
+       (str "xtbench." (name language) "." value)
+
+       :else
+       value))))
+
+(defn extract-lang
+  "Extracts the language from an xtbench.<lang> namespace."
+  [namespace]
+  (let [parts (str/split (str namespace) (regexp "\\."))]
+    (when (and (> (count parts) 1)
+               (= "xtbench" (first parts)))
+      (keyword (second parts)))))
+
+(defn failure-meta
+  [entry]
+  (if (map? entry)
+    (or (:meta entry) {})
+    (try (Result/context entry)
+         (catch Throwable _ {}))))
+
+(defn failure-function
+  [entry]
+  (or (:function entry)
+      (:refer entry)
+      (get-in (failure-meta entry) [:function])
+      (get-in (failure-meta entry) [:refer])))
+
+(defn failing-functions
+  "Builds a per-language failure map from the latest native test artifact."
+  []
+  (let [latest (deref artifact/+latest+)
+        failures (or (:failures latest) {})
+        by-lang
+        (reduce
+         (fn [output type]
+           (reduce
+            (fn [current entry]
+              (let [metadata (failure-meta entry)
+                    language (extract-lang (or (:ns metadata)
+                                               (:namespace metadata)))
+                    function (failure-function entry)]
+                (if (and language function)
+                  (assoc current language
+                         (update-in (get current language {})
+                                    [type]
+                                    (fn [values]
+                                      (conj (or values #{}) function))))
+                  current)))
+            output
+            (or (get failures type) [])))
+         {}
+         [:failed :throw :timeout])
+        by-lang
+        (reduce
+         (fn [output entry]
+           (let [namespace (if (map? entry) (:ns entry) entry)
+                 language (extract-lang namespace)]
+             (if language
+               (assoc output language
+                      (assoc (get output language {})
+                             :errored
+                             (conj (or (get-in output [language :errored]) #{})
+                                   namespace)))
+               output)))
+         by-lang
+         (or (:errored latest) []))]
+    (reduce
+     (fn [output pair]
+       (let [language (first pair)
+             data (second pair)]
+         (assoc output language
+                (reduce-kv
+                 (fn [current key values]
+                   (assoc current key (vec (sort-by str values))))
+                 {}
+                 data))))
+     {}
+     (sort-by (fn [pair] (str (first pair))) (seq by-lang)))))
+
+(defn canonical-bench-namespace
+  [namespace]
+  (let [parts (str/split (str namespace) (regexp "\\."))]
+    (if (and (> (count parts) 1)
+             (= "xtbench" (first parts)))
+      (str/join "." (drop 2 parts))
+      (str namespace))))
+
+(defn relative-test-path
+  [root file-path]
+  (when file-path
+    (let [root (str root)
+          file-path (str file-path)
+          prefix (str root "/")]
+      (if (str/starts-with? file-path prefix)
+        (str/slice file-path (count prefix))
+        file-path))))
+
+(defn failure-occurrence
+  [type entry root]
+  (let [metadata (failure-meta entry)
+        runtime-namespace (or (:ns metadata)
+                              (:namespace metadata)
+                              'unknown)
+        function (failure-function entry)]
+    {:type type
+     :runtime-namespace (str runtime-namespace)
+     :namespace (canonical-bench-namespace runtime-namespace)
+     :function (when function (str function))
+     :path (relative-test-path root (:path metadata))
+     :line (:line metadata)}))
+
+(defn occurrence-locations
+  [items]
+  (let [groups (group-by (fn [item]
+                           [(:type item) (:path item) (:line item)])
+                         (or items []))]
+    (->> (seq groups)
+         (map (fn [pair]
+                (let [key (first pair)
+                      entries (second pair)
+                      output {:type (first key)
+                              :count (count entries)}
+                      output (if (not (nil? (second key)))
+                               (assoc output :path (second key))
+                               output)]
+                  (if (not (nil? (nth key 2)))
+                    (assoc output :line (nth key 2))
+                    output))))
+         (sort-by (fn [entry]
+                    [(str (:type entry))
+                     (or (:path entry) "")
+                     (or (:line entry) -1)]))
+         vec)))
+
+(defn ^{:public true} failure-tree
+  "Builds a namespace/function tree from native test failure details."
+  [summary errored current-project]
+  (let [root (project-root current-project)
+        details (or (:data (meta summary)) {})
+        result-occurrences
+        (vec
+         (mapcat
+          (fn [type]
+            (map (fn [entry] (failure-occurrence type entry root))
+                 (or (get details type) [])))
+          [:failed :throw :timeout]))
+        error-occurrences
+        (vec
+         (map
+          (fn [entry]
+            (let [metadata (if (map? entry) entry {})
+                  runtime-namespace (if (map? entry)
+                                      (or (:ns entry) (:namespace entry) 'unknown)
+                                      (or entry 'unknown))]
+              {:type :errored
+               :runtime-namespace (str runtime-namespace)
+               :namespace (canonical-bench-namespace runtime-namespace)
+               :function nil
+               :path (when (map? entry)
+                       (relative-test-path root (:path metadata)))
+               :line (when (map? entry) (:line metadata))}))
+          (or errored [])))
+        occurrences (vec (concat result-occurrences error-occurrences))
+        namespaces (group-by (fn [entry]
+                               [(:namespace entry)
+                                (:runtime-namespace entry)])
+                             occurrences)]
+    (->> (seq namespaces)
+         (map (fn [pair]
+                (let [key (first pair)
+                      entries (second pair)
+                      by-function (group-by :function entries)
+                      functions
+                      (->> (seq (dissoc by-function nil))
+                           (map (fn [function-pair]
+                                  (let [function (first function-pair)
+                                        values (second function-pair)]
+                                    {:function function
+                                     :counts (frequencies (map :type values))
+                                     :locations (occurrence-locations values)})))
+                           (sort-by :function)
+                           vec)]
+                  {:namespace (first key)
+                   :runtime-namespace (second key)
+                   :counts (frequencies (map :type entries))
+                   :functions functions
+                   :namespace-errors (occurrence-locations (get by-function nil))})))
+         (sort-by :namespace)
+         vec)))
+
+(defn failing-summary
+  [summary errored]
+  (+ (or (:failed summary) 0)
+     (or (:throw summary) 0)
+     (or (:timeout summary) 0)
+     (count (or errored []))))
+
+(defn save-failing-list
+  "Writes an EDN failure list beneath the current project run directory."
+  [failing]
+  (let [directory (path/join (OS/cwd) ".tahto" "runs")
+        _ (fs/create-directory directory {:parents? true :exists-ok? true})
+        file-path (path/join directory
+                             (str "seedgen-failing-" (time-ms) ".edn"))]
+    (fs/write-bytes file-path
+                    (str/encode-utf8 (str (pr-str failing) "\n"))
+                    {:mode :replace})
+    file-path))
+
+(defn clear-bench-lang
+  "Idempotently removes generated benchmark files for one language."
+  [language current-project]
+  (let [current-project (normalise-project current-project)
+        root (project-root current-project)]
+    (reduce
+     (fn [output test-root]
+       (let [directory (path/join root test-root "xtbench" (name language))]
+         (if (fs/exists? directory)
+           (conj output (fs/delete directory
+                                    {:recursive? true :missing-ok? true}))
+           output)))
+     []
+     (:project/test-paths current-project))))
+
+(defn project-lookup
+  "Returns a namespace-to-path lookup for the current project."
+  [current-project]
+  (reduce
+   (fn [output record]
+     (if (:namespace record)
+       (assoc output (:namespace record) (:path record))
+       output))
+   {}
+   (project-records (normalise-project current-project))))
+
+(defn source-unit
+  [source-namespace current-project lookup]
+  (let [file-path (get lookup source-namespace)]
+    (when file-path
+      {:path file-path
+       :source (common/read-text file-path)
+       :namespace source-namespace
+       :seedgen/project current-project
+       :seedgen/lookup lookup})))
+
+(defn target-record
+  [current-project output]
+  {:path (path/join (project-root current-project) (:path output))
+   :namespace (:ns output)})
+
+(defn load-compatibility
+  "Loads compatibility data from the project, with a runtime fallback."
+  ([] (load-compatibility (normalise-project nil)))
+  ([current-project]
+   (let [current-project (normalise-project current-project)
+         file-path (path/join (project-root current-project) +compatibility-path+)]
+     (if (fs/exists? file-path)
+       (Edn/read (common/read-text file-path))
+       (reduce
+        (fn [output language]
+          (assoc output language {:include :all :exclude []}))
+        {}
+        (keys seedgen/runtime-languages))))))
+
+(defn ^{:public true} seedgen-test
+  "Generates and runs benchmark tests for a selector and languages."
+  ([selector langs]
+   (seedgen-test selector langs (normalise-project nil)))
+  ([selector langs current-project]
+   (let [current-project (normalise-project current-project)
+         config (load-compatibility current-project)
+         languages (->> (if (nil? langs)
+                          (keys config)
+                          (if (vector? langs) langs [langs]))
+                        (map seedgen/normalize-runtime-language)
+                        distinct
+                        sort
+                        vec)]
+     (if (empty? languages)
+       (throw (ex :argument {} :ex/message "No languages specified"))
+       (let [lookup (project-lookup current-project)
+             generated
+             (reduce
+              (fn [output language]
+                (clear-bench-lang language current-project)
+                (let [namespaces (compatible-namespaces language
+                                                       selector
+                                                       config
+                                                       current-project)
+                      results
+                      (keep
+                       (fn [test-namespace]
+                         (let [source-namespace
+                               (project/source-namespace current-project
+                                                          test-namespace)
+                               unit (source-unit source-namespace
+                                                  current-project
+                                                  lookup)
+                               result (if unit
+                                        (form-bench/seedgen-benchadd
+                                         source-namespace
+                                         {:lang [language] :write true}
+                                         lookup
+                                         current-project)
+                                        {:status :error :data :no-source-file})]
+                           (when (not= :error (:status result))
+                             result)))
+                       namespaces)
+                      generated-nss
+                      (vec
+                       (map generated-namespace
+                            namespaces
+                            (repeat language)))
+                      target-records
+                      (vec
+                       (mapcat (fn [result]
+                                 (map (fn [entry]
+                                        (target-record current-project entry))
+                                      (or (:outputs result) [])))
+                               results))]
+                  (assoc output language
+                         {:namespaces generated-nss
+                          :targets target-records})))
+              {}
+              languages)
+             generated-namespaces
+             (reduce
+              (fn [output pair]
+                (assoc output
+                       (first pair)
+                       (vec (get-in (second pair) [:namespaces]))))
+              {}
+              (seq generated))
+             targets
+             (vec
+              (mapcat (fn [pair] (get-in (second pair) [:targets]))
+                       (seq generated)))
+             results (if (empty? targets)
+                       []
+                       (test-runner/run-files targets))
+             counts (test-runner/summary results)
+             summary {:status (if (= 0 (:failed counts)) :passed :failed)
+                      :passed (:passed counts)
+                      :failed (:failed counts)
+                      :throw 0
+                      :timeout 0
+                      :errored []
+                      :results results}
+             failing (failing-functions)
+             errored []]
+         {:generated generated-namespaces
+          :summary summary
+          :failing failing
+          :failures (failure-tree summary errored current-project)
+          :errored errored
+          :exit (failing-summary summary errored)})))))
+
+(defn source-namespaces-for
+  "Returns source namespaces matching a selector."
+  [selector current-project]
+  (->> (project-records (normalise-project current-project))
+       (filter (fn [record]
+                 (and (:namespace record)
+                      (or (nil? (:type record)) (= :source (:type record)))
+                      (not (str/ends-with? (str (:namespace record)) "-test"))
+                      (prefix-matches? (:namespace record)
+                                       (selector-prefixes selector)))))
+       (map :namespace)
+       distinct
+       sort
+       vec))
+
+(defn source-vars
+  "Returns definitions found in one source namespace."
+  [source-namespace lookup]
+  (let [file-path (get lookup source-namespace)]
+    (when file-path
+      (unit/definition-names
+       {:path file-path
+        :source (common/read-text file-path)}))))
+
+(defn test-file-for
+  "Returns the project test file paired with a source namespace."
+  [source-namespace lookup current-project]
+  (get lookup (project/test-namespace (normalise-project current-project)
+                                      source-namespace)))
+
+(defn inferred-test-path
+  "Returns the conventional legacy seedgen test path."
+  [source-namespace]
+  (str "test/"
+       (str/replace (str/replace (str source-namespace) "-" "_")
+                    "."
+                    "/")
+       "_test.clj"))
+
+(defn existing-fact-refers
+  "Returns fact refer symbols already present in a test file."
+  [test-file]
+  (if (and test-file (fs/exists? test-file))
+    (set (keys (common/seedgen-fact-forms test-file)))
+    #{}))
+
+(defn ensure-test-file!
+  "Creates or appends TODO facts for missing source definitions."
+  ([source-namespace missing write?]
+   (let [current-project (normalise-project nil)]
+     (ensure-test-file! source-namespace
+                        missing
+                        write?
+                        current-project
+                        (project-lookup current-project))))
+  ([source-namespace missing write? current-project lookup]
+   (let [current-project (normalise-project current-project)
+         test-namespace (project/test-namespace current-project source-namespace)
+         path-value (or (test-file-for source-namespace lookup current-project)
+                        (path/join (project-root current-project)
+                                   (inferred-test-path source-namespace)))]
+     (if (empty? missing)
+       0
+       (let [exists? (fs/exists? path-value)
+             facts (str/join
+                    "\n\n"
+                    (map (fn [definition]
+                           (str "^{:refer " source-namespace "/" definition
+                                " :added \"4.1\"}\n"
+                                "(fact \"TODO\")"))
+                         missing))
+             original (if exists? (common/read-text path-value) "")
+             content (if exists?
+                       (str original "\n" facts "\n")
+                       (str "(ns " test-namespace "\n  (:use code.test))\n\n"
+                            facts
+                            "\n"))]
+         (when write?
+           (fs/create-directory (path/parent path-value)
+                                {:parents? true :exists-ok? true})
+           (fs/write-bytes path-value
+                           (str/encode-utf8 content)
+                           {:mode :replace}))
+         (count missing))))))
+
+(defn ^{:public true} seedgen-todos
+  "Generates TODO facts for definitions without corresponding facts."
+  ([selector]
+   (seedgen-todos selector {}))
+  ([selector params]
+   (let [params (or params {})
+         current-project (normalise-project (or (:project params) nil))
+         lookup (project-lookup current-project)
+         namespaces (source-namespaces-for selector current-project)
+         write? (true? (:write params))]
+     (reduce
+      (fn [total source-namespace]
+        (let [variables (vec (or (source-vars source-namespace lookup) []))
+              test-file (test-file-for source-namespace lookup current-project)
+              existing (existing-fact-refers test-file)
+              missing (vec
+                       (remove
+                        (fn [definition]
+                          (has? existing
+                                (symbol (str source-namespace)
+                                        (str definition))))
+                        variables))]
+          (if (and (nil? test-file)
+                   (not write?))
+            total
+            (+ total
+               (ensure-test-file! source-namespace
+                                  missing
+                                  write?
+                                  current-project
+                                  lookup)))))
+      0
+      namespaces))))
+
+(defn parse-command-params
+  "Parses keyword/value pairs after a namespace selector."
+  [arguments]
+  (loop [remaining (vec arguments)
+         output {}]
+    (if (empty? remaining)
+      output
+      (let [raw-key (first remaining)
+            parsed-key (read-arg raw-key)
+            key (if (= :with parsed-key) :lang parsed-key)
+            tail (vec (rest remaining))]
+        (if (empty? tail)
+          (throw (ex :argument {:key key :args arguments}
+                     :ex/message "Missing value for option"))
+          (recur (vec (drop 2 remaining))
+                 (assoc output key (read-arg (first tail)))))))))
+
+(defn ^{:public true} parse-command-args
+  "Parses a namespace selector and command options."
+  [arguments]
+  (let [[selector more] (collect-selector arguments)]
+    {:selector selector
+     :params (parse-command-params more)}))
+
+(defn parse-arguments
+  "Compatibility parser for the short operation/language form."
+  [arguments]
   (let [operation (keyword (or (first arguments) "list"))]
-    (if (get +operations+ operation)
+    (if (has? +operations+ operation)
       {:operation operation
        :language (if (= operation :benchadd)
                    (keyword (or (second arguments) "js"))
                    nil)}
-      (throw (ex :syntax {:operation operation} :ex/message (str "seedgen supports root, list, incomplete, or benchadd"))))))
+      (throw (ex :syntax {:operation operation}
+                 :ex/message "seedgen operation is not supported")))))
 
-(defn units-for [current-project parsed]
-  (let [root (:project/root current-project)
-        test-root (first (:project/test-paths current-project))]
-    (reduce
-     (fn [output path]
-       (conj output
-             {:path path
-              :source (project/read-text path)
-              :language (:language parsed)
-              :test-root (file/join root test-root)}))
-     []
-     (project/files-in current-project
-                       (:project/test-paths current-project)
-                       ".hal"))))
+(def +commands+
+  {"root" {:operation :root :lang? false}
+   "list" {:operation :list :lang? false}
+   "readforms" {:operation :readforms :lang? false}
+   "benchlist" {:operation :benchlist :lang? false}
+   "incomplete" {:operation :incomplete :lang? false}
+   "langremove" {:operation :langremove :lang? true}
+   "langadd" {:operation :langadd :lang? true}
+   "benchadd" {:operation :benchadd :lang? true}
+   "benchremove" {:operation :benchremove :lang? true}})
 
-(defn handler [request]
-  (let [parsed (parse-arguments (:request/arguments request))
-        start (or (:project (:request/options request))
-                  (:root (:request/options request))
-                  (:request/cwd request)
-                  (os/cwd))
-        current-project (project/discover start)
-        result (seedgen/run (:operation parsed)
-                            {:units (units-for current-project parsed)})]
-    (model/success result [(model/message (str (pr-str result) "\n"))])))
+(defn selected-seedgen-units
+  [selector current-project]
+  (let [current-project (normalise-project current-project)
+        units (seedgen/seedgen-test-units current-project)
+        prefixes (selector-prefixes selector)]
+    (vec
+     (filter (fn [unit]
+               (prefix-matches? (:namespace unit) prefixes))
+             units))))
+
+(defn run-seedgen-operation
+  [operation selector params current-project]
+  (seedgen/run operation
+               {:units (selected-seedgen-units selector current-project)
+                :selector selector
+                :options (assoc (or params {})
+                                 :project (normalise-project current-project))}))
+
+(defn run-seedgen-command
+  [command arguments current-project]
+  (case command
+    "test"
+    (let [{:keys [selector langs params]} (parse-test-args arguments)
+          result (seedgen-test selector langs current-project)]
+      (if-let [file-path (:metrics params)]
+        (do
+          (metrics/write-test-record! (str file-path)
+                                       selector
+                                       langs
+                                       result)
+          result)
+        result))
+
+    "metrics-merge"
+    (let [params (parse-command-params arguments)]
+      (if (and (:input params) (:output params) (:workflow params))
+        (metrics/merge-directory! (str (:input params))
+                                  (str (:output params))
+                                  (name (:workflow params)))
+        (throw (ex :argument {:params params}
+                   :ex/message "metrics-merge requires :input, :output, and :workflow"))))
+
+    "compatible"
+    (let [selector (if (empty? arguments)
+                     :all
+                     (:selector (parse-command-args arguments)))]
+      (compatible-report selector
+                         (load-compatibility current-project)
+                         current-project))
+
+    "todos"
+    (let [{:keys [selector params]} (parse-command-args arguments)]
+      (seedgen-todos (or selector :all)
+                     (assoc params :project current-project)))
+
+    (let [entry (get +commands+ command)]
+      (if (nil? entry)
+        (throw (ex :argument {:command command
+                              :available (keys +commands+)}
+                   :ex/message "Unknown seedgen command"))
+        (let [{:keys [selector params]} (parse-command-args arguments)
+              params (assoc params :print {:item true :result true :summary true})]
+          (if (and (:lang? entry) (nil? (:lang params)))
+            (throw (ex :argument {:command command :params params}
+                       :ex/message (str command " requires a :lang option")))
+            (run-seedgen-operation (:operation entry)
+                                   selector
+                                   params
+                                   current-project)))))))
+
+(defn execute-request
+  [request]
+  (let [arguments (vec (or (:request/arguments request) []))
+        command (or (first arguments) "list")
+        options (or (:request/options request) {})
+        supplied-project (:project options)
+        current-project
+        (if (map? supplied-project)
+          supplied-project
+          (normalise-project
+           (or supplied-project
+               (:root options)
+               (:request/cwd request)
+               (OS/cwd))))
+        result (run-seedgen-command command (vec (rest arguments)) current-project)]
+    (model/success result
+                   [(model/message (str (pr-str result) "\n"))])))
+
+(def ^{:public true} handler
+  (template/handler
+   {:id :tool.cli.handler/seedgen
+    :version 1
+    :main {:fn execute-request :argcount 1}}))
+
+(defn ^{:public true} -main
+  "Runs one seedgen command and returns a native CLI result map."
+  [& arguments]
+  (let [command (first arguments)
+        current-project (normalise-project nil)]
+    (if (nil? command)
+      {:exit 1
+       :error "Usage: seedgen <command> <selector> [options]"}
+      (try
+        (let [result (run-seedgen-command command
+                                          (vec (rest arguments))
+                                          current-project)]
+          {:exit (if (= "test" command)
+                   (or (:exit result) 0)
+                   0)
+           :result result})
+        (catch Throwable error
+          {:exit 1
+           :error (or (try (ex-message error) (catch Throwable _ nil))
+                      (str error))
+           :data (ex-data error)})))))

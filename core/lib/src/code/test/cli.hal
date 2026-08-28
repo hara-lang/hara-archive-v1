@@ -4,6 +4,7 @@
   (:require [code.test.result :as test-result]
             [tool.cli.model :as model]
             [code.project :as project]
+            [std.fs.path :as file]
             [std.lib.format.report :as report]
             [std.lib.format.terminal :as terminal]
             [work.flow.task :as task]
@@ -186,7 +187,7 @@
         {:path path
          :passed 0
          :failed 1
-         :error (str error)
+         :error (ex-message error)
          :elapsed (- (time-ms) started)})
       (finally
         (try
@@ -287,42 +288,39 @@
          (if (= 0 (:failed counts)) :stdout :stderr)
          (str (report/render-report document {:ansi ansi}) "\n"))]
        (let [total (count results)
-             index-width (+ 2 (* 2 (str/length (str total))))
-             id-width
-             (reduce
-              (fn [width result]
-                (max width (+ 2 (str/length (str (or (:namespace result)
-                                                     (:path result)))))))
-              0
-              results)]
+             records
+             (vec
+              (map-indexed
+               (fn [index result]
+                 (let [status (if (:error result)
+                                :error
+                                (if (= 0 (:failed result)) :passed :failed))]
+                   {:item/id (or (:namespace result) (:path result))
+                    :item/index index
+                    :item/total total
+                    :item/count (:passed result)
+                    :status status
+                    :error (:error result)
+                    :elapsed
+                    (if (has? result :elapsed)
+                      (let [centiseconds
+                            (quot (+ (:elapsed result) 5) 10)
+                            seconds (quot centiseconds 100)
+                            fraction (rem centiseconds 100)]
+                        (str seconds "."
+                             (if (< fraction 10) "0" "")
+                             fraction
+                             "s"))
+                      nil)}))
+               results))
+             lines (report/progress-lines records)]
          (conj
           (reduce
            (fn [messages [index result]]
              (let [status (if (:error result)
                             :error
                             (if (= 0 (:failed result)) :passed :failed))
-                   line (report/progress-line
-                         {:item/id (or (:namespace result) (:path result))
-                          :item/index index
-                          :item/total total
-                          :item/index-width index-width
-                          :item/id-width id-width
-                          :item/result-width 60
-                          :item/time-width 10
-                          :item/count (:passed result)
-                          :status status
-                          :error (:error result)
-                          :elapsed
-                          (if (has? result :elapsed)
-                            (let [centiseconds
-                                  (quot (+ (:elapsed result) 5) 10)
-                                  seconds (quot centiseconds 100)
-                                  fraction (rem centiseconds 100)]
-                              (str seconds "."
-                                   (if (< fraction 10) "0" "")
-                                   fraction
-                                   "s"))
-                            nil)})]
+                   line (nth lines index)]
                (conj messages
                      (model/message
                       (if (or (= :error status) (= :failed status))

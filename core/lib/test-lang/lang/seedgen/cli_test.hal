@@ -1,0 +1,628 @@
+(ns lang.seedgen.cli-test
+  (:use code.test)
+  (:require [code.test.artifact :as artifact]
+            [lang.seedgen.cli :as subject]
+            [std.foundation.string :as str]
+            [std.fs :as fs]
+            [std.fs.path :as path]
+            [tool.cli.template :as template]))
+
+^{:refer lang.seedgen.cli/read-arg}
+(fact "reads EDN arguments and removes quote wrappers"
+  [(subject/read-arg "42")
+   (subject/read-arg "'xt.demo")
+   (subject/read-arg "'[xt.demo other]")
+   (subject/read-arg 7)]
+  => [42 'xt.demo ['xt.demo 'other] 7])
+
+^{:refer lang.seedgen.cli/collect-selector}
+(fact "collects selectors after :only and preserves remaining options"
+  [(subject/collect-selector [":only" "xt.foo" "xt.bar" ":with" "[lua python]"])
+   (subject/collect-selector ["'xt.foo"])
+   (subject/collect-selector [])]
+  => [[['xt.foo 'xt.bar] [":with" "[lua python]"]]
+      ['xt.foo []]
+      [nil []]])
+
+^{:refer lang.seedgen.cli/parse-test-args}
+(fact "parses test selectors languages metrics and extra options"
+  [(subject/parse-test-args [":only" "xt.foo" "xt.bar" ":with" "[lua python]"])
+   (subject/parse-test-args ["'xt.foo" ":with" "[lua]" ":metrics" "target/out.json"])
+   (subject/parse-test-args ["':all"])]
+  => [{:selector ['xt.foo 'xt.bar]
+       :langs ['lua 'python]
+       :extra []
+       :params {}}
+      {:selector 'xt.foo
+       :langs ['lua]
+       :extra [":metrics" "target/out.json"]
+       :params {:metrics 'target/out.json}}
+      {:selector :all :langs nil :extra [] :params {}}])
+
+^{:refer lang.seedgen.cli/project-root}
+(fact "prefers native project roots and falls back to the process cwd"
+  [(subject/project-root {:project/root "/native" :root "/legacy"})
+   (subject/project-root {:root "/legacy"})
+   (string? (subject/project-root {}))]
+  => ["/native" "/legacy" true])
+
+^{:refer lang.seedgen.cli/normalise-project}
+(fact "normalizes legacy project maps into native project keys"
+  (select-keys (subject/normalise-project {:root "/tmp/project"
+                                           :source-paths ["src"]
+                                           :test-paths ["test"]})
+               [:root :source-paths :test-paths
+                :project/root :project/source-paths :project/test-paths])
+  => {:root "/tmp/project"
+      :source-paths ["src"]
+      :test-paths ["test"]
+      :project/root "/tmp/project"
+      :project/source-paths ["src"]
+      :project/test-paths ["test"]})
+
+^{:refer lang.seedgen.cli/project-records}
+(fact "uses supplied seedgen records as a deterministic project inventory"
+  (let [records [{:namespace 'xt.demo-test
+                  :path "test-lang/xt/demo_test.clj"
+                  :type :test}]
+        project (subject/normalise-project {:root "/tmp/project"
+                                            :source-paths []
+                                            :test-paths []
+                                            :seedgen/records records})]
+    (subject/project-records project))
+  => [{:namespace 'xt.demo-test
+       :path "test-lang/xt/demo_test.clj"
+       :type :test}])
+
+^{:refer lang.seedgen.cli/path-has-root?}
+(fact "recognizes exact and nested project path roots"
+  [(subject/path-has-root? "test-lang/xt/demo.clj" "test-lang/xt")
+   (subject/path-has-root? "/repo/test-lang/xt/demo.clj" "test-lang/xt")
+   (subject/path-has-root? "test-lang/kmi/demo.clj" "test-lang/xt")]
+  => [true true false])
+
+^{:refer lang.seedgen.cli/seedgen-test-area?}
+(fact "accepts xt and kmi seedgen test trees only"
+  (map boolean
+       [(subject/seedgen-test-area? "test-lang/xt/demo.clj")
+        (subject/seedgen-test-area? "lib/test-lang/kmi/demo.clj")
+        (subject/seedgen-test-area? "test/demo.clj")])
+  => [true true false])
+
+^{:refer lang.seedgen.cli/seedgen-skip-record?}
+(fact "honors explicit and source-marked skip records"
+  [(subject/seedgen-skip-record? {:seedgen/skip true})
+   (subject/seedgen-skip-record? {:source "demo :seedgen/skip"})
+   (subject/seedgen-skip-record? {:path "/missing/seedgen-test.clj"})
+   (subject/seedgen-skip-record? {})]
+  => [true true false false])
+
+^{:refer lang.seedgen.cli/source-namespaces}
+(fact "lists seedgen test namespaces while filtering skipped records"
+  (let [records [{:namespace 'xt.demo.z-test
+                  :path "test-lang/xt/demo/z_test.clj"
+                  :type :test}
+                 {:namespace 'kmi.demo.a-test
+                  :path "test-lang/kmi/demo/a_test.clj"
+                  :type :test}
+                 {:namespace 'xt.demo.skip-test
+                  :path "test-lang/xt/demo/skip_test.clj"
+                  :type :test
+                  :seedgen/skip true}
+                 {:namespace 'demo.source
+                  :path "src/demo/source.hal"
+                  :type :source}]]
+    (subject/source-namespaces
+     {:root "/tmp/project"
+      :source-paths []
+      :test-paths []
+      :seedgen/records records}))
+  => ['kmi.demo.a-test 'xt.demo.z-test])
+
+^{:refer lang.seedgen.cli/prefix-matches?}
+(fact "matches a namespace against any configured prefix"
+  [(subject/prefix-matches? 'xt.demo.alpha ["kmi." "xt.demo"])
+   (subject/prefix-matches? 'xt.demo.alpha [])
+   (subject/prefix-matches? 'kmi.demo.alpha ["xt."])]
+  => [true false false])
+
+^{:refer lang.seedgen.cli/language-rules}
+(fact "normalizes language include and exclude compatibility rules"
+  [(subject/language-rules :js {:js {:include ['xt.demo]
+                                     :exclude ['xt.demo.skip]}})
+   (try (subject/language-rules :lua {:js {}})
+        false
+        (catch Throwable _ true))]
+  => [{:include ["xt.demo"] :exclude ["xt.demo.skip"]} true])
+
+^{:refer lang.seedgen.cli/selector-prefixes}
+(fact "normalizes all selector shapes to prefix strings"
+  [(subject/selector-prefixes :all)
+   (subject/selector-prefixes 'xt.demo)
+   (subject/selector-prefixes ['xt.demo 'kmi.demo])
+   (subject/selector-prefixes :xt)
+   (subject/selector-prefixes nil)]
+  => [["xt."] ["xt.demo"] ["xt.demo" "kmi.demo"] ["xt"] []])
+
+^{:refer lang.seedgen.cli/compatible-namespaces}
+(fact "applies selector include and exclude rules to seedgen records"
+  (let [records [{:namespace 'xt.demo.alpha-test
+                  :path "test-lang/xt/demo/alpha_test.clj"
+                  :type :test}
+                 {:namespace 'xt.demo.skip-test
+                  :path "test-lang/xt/demo/skip_test.clj"
+                  :type :test}
+                 {:namespace 'kmi.demo.beta-test
+                  :path "test-lang/kmi/demo/beta_test.clj"
+                  :type :test}]
+        project {:root "/tmp/project"
+                 :source-paths []
+                 :test-paths []
+                 :seedgen/records records}
+        config {:js {:include :all :exclude ['xt.demo.skip]}
+                :python {:include ['xt.demo.alpha] :exclude []}}]
+    [(subject/compatible-namespaces :js :all config project)
+     (subject/compatible-namespaces :python :all config project)
+     (subject/compatible-namespaces :js 'kmi.demo config project)])
+  => [['xt.demo.alpha-test] ['xt.demo.alpha-test] []])
+
+^{:refer lang.seedgen.cli/compatible-report}
+(fact "reports only languages compatible with each selected namespace"
+  (let [records [{:namespace 'xt.demo.alpha-test
+                  :path "test-lang/xt/demo/alpha_test.clj"
+                  :type :test}
+                 {:namespace 'kmi.demo.beta-test
+                  :path "test-lang/kmi/demo/beta_test.clj"
+                  :type :test}]
+        project {:root "/tmp/project"
+                 :source-paths []
+                 :test-paths []
+                 :seedgen/records records}
+        config {:js {:include :all :exclude []}
+                :python {:include ['xt.demo] :exclude []}}]
+    (subject/compatible-report :all config project))
+  => {'xt.demo.alpha-test [:js :python]})
+
+^{:refer lang.seedgen.cli/generated-namespace}
+(fact "rewrites xt and kmi namespaces into xtbench names"
+  [(subject/generated-namespace 'xt.lang.sample :lua)
+   (subject/generated-namespace 'kmi.lang.runtime :python)
+   (subject/generated-namespace 'demo.core :js)]
+  => ['xtbench.lua.lang.sample
+      'xtbench.python.kmi.lang.runtime
+      'demo.core])
+
+^{:refer lang.seedgen.cli/extract-lang}
+(fact "extracts a runtime keyword from xtbench namespaces"
+  [(subject/extract-lang 'xtbench.lua.lang.sample-test)
+   (subject/extract-lang 'demo.core)
+   (subject/extract-lang 'xtbench)]
+  => [:lua nil nil])
+
+^{:refer lang.seedgen.cli/failure-meta}
+(fact "reads metadata maps and safely handles non-map result values"
+  [(subject/failure-meta {:meta {:ns 'xtbench.lua.sample-test}})
+   (map? (subject/failure-meta 42))]
+  => [{:ns 'xtbench.lua.sample-test} true])
+
+^{:refer lang.seedgen.cli/failure-function}
+(fact "finds function references in direct and nested failure metadata"
+  [(subject/failure-function {:function 'demo/direct})
+   (subject/failure-function {:meta {:refer 'demo/refer}})
+   (subject/failure-function {:meta {:function 'demo/nested}})]
+  => ['demo/direct 'demo/refer 'demo/nested])
+
+^{:refer lang.seedgen.cli/failing-functions}
+(fact "groups latest native artifact failures by runtime language"
+  (let [baseline (deref artifact/+latest+)]
+    (try
+      (reset! artifact/+latest+
+              {:failures {:failed [{:meta {:ns 'xtbench.lua.sample-test
+                                             :refer 'xt.lang.sample/parse}}
+                                    {:meta {:ns 'xtbench.lua.sample-test
+                                             :function 'xt.lang.sample/emit}}]
+                          :throw [{:meta {:ns 'xtbench.python.core-test
+                                           :refer 'xt.lang.core/run}}]
+                          :timeout []}
+               :errored ['xtbench.lua.load-error-test]})
+      (subject/failing-functions)
+      (finally (reset! artifact/+latest+ baseline))))
+  => {:lua {:failed ['xt.lang.sample/emit 'xt.lang.sample/parse]
+            :errored ['xtbench.lua.load-error-test]}
+      :python {:throw ['xt.lang.core/run]}})
+
+^{:refer lang.seedgen.cli/canonical-bench-namespace}
+(fact "removes the xtbench runtime prefix from benchmark namespaces"
+  [(subject/canonical-bench-namespace 'xtbench.lua.lang.sample-test)
+   (subject/canonical-bench-namespace 'lang.sample-test)]
+  => ["lang.sample-test" "lang.sample-test"])
+
+^{:refer lang.seedgen.cli/relative-test-path}
+(fact "makes paths relative only when they are rooted at the project"
+  [(subject/relative-test-path "/repo" "/repo/test/a.clj")
+   (subject/relative-test-path "/repo" "test/a.clj")
+   (subject/relative-test-path "/repo" nil)]
+  => ["test/a.clj" "test/a.clj" nil])
+
+^{:refer lang.seedgen.cli/failure-occurrence}
+(fact "normalizes one failure result into a JSON-safe occurrence"
+  (subject/failure-occurrence
+   :failed
+   {:meta {:ns 'xtbench.lua.lang.sample-test
+           :refer 'xt.lang.sample/parse
+           :path "/repo/test/sample_test.clj"
+           :line 42}}
+   "/repo")
+  => {:type :failed
+      :runtime-namespace "xtbench.lua.lang.sample-test"
+      :namespace "lang.sample-test"
+      :function "xt.lang.sample/parse"
+      :path "test/sample_test.clj"
+      :line 42})
+
+^{:refer lang.seedgen.cli/occurrence-locations}
+(fact "coalesces repeated occurrences at the same source location"
+  (subject/occurrence-locations
+   [{:type :failed :path "test/a.clj" :line 4}
+    {:type :failed :path "test/a.clj" :line 4}])
+  => [{:type :failed :count 2 :path "test/a.clj" :line 4}])
+
+^{:refer lang.seedgen.cli/failure-tree}
+(fact "groups failures by canonical namespace function and location"
+  (let [failed {:meta {:ns 'xtbench.lua.lang.sample-test
+                       :refer 'xt.lang.sample/parse
+                       :path "/repo/test-lang/xtbench/lua/lang/sample_test.clj"
+                       :line 42}}
+        thrown {:meta {:ns 'xtbench.lua.lang.sample-test
+                       :function 'xt.lang.sample/emit
+                       :path "test-lang/xtbench/lua/lang/sample_test.clj"
+                       :line 51}}
+        kmi-failed {:meta {:ns 'xtbench.python.kmi.lang.runtime-test
+                           :refer 'kmi.lang.runtime/eval-string
+                           :path "test-lang/xtbench/python/kmi/lang/runtime_test.clj"
+                           :line 17}}
+        summary (with-meta {:passed 3 :failed 2 :throw 1 :timeout 0}
+                  {:data {:failed [failed failed kmi-failed]
+                          :throw [thrown]
+                          :timeout []}})]
+    (subject/failure-tree summary
+                          ['xtbench.lua.lang.load-error-test]
+                          {:root "/repo"}))
+  => [{:namespace "kmi.lang.runtime-test"
+       :runtime-namespace "xtbench.python.kmi.lang.runtime-test"
+       :counts {:failed 1}
+       :functions [{:function "kmi.lang.runtime/eval-string"
+                    :counts {:failed 1}
+                    :locations [{:type :failed :count 1
+                                 :path "test-lang/xtbench/python/kmi/lang/runtime_test.clj"
+                                 :line 17}]}]
+       :namespace-errors []}
+      {:namespace "lang.load-error-test"
+       :runtime-namespace "xtbench.lua.lang.load-error-test"
+       :counts {:errored 1}
+       :functions []
+       :namespace-errors [{:type :errored :count 1}]}
+      {:namespace "lang.sample-test"
+       :runtime-namespace "xtbench.lua.lang.sample-test"
+       :counts {:failed 2 :throw 1}
+       :functions [{:function "xt.lang.sample/emit"
+                    :counts {:throw 1}
+                    :locations [{:type :throw :count 1
+                                 :path "test-lang/xtbench/lua/lang/sample_test.clj"
+                                 :line 51}]}
+                   {:function "xt.lang.sample/parse"
+                    :counts {:failed 2}
+                    :locations [{:type :failed :count 2
+                                 :path "test-lang/xtbench/lua/lang/sample_test.clj"
+                                 :line 42}]}]
+       :namespace-errors []}])
+
+^{:refer lang.seedgen.cli/failing-summary}
+(fact "totals failed throw timeout and namespace errors"
+  [(subject/failing-summary {:failed 1 :throw 2 :timeout 3} [])
+   (subject/failing-summary {:failed 0 :throw 0 :timeout 0} ['xtbench.lua.error-test])]
+  => [6 1])
+
+^{:refer lang.seedgen.cli/save-failing-list}
+(fact "writes a failure list and restores the run directory baseline"
+  (let [tahto (path/join (OS/cwd) ".tahto")
+        run-dir (path/join tahto "runs")
+        tahto-existed? (fs/exists? tahto)
+        run-existed? (fs/exists? run-dir)
+        holder (atom nil)]
+    (try
+      (let [file-path (subject/save-failing-list {:lua {:failed ['demo/run]}})
+            _ (reset! holder file-path)]
+        [(string? file-path)
+         (str/ends-with? file-path ".edn")
+         (fs/exists? file-path)
+         (str/includes? (str/decode-utf8 (fs/read-bytes file-path)) "demo/run")])
+      (finally
+        (let [file-path (deref holder)]
+          (when (and file-path (fs/exists? file-path))
+            (fs/delete file-path {:missing-ok? true})))
+        (when (and (not run-existed?) (fs/exists? run-dir))
+          (fs/delete run-dir {:recursive? true :missing-ok? true}))
+        (when (and (not tahto-existed?) (fs/exists? tahto))
+          (fs/delete tahto {:recursive? true :missing-ok? true})))))
+  => [true true true true])
+
+^{:refer lang.seedgen.cli/clear-bench-lang}
+(fact "removes generated benchmark trees idempotently"
+  (let [root (fs/temp-directory "/" {:prefix "seedgen-cli-clear-test-"})
+        directory (path/join root "test" "xtbench" "js")
+        file (path/join directory "sample_test.clj")]
+    (try
+      (fs/create-directory directory {:parents? true :exists-ok? true})
+      (fs/write-bytes file (str/encode-utf8 "sample"))
+      (let [first-result (subject/clear-bench-lang
+                          :js
+                          {:root root :source-paths [] :test-paths ["test"]})
+            second-result (subject/clear-bench-lang
+                           :js
+                           {:root root :source-paths [] :test-paths ["test"]})]
+        [(boolean (seq first-result))
+         (fs/exists? directory)
+         (empty? second-result)])
+      (finally (fs/delete root {:recursive? true :missing-ok? true}))))
+  => [true false true])
+
+^{:refer lang.seedgen.cli/project-lookup}
+(fact "builds a namespace to path lookup from project records"
+  (subject/project-lookup
+   {:root "/tmp/project"
+    :source-paths []
+    :test-paths []
+    :seedgen/records [{:namespace 'demo.core :path "src/demo/core.hal"}
+                      {:namespace 'demo.core-test :path "test/demo/core_test.hal"}]})
+  => {'demo.core "src/demo/core.hal"
+      'demo.core-test "test/demo/core_test.hal"})
+
+^{:refer lang.seedgen.cli/source-unit}
+(fact "builds a source unit with source text and lookup provenance"
+  (let [root (fs/temp-directory "/" {:prefix "seedgen-cli-unit-test-"})
+        file (path/join root "src" "demo" "core.hal")
+        project {:root root :source-paths ["src"] :test-paths ["test"]}
+        lookup {'demo.core file}]
+    (try
+      (fs/create-directory (path/parent file) {:parents? true :exists-ok? true})
+      (fs/write-bytes file (str/encode-utf8 "(ns demo.core)\n(def value 1)\n"))
+      (let [unit (subject/source-unit 'demo.core project lookup)]
+        [(str/ends-with? (:path unit) "/src/demo/core.hal")
+         (:namespace unit)
+         (:source unit)
+         (= project (:seedgen/project unit))
+         (= lookup (:seedgen/lookup unit))])
+      (finally (fs/delete root {:recursive? true :missing-ok? true}))))
+  => [true 'demo.core "(ns demo.core)\n(def value 1)\n" true true])
+
+^{:refer lang.seedgen.cli/target-record}
+(fact "resolves generated output paths against the project root"
+  (subject/target-record {:root "/repo"}
+                         {:path "test/xtbench/js/demo_test.clj"
+                          :ns 'xtbench.js.demo-test})
+  => {:path "/repo/test/xtbench/js/demo_test.clj"
+      :namespace 'xtbench.js.demo-test})
+
+^{:refer lang.seedgen.cli/load-compatibility}
+(fact "loads project compatibility data and provides a runtime fallback"
+  (let [root (fs/temp-directory "/" {:prefix "seedgen-cli-config-test-"})
+        file (path/join root "config" "xtalk" "xtalk_compatibility.edn")]
+    (try
+      (let [fallback (subject/load-compatibility
+                      {:root root :source-paths [] :test-paths []})]
+        (fs/create-directory (path/parent file) {:parents? true :exists-ok? true})
+        (fs/write-bytes file
+                        (str/encode-utf8 "{:js {:include [\"xt.demo\"] :exclude [\"xt.skip\"]}}"))
+        [(select-keys fallback [:js])
+         (subject/load-compatibility
+          {:root root :source-paths [] :test-paths []})])
+      (finally (fs/delete root {:recursive? true :missing-ok? true}))))
+  => [{:js {:include :all :exclude []}}
+      {:js {:include ["xt.demo"] :exclude ["xt.skip"]}}])
+
+^{:refer lang.seedgen.cli/seedgen-test}
+(fact "returns a passing zero-target result for an empty project"
+  (let [root (fs/temp-directory "/" {:prefix "seedgen-cli-test-test-"})
+        project {:root root :source-paths [] :test-paths [] :seedgen/records []}]
+    (try
+      (select-keys (subject/seedgen-test :all [:js] project)
+                   [:generated :exit :summary])
+      (finally (fs/delete root {:recursive? true :missing-ok? true}))))
+  => {:generated {:js []}
+      :exit 0
+      :summary {:status :passed
+                :passed 0
+                :failed 0
+                :throw 0
+                :timeout 0
+                :errored []
+                :results []}})
+
+^{:refer lang.seedgen.cli/source-namespaces-for}
+(fact "selects source namespaces while excluding test namespaces"
+  (subject/source-namespaces-for
+   :all
+   {:root "/tmp/project"
+    :source-paths []
+    :test-paths []
+    :seedgen/records [{:namespace 'xt.demo.alpha
+                       :path "src/xt/demo/alpha.hal"
+                       :type :source}
+                      {:namespace 'xt.demo.alpha-test
+                       :path "src/xt/demo/alpha_test.hal"
+                       :type :source}
+                      {:namespace 'kmi.demo.beta
+                       :path "src/kmi/demo/beta.hal"
+                       :type :source}]})
+  => ['xt.demo.alpha])
+
+^{:refer lang.seedgen.cli/source-vars}
+(fact "extracts definition names from a source file"
+  (let [root (fs/temp-directory "/" {:prefix "seedgen-cli-vars-test-"})
+        file (path/join root "core.hal")]
+    (try
+      (fs/write-bytes file
+                      (str/encode-utf8 "(ns demo.core)\n(defn alpha [x] x)\n(defn beta [] 2)\n"))
+      (subject/source-vars 'demo.core {'demo.core file})
+      (finally (fs/delete root {:recursive? true :missing-ok? true}))))
+  => ["alpha" "beta"])
+
+^{:refer lang.seedgen.cli/test-file-for}
+(fact "finds the project test namespace path"
+  (subject/test-file-for
+   'demo.core
+   {'demo.core-test "test/demo/core_test.hal"}
+   {:root "/tmp/project" :source-paths [] :test-paths []})
+  => "test/demo/core_test.hal")
+
+^{:refer lang.seedgen.cli/inferred-test-path}
+(fact "converts a source namespace to the legacy test path convention"
+  [(subject/inferred-test-path 'xt.lang.sample)
+   (subject/inferred-test-path 'kmi.lang.runtime)]
+  => ["test/xt/lang/sample_test.clj" "test/kmi/lang/runtime_test.clj"])
+
+^{:refer lang.seedgen.cli/existing-fact-refers}
+(fact "finds refer symbols in an existing fact file"
+  (let [root (fs/temp-directory "/" {:prefix "seedgen-cli-facts-test-"})
+        file (path/join root "core_test.clj")]
+    (try
+      (fs/write-bytes file
+                      (str/encode-utf8 "(ns demo.core-test)\n(:use code.test)\n^{:refer demo.core/alpha}\n(fact \"alpha\" true => true)\n"))
+      [(subject/existing-fact-refers file)
+       (subject/existing-fact-refers (path/join root "missing.clj"))]
+      (finally (fs/delete root {:recursive? true :missing-ok? true}))))
+  => [#{'demo.core/alpha} #{}])
+
+^{:refer lang.seedgen.cli/ensure-test-file!}
+(fact "dry-runs and writes missing TODO facts without duplication"
+  (let [root (fs/temp-directory "/" {:prefix "seedgen-cli-ensure-test-"})
+        source-file (path/join root "src" "demo" "core.hal")
+        project {:root root :source-paths ["src"] :test-paths ["test"]}
+        lookup {'demo.core source-file}
+        test-file (path/join root "test" "demo" "core_test.clj")]
+    (try
+      (fs/create-directory (path/parent source-file) {:parents? true :exists-ok? true})
+      (fs/write-bytes source-file (str/encode-utf8 "(ns demo.core)\n(defn alpha [] 1)\n"))
+      [(subject/ensure-test-file! 'demo.core ["alpha"] false project lookup)
+       (fs/exists? test-file)
+       (subject/ensure-test-file! 'demo.core ["alpha"] true project lookup)
+       (fs/exists? test-file)
+       (str/includes? (str/decode-utf8 (fs/read-bytes test-file))
+                      "^{:refer demo.core/alpha")]
+      (finally (fs/delete root {:recursive? true :missing-ok? true}))))
+  => [1 false 1 true true])
+
+^{:refer lang.seedgen.cli/seedgen-todos}
+(fact "counts and writes TODO facts only when requested"
+  (let [root (fs/temp-directory "/" {:prefix "seedgen-cli-todos-test-"})
+        source-file (path/join root "src" "demo" "todo.hal")
+        project {:root root :source-paths ["src"] :test-paths ["test"]
+                 :seedgen/records [{:namespace 'demo.todo
+                                    :path source-file
+                                    :type :source}]}
+        test-file (path/join root "test" "demo" "todo_test.clj")]
+    (try
+      (fs/create-directory (path/parent source-file) {:parents? true :exists-ok? true})
+      (fs/write-bytes source-file
+                      (str/encode-utf8 "(ns demo.todo)\n(defn alpha [] 1)\n(defn beta [] 2)\n"))
+      [(subject/seedgen-todos 'demo.todo {:project project})
+       (subject/seedgen-todos 'demo.todo {:project project :write true})
+       (fs/exists? test-file)
+       (str/includes? (str/decode-utf8 (fs/read-bytes test-file))
+                      "demo.todo/alpha")]
+      (finally (fs/delete root {:recursive? true :missing-ok? true}))))
+  => [0 2 true true])
+
+^{:refer lang.seedgen.cli/parse-command-params}
+(fact "parses keyword/value command parameters and rejects missing values"
+  [(subject/parse-command-params [":with" "lua" ":write" "true"])
+   (try (subject/parse-command-params [":write"])
+        false
+        (catch Throwable _ true))]
+  => [{:lang 'lua :write true} true])
+
+^{:refer lang.seedgen.cli/parse-command-args}
+(fact "parses a generic command selector and its options"
+  [(subject/parse-command-args [":only" "xt.foo" "xt.bar" ":lang" "lua"])
+   (subject/parse-command-args ["'xt.foo" ":write" "true"])]
+  => [{:selector ['xt.foo 'xt.bar] :params {:lang 'lua}}
+      {:selector 'xt.foo :params {:write true}}])
+
+^{:refer lang.seedgen.cli/parse-arguments}
+(fact "retains the short operation parser for legacy callers"
+  [(subject/parse-arguments [])
+   (subject/parse-arguments ["benchadd" "python"])
+   (try (subject/parse-arguments ["missing"])
+        false
+        (catch Throwable _ true))]
+  => [{:operation :list :language nil}
+      {:operation :benchadd :language :python}
+      true])
+
+^{:refer lang.seedgen.cli/selected-seedgen-units}
+(fact "filters root seedgen units by selector"
+  (let [root (fs/temp-directory "/" {:prefix "seedgen-cli-selected-test-"})]
+    (try
+      (subject/selected-seedgen-units
+       :all
+       {:root root :source-paths [] :test-paths [] :seedgen/records []})
+      (finally (fs/delete root {:recursive? true :missing-ok? true}))))
+  => [])
+
+^{:refer lang.seedgen.cli/run-seedgen-operation}
+(fact "runs a seedgen operation through the task report envelope"
+  (let [root (fs/temp-directory "/" {:prefix "seedgen-cli-operation-test-"})]
+    (try
+      (select-keys (:summary
+                    (subject/run-seedgen-operation
+                     :list :all {}
+                     {:root root :source-paths [] :test-paths []
+                      :seedgen/records []}))
+                   [:operation :items :results])
+      (finally (fs/delete root {:recursive? true :missing-ok? true}))))
+  => {:operation :list :items 0 :results 0})
+
+^{:refer lang.seedgen.cli/run-seedgen-command}
+(fact "dispatches compatible and TODO commands and validates command names"
+  (let [project {:root "/tmp/project" :source-paths [] :test-paths [] :seedgen/records []}]
+    [(subject/run-seedgen-command "compatible" [] project)
+     (subject/run-seedgen-command "todos" [":only" "missing"] project)
+     (try (subject/run-seedgen-command "metrics-merge" [] project)
+          false
+          (catch Throwable _ true))
+     (try (subject/run-seedgen-command "missing" [] project)
+          false
+          (catch Throwable _ true))])
+  => [{} 0 true true])
+
+^{:refer lang.seedgen.cli/execute-request}
+(fact "wraps a seedgen command in the closed CLI result model"
+  (let [project {:root "/tmp/project" :source-paths [] :test-paths [] :seedgen/records []}
+        result (subject/execute-request
+                {:request/arguments ["todos" ":only" "missing"]
+                 :request/options {:project project}})]
+    (select-keys result [:result/outcome :result/exit :result/data]))
+  => {:result/outcome :tool.cli.outcome/success
+      :result/exit 0
+      :result/data 0})
+
+^{:refer lang.seedgen.cli/handler}
+(fact "publishes a template-backed handler that returns a model result"
+  (let [project {:root "/tmp/project" :source-paths [] :test-paths [] :seedgen/records []}
+        result (subject/handler
+                {:request/arguments ["todos" ":only" "missing"]
+                 :request/options {:project project}})]
+    [(template/handler? subject/handler)
+     (:result/outcome result)
+     (:result/exit result)
+     (:result/data result)])
+  => [true :tool.cli.outcome/success 0 0])
+
+^{:refer lang.seedgen.cli/-main}
+(fact "returns structured native exit results without terminating the process"
+  [(select-keys (subject/-main) [:exit :error])
+   (:exit (subject/-main "todos" ":only" "missing"))]
+  => [{:exit 1 :error "Usage: seedgen <command> <selector> [options]"} 0])
+
+(pr-str (run {:namespace "lang.seedgen.cli-test"}))

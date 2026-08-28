@@ -47,6 +47,15 @@
    [:data :test/status])
   => :error)
 
+^{:refer code.test.cli/run-test-file}
+(fact "code.test file failures remain portable result data"
+  (let [result (cli/run-test-file "core/missing-test-file.hal" 0)]
+    [(:path result)
+     (:passed result)
+     (:failed result)
+     (string? (:error result))])
+  => ["core/missing-test-file.hal" 0 1 true])
+
 (fact "code.test CLI file batches are task-engine bundles"
   (let [bundle (cli/run-test-bundle [])]
     [(task/task-work? cli/+cli-task-work+)
@@ -68,6 +77,24 @@
     [(:message/stream message)
      (:message/text message)])
   => [:stderr "TEST RESULTS\n"])
+
+(fact "code.test fallback rows share display columns"
+  (let [texts
+        (vec
+         (map
+          :message/text
+          (cli/result-messages
+           [{:namespace 'one-test :passed 15 :failed 0 :elapsed 180}
+            {:namespace 'two-test :passed 0 :failed 1
+             :error "broken" :elapsed 20}]
+           {:passed 1 :failed 1}
+           {:no-color true})))]
+    [(str/index-of (first texts) "passed (15)")
+     (str/index-of (second texts) "error (0)")
+     (= (str/index-of (first texts) "passed (15)")
+        (str/index-of (second texts) "error (0)"))
+     (str/index-of (second texts) "broken")]
+    => [18 18 true 29]))
 
 ^{:refer code.test.cli/handler}
 (fact "the code.test CLI handler reaches its implementation through the default host"

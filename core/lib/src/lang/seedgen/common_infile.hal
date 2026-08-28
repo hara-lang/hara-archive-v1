@@ -1,0 +1,58 @@
+(ns lang.seedgen.common-infile
+  (:config {:role :internal})
+  (:require [code.project :as project]
+            [lang.seedgen.common-util :as common]))
+
+(defn fact-lang-entry
+  [form lang]
+  (let [m (meta form)]
+    (when (and m
+               (or (has? m :seedgen/base)
+                   (has? m :seedgen/lang)
+                   (has? m :seedgen/check)))
+      (common/seedgen-lang-entry (with-meta [] m) lang))))
+
+(defn ^{:public true} seedgen-root
+  "Returns the root runtime language or an explicit missing-test error."
+  {:added "4.1"}
+  [ns params lookup project]
+  (let [test-ns (project/test-namespace (or project {}) ns)
+        test-file (lookup test-ns)]
+    (if (nil? test-file)
+      {:status :error :data :no-test-file}
+      (first (common/seedgen-root-langs test-file true)))))
+
+(defn ^{:public true} seedgen-list
+  "Returns non-root runtime languages declared in the test file."
+  {:added "4.1"}
+  [ns params lookup project]
+  (let [test-ns (project/test-namespace (or project {}) ns)
+        test-file (lookup test-ns)]
+    (if (nil? test-file)
+      {:status :error :data :no-test-file}
+      (common/seedgen-root-langs test-file false))))
+
+(defn ^{:public true} seedgen-incomplete
+  "Reports fact references not covered by the root runtime language."
+  {:added "4.1"}
+  [ns params lookup project]
+  (let [test-ns (project/test-namespace (or project {}) ns)
+        test-file (lookup test-ns)]
+    (if (nil? test-file)
+      {:status :error :data :no-test-file}
+      (let [fact-forms (common/seedgen-fact-forms test-file)
+            root-lang (first (common/seedgen-root-langs test-file true))
+            entries
+            (->> (vals fact-forms)
+                 (map (fn [form]
+                        (let [m (meta form)
+                              refer (:refer m)
+                              langs (common/seedgen-coverage-langs form)
+                              suppress? (true? (:suppress (fact-lang-entry form root-lang)))]
+                          (when (and refer
+                                     (not suppress?)
+                                     (not (some #{root-lang} langs)))
+                            [refer {:status :incomplete :line (:line m)}]))))
+                 (filter identity)
+                 (sort-by first))]
+        (into {} entries)))))

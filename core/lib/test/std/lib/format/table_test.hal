@@ -40,4 +40,14 @@
       {:line/text "a.clj    2    3" :line/role :default}
       {:line/text "b.clj    1    0" :line/role :default}])
 
+(fact "aligns wide Unicode cells by terminal display width"
+  (map
+   :line/text
+   (drop 2
+         (table/table-lines
+          {:section/columns [{:key :name} {:key :value}]
+           :section/entries [{:name "界" :value 1}
+                             {:name "aa" :value 22}]})))
+  => ["界    1    " "aa    22   "])
+
 (pr-str (run {:namespace "std.lib.format.table-test"}))

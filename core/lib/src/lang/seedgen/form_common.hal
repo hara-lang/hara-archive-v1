@@ -1,0 +1,137 @@
+(ns lang.seedgen.form-common
+  (:config {:role :internal})
+  (:require [std.block.base :as block]
+            [std.block.navigate :as nav]
+            [lang.seedgen.common-util :as common]))
+
+(defn ^{:public true} target-normalize-langs
+  ([lang]
+   (target-normalize-langs lang nil))
+  ([lang default-langs]
+   (let [target-langs (cond
+                        (= :all lang)
+                        (or default-langs :all)
+
+                        (keyword? lang)
+                        [lang]
+
+                        (vector? lang)
+                        lang
+
+                        (list? lang)
+                        (vec lang)
+
+                        (nil? lang)
+                        default-langs
+
+                        :else
+                        [lang])]
+     (cond
+       (= :all target-langs)
+       :all
+
+       (nil? target-langs)
+       nil
+
+       :else
+       (->> target-langs
+            (map common/seedgen-normalize-runtime-lang)
+            distinct
+            vec)))))
+
+(defn ^{:public true} nav-meta-block?
+  [zloc]
+  (= :meta (block/block-tag (nav/block zloc))))
+
+(defn ^{:public true} nav-meta
+  [zloc]
+  (when (nav-meta-block? zloc)
+    (nav/down zloc)))
+
+(defn ^{:public true} nav-body
+  [zloc]
+  (if (nav-meta-block? zloc)
+    (-> zloc nav/down nav/right)
+    zloc))
+
+(defn ^{:public true} nav-top-levels
+  [root]
+  (loop [current (nav/down root)
+         out []]
+    (if (nil? current)
+      out
+      (recur (nav/right current)
+             (conj out current)))))
+
+(defn ^{:public true} nav-entry
+  [zloc]
+  {:form (nav/block zloc)
+   :line (nav/line-info zloc)})
+
+(defn ^{:public true} nav-map-value
+  [map-nav target-key]
+  (loop [current (some-> map-nav nav/down)]
+    (cond
+      (nil? current)
+      nil
+
+      (not (block/expression? (nav/block current)))
+      (recur (some-> current nav/right))
+
+      (= target-key (nav/value current))
+      (nav/right current)
+
+      :else
+      (recur (some-> current nav/right nav/right)))))
+
+(defn ^{:public true} nav-vector-items
+  [vector-nav]
+  (loop [current (some-> vector-nav nav/down)
+         out []]
+    (if (nil? current)
+      out
+      (recur (nav/right current)
+             (conj out current)))))
+
+(defn ^{:public true} item-line-key
+  [{:keys [row col end-row end-col]}]
+  [row col end-row end-col])
+
+(defn ^{:public true} item-form
+  [item]
+  (:form item))
+
+(defn ^{:public true} item-line
+  [item]
+  (:line item))
+
+(defn ^{:public true} item-string
+  [item]
+  (some-> item item-form block/block-string))
+
+(defn ^{:public true} item-value
+  [item]
+  (some-> item item-form block/block-value))
+
+(defn ^{:public true} item-lang
+  [item]
+  (some-> item item-value common/seedgen-form-lang))
+
+(defn ^{:public true} item-sort
+  [items]
+  (sort-by (comp item-line-key item-line) items))
+
+(defn ^{:public true} item-classify-langs
+  [classification]
+  (->> classification
+       vals
+       (mapcat identity)
+       item-sort))
+
+(defn ^{:public true} item-runtime-map
+  [classification]
+  (->> (item-classify-langs classification)
+       (keep (fn [item]
+               (when-let [lang (item-lang item)]
+                 [lang item])))
+       (into {})))

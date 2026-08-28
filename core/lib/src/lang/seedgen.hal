@@ -1,69 +1,64 @@
-;; Metadata-driven XTalk test generation model, ported from the legacy seed generator.
-;; File enumeration and writes remain host responsibilities; the work graph
-;; produces deterministic plans which hosts may apply after explicit consent.
 (ns lang.seedgen
-  (:require [std.block :as block]
-            [work.base :as work]
-            [work.flow.task.command :as command]))
+  (:config {:role :internal})
+  (:require [code.manage.unit.template :as template]
+            [code.project :as project]
+            [std.block :as block]
+            [std.foundation.string :as str]
+            [lang.seedgen.common-meta :as runtime]
+            [lang.seedgen.common-infile :as common-infile]
+            [lang.seedgen.common-util :as common]
+            [lang.seedgen.form-bench :as form-bench]
+            [lang.seedgen.form-parse :as form-parse]
+            [lang.seedgen.form-infile :as form-infile]
+            [work.base :as work]))
 
-(def runtime-languages
-  {:js {:script :js :suffix "js" :runtime :basic :check-mode :realtime}
-   :lua {:script :lua :suffix "lua" :runtime :basic :check-mode :realtime}
-   :python {:script :python :suffix "python" :runtime :basic :check-mode :realtime}
-   :scheme {:script :scheme :suffix "scheme" :runtime :basic :check-mode :realtime}
-   :elisp {:script :elisp :suffix "elisp" :runtime :basic :check-mode :realtime}
-   :r {:script :r :suffix "R" :runtime :basic :check-mode :realtime}
-   :rb {:script :ruby :suffix "rb" :runtime :basic :check-mode :realtime}
-   :dart {:script :dart :suffix "dt" :runtime :twostep :check-mode :batched}
-   :php {:script :php :suffix "php" :runtime :basic :check-mode :realtime}
-   :go {:script :go :suffix "go" :runtime :twostep :check-mode :batched}})
-
-(def runtime-language-aliases {:ruby :rb})
+(def runtime-languages runtime/+runtime-lang-config+)
+(def runtime-language-aliases runtime/+runtime-lang-aliases+)
 
 (defn normalize-runtime-language
   [language]
-  (let [key (cond (keyword? language) language
-                  (symbol? language) (keyword (name language))
-                  (string? language) (keyword language)
-                  :else language)]
-    (or (get runtime-language-aliases key) key)))
+  (runtime/normalize-runtime-lang language))
 
 (defn runtime-language-config
   [language]
-  (get runtime-languages (normalize-runtime-language language)))
+  (runtime/runtime-lang-config language))
 
 (defn runtime-check-mode
   [language]
-  (:check-mode (runtime-language-config language)))
+  (runtime/runtime-check-mode language))
 
-(defn seedgen-root? [source] (str/includes? source ":seedgen/root"))
-(defn seedgen-skip? [source] (str/includes? source ":seedgen/skip"))
-(defn seedgen-base? [source] (str/includes? source ":seedgen/base"))
+(defn seedgen-root?
+  [source]
+  (str/includes? source ":seedgen/root"))
 
-(defn seedgen-list [unit]
-  {:path (:path unit)
-   :namespace (block/namespace-name (:source unit))
-   :root (seedgen-root? (:source unit))
-   :skip (seedgen-skip? (:source unit))
-   :base (seedgen-base? (:source unit))})
+(defn seedgen-skip?
+  [source]
+  (str/includes? source ":seedgen/skip"))
 
-(defn seedgen-root [unit] (and (seedgen-root? (:source unit)) (not (seedgen-skip? (:source unit)))))
+(defn seedgen-base?
+  [source]
+  (str/includes? source ":seedgen/base"))
 
-(defn incomplete [unit]
-  (if (seedgen-root unit)
+(defn incomplete
+  [unit]
+  (if (and (seedgen-root? (:source unit))
+           (not (seedgen-skip? (:source unit))))
     (block/grep-source (:source unit) ":refer")
     []))
 
-(defn bench-namespace [language namespace]
+(defn bench-namespace
+  [language namespace]
   (symbol (str "xtbench." (name language) "." namespace)))
 
-(defn bench-path [test-root language namespace]
+(defn bench-path
+  [test-root language namespace]
   (str test-root "/xtbench/" (name language) "/"
        (str/replace (str/replace (str namespace) "." "/") "-" "_")
        "_test.hal"))
 
-(defn bench-plan [unit language test-root]
-  (let [namespace (block/namespace-name (:source unit))
+(defn bench-plan
+  [unit language test-root]
+  (let [namespace (or (:namespace unit) "unknown")
         language (normalize-runtime-language language)]
     {:source (:path unit)
      :namespace (bench-namespace language namespace)
@@ -72,24 +67,266 @@
      :runtime (runtime-language-config language)
      :write false}))
 
-(defn seedgen-work
-  [operation]
-  (command/batch
-   {:id (keyword (str "lang.seedgen/" (name operation)))
-    :version 1}
-   {:list (work/pure :list-tests (fn [input context] (:units input)))
-    :filter (work/pure :seed-root? (fn [unit context] (seedgen-root unit)))
-    :process (work/pure :process-test
-                        (fn [unit context]
-                          (cond (= operation :root) (seedgen-root unit)
-                                (= operation :list) (seedgen-list unit)
-                                (= operation :incomplete) (incomplete unit)
-                                (= operation :benchadd) (bench-plan unit (:language unit) (:test-root unit))
-                                :else (throw (ex :generic {:operation operation} :ex/message "Unsupported seedgen workflow")))))
-    :summarise (work/pure :summarise
-                          (fn [batch context]
-                            {:operation operation :count (count (:results batch))}))}))
+(defn seedgen-project
+  [options]
+  (let [options (or options {})
+        candidate (or (:project options)
+                      (try
+                        (project/discover (or (:root options) (OS/cwd)))
+                        (catch Throwable _ {})))
+        root (or (:project/root candidate) (:root candidate) ".")
+        source-paths (or (:project/source-paths candidate)
+                         (:source-paths candidate)
+                         ["src"])
+        test-paths (or (:project/test-paths candidate)
+                       (:test-paths candidate)
+                       ["test"])]
+    (assoc candidate
+           :project/root root
+           :project/source-paths source-paths
+           :project/test-paths test-paths
+           :root root
+           :source-paths source-paths
+           :test-paths test-paths)))
 
-(defn run
+(defn seedgen-lookup
+  [current-project]
+  (reduce
+   (fn [output record]
+     (assoc output (:namespace record) (:path record)))
+   {}
+   (project/project-file-records current-project)))
+
+(defn seedgen-test-units
+  [current-project]
+  (let [current-project (seedgen-project {:project current-project})
+        lookup (seedgen-lookup current-project)]
+    (vec
+     (map
+      (fn [record]
+        (let [test-ns (:namespace record)
+              source-ns (project/source-namespace current-project test-ns)]
+          (assoc record
+                 :namespace source-ns
+                 :seedgen/test-namespace test-ns
+                 :seedgen/project current-project
+                 :seedgen/lookup lookup)))
+      (filter
+       (fn [record]
+         (and (= :test (:type record))
+              (:namespace record)
+              (not (common/seedgen-skip? (:path record)))))
+       (project/project-file-records current-project))))))
+
+(defn seedgen-unit-source-namespace
+  [unit current-project]
+  (let [namespace (or (:seedgen/source-namespace unit)
+                      (:namespace unit)
+                      (project/namespace-from-source (:source unit) nil))]
+    (if (and namespace
+             (str/ends-with? (str namespace) "-test"))
+      (project/source-namespace current-project namespace)
+      namespace)))
+
+(defn seedgen-unit-context
+  [unit options]
+  (let [options (or options {})
+        current-project (seedgen-project
+                         {:project (or (:seedgen/project unit)
+                                       (:project options))
+                          :root (:root options)})
+        namespace (seedgen-unit-source-namespace unit current-project)
+        test-ns (project/test-namespace current-project namespace)
+        lookup (or (:seedgen/lookup unit)
+                   (:lookup options)
+                   (let [path (:path unit)]
+                     {namespace path
+                      test-ns path}))]
+    {:namespace namespace
+     :lookup lookup
+     :project current-project}))
+
+(defn seedgen-call
+  [function unit options]
+  (let [context (seedgen-unit-context unit options)]
+    (function (:namespace context)
+             options
+             (:lookup context)
+             (:project context))))
+
+(defn scalar-result-ignore?
+  [data]
+  (or (nil? data)
+      (and (or (map? data) (vector? data) (list? data) (set? data))
+           (empty? data))))
+
+(defn scalar-result-count
+  [data]
+  (cond
+    (nil? data) 0
+    (or (map? data) (vector? data) (list? data) (set? data)) (count data)
+    :else 1))
+
+(defn seedgen-error?
+  [data]
+  (and (map? data) (= :error (:status data))))
+
+(defn seedgen-incomplete-summary
+  [unit options]
+  (let [output (seedgen-call common-infile/seedgen-incomplete unit options)]
+    (if (seedgen-error? output)
+      output
+      (->> output
+           (map (fn [entry]
+                  (with-meta (first entry) (second entry))))
+           sort
+           vec))))
+
+(defn seedgen-readforms-vars
+  [output]
+  (->> output
+       :entries
+       vals
+       (mapcat keys)
+       sort
+       vec))
+
+(defn bench-output-targets
+  [outputs predicate]
+  (->> outputs
+       (filter predicate)
+       (map :ns)
+       vec))
+
+(defn seedgen-test-namespaces
+  [lookup current-project]
+  (->> lookup
+       keys
+       (filter (fn [namespace]
+                 (= namespace
+                    (project/test-namespace current-project namespace))))
+       (remove (fn [namespace]
+                 (common/seedgen-skip? (get lookup namespace))))
+       sort
+       vec))
+
+(defn seedgen-root-item
+  [unit options]
+  (seedgen-call common-infile/seedgen-root unit options))
+
+(defn seedgen-list-item
+  [unit options]
+  (seedgen-call common-infile/seedgen-list unit options))
+
+(defn seedgen-readforms-item
+  [unit options]
+  (seedgen-call form-parse/seedgen-readforms unit options))
+
+(defn seedgen-benchlist-item
+  [unit options]
+  (seedgen-call form-bench/seedgen-benchlist unit options))
+
+(defn seedgen-langremove-item
+  [unit options]
+  (seedgen-call form-infile/seedgen-langremove unit options))
+
+(defn seedgen-langadd-item
+  [unit options]
+  (seedgen-call form-infile/seedgen-langadd unit options))
+
+(defn seedgen-benchadd-item
+  [unit options]
+  (let [output (seedgen-call form-bench/seedgen-benchadd unit options)]
+    (if (seedgen-error? output)
+      output
+      (assoc output
+             :new (bench-output-targets
+                   (:outputs output)
+                   (fn [entry]
+                     (or (:updated entry)
+                         (pos? (+ (or (:inserts entry) 0)
+                                  (or (:deletes entry) 0))))))
+             :functions (:functions output)))))
+
+(defn seedgen-benchremove-item
+  [unit options]
+  (let [output (seedgen-call form-bench/seedgen-benchremove unit options)]
+    (if (seedgen-error? output)
+      output
+      (assoc output
+             :changed (bench-output-targets
+                       (:outputs output)
+                       (fn [entry] (:exists entry)))))))
+
+(defn seedgen-task-input
+  [definition]
+  (let [options (or (:task/params definition) {})
+        current-project (seedgen-project options)]
+    {:units (seedgen-test-units current-project)
+     :options (assoc options :project current-project)
+     :selector (or (:task/selector definition) :all)}))
+
+(defn seedgen-task
+  [operation function function-symbol]
+  (template/task
+   {:operation operation
+    :construct {:input seedgen-task-input}
+    :main {:fn function :symbol function-symbol :argcount 2}}))
+
+(def ^{:public true} seedgen-root
+  (seedgen-task :root seedgen-root-item 'lang.seedgen/seedgen-root-item))
+
+(def ^{:public true} seedgen-list
+  (seedgen-task :list seedgen-list-item 'lang.seedgen/seedgen-list-item))
+
+(def ^{:public true} seedgen-readforms
+  (seedgen-task :readforms seedgen-readforms-item 'lang.seedgen/seedgen-readforms-item))
+
+(def ^{:public true} seedgen-benchlist
+  (seedgen-task :benchlist seedgen-benchlist-item 'lang.seedgen/seedgen-benchlist-item))
+
+(def ^{:public true} seedgen-incomplete
+  (seedgen-task :incomplete seedgen-incomplete-summary 'lang.seedgen/seedgen-incomplete-summary))
+
+(def ^{:public true} seedgen-langremove
+  (seedgen-task :langremove seedgen-langremove-item 'lang.seedgen/seedgen-langremove-item))
+
+(def ^{:public true} seedgen-langadd
+  (seedgen-task :langadd seedgen-langadd-item 'lang.seedgen/seedgen-langadd-item))
+
+(def ^{:public true} seedgen-benchadd
+  (seedgen-task :benchadd seedgen-benchadd-item 'lang.seedgen/seedgen-benchadd-item))
+
+(def ^{:public true} seedgen-benchremove
+  (seedgen-task :benchremove seedgen-benchremove-item 'lang.seedgen/seedgen-benchremove-item))
+
+(def +tasks+
+  {:root seedgen-root
+   :list seedgen-list
+   :readforms seedgen-readforms
+   :benchlist seedgen-benchlist
+   :incomplete seedgen-incomplete
+   :langremove seedgen-langremove
+   :langadd seedgen-langadd
+   :benchadd seedgen-benchadd
+   :benchremove seedgen-benchremove})
+
+(defn seedgen-run-input
+  [input]
+  (if (and (map? input) (has? input :units))
+    {:units (:units input)
+     :options
+     (merge (dissoc input :units :selector :options)
+            (or (:options input) {}))}
+    input))
+
+(defn ^{:public true} run
   [operation input]
-  (work/run work/default-host (seedgen-work operation) input))
+  (let [task (get +tasks+ operation)]
+    (if (nil? task)
+      (throw (ex :argument {:operation operation}
+                 :ex/message "Unknown seedgen operation"))
+      (work/run
+       (work/local-runtime)
+       task
+       (seedgen-run-input input)))))

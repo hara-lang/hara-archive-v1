@@ -1,0 +1,159 @@
+(ns lang.seedgen.form-parse-test
+  (:use code.test)
+  (:require [std.block.base :as block]
+            [std.block.navigate :as nav]
+            [std.foundation.string :as str]
+            [std.fs :as fs]
+            [lang.seedgen.form-common :as form-common]
+            [lang.seedgen.form-parse :as subject]))
+
+(def +sample-source+
+  (str "(ns sample\n"
+       "  (:require [tahto.core :as l]))\n\n"
+       "^{:seedgen/root true}\n"
+       "(l/script- :js {:runtime :basic})\n\n"
+       "(l/script- :lua {:runtime :basic})\n\n"
+       "^{:refer sample/hello :added \"4.1\"}\n"
+       "(fact \"hello\"\n"
+       "  (!.js 1)\n"
+       "  => 1)\n\n"
+       "(+ 1 2)\n"))
+
+(def +sample-root+ (nav/parse-root +sample-source+))
+(def +sample-top-navs+ (form-common/nav-top-levels +sample-root+))
+
+^{:refer lang.seedgen.form-parse/class-empty}
+(fact "returns an empty classification map"
+  (subject/class-empty)
+  => {:root [] :derived [] :scaffold []})
+
+^{:refer lang.seedgen.form-parse/class-explicit}
+(fact "returns explicit seedgen classification from metadata"
+  [(subject/class-explicit (with-meta '(l/script- :js) {:seedgen/root true}))
+   (subject/class-explicit (with-meta '(l/script- :lua) {:seedgen/derived true}))
+   (subject/class-explicit (with-meta '(+ 1 2 3) {:seedgen/scaffold true}))
+   (subject/class-explicit '(+ 1 2 3))]
+  => [:root :derived :scaffold nil])
+
+^{:refer lang.seedgen.form-parse/form-script?}
+(fact "recognizes configured script heads"
+  [(subject/form-script? #{'tahto.core/script-} '(tahto.core/script- :js {}))
+   (subject/form-script? #{'tahto.core/script-} '(+ 1 2 3))
+   (subject/form-script? #{'l/script-} '(l/script- :js {}))]
+  => [true false true])
+
+^{:refer lang.seedgen.form-parse/class-form}
+(fact "classifies forms as root, derived or scaffold"
+  [(subject/class-form :js #{'tahto.core/script-} '(tahto.core/script- :js {}))
+   (subject/class-form :js #{'tahto.core/script-} '(tahto.core/script- :lua {}))
+   (subject/class-form :js #{'tahto.core/script-} '(!.js 1))
+   (subject/class-form :js #{'tahto.core/script-} '(!.lua 1))
+   (subject/class-form :js #{'tahto.core/script-} '(+ 1 2 3))]
+  => [:root :derived :root :derived :scaffold])
+
+^{:refer lang.seedgen.form-parse/class-navs}
+(fact "classifies navigable forms by runtime"
+  (let [root (nav/parse-root "(tahto.core/script- :js {})\n\n(!.js 1)\n\n(+ 1 2 3)")
+        navs (form-common/nav-top-levels root)
+        classified (subject/class-navs :js #{'tahto.core/script-} navs)]
+    [(count (:root classified))
+     (count (:derived classified))
+     (count (:scaffold classified))])
+  => [2 0 1])
+
+^{:refer lang.seedgen.form-parse/class-merge}
+(fact "merges classifications by concatenating entries"
+  (subject/class-merge {:root [1] :derived [2] :scaffold [3]}
+                       {:root [4] :derived [5] :scaffold [6]})
+  => {:root [1 4] :derived [2 5] :scaffold [3 6]})
+
+^{:refer lang.seedgen.form-parse/check-arrow?}
+(fact "recognizes assertion arrow symbols"
+  [(subject/check-arrow? '=>)
+   (subject/check-arrow? '=>*)
+   (subject/check-arrow? '+)]
+  => [true true false])
+
+^{:refer lang.seedgen.form-parse/check-classify}
+(fact "classifies fact checks by runtime language"
+  (let [root (nav/parse-root "(fact \"hello\"\n  (!.js 1)\n  => 1\n\n  (!.lua 2)\n  => 2)")
+        fact-nav (nav/down root)
+        classified (subject/check-classify :js #{'tahto.core/script-} fact-nav)]
+    [(count (:root classified))
+     (count (:derived classified))
+     (count (:scaffold classified))
+     (-> classified :root first :expected :form block/block-value)])
+  => [1 1 0 1])
+
+^{:refer lang.seedgen.form-parse/fact-classify-meta}
+(fact "classifies setup and teardown metadata"
+  (let [root (nav/parse-root
+              "^{:setup [(!.js (setup))]\n  :teardown [(!.lua (tear))]}\n(fact \"hello\"\n  (!.js 1)\n  => 1)")
+        fact-nav (nav/down root)
+        classified (subject/fact-classify-meta :js #{'tahto.core/script-} fact-nav)]
+    [(count (get-in classified [:fact-setup :root]))
+     (count (get-in classified [:fact-teardown :derived]))])
+  => [1 1])
+
+^{:refer lang.seedgen.form-parse/fact-config-nav}
+(fact "navigates to the configuration map in a global fact"
+  (let [root (nav/parse-root "(fact:global {:setup [(!.js (setup))]})")
+        fact-nav (first (form-common/nav-top-levels root))]
+    (some-> (subject/fact-config-nav fact-nav)
+            nav/value))
+  => {:setup '[(!.js (setup))]})
+
+^{:refer lang.seedgen.form-parse/global-context}
+(fact "builds global runtime and top-level context"
+  (let [root (nav/parse-root +sample-source+)
+        top-navs (form-common/nav-top-levels root)
+        forms (mapv nav/value top-navs)
+        context (subject/global-context forms top-navs)]
+    {:lang (:lang context)
+     :global-script {:root (some-> (:root (:global-script context))
+                                   :form
+                                   block/block-value
+                                   second)
+                     :derived (count (get-in context [:global-script :derived]))}
+     :global-top [(count (get-in context [:global-top :root]))
+                  (count (get-in context [:global-top :derived]))
+                  (count (get-in context [:global-top :scaffold]))]})
+  => {:lang {:root :js :derived [:lua]}
+      :global-script {:root :js :derived 1}
+      :global-top [0 0 1]})
+
+^{:refer lang.seedgen.form-parse/entry-enrich}
+(fact "adds metadata, lifecycle and check classifications to an entry"
+  (let [root (nav/parse-root
+              "^{:setup [(!.js (setup))]}\n(fact \"hello\"\n  (!.js 1)\n  => 1)")
+        fact-nav (nav/down root)
+        entry (subject/entry-enrich :js #{'tahto.core/script-} fact-nav {})]
+    [(map? (:checks entry))
+     (count (get-in entry [:fact-setup :root]))
+     (count (get-in entry [:fact-teardown :root]))
+     (= '!.js (-> entry :checks :root first :form block/block-value first))])
+  => [true 1 0 true])
+
+^{:refer lang.seedgen.form-parse/seedgen-readforms}
+(fact "returns globals and nested fact entries"
+  (let [path (fs/temp-file "/" {:prefix "seedgen-form-parse-"})]
+    (fs/delete path {:missing-ok? true})
+    (try
+      (fs/write-bytes path (str/encode-utf8 +sample-source+))
+      (let [lookup (fn [value]
+                     (when (= value 'sample-test)
+                       path))
+            output (subject/seedgen-readforms 'sample {} lookup {})
+            entry (get-in output [:entries 'sample 'hello])]
+        [(get-in output [:globals :lang])
+         [(str (:id entry))
+          (count (get-in entry [:checks :root]))
+          (-> entry :test :sexp first)]
+         (subject/seedgen-readforms 'missing {} lookup {})])
+      (finally
+        (fs/delete path {:missing-ok? true}))))
+  => [{:root :js :derived [:lua]}
+      ["sample/hello" 1 'fact]
+      {:status :error :data :no-test-file}])
+
+(pr-str (run {:namespace "lang.seedgen.form-parse-test"}))

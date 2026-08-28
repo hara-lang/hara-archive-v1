@@ -18,6 +18,12 @@
      :item/display "changed"
      :elapsed 3}]})
 
+(def +progress-line+
+  (str " 1/1  :alpha    ok  changed"
+       (str/repeat " " 51)
+       "3ms"
+       (str/repeat " " 7)))
+
 ^{:refer std.lib.format/line}
 (fact "publishes the common line constructor"
   (format/line "hello" :success)
@@ -44,6 +50,12 @@
   (format/value-text [:alpha 2])
   => "[:alpha 2]")
 
+^{:refer std.lib.format/display-width}
+(fact "publishes terminal display-width measurement"
+  [(format/display-width "界")
+   (format/display-width "é")]
+  => [2 1])
+
 ^{:refer std.lib.format/truncate}
 (fact "publishes display truncation"
   (format/truncate "abcdef" 5)
@@ -66,12 +78,12 @@
 (fact "publishes structured report rendering"
   (map :line/text
        (format/report-lines {:report/sections [+progress+]}))
-  => ["ITEMS" "1/1  :alpha  ok  changed  3ms"])
+  => ["ITEMS" +progress-line+])
 
 ^{:refer std.lib.format/report}
 (fact "publishes report rendering with terminal options"
   (format/report {:report/sections [+progress+]})
-  => "ITEMS\n1/1  :alpha  ok  changed  3ms")
+  => (str "ITEMS\n" +progress-line+))
 
 ^{:refer std.lib.format/render-lines}
 (fact "publishes structured line rendering"
@@ -99,7 +111,7 @@
                                    (not (str/includes? (str key) "."))))
                             publics))]
     facade)
-  => #{'line 'cell 'line-cells 'value-text 'truncate 'pad 'table-lines 'report-lines 'report
+  => #{'line 'cell 'line-cells 'value-text 'display-width 'truncate 'pad 'table-lines 'report-lines 'report
        'render-lines 'render 'emit-lines})
 
 (fact "preserves public metadata through publication"

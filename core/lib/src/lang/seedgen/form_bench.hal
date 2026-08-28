@@ -1,0 +1,289 @@
+(ns lang.seedgen.form-bench
+  (:config {:role :internal})
+  (:require [code.framework :as framework]
+            [code.project :as project]
+            [std.foundation.string :as str]
+            [std.fs :as fs]
+            [std.fs.path :as path]
+            [lang.seedgen.common-meta :as runtime]
+            [lang.seedgen.common-util :as common]
+            [lang.seedgen.form-common :as form-common]
+            [lang.seedgen.form-infile :as form-infile]
+            [lang.seedgen.form-parse :as readforms]))
+
+(def +seedgen-bench-default-rename+
+  '{xt [xtbench :lang]
+    kmi [xtbench :lang kmi]})
+
+(defn bench-rename-part->segments
+  [part lang]
+  (cond
+    (= :lang part)
+    [(name lang)]
+
+    (keyword? part)
+    [(name part)]
+
+    (symbol? part)
+    [(name part)]
+
+    (string? part)
+    [part]
+
+    (vector? part)
+    (mapcat (fn [value]
+              (bench-rename-part->segments value lang))
+            part)
+
+    :else
+    [(str part)]))
+
+(defn bench-requested-runtime-lang
+  [lang]
+  (common/seedgen-normalize-runtime-lang
+   (runtime/normalize-runtime-lang lang)))
+
+(defn bench-display-lang
+  [lang]
+  (common/seedgen-display-lang
+   (bench-requested-runtime-lang lang)))
+
+(defn bench-resolve-runtime-lang
+  [requested-lang available-langs]
+  (let [requested-runtime (bench-requested-runtime-lang requested-lang)
+        requested-display (bench-display-lang requested-lang)
+        candidate-score
+        (fn [candidate]
+          (let [candidate-display (bench-display-lang candidate)
+                candidate-tag (common/seedgen-dispatch-tag candidate)]
+            (cond
+              (= candidate requested-runtime) [0]
+              (or (= candidate-display requested-runtime)
+                  (= candidate-display requested-display)) [1]
+              (or (= candidate-tag requested-runtime)
+                  (= candidate-tag requested-display)) [2]
+              :else nil)))]
+    (or (->> available-langs
+             (keep (fn [candidate]
+                    (when-let [score (candidate-score candidate)]
+                      [score candidate])))
+             (sort-by first)
+             first
+             second)
+        requested-runtime)))
+
+(defn bench-target-ns
+  [test-ns lang rename]
+  (let [rename (merge +seedgen-bench-default-rename+ (or rename {}))
+        segments (str/split (str test-ns) (regexp "\\."))]
+    (->> segments
+         (mapcat (fn [segment]
+                   (if-let [replacement (get rename (symbol segment))]
+                     (bench-rename-part->segments replacement lang)
+                     [segment])))
+         (str/join ".")
+         symbol)))
+
+(defn bench-project
+  [project]
+  (let [project (or project {})
+        root (or (:project/root project) (:root project) "/")
+        source-paths (or (:project/source-paths project)
+                         (:source-paths project)
+                         ["src"])
+        test-paths (or (:project/test-paths project)
+                       (:test-paths project)
+                       ["test"])]
+    (merge project
+           {:root root
+            :source-paths source-paths
+            :test-paths test-paths
+            :project/root root
+            :project/source-paths source-paths
+            :project/test-paths test-paths})))
+
+(defn bench-target-path
+  [project test-file target-ns]
+  (path/join (:project/root project)
+             (project/test-root project test-file)
+             (str (project/namespace-stem target-ns) ".clj")))
+
+(defn bench-resolve-targets
+  [ns params lookup project]
+  (let [params (or params {})
+        test-ns (project/test-namespace (or project {}) ns)
+        test-file (lookup test-ns)
+        project (bench-project project)]
+    (cond
+      (nil? test-file)
+      {:status :error :data :no-test-file}
+
+      :else
+      (let [output (readforms/seedgen-readforms ns {} lookup project)
+            root-lang (get-in output [:globals :lang :root])
+            stored-langs (or (form-infile/root-script-meta-langs output) [])
+            derived-langs (get-in output [:globals :lang :derived])]
+        (cond
+          (= :error (:status output))
+          output
+
+          (nil? root-lang)
+          {:status :error :data :no-seedgen-root}
+
+          :else
+          (let [default-langs (->> (concat [root-lang]
+                                            stored-langs
+                                            derived-langs)
+                                   distinct
+                                   vec)
+                default-targets (->> default-langs
+                                     (map bench-display-lang)
+                                     distinct
+                                     vec)
+                target-langs (if (nil? (:lang params))
+                               default-targets
+                               (form-common/target-normalize-langs
+                                (:lang params)
+                                default-targets))
+                target-entries (mapv
+                                (fn [lang]
+                                  (let [runtime-lang
+                                        (bench-resolve-runtime-lang
+                                         lang
+                                         default-langs)
+                                        display-lang (bench-display-lang lang)
+                                        target-ns (bench-target-ns
+                                                   test-ns
+                                                   display-lang
+                                                   (:rename params))]
+                                    {:lang display-lang
+                                     :runtime-lang runtime-lang
+                                     :ns target-ns
+                                     :path (bench-target-path project
+                                                               test-file
+                                                               target-ns)}))
+                                target-langs)]
+            {:project project
+             :params params
+             :test-ns test-ns
+             :test-file test-file
+             :output output
+             :target-langs target-langs
+             :targets target-entries}))))))
+
+(defn bench-render-targets
+  [output test-file targets]
+  (let [text (common/read-text test-file)]
+    (mapv (fn [target]
+            (assoc target
+                   :content (form-infile/render-top-level-target
+                             output
+                             text
+                             (:runtime-lang target)
+                             (:ns target))))
+          targets)))
+
+(defn bench-output-functions
+  [output]
+  (let [entries (get output :entries)]
+    (->> (vals entries)
+         (mapcat (fn [entry] (keys entry)))
+         sort
+         vec)))
+
+(defn bench-error-state
+  [value]
+  (= :error (get value :status)))
+
+(defn bench-relative-path
+  [project file-path]
+  (let [root (get project :project/root)
+        prefix (str root "/")]
+    (if (str/starts-with? file-path prefix)
+      (str/slice file-path (count prefix) (count file-path))
+      file-path)))
+
+(defn bench-transform-output
+  [project target content write?]
+  (let [file-path (:path target)
+        exists? (fs/exists? file-path)
+        before (when exists? (common/read-text file-path))
+        edit (framework/transform-code
+              {:path file-path
+               :source (or before "")
+               :target/text before}
+              (fn [_] content))
+        updated (and write? (get edit :changed))]
+    (when write?
+      (fs/create-directory (path/parent file-path)
+                           {:parents? true :exists-ok? true})
+      (fs/write-bytes file-path
+                      (str/encode-utf8 content)
+                      {:mode :replace}))
+    (assoc (select-keys edit [:updated :verified :inserts :deletes :count :changed])
+           :path (bench-relative-path project file-path)
+           :updated (boolean updated)
+           :verified true)))
+
+(defn seedgen-benchlist
+  "Returns bench namespaces that should be created for a seedgen test."
+  {:added "4.1"}
+  [ns params lookup project]
+  (let [resolved (bench-resolve-targets ns params lookup project)]
+    (if (bench-error-state resolved)
+      resolved
+      (mapv :ns (:targets resolved)))))
+
+(defn seedgen-benchadd
+  "Creates or updates bench files for requested seedgen runtimes."
+  {:added "4.1"}
+  [ns params lookup project]
+  (let [resolved (bench-resolve-targets ns params lookup project)]
+    (if (bench-error-state resolved)
+      resolved
+      (let [resolved-project (:project resolved)
+            params (:params resolved)
+            rendered (bench-render-targets (:output resolved)
+                                           (:test-file resolved)
+                                           (:targets resolved))
+            write? (boolean (:write params))
+            lookup' (reduce (fn [out target]
+                             (assoc out (:ns target) (:path target)))
+                           lookup
+                           rendered)]
+        {:functions (bench-output-functions (:output resolved))
+         :outputs (mapv (fn [target]
+                          (let [edit (bench-transform-output
+                                      resolved-project
+                                      target
+                                      (:content target)
+                                      write?)]
+                            (merge edit
+                                   {:lang (:lang target)
+                                    :runtime-lang (:runtime-lang target)
+                                    :ns (:ns target)})))
+                        rendered)}))))
+
+(defn seedgen-benchremove
+  "Removes bench files for requested seedgen runtimes."
+  {:added "4.1"}
+  [ns params lookup project]
+  (let [resolved (bench-resolve-targets ns params lookup project)]
+    (if (bench-error-state resolved)
+      resolved
+      (let [project (:project resolved)
+            params (:params resolved)
+            write? (boolean (:write params))]
+        {:outputs
+         (mapv (fn [target]
+                 (let [file-path (:path target)
+                       exists? (fs/exists? file-path)
+                       updated (and write?
+                                    exists?
+                                    (do (fs/delete file-path {:missing-ok? true}) true))]
+                   {:lang (:lang target)
+                    :ns (:ns target)
+                    :path (bench-relative-path project file-path)
+                    :updated (boolean updated)
+                    :exists exists?}))
+               (:targets resolved))}))))

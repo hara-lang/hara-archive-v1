@@ -5,7 +5,8 @@
             [work.flow.task.result :as result]
             [work.flow.task.command-task :as task-command]
             [work.flow.task.selector :as selector]
-            [work.flow.task.report :as report]))
+            [work.flow.task.report :as report]
+            [std.lib.format.report :as format-report]))
 
 (def schema-id "work.flow.task.engine/0-alpha")
 (def request-id "work.flow.task.engine.request/0-alpha")
@@ -390,7 +391,16 @@
   [values selector-value prepared]
   (let [values (vec (or values []))
         selected (selected-values values selector-value)
-        total (count selected)]
+        total (count selected)
+        layout
+        (format-report/progress-layout
+         (vec
+          (map-indexed
+           (fn [index selected-value]
+             {:item/id (:task/item-id selected-value)
+              :item/index index
+              :item/total total})
+           selected)))]
     (loop [index 0
            output []]
       (if (= index total)
@@ -404,6 +414,7 @@
                   :item/value
                   (merge prepared
                          selected-value
+                         layout
                          {:task/index index
                           :task/total total})})))))))
 
@@ -545,10 +556,14 @@
      :item/meta
      (fn [subject context]
        (let [metadata
-             {:item/id (:task/item-id subject)
-              :item/index (:task/index subject)
-              :item/source-index (:task/source-index subject)
-              :item/total (:task/total subject)}]
+             (merge
+              {:item/id (:task/item-id subject)
+               :item/index (:task/index subject)
+               :item/source-index (:task/source-index subject)
+               :item/total (:task/total subject)}
+              (select-keys subject
+                           [:item/index-width :item/id-width
+                            :item/result-width :item/time-width]))]
          (if (has? item :status?)
            (assoc metadata :item/status? (:status? item))
            metadata)))

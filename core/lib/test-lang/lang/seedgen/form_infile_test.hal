@@ -1,0 +1,512 @@
+(ns lang.seedgen.form-infile-test
+  (:use code.test)
+  (:require [std.block.base :as block]
+            [std.block.navigate :as nav]
+            [std.foundation.string :as str]
+            [std.fs :as fs]
+            [lang.seedgen.common-util :as common]
+            [lang.seedgen.form-common :as form-common]
+            [lang.seedgen.form-parse :as form-parse]
+            [lang.seedgen.form-infile :as subject]))
+
+(def +script-source+
+  (str "(ns sample.target-test\n"
+       "  (:require [tahto.core :as l]))\n\n"
+       "^{:seedgen/root {:all true :langs [:js :lua]}}\n"
+       "(l/script- :js {:runtime :basic})\n\n"
+       "(l/script- :lua {:runtime :basic})\n\n"
+       "(defn.js helper [] (return 1))\n\n"
+       "^{:refer demo/example :added \"4.1\"}\n"
+       "(fact \"target\"\n"
+       "  (!.js (+ 1 2))\n"
+       "  => 3)\n"))
+(def +root+ (nav/parse-root +script-source+))
+(def +top+ (form-common/nav-top-levels +root+))
+(def +script-root-item+ (form-common/nav-entry (nth +top+ 1)))
+(def +script-derived-item+ (form-common/nav-entry (nth +top+ 2)))
+(def +js-item+ (form-common/nav-entry (nav/down (nav/parse-root "(!.js (+ 1 2))"))))
+(def +lua-item+ (form-common/nav-entry (nav/down (nav/parse-root "(!.lua (+ 1 2))"))))
+(def +expected-item+ (form-common/nav-entry (nav/down (nav/parse-root "3"))))
+(def +classification+ {:root [+js-item+]
+                        :derived [+lua-item+]
+                        :scaffold []})
+(def +entry+
+  {:ns 'demo
+   :var 'example
+   :id 'demo/example
+   :intro "target"
+   :meta {:refer 'demo/example :added "4.1"}
+   :checks {:root [(assoc +js-item+ :expected +expected-item+)]
+            :derived [(assoc +lua-item+ :expected +expected-item+)]
+            :scaffold []}
+   :fact-setup +classification+
+   :fact-teardown {:root [] :derived [] :scaffold []}})
+(def +output+
+  {:globals {:lang {:root :js :derived [:lua]}
+             :global-script {:root +script-root-item+
+                             :derived [+script-derived-item+]}
+             :global-fact-config {}
+             :global-fact-setup {:root [] :derived [] :scaffold []}
+             :global-fact-teardown {:root [] :derived [] :scaffold []}
+             :global-top {:root [] :derived [] :scaffold []}}
+   :entries {'demo {'example +entry+}}})
+
+^{:refer lang.seedgen.form-infile/normalize-target-langs}
+(fact "normalizes target language inputs"
+  [(subject/normalize-target-langs :lua)
+   (subject/normalize-target-langs '(:js "lua"))
+   (subject/normalize-target-langs :all)
+   (subject/normalize-target-langs nil)]
+  => [[:lua] [:js :lua] :all nil])
+
+^{:refer lang.seedgen.form-infile/line-key}
+(fact "builds a stable source coordinate key"
+  (subject/line-key {:row 1 :col 2 :end-row 3 :end-col 4})
+  => [1 2 3 4])
+
+^{:refer lang.seedgen.form-infile/item-form}
+(fact "returns the stored item block"
+  (block/block-string (subject/item-form +js-item+))
+  => "(!.js (+ 1 2))")
+
+^{:refer lang.seedgen.form-infile/item-line}
+(fact "returns the stored item line"
+  (subject/item-line +js-item+)
+  => (:line +js-item+))
+
+^{:refer lang.seedgen.form-infile/item-string}
+(fact "renders an item block"
+  (subject/item-string +js-item+)
+  => "(!.js (+ 1 2))")
+
+^{:refer lang.seedgen.form-infile/item-value}
+(fact "returns the item value"
+  (subject/item-value +js-item+)
+  => '(!.js (+ 1 2)))
+
+^{:refer lang.seedgen.form-infile/item-config-form}
+(fact "returns an item's parsed configuration form"
+  (subject/item-config-form +js-item+)
+  => '(!.js (+ 1 2)))
+
+^{:refer lang.seedgen.form-infile/item-lang}
+(fact "extracts an item's normalized language"
+  (subject/item-lang +lua-item+)
+  => :lua)
+
+^{:refer lang.seedgen.form-infile/sort-items}
+(fact "sorts items by their source lines"
+  (mapv subject/item-lang (subject/sort-items [+lua-item+ +js-item+]))
+  => [:js :lua])
+
+^{:refer lang.seedgen.form-infile/parse-first-block}
+(fact "parses the first block in a source string"
+  (block/block-value (subject/parse-first-block "(+ 1 2)"))
+  => '(+ 1 2))
+
+^{:refer lang.seedgen.form-infile/unwrap-meta-string}
+(fact "removes a metadata wrapper while retaining the body"
+  (subject/unwrap-meta-string "^{:a 1}\n(+ 1 2)")
+  => "(+ 1 2)")
+
+^{:refer lang.seedgen.form-infile/strip-seedgen-control-meta-string}
+(fact "removes seedgen control metadata but keeps ordinary metadata"
+  (subject/strip-seedgen-control-meta-string
+   "^{:refer demo/example :seedgen/lang {:lua {:suppress true}}}\n(+ 1 2)")
+  => "^{:refer demo/example}\n(+ 1 2)")
+
+^{:refer lang.seedgen.form-infile/replace-script-lang-string}
+(fact "changes a script language and its default runtime"
+  (subject/replace-script-lang-string "(l/script- :js {})" :lua)
+  => "(l/script- :lua {:runtime :basic})")
+
+^{:refer lang.seedgen.form-infile/normalize-script-requires}
+(fact "normalizes require values to vectors"
+  [(subject/normalize-script-requires nil)
+   (subject/normalize-script-requires '(a b))
+   (subject/normalize-script-requires 'a)]
+  => [[] ['a 'b] ['a]])
+
+^{:refer lang.seedgen.form-infile/strip-meta-keys}
+(fact "removes selected metadata from a form"
+  (meta (subject/strip-meta-keys (with-meta 'a {:seedgen/extra true :keep 1})
+                                 [:seedgen/extra]))
+  => {:keep 1})
+
+^{:refer lang.seedgen.form-infile/require-target}
+(fact "gets the namespace target from a require specification"
+  [(subject/require-target '[a :as x])
+   (subject/require-target 'a)]
+  => ['a 'a])
+
+^{:refer lang.seedgen.form-infile/remove-script-requires}
+(fact "removes selected script requirements"
+  (subject/remove-script-requires '[a [b :as c] d] #{'b})
+  => ['a 'd])
+
+^{:refer lang.seedgen.form-infile/consume-script-extra-requires}
+(fact "leaves an untagged require configuration unchanged"
+  (subject/consume-script-extra-requires "(l/script- :js {:require [a]})" :lua)
+  => "(l/script- :js {:require [a]})")
+
+^{:refer lang.seedgen.form-infile/merge-script-requires}
+(fact "replaces requirements by target and appends new targets"
+  (subject/merge-script-requires '[a [b :as old]] '[[b :as new] c])
+  => ['a ['b :as 'new] 'c])
+
+^{:refer lang.seedgen.form-infile/root-script-extra-requires}
+(fact "reads language-specific root requirements"
+  (subject/root-script-extra-requires +output+ :js)
+  => [])
+
+^{:refer lang.seedgen.form-infile/root-script-tagged-extra-requires}
+(fact "finds tagged root requirements"
+  (subject/root-script-tagged-extra-requires +output+)
+  => [])
+
+^{:refer lang.seedgen.form-infile/render-script-require-string}
+(fact "renders script requirements in compact or multiline form"
+  [(subject/render-script-require-string [])
+   (subject/render-script-require-string '[a])
+   (subject/render-script-require-string '[a b])]
+  => ["[]" "[a]" "[a\nb]"])
+
+^{:refer lang.seedgen.form-infile/render-script-config-string}
+(fact "renders a script configuration map"
+  (subject/render-script-config-string "{:runtime :basic}" {:runtime :basic})
+  => "{:runtime :basic}")
+
+^{:refer lang.seedgen.form-infile/augment-script-string}
+(fact "augments a script with no configured extras without changing it"
+  (subject/augment-script-string "(l/script- :js {:runtime :basic})" +output+ :js)
+  => "(l/script- :js {:runtime :basic})")
+
+^{:refer lang.seedgen.form-infile/replace-ns-name-string}
+(fact "replaces a namespace name in source"
+  (subject/replace-ns-name-string "(ns sample.test)" (symbol "sample.lua.test"))
+  => "(ns sample.lua.test)")
+
+^{:refer lang.seedgen.form-infile/replace-runtime-lang-content-string}
+(fact "rewrites dispatch and runtime tokens in content"
+  (subject/replace-runtime-lang-content-string "(!.js (+ 1 2)) :js" '(!.js (+ 1 2)) :lua)
+  => "(!.lua (+ 1 2)) :lua")
+
+^{:refer lang.seedgen.form-infile/replace-runtime-lang-string}
+(fact "rewrites a dispatch form's language tag"
+  (subject/replace-runtime-lang-string "(!.js (+ 1 2))" :lua)
+  => "(!.lua (+ 1 2))")
+
+^{:refer lang.seedgen.form-infile/replace-top-level-helper-lang-string}
+(fact "rewrites a top-level helper suffix"
+  (subject/replace-top-level-helper-lang-string "(defn.js helper [] 1)" :js :lua)
+  => "(defn.lua helper [] 1)")
+
+^{:refer lang.seedgen.form-infile/indent-lines}
+(fact "indents every line"
+  (subject/indent-lines "  " "a\nb")
+  => "  a\n  b")
+
+^{:refer lang.seedgen.form-infile/indent-rest-lines}
+(fact "indents all non-leading lines"
+  (subject/indent-rest-lines "  " "a\nb\n")
+  => "a\n  b\n")
+
+^{:refer lang.seedgen.form-infile/leading-indent}
+(fact "counts leading spaces and tabs"
+  (subject/leading-indent " \tvalue")
+  => 2)
+
+^{:refer lang.seedgen.form-infile/multiline-indent-prefix}
+(fact "finds the indentation prefix from the first content line"
+  (subject/multiline-indent-prefix "{\n  :a 1}" "   ")
+  => "  ")
+
+^{:refer lang.seedgen.form-infile/trim-indent}
+(fact "trims at most the requested indentation"
+  (subject/trim-indent "    value" 2)
+  => "  value")
+
+^{:refer lang.seedgen.form-infile/normalise-block-string}
+(fact "normalizes nested block indentation"
+  (subject/normalise-block-string "a\n    b" 2)
+  => "a\n  b")
+
+^{:refer lang.seedgen.form-infile/render-item-string}
+(fact "renders an item with source indentation normalized"
+  (subject/render-item-string +js-item+)
+  => "(!.js (+ 1 2))")
+
+^{:refer lang.seedgen.form-infile/render-clause-snippet}
+(fact "renders an expression and expected value clause"
+  (subject/render-clause-snippet "  " "(+ 1 2)" "3")
+  => "  (+ 1 2)\n  => 3")
+
+^{:refer lang.seedgen.form-infile/render-vector-string}
+(fact "renders vector snippets with multiline indentation"
+  [(subject/render-vector-string :setup [])
+   (subject/render-vector-string :setup ["a"])
+   (subject/render-vector-string :setup ["a" "b"])]
+  => [nil "[a]" "[a\n          b]"])
+
+^{:refer lang.seedgen.form-infile/render-map-entry}
+(fact "renders a map entry and indents multiline values"
+  (subject/render-map-entry 1 :setup "[a\nb]")
+  => ":setup [a\n        b]")
+
+^{:refer lang.seedgen.form-infile/render-meta-string}
+(fact "renders preferred metadata keys before extension keys"
+  (subject/render-meta-string {:added "4.1" :refer 'demo/example} {})
+  => "^{:refer demo/example :added \"4.1\"}")
+
+^{:refer lang.seedgen.form-infile/render-map-string}
+(fact "renders nonempty configuration maps"
+  (subject/render-map-string {:setup "[a]" :teardown "[b]"})
+  => "{:setup [a]\n :teardown [b]}")
+
+^{:refer lang.seedgen.form-infile/entry-meta}
+(fact "ensures an entry has a refer or ref symbol"
+  (subject/entry-meta {:ns 'demo :var 'example :meta {:added "4.1"}})
+  => {:added "4.1" :refer 'demo/example})
+
+^{:refer lang.seedgen.form-infile/classify-lang-items}
+(fact "flattens classifications in source order"
+  (mapv subject/item-lang (subject/classify-lang-items +classification+))
+  => [:js :lua])
+
+^{:refer lang.seedgen.form-infile/runtime-item-map}
+(fact "indexes runtime items by language"
+  (set (keys (subject/runtime-item-map +classification+)))
+  => #{:js :lua})
+
+^{:refer lang.seedgen.form-infile/item-suppressed?}
+(fact "reports false when no suppression is configured"
+  (subject/item-suppressed? +entry+ +lua-item+ :lua)
+  => false)
+
+^{:refer lang.seedgen.form-infile/item-base-override}
+(fact "returns nil when no language override is configured"
+  (subject/item-base-override +entry+ +lua-item+ :lua :input)
+  => nil)
+
+^{:refer lang.seedgen.form-infile/transform-string-match?}
+(fact "identifies literal and regular expression transforms"
+  [(subject/transform-string-match? "a")
+   (subject/transform-string-match? (regexp "a"))
+   (subject/transform-string-match? 'a)]
+  => [true true false])
+
+^{:refer lang.seedgen.form-infile/transform-literal}
+(fact "unwraps quoted transform values"
+  [(subject/transform-literal '(quote a))
+   (subject/transform-literal 'a)]
+  => ['a 'a])
+
+^{:refer lang.seedgen.form-infile/apply-item-transform-form}
+(fact "rewrites a matching form value"
+  (subject/apply-item-transform-form "(+ a 1)" 'a 'b)
+  => "(+ b 1)")
+
+^{:refer lang.seedgen.form-infile/apply-item-transform-string}
+(fact "applies a configured literal transform"
+  (subject/apply-item-transform-string "(+ a 1)"
+                                        {:meta {:seedgen/lang {:lua {:transform {"a" "b"}}}}}
+                                        +js-item+
+                                        :lua)
+  => "(+ b 1)")
+
+^{:refer lang.seedgen.form-infile/fact-original-body-string}
+(fact "returns the body of a metadata-wrapped fact"
+  (subject/fact-original-body-string "^{:refer demo/example}\n(fact \"x\")")
+  => "(fact \"x\")")
+
+^{:refer lang.seedgen.form-infile/entry-check-langs}
+(fact "returns distinct check languages in source order"
+  (subject/entry-check-langs +entry+)
+  => [:js :lua])
+
+^{:refer lang.seedgen.form-infile/root-script-meta-langs}
+(fact "extracts declared target languages from root metadata"
+  (subject/root-script-meta-langs +output+)
+  => [:js :lua])
+
+^{:refer lang.seedgen.form-infile/root-script-target-langs}
+(fact "removes the root language from declared targets"
+  (subject/root-script-target-langs +output+)
+  => [:lua])
+
+^{:refer lang.seedgen.form-infile/root-script-declared-langs}
+(fact "combines root, declared, derived and extra languages"
+  (subject/root-script-declared-langs +output+ [:python])
+  => [:js :lua :python])
+
+^{:refer lang.seedgen.form-infile/keep-target-items}
+(fact "keeps scaffold items and the requested language"
+  (mapv subject/item-lang (subject/keep-target-items +classification+ :lua))
+  => [:lua])
+
+^{:refer lang.seedgen.form-infile/render-check-clause}
+(fact "renders a check item with its expected value"
+  (subject/render-check-clause (assoc +js-item+ :expected +expected-item+))
+  => "  (!.js (+ 1 2))\n  => 3")
+
+^{:refer lang.seedgen.form-infile/render-generated-item-string}
+(fact "generates a target-language check input"
+  (subject/render-generated-item-string +entry+ +js-item+ :lua)
+  => "(!.lua (+ 1 2))")
+
+^{:refer lang.seedgen.form-infile/render-generated-expected-string}
+(fact "preserves an expected value when no override exists"
+  (subject/render-generated-expected-string +entry+
+                                            (assoc +js-item+ :expected +expected-item+)
+                                            :lua)
+  => "3")
+
+^{:refer lang.seedgen.form-infile/render-generated-check-clause}
+(fact "renders a generated target check"
+  (subject/render-generated-check-clause +entry+
+                                         (assoc +js-item+ :expected +expected-item+)
+                                         :lua)
+  => "  (!.lua (+ 1 2))\n  => 3")
+
+^{:refer lang.seedgen.form-infile/render-target-runtime-items}
+(fact "renders runtime setup items for requested languages"
+  (subject/render-target-runtime-items +entry+ +classification+ :js [:js :lua])
+  => ["(!.js (+ 1 2))" "(!.lua (+ 1 2))"])
+
+^{:refer lang.seedgen.form-infile/render-check-snippets-add}
+(fact "renders root and additional check snippets"
+  (subject/render-check-snippets-add +entry+ [:lua] #{:lua})
+  => ["  (!.js (+ 1 2))\n  => 3"
+      "  (!.lua (+ 1 2))\n  => 3"])
+
+^{:refer lang.seedgen.form-infile/render-fact-string-add}
+(fact "renders a fact with an additional runtime"
+  (str/includes? (subject/render-fact-string-add +entry+ :js [:lua] #{:lua} "")
+                 "(!.lua (+ 1 2))")
+  => true)
+
+^{:refer lang.seedgen.form-infile/render-fact-string-remove}
+(fact "removes a target runtime while retaining the root check"
+  (str/includes? (subject/render-fact-string-remove +entry+ #{:lua} "")
+                 "(!.js (+ 1 2))")
+  => true)
+
+^{:refer lang.seedgen.form-infile/render-global-fact-remove}
+(fact "renders an empty global fact configuration"
+  (subject/render-global-fact-remove +output+ #{:lua} "")
+  => "(fact:global\n {})")
+
+^{:refer lang.seedgen.form-infile/update-root-script-string}
+(fact "updates root script metadata with known target languages"
+  (str/includes? (subject/update-root-script-string +output+ [:lua :python])
+                 ":python")
+  => true)
+
+^{:refer lang.seedgen.form-infile/script-string-map}
+(fact "maps derived script forms by language"
+  (keys (subject/script-string-map +output+))
+  => [:lua])
+
+^{:refer lang.seedgen.form-infile/root-script-body-string}
+(fact "returns the unwrapped root script body"
+  (subject/root-script-body-string +output+)
+  => "(l/script- :js {:runtime :basic})")
+
+^{:refer lang.seedgen.form-infile/render-top-level-add}
+(fact "adds a target script and target checks to a source file"
+  (let [result (subject/render-top-level-add +output+ +script-source+ [:lua])]
+    [(str/includes? result "(l/script- :lua")
+     (str/includes? result "(!.lua (+ 1 2))")])
+  => [true true])
+
+^{:refer lang.seedgen.form-infile/render-top-level-remove}
+(fact "removes a derived target from a source file"
+  (let [result (subject/render-top-level-remove +output+ +script-source+ [:lua])]
+    [(not (str/includes? result "(l/script- :lua"))
+     (str/includes? result "(l/script- :js")])
+  => [true true])
+
+^{:refer lang.seedgen.form-infile/render-check-snippets-target}
+(fact "renders checks for a selected target"
+  (subject/render-check-snippets-target +entry+ :js :lua)
+  => ["  (!.lua (+ 1 2))\n  => 3"])
+
+^{:refer lang.seedgen.form-infile/render-target-runtime-item}
+(fact "renders a selected runtime item"
+  (subject/render-target-runtime-item +entry+ +classification+ :js :lua)
+  => "(!.lua (+ 1 2))")
+
+^{:refer lang.seedgen.form-infile/render-fact-string-target}
+(fact "renders a fact for a selected target"
+  (str/includes? (subject/render-fact-string-target +entry+ :js :lua)
+                 "(!.lua (+ 1 2))")
+  => true)
+
+^{:refer lang.seedgen.form-infile/render-global-fact-target}
+(fact "omits an empty global fact configuration"
+  (subject/render-global-fact-target +output+ :js :lua)
+  => nil)
+
+^{:refer lang.seedgen.form-infile/render-global-top-target}
+(fact "returns global top-level line information"
+  (subject/render-global-top-target +output+ :lua)
+  => {:all-lines #{} :keep-map {}})
+
+^{:refer lang.seedgen.form-infile/render-target-script-string}
+(fact "renders the existing derived script"
+  (subject/render-target-script-string +output+ :lua)
+  => "(l/script- :lua {:runtime :basic})")
+
+^{:refer lang.seedgen.form-infile/render-top-level-target}
+(fact "renders a complete file for one target language"
+  (let [result (subject/render-top-level-target +output+
+                                               +script-source+
+                                               :lua
+                                               'sample.lua.target-test)]
+    [(str/includes? result "(ns sample.lua.target-test")
+     (str/includes? result "(l/script- :lua")
+     (str/includes? result "(defn.lua helper")
+     (not (str/includes? result "(defn.js helper"))
+     (str/includes? result "(!.lua (+ 1 2))")])
+  => [true true true true true])
+
+^{:refer lang.seedgen.form-infile/seedgen-langadd}
+(fact "adds runtimes through the source transformation boundary"
+  (let [path (fs/temp-file "/" {:prefix "seedgen-langadd-"})
+        content (str "(ns sample-add-test\n"
+                     "  (:require [tahto.core :as l]))\n\n"
+                     "^{:seedgen/root {:all true :langs [:js :lua]}}\n"
+                     "(l/script- :js {:runtime :basic})\n\n"
+                     "^{:refer demo/example}\n"
+                     "(fact \"demo\"\n  (!.js 1)\n  => 1)\n")]
+    (fs/delete path {:missing-ok? true})
+    (try
+      (fs/write-bytes path (str/encode-utf8 content))
+      (let [lookup (fn [value] (when (= value 'sample-add-test) path))
+            result (subject/seedgen-langadd 'sample-add {:lang :lua}
+                                            lookup {:root "/"})]
+        [(map? result) (:changed result)])
+      (finally
+        (fs/delete path {:missing-ok? true}))))
+  => [true true])
+
+^{:refer lang.seedgen.form-infile/seedgen-langremove}
+(fact "removes runtimes through the source transformation boundary"
+  (let [path (fs/temp-file "/" {:prefix "seedgen-langremove-"})
+        content (str "(ns sample-remove-test\n"
+                     "  (:require [tahto.core :as l]))\n\n"
+                     "^{:seedgen/root {:all true :langs [:js :lua]}}\n"
+                     "(l/script- :js {:runtime :basic})\n\n"
+                     "(l/script- :lua {:runtime :basic})\n")]
+    (fs/delete path {:missing-ok? true})
+    (try
+      (fs/write-bytes path (str/encode-utf8 content))
+      (let [lookup (fn [value] (when (= value 'sample-remove-test) path))
+            result (subject/seedgen-langremove 'sample-remove {:lang :lua}
+                                               lookup {:root "/"})]
+        [(map? result) (:changed result)])
+      (finally
+        (fs/delete path {:missing-ok? true}))))
+  => [true true])
+
+(pr-str (run {:namespace "lang.seedgen.form-infile-test"}))

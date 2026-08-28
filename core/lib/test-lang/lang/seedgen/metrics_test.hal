@@ -1,0 +1,269 @@
+(ns lang.seedgen.metrics-test
+  (:use code.test)
+  (:require [std.foundation.string :as str]
+            [std.fs :as fs]
+            [std.fs.path :as path]
+            [lang.seedgen.metrics :as subject]))
+
+^{:refer lang.seedgen.metrics/utc-now}
+(fact "returns an ISO-8601 UTC timestamp"
+  (let [value (subject/utc-now)]
+    [(string? value)
+     (str/includes? value "T")
+     (str/ends-with? value "Z")])
+  => [true true true])
+
+^{:refer lang.seedgen.metrics/env}
+(fact "returns present environment values and nil for an empty name"
+  [(string? (subject/env "PATH"))
+   (subject/env "")]
+  => [true nil])
+
+^{:refer lang.seedgen.metrics/parse-long-safe}
+(fact "parses integer text without throwing on invalid input"
+  [(subject/parse-long-safe "42")
+   (subject/parse-long-safe "")
+   (subject/parse-long-safe "not-a-number")
+   (subject/parse-long-safe nil)]
+  => [42 nil nil nil])
+
+^{:refer lang.seedgen.metrics/selector-name}
+(fact "renders scalar and sequential selectors"
+  [(subject/selector-name [:xt.lang :xt.event])
+   (subject/selector-name 'xt.lang)]
+  => [":xt.lang,:xt.event" "xt.lang"])
+
+^{:refer lang.seedgen.metrics/conclusion}
+(fact "marks records with any failure count as failures"
+  [(subject/conclusion {:passed 2} [])
+   (subject/conclusion {:failed 1} [])
+   (subject/conclusion {:passed 2} ["error"])]
+  => ["success" "failure" "failure"])
+
+^{:refer lang.seedgen.metrics/github-context}
+(fact "returns workflow, git and run context records"
+  (let [context (subject/github-context)]
+    [(string? (:workflow-key context))
+     (string? (:workflow-name context))
+     (map? (:git context))
+     (>= (:attempt (:run context)) 1)])
+  => [true true true true])
+
+^{:refer lang.seedgen.metrics/json-value}
+(fact "converts native values into JSON-compatible keys and arrays"
+  (subject/json-value {:state :ready
+                       :items '(1 :two)
+                       "nested" {:ok true}})
+  => {"state" "ready"
+      "items" [1 "two"]
+      "nested" {"ok" true}})
+
+^{:refer lang.seedgen.metrics/keywordize-json}
+(fact "restores keyword keys after JSON decoding"
+  (subject/keywordize-json {"state" "ready"
+                            "items" [1 {"ok" true}]})
+  => {:state "ready" :items [1 {:ok true}]})
+
+^{:refer lang.seedgen.metrics/test-record}
+(fact "builds a complete successful job record"
+  (let [record (subject/test-record
+                '[xt.lang]
+                [:python]
+                {:generated {:python ['xtbench.python.lang-test]}
+                 :summary {:passed 7 :failed 0 :throw 0 :timeout 0 :skipped 1}
+                 :failures [{:namespace "lang.sample-test" :counts {:failed 1}}]
+                 :spec {:model-count 3 :test-count 2 :coverage 0.5
+                        :spec-feature-count 4 :spec-implemented 3
+                        :spec-abstract 0 :spec-missing 1}})]
+    (select-keys record [:schema-version :kind :suite :language :status
+                         :generated-count :tests :failure-counts :failures :spec]))
+  => {:schema-version 1
+      :kind "xtbench-job"
+      :suite "xt.lang"
+      :language "python"
+      :status "success"
+      :generated-count 1
+      :tests {:passed 7 :failed 0 :throw 0 :timeout 0 :skipped 1 :errored 0}
+      :failure-counts {:failed 0 :throw 0 :timeout 0 :errored 0}
+      :failures [{:namespace "lang.sample-test" :counts {:failed 1}}]
+      :spec {:model-count 3 :test-count 2 :coverage 0.5
+             :spec-feature-count 4 :spec-implemented 3
+             :spec-abstract 0 :spec-missing 1}})
+
+^{:refer lang.seedgen.metrics/write-json!}
+(fact "writes JSON to a nested path and returns that path"
+  (let [root (fs/temp-directory "/" {:prefix "seedgen-metrics-write-"})
+        file (path/join root "nested" "record.json")]
+    (try
+      [(string? (subject/write-json! file {:status :success :count 2}))
+       (subject/read-json file)]
+      (finally
+        (fs/delete root {:recursive? true :missing-ok? true}))))
+  => [true {:status "success" :count 2}])
+
+^{:refer lang.seedgen.metrics/write-test-record!}
+(fact "writes a serialized test record"
+  (let [root (fs/temp-directory "/" {:prefix "seedgen-metrics-test-"})
+        file (path/join root "job.json")]
+    (try
+      (subject/write-test-record!
+       file
+       '[xt.lang]
+       [:lua]
+       {:generated {:lua ['xtbench.lua.sample]}
+        :summary {:passed 1}})
+      (select-keys (subject/read-json file) [:suite :language :status :generated-count])
+      (finally
+        (fs/delete root {:recursive? true :missing-ok? true}))))
+  => {:suite "xt.lang" :language "lua" :status "success" :generated-count 1})
+
+^{:refer lang.seedgen.metrics/error-message}
+(fact "extracts exception messages and stringifies fallback errors"
+  [(subject/error-message (ex :generic {} :ex/message "broken"))
+   (subject/error-message "already-text")]
+  => ["broken" "already-text"])
+
+^{:refer lang.seedgen.metrics/write-error-record!}
+(fact "writes a failed record with an explicit error payload"
+  (let [root (fs/temp-directory "/" {:prefix "seedgen-metrics-error-"})
+        file (path/join root "error.json")]
+    (try
+      (subject/write-error-record!
+       file
+       '[xt.lang]
+       [:js]
+       (ex :generic {} :ex/message "broken"))
+      (select-keys (subject/read-json file) [:status :tests :error])
+      (finally
+        (fs/delete root {:recursive? true :missing-ok? true}))))
+  => {:status "failure"
+      :tests {:passed 0 :failed 0 :throw 0 :timeout 0 :skipped 0 :errored 1}
+      :error {:message "broken"}})
+
+^{:refer lang.seedgen.metrics/read-json}
+(fact "reads JSON object keys as keywords"
+  (let [root (fs/temp-directory "/" {:prefix "seedgen-metrics-read-"})
+        file (path/join root "record.json")]
+    (try
+      (fs/write-bytes file (str/encode-utf8 "{\"status\":\"success\",\"items\":[1,2]}"))
+      (subject/read-json file)
+      (finally
+        (fs/delete root {:recursive? true :missing-ok? true}))))
+  => {:status "success" :items [1 2]})
+
+^{:refer lang.seedgen.metrics/aggregate-records}
+(fact "aggregates suite and language job records"
+  (let [record (subject/aggregate-records
+                "core"
+                [{:workflow-name "XTBench Core"
+                  :suite "xt.lang" :language "lua" :status "success"
+                  :tests {:passed 5 :failed 0 :throw 0 :timeout 0 :skipped 1 :errored 0}
+                  :run {:number 4 :attempt 1}}
+                 {:workflow-name "XTBench Core"
+                  :suite "xt.event" :language "lua" :status "failure"
+                  :tests {:passed 3 :failed 1 :throw 0 :timeout 0 :skipped 0 :errored 0}
+                  :run {:number 4 :attempt 1}}])]
+    (select-keys record [:workflow-key :status :tests]))
+  => {:workflow-key "core"
+      :status "failure"
+      :tests {:passed 8 :failed 1 :throw 0 :timeout 0 :skipped 1 :errored 0}}
+
+  (select-keys (subject/aggregate-records "core" [])
+               [:workflow-key :status :metrics-status :tests :jobs :error])
+  => {:workflow-key "core"
+      :status "failure"
+      :metrics-status "missing-artifacts"
+      :tests {:passed 0 :failed 0 :throw 0 :timeout 0 :skipped 0 :errored 0}
+      :jobs []
+      :error {:type "missing-metrics-artifacts"
+              :message "No XTBench job metrics artifacts were published."}}
+
+  (let [context {:workflow-name "XTBench Core"
+                 :git {:sha "abc123" :ref "refs/heads/main" :event "push"}
+                 :run {:id 12345 :number 77 :attempt 2 :url "https://example.test/run/12345"}}
+        docker-job {:workflow-name "local" :status "success"
+                    :tests {:passed 5}
+                    :git {:sha nil :ref nil :event nil}
+                    :run {:id nil :number nil :attempt 1 :url nil}}]
+    (select-keys (subject/aggregate-records "core" [docker-job] context)
+                 [:workflow-name :git :run]))
+  => {:workflow-name "XTBench Core"
+      :git {:sha "abc123" :ref "refs/heads/main" :event "push"}
+      :run {:id 12345 :number 77 :attempt 2 :url "https://example.test/run/12345"}})
+
+^{:refer lang.seedgen.metrics/history-entry}
+(fact "removes verbose failures from compact history jobs"
+  (subject/history-entry
+   "runs/core/1-1.json"
+   {:workflow-key "core"
+    :jobs [{:language "lua" :failures [{:namespace "sample"}] :status "success"}]})
+  => {:path "runs/core/1-1.json"
+      :workflow-key "core"
+      :jobs [{:language "lua" :status "success"}]})
+
+^{:refer lang.seedgen.metrics/update-index}
+(fact "keeps rerun attempts distinct and applies retention"
+  (let [record (fn [number attempt]
+                 {:workflow-key "core" :status "success" :tests {}
+                  :run {:number number :attempt attempt}})
+        index (-> {}
+                  (subject/update-index "runs/core/1-1.json" (record 1 1) 2)
+                  (subject/update-index "runs/core/2-1.json" (record 2 1) 2)
+                  (subject/update-index "runs/core/2-2.json" (record 2 2) 2))]
+    (mapv (juxt #(get-in % [:run :number])
+                #(get-in % [:run :attempt]))
+          (get-in index [:workflows "core" :runs])))
+  => [[2 2] [2 1]]
+
+  (let [legacy {:schema-version 1
+                :workflows {"core" {:runs [{:path "runs/core/0-1.json" :run nil}]}}}
+        current {:workflow-key "core" :status "failure"
+                 :metrics-status "missing-artifacts"
+                 :error {:type "missing-metrics-artifacts"}
+                 :tests {} :jobs [] :run {:number 9 :attempt 1}}
+        updated (subject/update-index legacy "runs/core/9-1.json" current)]
+    (mapv (juxt :path :metrics-status #(get-in % [:error :type]))
+          (get-in updated [:workflows "core" :runs])))
+  => [["runs/core/9-1.json" "missing-artifacts" "missing-metrics-artifacts"]
+      ["runs/core/0-1.json" nil nil]]
+
+  (let [record {:workflow-key "core" :status "failure" :tests {}
+                :failure-counts {:failed 1}
+                :jobs [{:language "lua"
+                        :failures [{:namespace "lang.sample-test"}]}
+                        ]
+                :run {:number 10 :attempt 1}}
+        entry (get-in (subject/update-index {} "runs/core/10-1.json" record)
+                      [:workflows "core" :latest])]
+    [(get-in entry [:jobs 0 :language])
+     (has? (get-in entry [:jobs 0]) :failures)
+     (:failure-counts entry)])
+  => ["lua" false {:failed 1}])
+
+^{:refer lang.seedgen.metrics/merge-directory!}
+(fact "aggregates input artifacts and writes run, latest and index files"
+  (let [input (fs/temp-directory "/" {:prefix "seedgen-metrics-input-"})
+        output (fs/temp-directory "/" {:prefix "seedgen-metrics-output-"})
+        job (fn [suite status passed failed]
+              {:workflow-name "local"
+               :suite suite
+               :language "lua"
+               :status status
+               :tests {:passed passed :failed failed :throw 0 :timeout 0 :skipped 0 :errored 0}
+               :failure-counts {:failed failed :throw 0 :timeout 0 :errored 0}
+               :run {:number 3 :attempt 1}})]
+    (try
+      (subject/write-json! (path/join input "a.json") (job "xt.a" "success" 2 0))
+      (subject/write-json! (path/join input "b.json") (job "xt.b" "failure" 1 1))
+      (let [record (subject/merge-directory! input output "core")]
+        [(select-keys record [:status :tests])
+         (fs/exists? (path/join output "latest" "core.json"))
+         (fs/exists? (path/join output "index.json"))])
+      (finally
+        (fs/delete input {:recursive? true :missing-ok? true})
+        (fs/delete output {:recursive? true :missing-ok? true}))))
+  => [{:status "failure"
+       :tests {:passed 3 :failed 1 :throw 0 :timeout 0 :skipped 0 :errored 0}}
+      true true])
+
+(pr-str (run {:namespace "lang.seedgen.metrics-test"}))

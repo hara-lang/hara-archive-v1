@@ -16,6 +16,22 @@
    (common/value-text [:alpha 2])]
   => ["" "hello" "[:alpha 2]"])
 
+^{:refer std.lib.format.common/character-width}
+(fact "classifies ordinary, wide, combining, and emoji characters"
+  [(common/character-width \a)
+   (common/character-width \界)
+   (common/character-width \u0301)
+   (common/character-width \😀)]
+  => [1 2 0 2])
+
+^{:refer std.lib.format.common/display-width}
+(fact "measures terminal cells rather than Unicode code points"
+  [(common/display-width "abc")
+   (common/display-width "界")
+   (common/display-width "é")
+   (common/display-width "😀")]
+  => [3 2 1 2])
+
 ^{:refer std.lib.format.common/cell}
 (fact "creates portable cells with presentation roles"
   [(common/cell "hello")
@@ -48,5 +64,13 @@
    (common/pad "x" 3 :right)
    (common/pad "x" 3 :center)]
   => ["x  " "  x" " x "])
+
+(fact "truncate and pad preserve terminal-cell boundaries"
+  [(common/truncate "界界x!" 5)
+   (common/truncate "éabc" 3)
+   (common/pad "界" 4 :left)
+   (common/pad "界" 4 :right)
+   (common/pad "界" 4 :center)]
+  => ["界..." "éab" "界  " "  界" " 界 "])
 
 (pr-str (run {:namespace "std.lib.format.common-test"}))

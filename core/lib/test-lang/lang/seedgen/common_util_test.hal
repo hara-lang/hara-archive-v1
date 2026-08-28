@@ -1,0 +1,371 @@
+(ns lang.seedgen.common-util-test
+  (:use code.test)
+  (:require [std.foundation.string :as str]
+            [std.fs :as fs]
+            [lang.seedgen.common-util :as subject]))
+
+^{:refer lang.seedgen.common-util/read-text}
+(fact "reads UTF-8 source text from a path"
+  (let [path (fs/temp-file "/" {:prefix "seedgen-read-text-"})]
+    (fs/delete path {:missing-ok? true})
+    (try
+      (fs/write-bytes path (str/encode-utf8 "alpha\nβ"))
+      (subject/read-text path)
+      (finally
+        (fs/delete path {:missing-ok? true}))))
+  => "alpha\nβ")
+
+^{:refer lang.seedgen.common-util/read-forms}
+(fact "reads all forms while preserving metadata"
+  (let [path (fs/temp-file "/" {:prefix "seedgen-read-forms-"})]
+    (fs/delete path {:missing-ok? true})
+    (try
+      (fs/write-bytes path
+                      (str/encode-utf8
+                       "(ns sample)\n^{:seedgen/skip true}\n(def value 1)\n"))
+      (let [forms (subject/read-forms path)]
+        [(first forms)
+         (count forms)
+         (:seedgen/skip (meta (second forms)))])
+      (finally
+        (fs/delete path {:missing-ok? true}))))
+  => ['(ns sample) 2 true])
+
+^{:refer lang.seedgen.common-util/require-alias}
+(fact "extracts the :as alias from a matching require vector"
+  [(subject/require-alias '[tahto.core :as l] 'tahto.core)
+   (subject/require-alias '[tahto.core] 'tahto.core)
+   (subject/require-alias '[std.fs :as fs] 'tahto.core)
+   (subject/require-alias 'tahto.core 'tahto.core)]
+  => ['l nil nil nil])
+
+^{:refer lang.seedgen.common-util/seedgen-script-heads}
+(fact "discovers the default and aliased script heads"
+  [(subject/seedgen-script-heads
+    '(ns sample (:require [tahto.core :as l])))
+   (subject/seedgen-script-heads '(ns sample))]
+  => [#{'tahto.core/script- 'l/script-}
+      #{'tahto.core/script-}])
+
+^{:refer lang.seedgen.common-util/seedgen-root-langs}
+(fact "collects root and non-root script languages from a test file"
+  (let [path (fs/temp-file "/" {:prefix "seedgen-root-langs-"})]
+    (fs/delete path {:missing-ok? true})
+    (try
+      (fs/write-bytes
+       path
+       (str/encode-utf8
+        (str "(ns sample\n"
+             "  (:require [tahto.core :as l]))\n\n"
+             "^{:seedgen/root true}\n"
+             "(l/script- :js {:runtime :basic})\n\n"
+             "(l/script- :lua {:runtime :basic})\n")))
+      [(subject/seedgen-root-langs path true)
+       (subject/seedgen-root-langs path false)]
+      (finally
+        (fs/delete path {:missing-ok? true}))))
+  => [[:js] [:lua]])
+
+^{:refer lang.seedgen.common-util/seedgen-skip?}
+(fact "recognizes a skip marker on the namespace form and rejects malformed files"
+  (let [skip-path (fs/temp-file "/" {:prefix "seedgen-skip-"})
+        keep-path (fs/temp-file "/" {:prefix "seedgen-keep-"})]
+    (fs/delete skip-path {:missing-ok? true})
+    (fs/delete keep-path {:missing-ok? true})
+    (try
+      (fs/write-bytes skip-path
+                      (str/encode-utf8
+                       "^{:seedgen/skip true}\n(ns sample.skip)\n"))
+      (fs/write-bytes keep-path
+                      (str/encode-utf8 "(ns sample.keep)\n"))
+      [(subject/seedgen-skip? skip-path)
+       (subject/seedgen-skip? keep-path)
+       (subject/seedgen-skip? "/tmp/seedgen-file-that-does-not-exist")]
+      (finally
+        (fs/delete skip-path {:missing-ok? true})
+        (fs/delete keep-path {:missing-ok? true}))))
+  => [true false false])
+
+^{:refer lang.seedgen.common-util/+seedgen-runtime-reference-heads+}
+(fact "indexes runtime reference forms"
+  [(has? subject/+seedgen-runtime-reference-heads+ 'l/rt)
+   (has? subject/+seedgen-runtime-reference-heads+ 'notify/wait-on)
+   (has? subject/+seedgen-runtime-reference-heads+ 'other/runtime)]
+  => [true true false])
+
+^{:refer lang.seedgen.common-util/runtime-book-parent}
+(fact "reads parent information from both book representations"
+  [(subject/runtime-book-parent {:parent :xtalk})
+   (subject/runtime-book-parent {:book {:parent :js}})
+   (subject/runtime-book-parent {})]
+  => [:xtalk :js nil])
+
+^{:refer lang.seedgen.common-util/runtime-book-tag}
+(fact "reads grammar tags from both book representations"
+  [(subject/runtime-book-tag {:grammar {:tag :py}})
+   (subject/runtime-book-tag {:book {:grammar {:tag :lua}}})
+   (subject/runtime-book-tag {})]
+  => [:py :lua nil])
+
+^{:refer lang.seedgen.common-util/runtime-book-root?}
+(fact "identifies root runtime books"
+  [(subject/runtime-book-root? {})
+   (subject/runtime-book-root? {:parent :xtalk})
+   (subject/runtime-book-root? {:parent :js})]
+  => [true true false])
+
+^{:refer lang.seedgen.common-util/runtime-config-dispatch-map}
+(fact "builds dispatch-to-script mappings from runtime metadata"
+  (select-keys (subject/runtime-config-dispatch-map)
+               ["js" "py" "R" "dt" "rb"])
+  => {"js" :js "py" :python "R" :r "dt" :dart "rb" :ruby})
+
+^{:refer lang.seedgen.common-util/runtime-config-dispatch-tag-map}
+(fact "builds script-to-dispatch-tag mappings from runtime metadata"
+  (select-keys (subject/runtime-config-dispatch-tag-map)
+               [:js :python :r :dart :ruby])
+  => {:js :js :python :py :r :R :dart :dt :ruby :rb})
+
+^{:refer lang.seedgen.common-util/snapshot-runtime-dispatch-map}
+(fact "discovers dispatch mappings from installed root runtime books"
+  (let [value (subject/snapshot-runtime-dispatch-map)]
+    [(map? value)
+     (get value "js")
+     (get value "py")
+     (get value "lua")]
+    )
+  => [true :js :python :lua])
+
+^{:refer lang.seedgen.common-util/snapshot-runtime-dispatch-tag-map}
+(fact "discovers reverse dispatch tags from installed runtime books"
+  (let [value (subject/snapshot-runtime-dispatch-tag-map)]
+    [(map? value)
+     (get value :js)
+     (get value :python)
+     (get value :lua)])
+  => [true :js :py :lua])
+
+^{:refer lang.seedgen.common-util/seedgen-dispatch-map}
+(fact "combines configured and installed dispatch mappings"
+  (let [value (subject/seedgen-dispatch-map)]
+    [(get value "js")
+     (get value "py")
+     (get value "dt")
+     (get value "R")]
+    )
+  => [:js :python :dart :r])
+
+^{:refer lang.seedgen.common-util/seedgen-dispatch-tag-map}
+(fact "combines configured and installed reverse dispatch mappings"
+  (let [value (subject/seedgen-dispatch-tag-map)]
+    [(get value :js)
+     (get value :python)
+     (get value :dart)
+     (get value :r)])
+  => [:js :py :dt :R])
+
+^{:refer lang.seedgen.common-util/seedgen-normalize-runtime-lang}
+(fact "normalizes dispatch tags, aliases, strings, and symbols"
+  [(subject/seedgen-normalize-runtime-lang :py)
+   (subject/seedgen-normalize-runtime-lang :R)
+   (subject/seedgen-normalize-runtime-lang :dt)
+   (subject/seedgen-normalize-runtime-lang "js")
+   (subject/seedgen-normalize-runtime-lang 'py)]
+  => [:python :r :dart :js :python])
+
+^{:refer lang.seedgen.common-util/seedgen-dispatch-tag}
+(fact "returns the target grammar tag for canonical runtimes"
+  [(subject/seedgen-dispatch-tag :python)
+   (subject/seedgen-dispatch-tag :r)
+   (subject/seedgen-dispatch-tag :dart)
+   (subject/seedgen-dispatch-tag :unknown)]
+  => [:py :R :dt :unknown])
+
+^{:refer lang.seedgen.common-util/seedgen-display-lang}
+(fact "returns display languages after canonical normalization"
+  [(subject/seedgen-display-lang :python)
+   (subject/seedgen-display-lang :r)
+   (subject/seedgen-display-lang :dart)
+   (subject/seedgen-display-lang :ruby)
+   (subject/seedgen-display-lang nil)]
+  => [:python :r :dart :ruby nil])
+
+^{:refer lang.seedgen.common-util/seedgen-default-runtime}
+(fact "returns the configured execution mode for a script language"
+  [(subject/seedgen-default-runtime :dart)
+   (subject/seedgen-default-runtime :r)
+   (subject/seedgen-default-runtime :unknown)]
+  => [:twostep :basic nil])
+
+^{:refer lang.seedgen.common-util/seedgen-dispatch-lang}
+(fact "parses dispatch symbols into canonical runtime languages"
+  [(subject/seedgen-dispatch-lang '(!.R (+ 1 2)))
+   (subject/seedgen-dispatch-lang '(!.py (+ 1 2)))
+   (subject/seedgen-dispatch-lang '(!.dt (+ 1 2)))
+   (subject/seedgen-dispatch-lang '(+ 1 2))]
+  => [:r :python :dart nil])
+
+^{:refer lang.seedgen.common-util/seedgen-runtime-reference-lang}
+(fact "extracts runtime languages from reference forms"
+  [(subject/seedgen-runtime-reference-lang '(l/rt :js))
+   (subject/seedgen-runtime-reference-lang '(notify/wait-on :python))
+   (subject/seedgen-runtime-reference-lang '(notify/wait-on [:lua 100]))
+   (subject/seedgen-runtime-reference-lang '(+ 1 2))]
+  => [:js :python :lua nil])
+
+^{:refer lang.seedgen.common-util/seedgen-runtime-dispatch-langs}
+(fact "collects and sorts dispatch languages through nested values"
+  [(subject/seedgen-runtime-dispatch-langs '(!.js 1))
+   (subject/seedgen-runtime-dispatch-langs '[(!.js 1) (!.py 2)])
+   (subject/seedgen-runtime-dispatch-langs '{:one (!.lua 1)
+                                             :two #{(l/rt :python)}})
+   (subject/seedgen-runtime-dispatch-langs '(+ 1 2))]
+  => [[:js] [:js :python] [:lua :python] []])
+
+^{:refer lang.seedgen.common-util/seedgen-form-lang}
+(fact "returns one language only for an unambiguous form"
+  [(subject/seedgen-form-lang '(!.js 1))
+   (subject/seedgen-form-lang '[(!.js 1) (!.py 2)])
+   (subject/seedgen-form-lang '(+ 1 2))]
+  => [:js nil nil])
+
+^{:refer lang.seedgen.common-util/seedgen-fact-forms}
+(fact "indexes fact forms by their refer metadata"
+  (let [path (fs/temp-file "/" {:prefix "seedgen-fact-forms-"})]
+    (fs/delete path {:missing-ok? true})
+    (try
+      (fs/write-bytes
+       path
+       (str/encode-utf8
+        (str "(ns sample)\n\n"
+             "^{:refer sample/hello}\n"
+             "(fact \"hello\" 1 => 1)\n\n"
+             "^{:refer sample/world}\n"
+             "(fact \"world\" 2 => 2)\n")))
+      (let [forms (subject/seedgen-fact-forms path)]
+        [(set (keys forms))
+         (map? forms)
+         (= 'fact (first (get forms 'sample/hello)))
+         (= 'fact (first (get forms 'sample/world)))])
+      (finally
+        (fs/delete path {:missing-ok? true}))))
+  => [#{'sample/hello 'sample/world} true true true])
+
+^{:refer lang.seedgen.common-util/normalize-seedgen-lang-entry}
+(fact "normalizes language metadata entry values"
+  [(subject/normalize-seedgen-lang-entry nil)
+   (subject/normalize-seedgen-lang-entry true)
+   (subject/normalize-seedgen-lang-entry {:suppress true})
+   (subject/normalize-seedgen-lang-entry 4)]
+  => [nil {} {:suppress true} {:value 4}])
+
+^{:refer lang.seedgen.common-util/normalize-seedgen-base-config}
+(fact "normalizes base config aliases and scalar entries"
+  [(subject/normalize-seedgen-base-config true)
+   (subject/normalize-seedgen-base-config {:py {:suppress true}
+                                           :all true})
+   (subject/normalize-seedgen-base-config :js)]
+  => [{:all {}}
+      {:python {:suppress true} :all {}}
+      {:all {:value :js}}])
+
+^{:refer lang.seedgen.common-util/normalize-seedgen-root-config}
+(fact "removes root-only :langs metadata before normalizing"
+  [(subject/normalize-seedgen-root-config
+    {:langs [:js :lua] :all {:timeout 10} :py true})
+   (subject/normalize-seedgen-root-config true)]
+  => [{:all {:timeout 10} :python {}}
+      {:all {}}])
+
+^{:refer lang.seedgen.common-util/merge-seedgen-configs}
+(fact "merges nested language entries and returns nil for empty input"
+  [(subject/merge-seedgen-configs)
+   (subject/merge-seedgen-configs {:python {:a 1}}
+                                  {:python {:b 2}}
+                                  {:lua {:c 3}})]
+  => [nil {:python {:a 1 :b 2} :lua {:c 3}}])
+
+^{:refer lang.seedgen.common-util/seedgen-base-config}
+(fact "collects base, language, and check metadata recursively"
+  [(subject/seedgen-base-config
+    (with-meta
+      '(fact "TODO")
+      {:seedgen/base {:python {:suppress true}
+                      :lua {:expect 6}}}))
+   (subject/seedgen-base-config
+    (with-meta
+      '(fact "TODO")
+      {:seedgen/base true}))
+   (subject/seedgen-base-config '(fact "TODO"))]
+  => [{:python {:suppress true} :lua {:expect 6}}
+      {:all {}}
+      nil])
+
+^{:refer lang.seedgen.common-util/seedgen-lang-config}
+(fact "combines the unified and legacy seedgen metadata keys"
+  [(subject/seedgen-lang-config
+    (with-meta
+      '(fact "TODO")
+      {:seedgen/base {:python {:suppress true}}
+       :seedgen/check {:lua {:expect 6}}}))
+   (subject/seedgen-lang-config '(fact "TODO"))]
+  => [{:python {:suppress true} :lua {:expect 6}} nil])
+
+^{:refer lang.seedgen.common-util/seedgen-config-entry-lang}
+(fact "matches canonical languages, display names, and dispatch tags"
+  (let [config {:all {:timeout 10}
+                :python {:suppress true}
+                :lua {:expect 6}}]
+    [(subject/seedgen-config-entry-lang config :python)
+     (subject/seedgen-config-entry-lang config :py)
+     (subject/seedgen-config-entry-lang config :lua)
+     (subject/seedgen-config-entry-lang config :js)])
+  => [:python :python :lua nil])
+
+^{:refer lang.seedgen.common-util/seedgen-lang-entry}
+(fact "merges the all-language and selected-language entries"
+  [(subject/seedgen-lang-entry
+    (with-meta
+      '(fact "TODO")
+      {:seedgen/base {:all {:timeout 1000}
+                      :python {:suppress true}
+                      :lua {:expect 6}}})
+    :python)
+   (subject/seedgen-lang-entry
+    (with-meta
+      '(fact "TODO")
+      {:seedgen/base {:all {:timeout 1000}
+                      :python {:suppress true}}})
+    :lua)]
+  => [{:timeout 1000 :suppress true} {:timeout 1000}])
+
+^{:refer lang.seedgen.common-util/seedgen-root-entry}
+(fact "merges the root form's all-language and selected-language entries"
+  (let [form (with-meta
+               '(l/script- :js {:runtime :basic})
+               {:seedgen/root {:all {:timeout 1000}
+                               :python {:extra true}}})]
+    [(subject/seedgen-root-entry form :python)
+     (subject/seedgen-root-entry form :js)])
+  => [{:timeout 1000 :extra true} {:timeout 1000}])
+
+^{:refer lang.seedgen.common-util/seedgen-suppressed-langs}
+(fact "collects languages explicitly marked for suppression"
+  (subject/seedgen-suppressed-langs
+   (with-meta
+     '(fact "TODO")
+     {:seedgen/base {:python {:suppress true}
+                     :lua {:suppress false}
+                     :js {:suppress true}}}))
+  => #{:python :js})
+
+^{:refer lang.seedgen.common-util/seedgen-coverage-langs}
+(fact "collects dispatch languages from facts and lifecycle metadata"
+  (subject/seedgen-coverage-langs
+   (with-meta
+     '(fact "hello" (!.js 1) => 1)
+     {:setup ['(!.lua (setup))]
+      :teardown ['(!.py (teardown))]}))
+  => [:js :lua :python])
+
+(pr-str (run {:namespace "lang.seedgen.common-util-test"}))

@@ -1,0 +1,94 @@
+(ns lang.seedgen.common-meta-test
+  (:use code.test)
+  (:require [lang.seedgen.common-meta :as meta]))
+
+^{:refer lang.seedgen.common-meta/+runtime-lang-config+}
+(fact "retains the complete runtime configuration authority"
+  [(count meta/+runtime-lang-config+)
+   (get-in meta/+runtime-lang-config+ [:dart :runtime])
+   (get-in meta/+runtime-lang-config+ [:r :dispatch])
+   (get-in meta/+runtime-lang-config+ [:go :suffix])]
+  => [10 :twostep '!.R "go"])
+
+^{:refer lang.seedgen.common-meta/+runtime-lang-aliases+}
+(fact "retains the Ruby compatibility alias"
+  meta/+runtime-lang-aliases+
+  => {:ruby :rb})
+
+^{:refer lang.seedgen.common-meta/+runtime-executable-langs+}
+(fact "retains the executable runtime set"
+  meta/+runtime-executable-langs+
+  => #{:js :lua :python :scheme :elisp :r :rb :php})
+
+^{:refer lang.seedgen.common-meta/+runtime-langs+}
+(fact "sorts all configured runtime language keys"
+  meta/+runtime-langs+
+  => [:dart :elisp :go :js :lua :php :python :r :rb :scheme])
+
+^{:refer lang.seedgen.common-meta/normalize-runtime-lang}
+(fact "normalizes keyword, string, symbol, and alias inputs"
+  [(meta/normalize-runtime-lang :js)
+   (meta/normalize-runtime-lang "js")
+   (meta/normalize-runtime-lang 'js)
+   (meta/normalize-runtime-lang :ruby)
+   (meta/normalize-runtime-lang :unknown)]
+  => [:js :js :js :rb :unknown])
+
+^{:refer lang.seedgen.common-meta/runtime-lang-config}
+(fact "returns complete runtime metadata and nil for unknown languages"
+  [(select-keys (meta/runtime-lang-config :js)
+                [:script :dispatch :suffix :runtime :check-mode])
+   (select-keys (meta/runtime-lang-config :ruby)
+                [:script :dispatch :suffix :runtime :check-mode])
+   (meta/runtime-lang-config :unknown)]
+  => [{:script :js :dispatch '!.js :suffix "js"
+       :runtime :basic :check-mode :realtime}
+      {:script :ruby :dispatch '!.rb :suffix "rb"
+       :runtime :basic :check-mode :realtime}
+      nil])
+
+^{:refer lang.seedgen.common-meta/runtime-script-lang}
+(fact "resolves script language through canonical aliases"
+  [(meta/runtime-script-lang :js)
+   (meta/runtime-script-lang :ruby)
+   (meta/runtime-script-lang :unknown)]
+  => [:js :ruby nil])
+
+^{:refer lang.seedgen.common-meta/runtime-dispatch-symbol}
+(fact "returns target dispatch symbols"
+  [(meta/runtime-dispatch-symbol :js)
+   (meta/runtime-dispatch-symbol :dart)
+   (meta/runtime-dispatch-symbol :unknown)]
+  => ['!.js '!.dt nil])
+
+^{:refer lang.seedgen.common-meta/runtime-type}
+(fact "separates basic and two-step runtimes"
+  [(meta/runtime-type :js)
+   (meta/runtime-type :dart)
+   (meta/runtime-type :unknown)]
+  => [:basic :twostep nil])
+
+^{:refer lang.seedgen.common-meta/runtime-check-mode}
+(fact "reports realtime and batched checking modes"
+  [(meta/runtime-check-mode :python)
+   (meta/runtime-check-mode :go)
+   (meta/runtime-check-mode :unknown)]
+  => [:realtime :batched nil])
+
+^{:refer lang.seedgen.common-meta/runtime-suite-groups}
+(fact "normalizes, deduplicates, sorts, and groups runtime languages"
+  [(meta/runtime-suite-groups [:js :dart :python])
+   (meta/runtime-suite-groups [:ruby :rb :r :scheme])]
+  => [{:batched [:dart]
+       :realtime [:js :python]}
+      {:realtime [:r :rb :scheme]}])
+
+^{:refer lang.seedgen.common-meta/runtime-lang-suffix}
+(fact "returns generated file suffixes"
+  [(meta/runtime-lang-suffix :js)
+   (meta/runtime-lang-suffix :ruby)
+   (meta/runtime-lang-suffix :r)
+   (meta/runtime-lang-suffix :unknown)]
+  => ["js" "rb" "r" nil])
+
+(pr-str (run {:namespace "lang.seedgen.common-meta-test"}))

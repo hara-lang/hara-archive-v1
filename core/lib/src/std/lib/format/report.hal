@@ -127,24 +127,86 @@
       value
       (str value "ms"))))
 
+(defn progress-layout
+  "Returns one shared width layout for a group of progress records."
+  [records]
+  (let [records (vec (or records []))
+        index-width
+        (reduce
+         (fn [width record]
+           (let [total (or (:item/total record) "?")
+                 index (or (:item/index record) 0)
+                 index-text (str (inc index) "/" total)
+                 candidate (max
+                            (or (:item/index-width record) 0)
+                            (+ 2
+                               (* 2
+                                  (common/display-width
+                                   (common/value-text total))))
+                            (common/display-width index-text))]
+             (max width candidate)))
+         0
+         records)
+        id-width
+        (reduce
+         (fn [width record]
+           (max
+            width
+            (max
+             (or (:item/id-width record) 0)
+             (+ 2 (common/display-width (:item/id record))))))
+         0
+         records)
+        result-spec
+        (reduce
+         (fn [output record]
+           (if (has? record :item/result-width)
+             {:width (max (:width output)
+                          (or (:item/result-width record) 0))
+              :explicit? true}
+             output))
+         {:width 0 :explicit? false}
+         records)
+        time-spec
+        (reduce
+         (fn [output record]
+           (if (has? record :item/time-width)
+             {:width (max (:width output)
+                          (or (:item/time-width record) 0))
+              :explicit? true}
+             output))
+         {:width 0 :explicit? false}
+         records)]
+    {:item/index-width index-width
+     :item/id-width id-width
+     :item/result-width (if (:explicit? result-spec)
+                          (:width result-spec)
+                          60)
+     :item/time-width (if (:explicit? time-spec)
+                        (:width time-spec)
+                        10)}))
+
 (defn progress-line
-  [record]
-  (let [index (or (:item/index record) 0)
-        total (or (:item/total record) "?")
-        index-text (str (inc index) "/" total)
-        index-text (if (:item/index-width record)
-                     (common/pad index-text
-                                 (:item/index-width record)
-                                 :right)
-                     index-text)
-        id (common/value-text (:item/id record))
-        id (if (:item/id-width record)
-             (common/pad id (:item/id-width record) :left)
-             id)
-        status (if (or (not (has? record :item/status?))
-                       (:item/status? record))
-                 (status-text (record-status record))
-                 "")
+  ([record]
+   (progress-line record {}))
+  ([record layout]
+   (let [record (merge record layout)
+         index (or (:item/index record) 0)
+         total (or (:item/total record) "?")
+         index-text (str (inc index) "/" total)
+         index-text (if (:item/index-width record)
+                      (common/pad index-text
+                                  (:item/index-width record)
+                                  :right)
+                      index-text)
+         id (common/value-text (:item/id record))
+         id (if (:item/id-width record)
+              (common/pad id (:item/id-width record) :left)
+              id)
+         status (if (or (not (has? record :item/status?))
+                        (:item/status? record))
+                  (status-text (record-status record))
+                  "")
         count-text
         (if (has? record :item/count)
           (str " (" (common/value-text (:item/count record)) ")")
@@ -190,7 +252,18 @@
       (if (has? record :elapsed)
         (conj cells (common/cell elapsed :bold))
         cells))
-     :line/role result-role)))
+     :line/role result-role))))
+
+(defn progress-lines
+  "Renders progress records with one shared layout across every row."
+  [records]
+  (let [records (vec (or records []))
+        layout (progress-layout records)]
+    (vec
+     (map
+      (fn [record]
+        (progress-line record layout))
+      records))))
 
 (defn diagnostic-line
   [record]
@@ -294,8 +367,7 @@
   [section]
   (case (:section/kind section)
     :progress
-    (vec
-     (map progress-line (:section/entries section)))
+    (progress-lines (:section/entries section))
 
     :diagnostics
     (vec

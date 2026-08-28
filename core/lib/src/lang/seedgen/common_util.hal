@@ -1,0 +1,400 @@
+(ns lang.seedgen.common-util
+  (:config {:role :internal})
+  (:require [std.foundation.string :as str]
+            [std.fs :as fs]
+            [lang.core.registry :as registry]
+            [lang.seedgen.common-meta :as runtime]))
+
+(defn read-text
+  [path]
+  (str/decode-utf8 (fs/read-bytes path)))
+
+(defn read-forms
+  [path]
+  (Edn/read (str "[" (read-text path) "]")))
+
+(defn ^{:public true} require-alias
+  [require-spec target]
+  (when (and (vector? require-spec)
+             (= target (first require-spec)))
+    (some (fn [entry]
+            (when (= :as (first entry))
+              (second entry)))
+          (partition 2 (rest require-spec)))))
+
+(defn ^{:public true} seedgen-script-heads
+  [ns-form]
+  (let [require-clause (some (fn [entry]
+                               (when (and (list? entry)
+                                          (= :require (first entry)))
+                                 entry))
+                             (drop 2 ns-form))
+        tahto-lang-alias (some (fn [entry]
+                                 (require-alias entry 'tahto.core))
+                               (rest require-clause))]
+    (cond-> #{'tahto.core/script-}
+      tahto-lang-alias
+      (conj (symbol (str tahto-lang-alias "/script-"))))))
+
+(defn ^{:public true} seedgen-root-langs
+  [test-file include-root?]
+  (let [forms (read-forms test-file)
+        heads (seedgen-script-heads (first forms))]
+    (->> (rest forms)
+         (keep (fn [form]
+                 (let [root? (:seedgen/root (meta form))]
+                   (when (and (= include-root? (boolean root?))
+                              (list? form)
+                              (has? heads (first form)))
+                     (second form)))))
+         vec)))
+
+(defn ^{:public true} seedgen-skip?
+  "returns true if the test file's ns form is marked ^{:seedgen/skip true}"
+  {:added "4.1"}
+  [test-file]
+  (try
+    (let [forms (read-forms test-file)]
+      (true? (:seedgen/skip (meta (first forms)))))
+    (catch Throwable _
+      false)))
+
+(def +seedgen-runtime-reference-heads+
+  '#{l/rt
+     notify/wait-on
+     notify/wait-on-fn
+     notify/captured
+     notify/captured:count
+     notify/captured:clear})
+
+(defn runtime-book-parent
+  [book]
+  (or (:parent book)
+      (get-in book [:book :parent])))
+
+(defn runtime-book-tag
+  [book]
+  (or (get-in book [:grammar :tag])
+      (get-in book [:book :grammar :tag])))
+
+(defn runtime-book-root?
+  [book]
+  (let [parent (runtime-book-parent book)]
+    (or (nil? parent)
+        (= :xtalk parent))))
+
+(defn runtime-config-dispatch-map
+  []
+  (->> (vals runtime/+runtime-lang-config+)
+       (keep (fn [entry]
+               (let [script (:script entry)
+                     dispatch (:dispatch entry)]
+                 (when (and script dispatch)
+                   [(str/slice (name dispatch) 2) script]))))
+       (into {})))
+
+(defn runtime-config-dispatch-tag-map
+  []
+  (->> (vals runtime/+runtime-lang-config+)
+       (keep (fn [entry]
+               (let [script (:script entry)
+                     dispatch (:dispatch entry)]
+                 (when (and script dispatch)
+                   [script (keyword (str/slice (name dispatch) 2))]))))
+       (into {})))
+
+(defn snapshot-runtime-dispatch-map
+  []
+  (->> (registry/registry-book-list)
+       (keep (fn [[lang key]]
+               (let [book (registry/registry-book lang key nil)
+                     tag (when (and book
+                                    (runtime-book-root? book))
+                           (runtime-book-tag book))]
+                 (when tag
+                   [(name tag) lang]))))
+       (into {})))
+
+(defn snapshot-runtime-dispatch-tag-map
+  []
+  (->> (registry/registry-book-list)
+       (keep (fn [[lang key]]
+               (let [book (registry/registry-book lang key nil)
+                     tag (when (and book
+                                    (runtime-book-root? book))
+                           (runtime-book-tag book))]
+                 (when tag
+                   [lang tag]))))
+       (into {})))
+
+(defn ^{:public true} seedgen-dispatch-map
+  []
+  (merge (runtime-config-dispatch-map)
+         (snapshot-runtime-dispatch-map)))
+
+(defn ^{:public true} seedgen-dispatch-tag-map
+  []
+  (merge (runtime-config-dispatch-tag-map)
+         (snapshot-runtime-dispatch-tag-map)))
+
+(defn ^{:public true} seedgen-normalize-runtime-lang
+  [lang]
+  (when lang
+    (let [dispatch-map (seedgen-dispatch-map)
+          lang (cond (keyword? lang) lang
+                     (symbol? lang) (keyword (name lang))
+                     (string? lang) (keyword lang)
+                     :else lang)]
+      (or (get dispatch-map (name lang))
+          lang))))
+
+(defn ^{:public true} seedgen-dispatch-tag
+  [lang]
+  (let [tag-map (seedgen-dispatch-tag-map)
+        lang (seedgen-normalize-runtime-lang lang)
+        script (runtime/runtime-script-lang lang)
+        n (name lang)
+        idx (str/index-of n ".")
+        base (when (and idx (pos? idx))
+               (keyword (str/slice n 0 idx)))]
+    (or (get tag-map lang)
+        script
+        base
+        lang)))
+
+(defn ^{:public true} seedgen-display-lang
+  [lang]
+  (when lang
+    (let [lang (-> lang
+                   runtime/normalize-runtime-lang
+                   seedgen-normalize-runtime-lang)
+          n (name lang)
+          idx (str/index-of n ".")
+          base (when (and idx (pos? idx))
+                 (keyword (str/slice n 0 idx)))]
+      (or (runtime/runtime-script-lang lang)
+          base
+          (seedgen-dispatch-tag lang)
+          lang))))
+
+(defn ^{:public true} seedgen-default-runtime
+  [lang]
+  (let [lang (seedgen-normalize-runtime-lang lang)]
+    (some (fn [entry]
+            (when (= (:script entry) lang)
+              (:runtime entry)))
+          (vals runtime/+runtime-lang-config+))))
+
+(defn ^{:public true} seedgen-dispatch-lang
+  [form]
+  (when (list? form)
+    (let [head (first form)]
+      (when (symbol? head)
+        (let [n (name head)]
+          (when (str/starts-with? n "!.")
+            (or (get (seedgen-dispatch-map) (str/slice n 2))
+                (keyword (str/slice n 2)))))))))
+
+(defn ^{:public true} seedgen-runtime-reference-lang
+  [form]
+  (when (list? form)
+    (let [[head arg] form]
+      (when (has? +seedgen-runtime-reference-heads+ head)
+        (cond
+          (keyword? arg)
+          (seedgen-normalize-runtime-lang arg)
+
+          (and (vector? arg)
+               (seq arg))
+          (seedgen-normalize-runtime-lang (first arg))
+
+          :else
+          nil)))))
+
+(defn ^{:public true} seedgen-runtime-dispatch-langs
+  [form]
+  (letfn [(collect-langs [entry]
+            (cond (list? entry)
+                  (if-let [lang (or (seedgen-dispatch-lang entry)
+                                    (seedgen-runtime-reference-lang entry))]
+                    #{lang}
+                    (reduce into #{} (map collect-langs entry)))
+
+                  (vector? entry)
+                  (reduce into #{} (map collect-langs entry))
+
+                  (set? entry)
+                  (reduce into #{} (map collect-langs (seq entry)))
+
+                  (map? entry)
+                  (reduce into #{}
+                          (concat (map collect-langs (keys entry))
+                                  (map collect-langs (vals entry))))
+
+                  :else
+                  #{}))]
+    (->> (collect-langs form)
+         sort
+         vec)))
+
+(defn ^{:public true} seedgen-form-lang
+  [form]
+  (let [langs (seedgen-runtime-dispatch-langs form)]
+    (when (= 1 (count langs))
+      (first langs))))
+
+(defn ^{:public true} seedgen-fact-forms
+  [test-file]
+  (->> (read-forms test-file)
+       (keep (fn [form]
+               (when (and (list? form)
+                          (= 'fact (first form))
+                          (:refer (meta form)))
+                 [(:refer (meta form)) form])))
+       (into {})))
+
+(defn normalize-seedgen-lang-entry
+  [config]
+  (cond
+    (nil? config)
+    nil
+
+    (= true config)
+    {}
+
+    (map? config)
+    config
+
+    :else
+    {:value config}))
+
+(defn normalize-seedgen-base-config
+  [base-config]
+  (cond
+    (nil? base-config)
+    nil
+
+    (= true base-config)
+    {:all {}}
+
+    (map? base-config)
+    (->> base-config
+         (map (fn [[lang config]]
+                [(if (= :all lang)
+                   :all
+                   (seedgen-normalize-runtime-lang lang))
+                 (normalize-seedgen-lang-entry config)]))
+         (into {}))
+
+    :else
+    {:all (normalize-seedgen-lang-entry base-config)}))
+
+(defn normalize-seedgen-root-config
+  [root-config]
+  (if (map? root-config)
+    (normalize-seedgen-base-config (dissoc root-config :langs))
+    (normalize-seedgen-base-config root-config)))
+
+(defn merge-seedgen-configs
+  [& configs]
+  (let [merged (reduce (fn [out config]
+                         (merge-with merge out (or config {})))
+                       {}
+                       configs)]
+    (when (seq merged)
+      merged)))
+
+(defn ^{:public true} seedgen-base-config
+  [form]
+  (letfn [(collect-config [entry]
+            (let [m (meta entry)
+                  own-config (merge-seedgen-configs
+                              (normalize-seedgen-base-config (:seedgen/base m))
+                              (normalize-seedgen-base-config (:seedgen/lang m))
+                              (normalize-seedgen-base-config (:seedgen/check m)))]
+              (cond
+                (list? entry)
+                (reduce (fn [out child]
+                          (merge-seedgen-configs out (collect-config child)))
+                        own-config
+                        entry)
+
+                (vector? entry)
+                (reduce (fn [out child]
+                          (merge-seedgen-configs out (collect-config child)))
+                        own-config
+                        entry)
+
+                (set? entry)
+                (reduce (fn [out child]
+                          (merge-seedgen-configs out (collect-config child)))
+                        own-config
+                        entry)
+
+                (map? entry)
+                (reduce (fn [out child]
+                          (merge-seedgen-configs out (collect-config child)))
+                        own-config
+                        (concat (keys entry) (vals entry)))
+
+                :else
+                own-config)))]
+    (collect-config form)))
+
+(defn ^{:public true} seedgen-lang-config
+  [form]
+  (seedgen-base-config form))
+
+(defn seedgen-config-entry-lang
+  [config lang]
+  (let [lang (-> lang
+                 runtime/normalize-runtime-lang
+                 seedgen-normalize-runtime-lang)
+        lang-display (seedgen-display-lang lang)]
+    (or (when (and config (has? config lang))
+          lang)
+        (some (fn [candidate]
+                (when (not= :all candidate)
+                  (let [candidate-display (seedgen-display-lang candidate)
+                        candidate-tag (seedgen-dispatch-tag candidate)]
+                    (when (or (= candidate lang)
+                              (= candidate-display lang)
+                              (= candidate-display lang-display)
+                              (= candidate-tag lang)
+                              (= candidate-tag lang-display))
+                      candidate))))
+              (keys (or config {}))))))
+
+(defn ^{:public true} seedgen-lang-entry
+  [form lang]
+  (let [config (seedgen-base-config form)
+        lang (seedgen-config-entry-lang config lang)]
+    (merge (get config :all)
+           (get config lang))))
+
+(defn ^{:public true} seedgen-root-entry
+  [form lang]
+  (let [config (some-> form
+                       meta
+                       :seedgen/root
+                       normalize-seedgen-root-config)
+        lang (seedgen-config-entry-lang config lang)]
+    (merge (get config :all)
+           (get config lang))))
+
+(defn ^{:public true} seedgen-suppressed-langs
+  [form]
+  (->> (seedgen-lang-config form)
+       seq
+       (map (fn [[lang config]]
+              (when (:suppress config)
+                lang)))
+       (filter identity)
+       set))
+
+(defn ^{:public true} seedgen-coverage-langs
+  [form]
+  (let [m (meta form)]
+    (seedgen-runtime-dispatch-langs [form
+                                     (:setup m)
+                                     (:teardown m)])))

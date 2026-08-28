@@ -1,0 +1,223 @@
+(ns tool.migrate.policy.foundation.seedgen-test
+  (:use code.test)
+  (:require [std.foundation.string :as str]
+            [tool.migrate.common.project :as project]
+            [tool.migrate.policy.foundation.seedgen :as policy]
+            [work.base :as work]))
+
+^{:refer tool.migrate.policy.foundation.seedgen/foundation-repository}
+(fact "pins the Foundation repository name"
+  policy/foundation-repository
+  => "foundation-base")
+
+^{:refer tool.migrate.policy.foundation.seedgen/foundation-revision}
+(fact "pins the audited Foundation source revision"
+  policy/foundation-revision
+  => "f909a44ad504cc6c9f44248d59ec3148261a48d7")
+
+^{:refer tool.migrate.policy.foundation.seedgen/source-root}
+(fact "records the legacy source root"
+  policy/source-root
+  => "src/tahto")
+
+^{:refer tool.migrate.policy.foundation.seedgen/target-root}
+(fact "records the Hara implementation root"
+  policy/target-root
+  => "core/lib/src/lang")
+
+^{:refer tool.migrate.policy.foundation.seedgen/source-test-root}
+(fact "records the legacy test root"
+  policy/source-test-root
+  => "test/tahto")
+
+^{:refer tool.migrate.policy.foundation.seedgen/target-test-root}
+(fact "records the Hara path-matched test root"
+  policy/target-test-root
+  => "core/lib/test-lang/lang")
+
+^{:refer tool.migrate.policy.foundation.seedgen/+seedgen-units+}
+(fact "inventories all seedgen source and test units in dependency order"
+  [(count policy/+seedgen-units+)
+   (:id (first policy/+seedgen-units+))
+   (:migration/status (first policy/+seedgen-units+))
+   (every? (fn [unit] (= :migrated (:migration/status unit)))
+           policy/+seedgen-units+)
+   (:target/path (nth policy/+seedgen-units+ 3))
+   (:migration/status (nth policy/+seedgen-units+ 3))
+   (:test/source-path (nth policy/+seedgen-units+ 9))
+   (:id (nth policy/+seedgen-units+ 10))]
+  => [11 :seedgen :migrated true
+      "core/lib/src/lang/seedgen/common_meta.hal" :migrated
+      "test/tahto/seedgen/seed_readforms_test.clj" :seedgen/metrics])
+
+^{:refer tool.migrate.policy.foundation.seedgen/route-namespace}
+(fact "routes the Foundation seedgen namespace family"
+  [(policy/route-namespace 'tahto.seedgen.common-meta)
+   (policy/route-namespace 'tahto.other)
+   (policy/route-namespace "demo.core")]
+  => ['lang.seedgen.common-meta 'tahto.other "demo.core"])
+
+^{:refer tool.migrate.policy.foundation.seedgen/hal-path}
+(fact "changes only Clojure source suffixes"
+  [(policy/hal-path "seedgen/common_meta.clj")
+   (policy/hal-path "seedgen/common_meta.hal")]
+  => ["seedgen/common_meta.hal" "seedgen/common_meta.hal"])
+
+^{:refer tool.migrate.policy.foundation.seedgen/route-path}
+(fact "routes source and test paths into the Hara core tree"
+  [(policy/route-path "src/tahto/seedgen/common_meta.clj")
+   (policy/route-path "test/tahto/seedgen/common_meta_test.clj")
+   (policy/route-path "core/lib/src/lang/seedgen/common_meta.hal")
+   (policy/route-path "docs/seedgen.clj")]
+  => ["core/lib/src/lang/seedgen/common_meta.hal"
+      "core/lib/test-lang/lang/seedgen/common_meta_test.hal"
+      "core/lib/src/lang/seedgen/common_meta.hal"
+      "docs/seedgen.clj"])
+
+^{:refer tool.migrate.policy.foundation.seedgen/unit-for}
+(fact "looks up a migrated unit and distinguishes unknown paths"
+  [(get (policy/unit-for "src/tahto/seedgen/common_meta.clj") :migration/status)
+   (nil? (policy/unit-for "src/tahto/seedgen/missing.clj"))]
+  => [:migrated true])
+
+^{:refer tool.migrate.policy.foundation.seedgen/rewrite-common-meta}
+(fact "rewrites the common-meta recipe namespace and declares its internal role"
+  (let [output (policy/rewrite-common-meta "(ns tahto.seedgen.common-meta)\n(def value 1)")
+        adapted
+        (policy/rewrite-common-meta
+         (str "(ns tahto.seedgen.common-meta)\n"
+              "(defn normalize-runtime-lang [lang] lang)\n"
+              "(defn runtime-suite-groups\n"
+              "  [langs]\n"
+              "  (->> langs\n"
+              "       (map normalize-runtime-lang)\n"
+              "       distinct\n"
+              "       sort\n"
+              "       (group-by runtime-check-mode)\n"
+              "       (into (sorted-map)\n"
+              "             (map (fn [[mode entries]]\n"
+              "                    [mode (vec entries)])))))"))]
+    [(str/includes? output "(ns lang.seedgen.common-meta")
+     (str/includes? output ":config {:role :internal}")
+     (str/includes? output "(def value 1)")
+     (= output (policy/rewrite-common-meta output))
+     (str/includes? adapted "defn ^{:public true} normalize-runtime-lang")
+     (str/includes? adapted "(into {})")
+     (not (str/includes? adapted "sorted-map"))])
+  => [true true true true true true true])
+
+^{:refer tool.migrate.policy.foundation.seedgen/migration-input}
+(fact "builds one checksum-bound recipe input from the pinned inventory"
+  (let [input (policy/migration-input "(ns tahto.seedgen.common-meta)" nil
+                                      {:source/root "/reference/foundation-base"
+                                       :target/root "/hara"})
+        unit (first (:units input))]
+    [(:source/path unit)
+     (:target/path unit)
+     (:source/root unit)
+     (:target/root unit)
+     (str/starts-with? (:source/sha256 unit) "sha256:")
+     (get-in unit [:translation/recipe :id])])
+    => ["src/tahto/seedgen/common_meta.clj"
+        "core/lib/src/lang/seedgen/common_meta.hal"
+        "/reference/foundation-base"
+        "/hara"
+        true
+        :foundation/seedgen-common-meta])
+
+^{:refer tool.migrate.policy.foundation.seedgen/plan}
+(fact "delegates the common-meta recipe to tool.migrate and retains provenance"
+  (let [result (policy/plan "(ns tahto.seedgen.common-meta)\n(def value 1)" nil)]
+    [(:operation result)
+     (:changed (first (:edits result)))
+     (:target/path (first (:edits result)))
+     (get-in (first (:edits result)) [:translation/recipe])
+     (empty? (:errors result))
+     (str/includes? (:after (first (:edits result)))
+                     "(ns lang.seedgen.common-meta")])
+    => [:tool.migrate/project true
+        "core/lib/src/lang/seedgen/common_meta.hal"
+        :foundation/seedgen-common-meta
+        true true])
+
+^{:refer tool.migrate.policy.foundation.seedgen/validate-write-plan}
+(fact "exposes the shared safe-write validation boundary"
+  (let [result (policy/validate-write-plan
+                (project/plan {:units []})
+                {})]
+    [(:valid? result) (:write result) (:intents result) (:errors result)])
+  => [true false [] []])
+
+^{:refer tool.migrate.policy.foundation.seedgen/apply-plan}
+(fact "exposes atomic application for an empty plan"
+  (let [result (policy/apply-plan
+                (project/plan {:units []})
+                {:write-atomic (fn [path content] true)})]
+    [(:write result) (:count result) (:results result)])
+  => [true 0 []])
+
+^{:refer tool.migrate.policy.foundation.seedgen/migration}
+(fact "uses the task workflow with deterministic seedgen item ordering"
+  (let [spec (work/work-spec policy/migration)
+        definition (:template/definition spec)
+        input {:units [{:id :later :dependency/rank 2}
+                       {:id :first :dependency/rank 0}]}
+        items ((get-in definition [:item :list]) input {})
+        pending ((get-in definition [:item :run])
+                 {:source/path "src/tahto/seedgen/common_util.clj"
+                  :target/path "core/lib/src/lang/seedgen/common_util.hal"}
+                 {})
+        unhydrated-pilot ((get-in definition [:item :run])
+                          {:migration/status :pilot
+                           :source/path "src/tahto/seedgen/common_meta.clj"
+                           :target/path "core/lib/src/lang/seedgen/common_meta.hal"}
+                          {})
+        migrated ((get-in definition [:item :run])
+                  (first policy/+seedgen-units+)
+                  {})]
+    [(:task/type definition)
+     (map :item/id items)
+     (= policy/migration policy/seedgen-migration)
+     (:status pending)
+     (select-keys (:data pending)
+                  [:source/path :target/path :migration/status :migration/state
+                   :changed :write :diagnostics])
+     (:status unhydrated-pilot)
+     (select-keys (:data unhydrated-pilot)
+                  [:source/path :target/path :migration/status :migration/state
+                   :changed :write :diagnostics])
+     (:status migrated)
+     (select-keys (:data migrated)
+                  [:source/path :target/path :migration/status :migration/state
+                   :changed :write :diagnostics])])
+  => [:tool.migrate/seedgen [:first :later] true :return
+      {:source/path "src/tahto/seedgen/common_util.clj"
+       :target/path "core/lib/src/lang/seedgen/common_util.hal"
+       :migration/status :pending
+       :migration/state :pending
+       :changed false
+       :write false
+       :diagnostics []}
+      :return
+      {:source/path "src/tahto/seedgen/common_meta.clj"
+       :target/path "core/lib/src/lang/seedgen/common_meta.hal"
+       :migration/status :pilot
+       :migration/state :awaiting-source
+       :changed false
+       :write false
+       :diagnostics []}
+      :return
+      {:source/path "src/tahto/seedgen.clj"
+       :target/path "core/lib/src/lang/seedgen.hal"
+       :migration/status :migrated
+       :migration/state :verified
+       :changed false
+       :write false
+       :diagnostics []}])
+
+^{:refer tool.migrate.policy.foundation.seedgen/seedgen-migration}
+(fact "publishes the named seedgen migration value"
+  (= policy/migration policy/seedgen-migration)
+  => true)
+
+(pr-str (run {:namespace "tool.migrate.policy.foundation.seedgen-test"}))

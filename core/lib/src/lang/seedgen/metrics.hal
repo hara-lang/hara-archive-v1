@@ -1,0 +1,310 @@
+(ns lang.seedgen.metrics
+  (:config {:role :internal})
+  (:require [std.foundation.string :as str]
+            [std.fs :as fs]
+            [std.fs.path :as path]
+            [std.lib.time :as time]))
+
+(def +schema-version+ 1)
+(def +history-limit+ 100)
+
+(defn ^{:public true} utc-now
+  "Returns the current time in ISO-8601 UTC format."
+  []
+  (time/format-iso (time/now)))
+
+(defn env
+  [name]
+  (let [value (OS/getenv name)]
+    (when (and value (not (= "" value)))
+      value)))
+
+(defn parse-long-safe
+  [value]
+  (when (and value (not (= "" value)))
+    (try
+      (parse-long value)
+      (catch Throwable _ nil))))
+
+(defn selector-name
+  [selector]
+  (if (sequential? selector)
+    (str/join "," (map str selector))
+    (str selector)))
+
+(defn conclusion
+  [summary errored]
+  (if (pos? (+ (or (:failed summary) 0)
+               (or (:throw summary) 0)
+               (or (:timeout summary) 0)
+               (count errored)))
+    "failure"
+    "success"))
+
+(defn github-context
+  []
+  (let [workflow (or (env "XTBENCH_WORKFLOW")
+                     (env "GITHUB_WORKFLOW")
+                     "local")
+        repository (or (env "GITHUB_REPOSITORY")
+                       "zcaudate-xyz/foundation-base")
+        run-id (env "GITHUB_RUN_ID")]
+    {:workflow-key workflow
+     :workflow-name (or (env "GITHUB_WORKFLOW") workflow)
+     :git {:sha (env "GITHUB_SHA")
+           :ref (env "GITHUB_REF")
+           :event (env "GITHUB_EVENT_NAME")}
+     :run {:id (parse-long-safe run-id)
+           :number (parse-long-safe (env "GITHUB_RUN_NUMBER"))
+           :attempt (or (parse-long-safe (env "GITHUB_RUN_ATTEMPT")) 1)
+           :url (when run-id
+                  (str "https://github.com/" repository "/actions/runs/" run-id))}}))
+
+(defn json-value
+  [value]
+  (cond
+    (map? value)
+    (reduce-kv (fn [out key item]
+                 (assoc out
+                        (cond
+                          (string? key) key
+                          (keyword? key) (name key)
+                          :else (str key))
+                        (json-value item)))
+               {}
+               value)
+
+    (vector? value)
+    (mapv json-value value)
+
+    (list? value)
+    (mapv json-value value)
+
+    (keyword? value)
+    (name value)
+
+    :else
+    value))
+
+(defn keywordize-json
+  [value]
+  (cond
+    (map? value)
+    (reduce-kv (fn [out key item]
+                 (assoc out
+                        (if (keyword? key) key (keyword key))
+                        (keywordize-json item)))
+               {}
+               value)
+
+    (vector? value)
+    (mapv keywordize-json value)
+
+    :else
+    value))
+
+(defn ^{:public true} test-record
+  "Creates a JSON-safe XTBench result record."
+  [selector langs result]
+  (let [generated (or (:generated result) {})
+        summary (:summary result)
+        errored (vec (or (:errored result)
+                         (:errored summary)
+                         []))
+        context (github-context)
+        lang (first langs)]
+    (merge context
+           {:schema-version +schema-version+
+            :kind "xtbench-job"
+            :metrics-status "complete"
+            :suite (selector-name selector)
+            :language (some-> lang name)
+            :status (conclusion summary errored)
+            :generated-count (reduce + 0 (map count (vals generated)))
+            :tests {:passed (or (:passed summary) 0)
+                    :failed (or (:failed summary) 0)
+                    :throw (or (:throw summary) 0)
+                    :timeout (or (:timeout summary) 0)
+                    :skipped (or (:skipped summary) 0)
+                    :errored (count errored)}
+            :failing-count (+ (or (:failed summary) 0)
+                              (or (:throw summary) 0)
+                              (or (:timeout summary) 0)
+                              (count errored))
+            :failure-counts {:failed (or (:failed summary) 0)
+                             :throw (or (:throw summary) 0)
+                             :timeout (or (:timeout summary) 0)
+                             :errored (count errored)}
+            :failures (vec (or (:failures result) []))
+            :spec (when (:spec result)
+                    (select-keys (:spec result)
+                                 [:model-count :test-count :coverage
+                                  :spec-feature-count :spec-implemented
+                                  :spec-abstract :spec-missing]))
+            :recorded-at (utc-now)})))
+
+(defn ^{:public true} write-json!
+  "Writes a JSON record, creating its parent directory."
+  [file-path value]
+  (let [parent (path/parent file-path)]
+    (when parent
+      (fs/create-directory parent {:parents? true :exists-ok? true})))
+  (fs/write-bytes file-path
+                  (str/encode-utf8 (str (Json/write (json-value value)) "\n"))
+                  {:mode :replace})
+  file-path)
+
+(defn ^{:public true} write-test-record!
+  "Writes one seedgen test result to disk."
+  [file-path selector langs result]
+  (write-json! file-path (test-record selector langs result)))
+
+(defn error-message
+  [error]
+  (or (try (ex-message error) (catch Throwable _ nil))
+      (str error)))
+
+(defn ^{:public true} write-error-record!
+  "Writes a failed record when seed generation aborts unexpectedly."
+  [file-path selector langs error]
+  (let [message (error-message error)
+        record (test-record selector
+                            langs
+                            {:generated {}
+                             :summary {:passed 0
+                                       :failed 0
+                                       :throw 0
+                                       :timeout 0
+                                       :errored [message]}
+                             :failing {}
+                             :errored [message]})]
+    (write-json! file-path (assoc record :error {:message message}))))
+
+(defn ^{:public true} read-json
+  "Reads JSON text and returns keyword keys."
+  [file-path]
+  (keywordize-json (Json/read (str/decode-utf8 (fs/read-bytes file-path)))))
+
+(defn ^{:public true} aggregate-records
+  "Combines per-job records into a workflow run record."
+  ([workflow records]
+   (aggregate-records workflow records (github-context)))
+  ([workflow records context]
+   (let [records (vec (sort-by (juxt :suite :language) records))
+         totals (reduce (fn [out record]
+                          (merge-with + out (or (:tests record) {})))
+                        {:passed 0
+                         :failed 0
+                         :throw 0
+                         :timeout 0
+                         :skipped 0
+                         :errored 0}
+                        records)
+         failure-counts (reduce (fn [out record]
+                                  (merge-with +
+                                              out
+                                              (or (:failure-counts record) {})))
+                                {:failed 0
+                                 :throw 0
+                                 :timeout 0
+                                 :errored 0}
+                                records)
+         failed? (or (empty? records)
+                     (some (fn [record]
+                            (not= "success" (:status record)))
+                           records))
+         sample (first records)
+         missing? (empty? records)
+         meaningful (fn [m]
+                      (into {} (remove (comp nil? val) m)))
+         sample-workflow (:workflow-name sample)]
+     {:schema-version +schema-version+
+      :kind "xtbench-run"
+      :metrics-status (if missing? "missing-artifacts" "complete")
+      :workflow-key workflow
+      :workflow-name (or (when (not= "local" sample-workflow)
+                           sample-workflow)
+                         (:workflow-name context)
+                         workflow)
+      :status (if failed? "failure" "success")
+      :tests totals
+      :failure-counts failure-counts
+      :jobs records
+      :error (when missing?
+               {:type "missing-metrics-artifacts"
+                :message "No XTBench job metrics artifacts were published."})
+      :git (if (get-in sample [:git :sha])
+             (merge (:git context) (meaningful (:git sample)))
+             (:git context))
+      :run (if (get-in sample [:run :id])
+             (merge (:run context) (meaningful (:run sample)))
+             (:run context))
+      :recorded-at (utc-now)})))
+
+(defn ^{:public true} history-entry
+  "Returns the compact entry stored in index.json."
+  [file-path record]
+  (let [compact-jobs (mapv (fn [job] (dissoc job :failures))
+                           (or (:jobs record) []))]
+    (select-keys (assoc record :path file-path :jobs compact-jobs)
+                 [:path :workflow-key :workflow-name :status :metrics-status
+                  :tests :failure-counts :jobs :error :git :run :recorded-at])))
+
+(defn ^{:public true} update-index
+  "Adds a workflow record to an index and retains the newest entries."
+  ([index file-path record]
+   (update-index index file-path record +history-limit+))
+  ([index file-path record limit]
+   (let [workflow (:workflow-key record)
+         entry (history-entry file-path record)
+         old (or (get-in (or index {}) [:workflows workflow :runs]) [])
+         runs (->> (cons entry old)
+                   (reduce (fn [out item]
+                             (assoc out
+                                    [(get-in item [:run :number])
+                                     (get-in item [:run :attempt])]
+                                    item))
+                           {})
+                   vals
+                   (sort-by (juxt (fn [item]
+                                    (or (get-in item [:run :number]) -1))
+                                  (fn [item]
+                                    (or (get-in item [:run :attempt]) -1))))
+                   reverse
+                   (take limit)
+                   vec)]
+     (-> (or index {})
+         (assoc :schema-version +schema-version+
+                :kind "xtbench-index"
+                :updated-at (utc-now))
+         (assoc-in [:workflows workflow]
+                   {:latest (first runs)
+                    :runs runs})))))
+
+(defn ^{:public true} merge-directory!
+  "Aggregates JSON job artifacts and updates a metrics directory."
+  [input-dir output-dir workflow]
+  (let [files (fs/select input-dir
+                         (fn [entry]
+                           (and (= :file (:type entry))
+                                (str/ends-with? (:path entry) ".json"))))
+        jobs (mapv (fn [entry] (read-json (:path entry))) files)
+        record (aggregate-records workflow jobs)
+        number (or (get-in record [:run :number]) 0)
+        attempt (or (get-in record [:run :attempt]) 1)
+        relative (str "runs/" workflow "/" number "-" attempt ".json")
+        index-path (path/join output-dir "index.json")
+        index (if (fs/exists? index-path) (read-json index-path) {})
+        updated (update-index index relative record)
+        retained (set (map :path (get-in updated [:workflows workflow :runs])))
+        expired (filter (fn [value]
+                          (not (has? retained value)))
+                        (map :path (get-in index [:workflows workflow :runs])))]
+    (write-json! (path/join output-dir relative) record)
+    (write-json! (path/join output-dir "latest" (str workflow ".json")) record)
+    (doseq [file-path expired]
+      (let [file (path/join output-dir file-path)]
+        (when (fs/exists? file)
+          (fs/delete file {:missing-ok? true}))))
+    (write-json! index-path updated)
+    record))

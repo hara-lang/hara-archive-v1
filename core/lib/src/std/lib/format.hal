@@ -10,6 +10,7 @@
  [cell common/cell]
  [line-cells common/line-cells]
  [value-text common/value-text]
+ [display-width common/display-width]
  [truncate common/truncate]
  [pad common/pad]
  [table-lines table/table-lines]

@@ -55,10 +55,10 @@
       (reduce
        (fn [width row]
          (max width
-              (str/length
+              (common/display-width
                (common/value-text
                 (column-value column row)))))
-       (str/length (common/value-text (:label column)))
+       (common/display-width (common/value-text (:label column)))
        rows)))
 
 (defn- realised-columns

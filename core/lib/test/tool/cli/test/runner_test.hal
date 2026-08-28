@@ -102,4 +102,22 @@
      (str/includes? text "0.00s")
      (str/includes? text "\u001b[")])
   => [true true true false])
+
+(fact "runner fallback rows share display columns"
+  (let [texts
+        (vec
+         (map
+          :message/text
+          (runner/result-messages
+           [{:namespace 'one-test :passed 15 :failed 0 :elapsed 180}
+            {:namespace 'two-test :passed 0 :failed 1
+             :error "broken" :elapsed 20}]
+           {:passed 1 :failed 1}
+           {:no-color true})))]
+    [(str/index-of (first texts) "passed (15)")
+     (str/index-of (second texts) "error (0)")
+     (= (str/index-of (first texts) "passed (15)")
+        (str/index-of (second texts) "error (0)"))
+     (str/index-of (second texts) "broken")]
+    => [18 18 true 29]))
 ]

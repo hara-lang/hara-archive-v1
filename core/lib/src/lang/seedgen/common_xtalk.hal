@@ -1,0 +1,592 @@
+(ns lang.seedgen.common-xtalk
+  (:config {:role :internal})
+  (:require [std.foundation.string :as str]
+            [std.fs :as fs]
+            [std.fs.path :as path]
+            [lang.common.grammar :as grammar]
+            [lang.core.registry :as registry]
+            [lang.seedgen.common-meta :as runtime]))
+
+(def +status-mark+
+  {:implemented "Y"
+   :abstract "A"
+   :missing "."})
+
+(def +special-feature-status+
+  {[:js 'x:return-run] :implemented
+   [:lua 'x:return-run] :implemented
+   [:python 'x:return-run] :implemented
+   [:dart 'x:return-run] :implemented})
+
+(def *inventory-path*
+  "config/xtalk/xtalk_ops.edn")
+
+(def *model-roots*
+  ["src/tahto/model/spec_xtalk"
+   "src/tahto/model/annex/spec_xtalk"])
+
+(def *test-roots*
+  ["test/tahto/model/spec_xtalk"
+   "test/tahto/model/annex/spec_xtalk"])
+
+(def *runtime-langs*
+  runtime/+runtime-langs+)
+
+(defn xtalk-category?
+  [category]
+  (str/starts-with? (name category) "xtalk"))
+
+(defn coerce-symbol
+  [value]
+  (if (symbol? value)
+    value
+    (let [text (str value)]
+      (if (str/starts-with? text "#'")
+        (symbol (str/slice text 2 (count text)))
+        value))))
+
+(defn compact-map
+  [value]
+  (reduce-kv (fn [out key item]
+               (if (nil? item)
+                 out
+                 (assoc out key item)))
+             {}
+             value))
+
+(defn symbol-doc
+  [value]
+  (when (fn? value)
+    (:doc (meta value))))
+
+(defn grammar-entries
+  "Returns xtalk grammar entries enriched with `:op` and `:category`."
+  {:added "4.1"}
+  []
+  (vec
+   (mapcat
+    (fn [category]
+      (->> (seq (grammar/ops-detail category))
+           (filter (fn [pair]
+                     (and (keyword? (first pair))
+                          (map? (second pair)))))
+           (map (fn [pair]
+                  (assoc (second pair)
+                         :op (first pair)
+                         :category category)))))
+    (filter xtalk-category? (grammar/ops-list)))))
+
+(defn list-xtalk-files
+  [root]
+  (if (fs/exists? root)
+    (->> (fs/select root
+                    (fn [entry]
+                      (and (= :file (:type entry))
+                           (str/ends-with? (:path entry) ".clj"))))
+         (map :path)
+         sort
+         vec)
+    []))
+
+(defn parse-lang-file
+  [file-path]
+  (let [file-name (path/file-name file-path)
+        pattern (regexp "(?i)^(fn|com)_([a-z0-9]+)(?:_test)?\\.clj$")]
+    (when (re-find pattern file-name)
+      (let [function-file? (str/starts-with? (str/lower-case file-name) "fn_")
+            kind (if function-file? :fn :com)
+            prefix-length (if function-file? 3 4)
+            body (str/slice file-name prefix-length (- (count file-name) 4))
+            body (if (str/ends-with? body "_test")
+                   (str/slice body 0 (- (count body) 5))
+                   body)]
+        {:kind kind
+         :lang (keyword (str/lower-case body))}))))
+
+(defn collect-lang-files
+  [root roots files-key forms-key]
+  (reduce
+   (fn [out relative-root]
+     (let [scan-root (path/join root relative-root)]
+       (reduce
+        (fn [result file-path]
+          (if-let [parsed (parse-lang-file file-path)]
+            (let [lang (get parsed :lang)
+                  entry (or (get result lang)
+                            {files-key []
+                             forms-key #{}})
+                  files (conj (get entry files-key)
+                              (path/relativize root file-path))
+                  forms (conj (get entry forms-key) (:kind parsed))]
+              (assoc result lang
+                     (assoc entry
+                            files-key (vec (sort files))
+                            forms-key forms)))
+            result))
+        out
+        (list-xtalk-files scan-root))))
+   {}
+   roots))
+
+(defn categories
+  "Returns xtalk categories in declaration order."
+  {:added "4.1"}
+  []
+  (vec (distinct (map :category (grammar-entries)))))
+
+(defn op-map
+  "Returns xtalk grammar entries keyed by op."
+  {:added "4.1"}
+  []
+  (into {} (map (fn [entry] [(:op entry) entry]) (grammar-entries))))
+
+(defn symbols
+  "Returns all x:* symbols used by xtalk grammar entries."
+  {:added "4.1"}
+  []
+  (->> (vals (op-map))
+       (mapcat :symbol)
+       (filter (fn [value]
+                 (and (symbol? value)
+                      (str/starts-with? (name value) "x:"))))
+       distinct
+       sort
+       vec))
+
+(defn installed-languages
+  "Loads all default book namespaces and returns installed languages."
+  {:added "4.1"}
+  []
+  (->> (registry/registry-book-list)
+       (filter (fn [pair] (= :default (second pair))))
+       (map first)
+       distinct
+       sort
+       vec))
+
+(defn parent-languages
+  "Returns installed languages whose loaded book has `:parent :xtalk`."
+  {:added "4.1"}
+  []
+  (->> (installed-languages)
+       (filter (fn [lang]
+                 (= :xtalk
+                    (:parent (registry/registry-book lang :default nil)))))
+       sort
+       vec))
+
+(defn languages
+  "Returns languages to include in xtalk audits."
+  {:added "4.1"}
+  ([] (languages nil))
+  ([langs]
+   (let [installed (set (installed-languages))
+         selected (or langs (parent-languages))]
+     (vec (filter (fn [lang] (has? installed lang)) selected)))))
+
+(defn feature-status
+  "Returns xtalk feature status for a language."
+  {:added "4.1"}
+  [lang feature]
+  (or (get +special-feature-status+ [lang feature])
+      (let [entry (get-in (registry/registry-book lang :default nil)
+                          [:grammar :reserved feature])]
+        (if entry
+          (if (= :abstract (:emit entry)) :abstract :implemented)
+          :missing))))
+
+(defn support
+  "Returns xtalk support data per language and feature."
+  {:added "4.1"}
+  ([] (support {}))
+  ([opts]
+   (let [langs (languages (:langs opts))
+         features (vec (or (:features opts) (symbols)))
+         status (into {}
+                      (map (fn [lang]
+                             [lang
+                              (into {}
+                                    (map (fn [feature]
+                                           [feature (feature-status lang feature)])
+                                         features))])
+                           langs))
+         summary (into {}
+                       (map (fn [pair]
+                              [(first pair)
+                               (merge {:implemented 0
+                                       :abstract 0
+                                       :missing 0}
+                                      (frequencies (vals (second pair))))])
+                            (seq status)))]
+     {:languages langs
+      :features features
+      :status status
+      :summary summary})))
+
+(defn project-root
+  [opts]
+  (let [project (:project opts)]
+    (or (:project/root project)
+        (:root project)
+        (:project/root opts)
+        (:root opts)
+        ".")))
+
+(defn model-inventory
+  "Returns model specification coverage grouped by xtalk language."
+  {:added "4.1"}
+  ([] (model-inventory {}))
+  ([opts]
+   (let [roots (or (:roots opts) *model-roots*)
+         by-lang (collect-lang-files (project-root opts)
+                                     roots
+                                     :model-files
+                                     :model-forms)]
+     (into {}
+           (map (fn [pair]
+                  (let [lang (first pair)
+                        entry (second pair)]
+                    [lang (assoc entry
+                                  :lang lang
+                                  :model-count (count (:model-files entry))
+                                  :model-forms (vec (sort (:model-forms entry))))]))
+                (seq by-lang))))))
+
+(defn test-inventory
+  "Returns xtalk test coverage grouped by language."
+  {:added "4.1"}
+  ([] (test-inventory {}))
+  ([opts]
+   (let [roots (or (:roots opts) *test-roots*)
+         by-lang (collect-lang-files (project-root opts)
+                                     roots
+                                     :test-files
+                                     :test-forms)]
+     (into {}
+           (map (fn [pair]
+                  (let [lang (first pair)
+                        entry (second pair)]
+                    [lang (assoc entry
+                                  :lang lang
+                                  :test-count (count (:test-files entry))
+                                  :test-forms (vec (sort (:test-forms entry))))]))
+                (seq by-lang))))))
+
+(defn runtime-inventory
+  "Returns runtime inventory with installation and spec support status."
+  {:added "4.1"}
+  ([] (runtime-inventory {}))
+  ([opts]
+   (let [langs (->> (or (:langs opts) *runtime-langs*)
+                    (map runtime/normalize-runtime-lang)
+                    distinct
+                    sort
+                    vec)
+         matrix (support {:langs langs})
+         installed (set (installed-languages))]
+     (into {}
+           (map (fn [lang]
+                  (let [config (runtime/runtime-lang-config lang)
+                        summary (or (get-in matrix [:summary lang]) {})]
+                    [lang {:lang lang
+                           :script (:script config)
+                           :dispatch (:dispatch config)
+                           :suffix (:suffix config)
+                           :runtime? true
+                           :runtime-type (runtime/runtime-type lang)
+                           :runtime-check-mode (runtime/runtime-check-mode lang)
+                           :runtime-installed? (has? installed lang)
+                           :runtime-executable? (has? runtime/+runtime-executable-langs+ lang)
+                           :spec-implemented (or (:implemented summary) 0)
+                           :spec-abstract (or (:abstract summary) 0)
+                           :spec-missing (or (:missing summary) 0)}]))
+                langs)))))
+
+(defn spec-inventory
+  "Returns xtalk support matrix summary grouped by language."
+  {:added "4.1"}
+  ([] (spec-inventory {}))
+  ([opts]
+   (let [matrix (support opts)
+         tracked (set (:languages matrix))
+         langs (->> (or (:langs opts) (:languages matrix))
+                    (map keyword)
+                    distinct
+                    sort
+                    vec)
+         feature-count (count (:features matrix))]
+     (into {}
+           (map (fn [lang]
+                  (let [summary (or (get-in matrix [:summary lang]) {})]
+                    [lang {:lang lang
+                           :spec-tracked? (has? tracked lang)
+                           :spec-feature-count feature-count
+                           :spec-implemented (or (:implemented summary) 0)
+                           :spec-abstract (or (:abstract summary) 0)
+                           :spec-missing (or (:missing summary) 0)}]))
+                langs)))))
+
+(defn language-status
+  "Returns unified model/runtime/spec/test status by language."
+  {:added "4.1"}
+  ([] (language-status {}))
+  ([opts]
+   (let [model (model-inventory opts)
+         tests (test-inventory opts)
+         runtime-info (runtime-inventory {:langs (:langs opts)})
+         spec (spec-inventory {:langs (:langs opts)
+                               :features (:features opts)})
+         all-langs (or (:langs opts)
+                       (->> (concat (keys model)
+                                    (keys tests)
+                                    (keys runtime-info)
+                                    (keys spec))
+                            distinct
+                            sort
+                            vec))]
+     (into {}
+           (map (fn [lang]
+                  (let [entry (merge {:lang lang
+                                      :runtime-installed? false
+                                      :runtime-executable? false
+                                      :model-count 0
+                                      :test-count 0
+                                      :spec-implemented 0
+                                      :spec-abstract 0
+                                      :spec-missing 0}
+                                     (get model lang)
+                                     (get tests lang)
+                                     (get runtime-info lang)
+                                     (get spec lang))
+                        model-count (:model-count entry)
+                        test-count (:test-count entry)
+                        coverage (if (pos? model-count)
+                                   (/ test-count model-count)
+                                   0.0)
+                        ready? (and (:runtime-installed? entry)
+                                     (zero? (:spec-missing entry))
+                                     (pos? test-count))]
+                    [lang (assoc entry
+                                  :coverage coverage
+                                  :ready? ready?)]))
+                all-langs)))))
+
+(defn coverage-summary
+  "Summarises language readiness and test/spec coverage."
+  {:added "4.1"}
+  ([] (coverage-summary {}))
+  ([opts]
+   (let [status (vals (language-status opts))]
+     {:languages (count status)
+      :runtime-installed (count (filter :runtime-installed? status))
+      :runtime-executable (count (filter :runtime-executable? status))
+      :ready (count (filter :ready? status))
+      :spec-missing-total (reduce + (map :spec-missing status))
+      :models-total (reduce + (map :model-count status))
+      :tests-total (reduce + (map :test-count status))})))
+
+(defn missing-by-language
+  "Returns non-implemented xtalk features grouped by language."
+  {:added "4.1"}
+  ([] (missing-by-language {}))
+  ([opts]
+   (let [matrix (support opts)]
+     (into {}
+           (map (fn [lang]
+                  [lang
+                   (into {}
+                         (filter (fn [pair]
+                                   (not= :implemented (second pair)))
+                                 (seq (get-in matrix [:status lang]))))])
+                (:languages matrix))))))
+
+(defn missing-by-feature
+  "Returns languages missing or leaving features abstract."
+  {:added "4.1"}
+  ([] (missing-by-feature {}))
+  ([opts]
+   (let [matrix (support opts)]
+     (into {}
+           (map (fn [feature]
+                  [feature
+                   (into {}
+                         (keep (fn [lang]
+                                 (let [state (get-in matrix [:status lang feature])]
+                                   (when (not= :implemented state)
+                                     [lang state])))
+                               (:languages matrix)))])
+                (:features matrix))))))
+
+(defn inventory-path
+  "Returns the path to the xtalk inventory file."
+  {:added "4.1"}
+  ([] (inventory-path {}))
+  ([opts]
+   (path/join (project-root opts)
+              (or (:path opts) *inventory-path*))))
+
+(defn read-inventory
+  "Reads the persisted xtalk inventory EDN file when it exists."
+  {:added "4.1"}
+  [file-path]
+  (when (fs/exists? file-path)
+    (Edn/read (str/decode-utf8 (fs/read-bytes file-path)))))
+
+(defn canonical-symbol-from-entry
+  [entry]
+  (let [candidates (->> (:symbol entry)
+                        (filter symbol?)
+                        (sort-by str)
+                        vec)]
+    (or (first (filter (fn [value]
+                         (str/starts-with? (name value) "x:"))
+                       candidates))
+        (first candidates))))
+
+(defn inventory-entry
+  [entry existing]
+  (let [symbols (->> (:symbol entry)
+                     (filter symbol?)
+                     (sort-by str)
+                     vec)
+        macro (:macro entry)
+        requires (vec (sort-by str (:requires entry)))]
+    (merge
+     (compact-map
+      {:op (:op entry)
+       :category (:category entry)
+       :canonical-symbol (canonical-symbol-from-entry entry)
+       :symbols symbols
+       :class (:class entry)
+       :requires (when (seq requires) requires)
+       :emit (:emit entry)
+       :type (:type entry)
+       :macro (coerce-symbol macro)
+       :raw (coerce-symbol (:raw entry))
+       :doc (or (:doc existing) (symbol-doc macro))
+       :default (:default entry)
+       :cases []})
+     (select-keys (or existing {})
+                  [:status :notes :cases :impls :scaffold :skip?]))))
+
+(defn inventory-entries
+  "Builds xtalk inventory entries from grammar tables, preserving authored data."
+  {:added "4.1"}
+  ([] (inventory-entries {}))
+  ([opts]
+   (let [existing-map (into {}
+                            (map (fn [entry] [(:op entry) entry])
+                                 (or (:existing opts) [])))]
+     (->> (grammar-entries)
+          (map (fn [entry]
+                 (inventory-entry entry (get existing-map (:op entry)))))
+          (sort-by (fn [entry]
+                     (str (name (:category entry))
+                          "|"
+                          (:canonical-symbol entry))))
+          vec))))
+
+(defn render-inventory
+  "Renders xtalk inventory entries as EDN."
+  {:added "4.1"}
+  [entries]
+  (str (pr-str entries) "\n"))
+
+(defn generate-inventory
+  "Generates xtalk operator inventory EDN from grammar tables."
+  {:added "4.1"}
+  ([] (generate-inventory {}))
+  ([opts]
+   (let [out-path (inventory-path opts)
+         existing (read-inventory out-path)
+         entries (inventory-entries {:existing existing})
+         content (render-inventory entries)
+         original (when (fs/exists? out-path)
+                    (str/decode-utf8 (fs/read-bytes out-path)))
+         updated (not= original content)]
+     (when (:write opts)
+       (fs/create-directory (path/parent out-path)
+                            {:parents? true :exists-ok? true})
+       (fs/write-bytes out-path
+                       (str/encode-utf8 content)
+                       {:mode :replace}))
+     {:path out-path
+      :count (count entries)
+      :updated updated
+      :entries entries})))
+
+(defn pad-right
+  [value width]
+  (let [text (str value)]
+    (if (< (count text) width)
+      (str text (apply str (repeat (- width (count text)) " ")))
+      text)))
+
+(defn render-status
+  [status]
+  (get +status-mark+ status "?"))
+
+(defn column-widths
+  [table]
+  (vec
+   (map (fn [index]
+          (reduce max
+                  0
+                  (map (fn [row]
+                         (count (nth row index)))
+                       table)))
+        (range (count (first table))))))
+
+(defn render-summary*
+  [{:keys [languages summary]}]
+  (let [rows (mapv (fn [lang]
+                     [(name lang)
+                      (str (get-in summary [lang :implemented]))
+                      (str (get-in summary [lang :abstract]))
+                      (str (get-in summary [lang :missing]))])
+                   languages)
+        table (vec (cons ["language" "implemented" "abstract" "missing"] rows))
+        widths (column-widths table)]
+    (str/join
+     "\n"
+     (map (fn [row]
+            (str/join "  "
+                      (map (fn [value index]
+                            (pad-right value (nth widths index)))
+                           row
+                           (range (count row)))))
+          table))))
+
+(defn render-matrix*
+  [{:keys [languages features status]}]
+  (let [rows (mapv (fn [feature]
+                     (vec (cons (name feature)
+                                (map (fn [lang]
+                                       (render-status (get-in status [lang feature])))
+                                     languages))))
+                   features)
+        table (vec (cons (vec (cons "feature" (map name languages))) rows))
+        widths (column-widths table)
+        lines (map (fn [row]
+                     (str/join "  "
+                               (map (fn [value index]
+                                     (pad-right value (nth widths index)))
+                                    row
+                                    (range (count row)))))
+                   table)]
+    (str/join
+     "\n"
+     (concat ["Y=implemented  A=abstract-only  .=missing"] lines))))
+
+(defn render-support
+  "Renders a summary or matrix view of xtalk support."
+  {:added "4.1"}
+  ([] (render-support {}))
+  ([opts]
+   (let [matrix (support opts)]
+     (case (or (:view opts) :summary)
+       :matrix (render-matrix* matrix)
+       :summary (render-summary* matrix)
+       (throw (ex :argument {:view (:view opts)
+                             :supported #{:summary :matrix}}
+                    :ex/message "Unsupported xtalk support view"))))))

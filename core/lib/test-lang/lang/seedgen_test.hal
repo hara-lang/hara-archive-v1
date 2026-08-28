@@ -1,37 +1,302 @@
 (ns lang.seedgen-test
   (:use code.test)
-  (:require [lang.seedgen :as seedgen]))
+  (:require [code.manage.unit.template :as template]
+            [lang.seedgen :as subject]))
 
 (def sample-unit
-  {:path "test-lang/xt/example_test.hal"
-   :source "(ns xt.example-test)\n^{:seedgen/root {:all true}}\n(fact \"works\" true => true)"})
+  {:path "/missing.hal"
+   :source "(ns xt.example-test)\n^{:seedgen/root true}\n"
+   :namespace 'xt.example
+   :seedgen/lookup {}})
+
+(def sample-project
+  {:project/root "."
+   :project/source-paths []
+   :project/test-paths []})
+
+^{:refer lang.seedgen/runtime-languages}
+(fact "uses shared runtime metadata"
+  [(count subject/runtime-languages)
+   (get-in subject/runtime-languages [:dart :check-mode])]
+  => [10 :batched])
+
+^{:refer lang.seedgen/runtime-language-aliases}
+(fact "retains runtime aliases"
+  subject/runtime-language-aliases
+  => {:ruby :rb})
+
+^{:refer lang.seedgen/normalize-runtime-language}
+(fact "normalizes language values"
+  [(subject/normalize-runtime-language :ruby)
+   (subject/normalize-runtime-language "lua")
+   (subject/normalize-runtime-language 'python)]
+  => [:rb :lua :python])
+
+^{:refer lang.seedgen/runtime-language-config}
+(fact "returns a runtime configuration"
+  (select-keys (subject/runtime-language-config :rb)
+               [:script :dispatch :runtime :check-mode])
+  => {:script :ruby :dispatch '!.rb :runtime :basic :check-mode :realtime})
+
+^{:refer lang.seedgen/runtime-check-mode}
+(fact "returns configured checking modes"
+  [(subject/runtime-check-mode :js)
+   (subject/runtime-check-mode :dart)
+   (subject/runtime-check-mode :missing)]
+  => [:realtime :batched nil])
+
+^{:refer lang.seedgen/seedgen-root?}
+(fact "recognizes root metadata"
+  [(subject/seedgen-root? ":seedgen/root")
+   (subject/seedgen-root? ":seedgen/skip")]
+  => [true false])
+
+^{:refer lang.seedgen/seedgen-skip?}
+(fact "recognizes skipped metadata"
+  [(subject/seedgen-skip? ":seedgen/skip")
+   (subject/seedgen-skip? "ordinary")]
+  => [true false])
+
+^{:refer lang.seedgen/seedgen-base?}
+(fact "recognizes base metadata"
+  [(subject/seedgen-base? ":seedgen/base")
+   (subject/seedgen-base? "ordinary")]
+  => [true false])
+
+^{:refer lang.seedgen/incomplete}
+(fact "scans only active root units"
+  [(vector? (subject/incomplete {:source ":seedgen/root :refer"}))
+   (subject/incomplete {:source ":seedgen/skip :refer"})]
+  => [true []])
+
+^{:refer lang.seedgen/bench-namespace}
+(fact "builds benchmark namespaces"
+  (subject/bench-namespace :lua 'xt.example-test)
+  => 'xtbench.lua.xt.example-test)
+
+^{:refer lang.seedgen/bench-path}
+(fact "builds benchmark paths"
+  (subject/bench-path "test" :python 'xt.example-test)
+  => "test/xtbench/python/xt/example_test_test.hal")
+
+^{:refer lang.seedgen/bench-plan}
+(fact "normalizes benchmark plan languages"
+  (select-keys (subject/bench-plan sample-unit :ruby "test")
+               [:namespace :language :write])
+  => {:namespace 'xtbench.rb.xt.example
+      :language :rb
+      :write false})
+
+^{:refer lang.seedgen/seedgen-project}
+(fact "normalizes project key variants"
+  (select-keys (subject/seedgen-project
+                {:project {:root "/repo"
+                           :source-paths []
+                           :test-paths []}})
+               [:project/root :project/source-paths :project/test-paths
+                :root :source-paths :test-paths])
+  => {:project/root "/repo" :project/source-paths [] :project/test-paths []
+      :root "/repo" :source-paths [] :test-paths []})
+
+^{:refer lang.seedgen/seedgen-lookup}
+(fact "returns an empty lookup for an empty project catalog"
+  (subject/seedgen-lookup sample-project)
+  => {})
+
+^{:refer lang.seedgen/seedgen-test-units}
+(fact "returns no units for an empty project catalog"
+  (subject/seedgen-test-units sample-project)
+  => [])
+
+^{:refer lang.seedgen/seedgen-unit-source-namespace}
+(fact "normalizes test namespace suffixes"
+  [(subject/seedgen-unit-source-namespace {:namespace 'xt.example-test} sample-project)
+   (subject/seedgen-unit-source-namespace {:namespace 'xt.example} sample-project)]
+  => ['xt.example 'xt.example])
+
+^{:refer lang.seedgen/seedgen-unit-context}
+(fact "builds a normalized delegation context"
+  (let [unit (assoc sample-unit :seedgen/project sample-project
+                    :seedgen/lookup {'xt.example-test "/test.hal"})
+        result (subject/seedgen-unit-context unit {})]
+    [(:namespace result)
+     (get-in result [:project :project/root])
+     (get-in result [:lookup 'xt.example-test])])
+  => ['xt.example "." "/test.hal"])
+
+^{:refer lang.seedgen/seedgen-call}
+(fact "passes normalized context to tasklets"
+  (let [unit (assoc sample-unit :seedgen/project sample-project)]
+    (subject/seedgen-call
+     (fn [namespace options lookup project]
+       [namespace (:lang options) (get lookup 'xt.example-test)
+        (:project/root project)])
+     unit
+     {:lang :lua}))
+  => ['xt.example :lua nil "."])
+
+^{:refer lang.seedgen/scalar-result-ignore?}
+(fact "identifies ignored result shapes"
+  [(subject/scalar-result-ignore? nil)
+   (subject/scalar-result-ignore? {})
+   (subject/scalar-result-ignore? [1])
+   (subject/scalar-result-ignore? 1)]
+  => [true true false false])
+
+^{:refer lang.seedgen/scalar-result-count}
+(fact "counts result collections and scalar values"
+  [(subject/scalar-result-count nil)
+   (subject/scalar-result-count {:a 1 :b 2})
+   (subject/scalar-result-count :ok)]
+  => [0 2 1])
+
+^{:refer lang.seedgen/seedgen-error?}
+(fact "identifies tasklet errors"
+  [(subject/seedgen-error? {:status :error})
+   (subject/seedgen-error? {:status :return})
+   (subject/seedgen-error? nil)]
+  => [true false false])
+
+^{:refer lang.seedgen/seedgen-incomplete-summary}
+(fact "preserves missing test errors"
+  (subject/seedgen-incomplete-summary sample-unit {})
+  => {:status :error :data :no-test-file})
+
+^{:refer lang.seedgen/seedgen-readforms-vars}
+(fact "extracts sorted parsed function keys"
+  (subject/seedgen-readforms-vars {:entries {:b {:z 1} :a {:a 2}}})
+  => [:a :z])
+
+^{:refer lang.seedgen/bench-output-targets}
+(fact "selects output targets by predicate"
+  (subject/bench-output-targets [{:ns 'xtbench.js.a :updated true}
+                                 {:ns 'xtbench.lua.b :updated false}]
+                                (fn [entry] (:updated entry)))
+  => ['xtbench.js.a])
+
+^{:refer lang.seedgen/seedgen-test-namespaces}
+(fact "returns matching test namespace keys"
+  (subject/seedgen-test-namespaces {} sample-project)
+  => [])
+
+^{:refer lang.seedgen/seedgen-root-item}
+(fact "delegates missing root files as errors"
+  (subject/seedgen-root-item sample-unit {})
+  => {:status :error :data :no-test-file})
+
+^{:refer lang.seedgen/seedgen-list-item}
+(fact "delegates missing list files as errors"
+  (subject/seedgen-list-item sample-unit {})
+  => {:status :error :data :no-test-file})
+
+^{:refer lang.seedgen/seedgen-readforms-item}
+(fact "delegates missing readforms files as errors"
+  (subject/seedgen-readforms-item sample-unit {})
+  => {:status :error :data :no-test-file})
+
+^{:refer lang.seedgen/seedgen-benchlist-item}
+(fact "delegates missing benchlist files as errors"
+  (subject/seedgen-benchlist-item sample-unit {})
+  => {:status :error :data :no-test-file})
+
+^{:refer lang.seedgen/seedgen-langremove-item}
+(fact "delegates missing language removal files as errors"
+  (subject/seedgen-langremove-item sample-unit {:lang [:lua]})
+  => {:status :error :data :no-test-file})
+
+^{:refer lang.seedgen/seedgen-langadd-item}
+(fact "delegates missing language addition files as errors"
+  (subject/seedgen-langadd-item sample-unit {:lang [:lua]})
+  => {:status :error :data :no-test-file})
+
+^{:refer lang.seedgen/seedgen-benchadd-item}
+(fact "delegates missing benchmark addition files as errors"
+  (subject/seedgen-benchadd-item sample-unit {:lang [:lua]})
+  => {:status :error :data :no-test-file})
+
+^{:refer lang.seedgen/seedgen-benchremove-item}
+(fact "delegates missing benchmark removal files as errors"
+  (subject/seedgen-benchremove-item sample-unit {:lang [:lua]})
+  => {:status :error :data :no-test-file})
+
+^{:refer lang.seedgen/seedgen-task-input}
+(fact "constructs an empty project-backed task catalog"
+  (let [result (subject/seedgen-task-input
+                {:task/params {:project sample-project}
+                 :task/selector 'xt.example})]
+    [(vector? (:units result)) (:units result) (:selector result)])
+  => [true [] 'xt.example])
+
+^{:refer lang.seedgen/seedgen-task}
+(fact "composes through the code.manage task template"
+  (template/task? (subject/seedgen-task
+                   :demo
+                   (fn [unit options] unit)
+                   'lang.seedgen-test/demo))
+  => true)
+
+^{:refer lang.seedgen/seedgen-root}
+(fact "publishes a template-backed root task"
+  (template/task? subject/seedgen-root)
+  => true)
+
+^{:refer lang.seedgen/seedgen-list}
+(fact "publishes a template-backed list task"
+  (template/task? subject/seedgen-list)
+  => true)
+
+^{:refer lang.seedgen/seedgen-readforms}
+(fact "publishes a template-backed readforms task"
+  (template/task? subject/seedgen-readforms)
+  => true)
+
+^{:refer lang.seedgen/seedgen-benchlist}
+(fact "publishes a template-backed benchlist task"
+  (template/task? subject/seedgen-benchlist)
+  => true)
+
+^{:refer lang.seedgen/seedgen-incomplete}
+(fact "publishes a template-backed incomplete task"
+  (template/task? subject/seedgen-incomplete)
+  => true)
+
+^{:refer lang.seedgen/seedgen-langremove}
+(fact "publishes a template-backed language removal task"
+  (template/task? subject/seedgen-langremove)
+  => true)
+
+^{:refer lang.seedgen/seedgen-langadd}
+(fact "publishes a template-backed language addition task"
+  (template/task? subject/seedgen-langadd)
+  => true)
+
+^{:refer lang.seedgen/seedgen-benchadd}
+(fact "publishes a template-backed benchmark addition task"
+  (template/task? subject/seedgen-benchadd)
+  => true)
+
+^{:refer lang.seedgen/seedgen-benchremove}
+(fact "publishes a template-backed benchmark removal task"
+  (template/task? subject/seedgen-benchremove)
+  => true)
+
+^{:refer lang.seedgen/+tasks+}
+(fact "indexes every public seedgen task"
+  (sort (keys subject/+tasks+))
+  => [:benchadd :benchlist :benchremove :incomplete :langadd :langremove
+      :list :readforms :root])
+
+^{:refer lang.seedgen/seedgen-run-input}
+(fact "normalizes legacy inline run options"
+  (subject/seedgen-run-input {:units [1] :language :lua :test-root "test"})
+  => {:units [1] :options {:language :lua :test-root "test"}})
 
 ^{:refer lang.seedgen/run}
-(fact "seed generation runs through the default host value"
-  (let [result
-        (seedgen/run
-         :root
-         {:units []
-          :language :js
-          :test-root "/tmp/test"})]
+(fact "runs a task through work.flow.task"
+  (let [result (subject/run :list {:units []})]
     [(get-in result [:summary :operation])
-     (get-in result [:summary :count])])
-  => [:root 0])
-
-(fact "seedgen root discovery runs as a std.work batch"
-  (let [result (seedgen/run :list {:units [sample-unit]})]
-    [(:count (:summary result))
-     (:root (:item/value (first (:results result))))])
-  => [1 true])
-
-(fact "bench plans preserve Foundation xtbench layout"
-  (seedgen/bench-path "test-lang" :js "xt.example-test")
-  => "test-lang/xtbench/js/xt/example_test_test.hal")
-
-(fact "runtime language metadata retains Foundation aliases and execution modes"
-  [(seedgen/normalize-runtime-language :ruby)
-   (seedgen/runtime-check-mode "dart")
-   (:script (seedgen/runtime-language-config :rb))]
-  => [:rb :batched :ruby])
+     (get-in result [:summary :count])
+     (get-in result [:summary :errors])])
+  => [:list 0 0])
 
 (pr-str (run {:namespace "lang.seedgen-test"}))

@@ -1,0 +1,344 @@
+(ns lang.seedgen.common-xtalk-test
+  (:use code.test)
+  (:require [std.foundation.string :as str]
+            [lang.seedgen.common-xtalk :as subject]))
+
+(def +canonical-case+
+  {:id :basic
+   :input '(x:get-key obj "a")
+   :expect {:xtalk '(. obj ["a"])}})
+
+^{:refer lang.seedgen.common-xtalk/xtalk-category?}
+(fact "recognizes grammar categories in the xtalk family"
+  [(subject/xtalk-category? :xtalk-common)
+   (subject/xtalk-category? :functional-core)]
+  => [true false])
+
+^{:refer lang.seedgen.common-xtalk/coerce-symbol}
+(fact "converts native var display names into symbols"
+  [(subject/coerce-symbol "#'lang.common.grammar-xtalk/tf-get-key")
+   (subject/coerce-symbol 'x:get-key)
+   (subject/coerce-symbol nil)]
+  => ['lang.common.grammar-xtalk/tf-get-key 'x:get-key nil])
+
+^{:refer lang.seedgen.common-xtalk/compact-map}
+(fact "removes nil values without changing present entries"
+  (subject/compact-map {:keep 1 :drop nil :false false})
+  => {:keep 1 :false false})
+
+^{:refer lang.seedgen.common-xtalk/symbol-doc}
+(fact "returns nil when no native var metadata is available"
+  (subject/symbol-doc nil)
+  => nil)
+
+^{:refer lang.seedgen.common-xtalk/grammar-entries}
+(fact "returns grammar xtalk entries enriched with operation identity"
+  (let [entries (subject/grammar-entries)
+        entry (some (fn [value]
+                      (when (= :x-get-key (:op value)) value))
+                    entries)]
+    [(vector? entries)
+     (:category entry)
+     (:op entry)])
+  => [true :xtalk-common :x-get-key])
+
+^{:refer lang.seedgen.common-xtalk/list-xtalk-files}
+(fact "returns no files for a missing scan root"
+  (subject/list-xtalk-files "/definitely-missing-seedgen-root")
+  => [])
+
+^{:refer lang.seedgen.common-xtalk/parse-lang-file}
+(fact "extracts form kind and language from model filenames"
+  [(subject/parse-lang-file "fn_js.clj")
+   (subject/parse-lang-file "com_PYTHON_test.clj")
+   (subject/parse-lang-file "README.md")]
+  => [{:kind :fn :lang :js}
+      {:kind :com :lang :python}
+      nil])
+
+^{:refer lang.seedgen.common-xtalk/collect-lang-files}
+(fact "returns an empty inventory for missing roots"
+  (subject/collect-lang-files
+   "/definitely-missing-seedgen-root"
+   ["models"]
+   :files
+   :forms)
+  => {})
+
+^{:refer lang.seedgen.common-xtalk/categories}
+(fact "returns xtalk categories in grammar order"
+  (let [value (subject/categories)]
+    [(vector? value)
+     (first value)
+     (every? subject/xtalk-category? value)])
+  => [true :xtalk-common true])
+
+^{:refer lang.seedgen.common-xtalk/op-map}
+(fact "indexes grammar entries by operation keyword"
+  (let [value (subject/op-map)]
+    [(:op (get value :x-get-key))
+     (:category (get value :x-get-key))])
+  => [:x-get-key :xtalk-common])
+
+^{:refer lang.seedgen.common-xtalk/symbols}
+(fact "returns sorted x-prefixed grammar symbols"
+  (let [value (subject/symbols)]
+    [(vector? value)
+     (has? (set value) 'x:get-key)
+     (every? (fn [item]
+               (str/starts-with? (name item) "x:"))
+             value)])
+  => [true true true])
+
+^{:refer lang.seedgen.common-xtalk/installed-languages}
+(fact "lists registered default language books"
+  (let [value (subject/installed-languages)]
+    [(vector? value)
+     (has? (set value) :js)
+     (has? (set value) :python)])
+  => [true true true])
+
+^{:refer lang.seedgen.common-xtalk/parent-languages}
+(fact "selects installed books inheriting from xtalk"
+  (let [value (subject/parent-languages)]
+    [(vector? value)
+     (has? (set value) :js)
+     (has? (set value) :lua)])
+  => [true true true])
+
+^{:refer lang.seedgen.common-xtalk/languages}
+(fact "filters an explicit audit selection to installed languages"
+  (subject/languages [:js :missing-language])
+  => [:js])
+
+^{:refer lang.seedgen.common-xtalk/feature-status}
+(fact "reports special, implemented, and missing feature states"
+  [(subject/feature-status :js 'x:return-run)
+   (subject/feature-status :js 'x:get-key)
+   (subject/feature-status :js 'x:not-a-real-feature)]
+  => [:implemented :implemented :missing])
+
+^{:refer lang.seedgen.common-xtalk/support}
+(fact "builds a language by feature support matrix"
+  (let [value (subject/support {:langs [:dart :js]
+                                :features ['x:return-run 'x:get-key]})]
+    [(set (keys value))
+     (:languages value)
+     (get-in value [:status :dart 'x:return-run])
+     (get-in value [:summary :js :implemented])])
+  => [#{:languages :features :status :summary}
+      [:js]
+      nil
+      2])
+
+^{:refer lang.seedgen.common-xtalk/project-root}
+(fact "accepts both project-shaped and direct root options"
+  [(subject/project-root {:project {:root "/project"}})
+   (subject/project-root {:root "/direct"})]
+  => ["/project" "/direct"])
+
+^{:refer lang.seedgen.common-xtalk/model-inventory}
+(fact "returns model coverage grouped by language"
+  (subject/model-inventory {:root "/definitely-missing-seedgen-root"
+                            :roots ["models"]})
+  => {})
+
+^{:refer lang.seedgen.common-xtalk/test-inventory}
+(fact "returns test coverage grouped by language"
+  (subject/test-inventory {:root "/definitely-missing-seedgen-root"
+                           :roots ["tests"]})
+  => {})
+
+^{:refer lang.seedgen.common-xtalk/runtime-inventory}
+(fact "exposes runtime strategy and executable status"
+  (select-keys (get (subject/runtime-inventory {:langs [:dart :js]}) :dart)
+               [:runtime? :runtime-executable? :runtime-type :runtime-check-mode])
+  => {:runtime? true
+      :runtime-executable? false
+      :runtime-type :twostep
+      :runtime-check-mode :batched}
+
+  (get-in (subject/runtime-inventory {:langs [:php]})
+          [:php :runtime-executable?])
+  => true)
+
+^{:refer lang.seedgen.common-xtalk/spec-inventory}
+(fact "returns spec support summary grouped by selected language"
+  (let [value (subject/spec-inventory {:langs [:js]
+                                       :features ['x:get-key]})]
+    [(vec (keys value))
+     (:lang (get value :js))
+     (:spec-feature-count (get value :js))
+     (:spec-implemented (get value :js))])
+  => [[:js] :js 1 1])
+
+^{:refer lang.seedgen.common-xtalk/language-status}
+(fact "merges runtime, specification, model, and test status"
+  (let [value (get (subject/language-status {:langs [:js]
+                                             :features ['x:get-key]})
+                   :js)]
+    (select-keys value [:lang :runtime-installed? :model-count :test-count
+                        :spec-feature-count :spec-implemented :spec-missing
+                        :ready?]))
+  => {:lang :js
+      :runtime-installed? true
+      :model-count 0
+      :test-count 0
+      :spec-feature-count 1
+      :spec-implemented 1
+      :spec-missing 0
+      :ready? false})
+
+^{:refer lang.seedgen.common-xtalk/coverage-summary}
+(fact "summarizes selected language status counts"
+  (let [value (subject/coverage-summary {:langs [:js]
+                                         :features ['x:get-key]})]
+    (select-keys value [:languages :runtime-installed :runtime-executable
+                        :ready :spec-missing-total :models-total :tests-total]))
+  => {:languages 1
+      :runtime-installed 1
+      :runtime-executable 1
+      :ready 0
+      :spec-missing-total 0
+      :models-total 0
+      :tests-total 0})
+
+^{:refer lang.seedgen.common-xtalk/missing-by-language}
+(fact "groups non-implemented features by language"
+  (let [value (subject/missing-by-language {:langs [:js]
+                                            :features ['x:get-key 'x:not-real]})]
+    [(map? value)
+     (get-in value [:js 'x:not-real])
+     (has? (get value :js) 'x:get-key)])
+  => [true :missing false])
+
+^{:refer lang.seedgen.common-xtalk/missing-by-feature}
+(fact "groups non-implemented languages by feature"
+  (let [value (subject/missing-by-feature {:langs [:js]
+                                           :features ['x:get-key 'x:not-real]})]
+    [(map? value)
+     (get value 'x:get-key)
+     (get-in value ['x:not-real :js])])
+  => [true {} :missing])
+
+^{:refer lang.seedgen.common-xtalk/inventory-path}
+(fact "builds the inventory path from project root and relative path"
+  (subject/inventory-path {:project {:root "."}
+                           :path "target/xtalk.edn"})
+  => "/target/xtalk.edn")
+
+^{:refer lang.seedgen.common-xtalk/read-inventory}
+(fact "returns nil for a missing inventory file"
+  (subject/read-inventory "/definitely-missing-seedgen-root/ops.edn")
+  => nil)
+
+^{:refer lang.seedgen.common-xtalk/canonical-symbol-from-entry}
+(fact "prefers an x-prefixed symbol as the canonical symbol"
+  (subject/canonical-symbol-from-entry {:symbol #{'z:item 'x:item 'a:item}})
+  => 'x:item)
+
+^{:refer lang.seedgen.common-xtalk/inventory-entry}
+(fact "normalizes one grammar entry while retaining authored fields"
+  (select-keys
+   (subject/inventory-entry
+    {:op :x-get-key
+     :category :xtalk-common
+     :symbol #{'x:get-key}
+     :macro "#'lang.common.grammar-xtalk/tf-get-key"
+     :emit :macro}
+    {:status :review
+     :cases [+canonical-case+]})
+   [:op :category :canonical-symbol :macro :emit :status :cases])
+  => {:op :x-get-key
+      :category :xtalk-common
+      :canonical-symbol 'x:get-key
+      :macro 'lang.common.grammar-xtalk/tf-get-key
+      :emit :macro
+      :status :review
+      :cases [+canonical-case+]})
+
+^{:refer lang.seedgen.common-xtalk/inventory-entries}
+(fact "preserves authored canonical cases when regenerating inventory"
+  (let [entry (some (fn [value]
+                      (when (= :x-get-key (:op value)) value))
+                    (subject/inventory-entries
+                     {:existing [{:op :x-get-key
+                                  :doc "get-key transform"
+                                  :cases [+canonical-case+]}]}))]
+    (select-keys entry [:doc :cases]))
+  => {:doc "get-key transform"
+      :cases [+canonical-case+]})
+
+^{:refer lang.seedgen.common-xtalk/render-inventory}
+(fact "renders inventory entries as newline-terminated EDN"
+  (subject/render-inventory [{:op :x}])
+  => "[{:op :x}]\n")
+
+^{:refer lang.seedgen.common-xtalk/generate-inventory}
+(fact "generates an inventory without writing when requested"
+  (let [value (subject/generate-inventory {:root "/definitely-missing-seedgen-root"
+                                           :write false})]
+    [(map? value)
+     (:path value)
+     (pos? (:count value))
+     (string? (:path value))])
+  => [true
+      "/definitely-missing-seedgen-root/config/xtalk/xtalk_ops.edn"
+      true
+      true])
+
+^{:refer lang.seedgen.common-xtalk/pad-right}
+(fact "pads short display cells to a fixed width"
+  [(subject/pad-right "x" 3)
+   (subject/pad-right "long" 3)]
+  => ["x  " "long"])
+
+^{:refer lang.seedgen.common-xtalk/render-status}
+(fact "renders support states using the matrix marks"
+  [(subject/render-status :implemented)
+   (subject/render-status :abstract)
+   (subject/render-status :missing)
+   (subject/render-status :unknown)]
+  => ["Y" "A" "." "?"])
+
+^{:refer lang.seedgen.common-xtalk/column-widths}
+(fact "computes the maximum display width for each column"
+  (subject/column-widths [["a" "long"] ["abcd" "x"]])
+  => [4 4])
+
+^{:refer lang.seedgen.common-xtalk/render-summary*}
+(fact "renders a padded support summary table"
+  (let [value (subject/render-summary*
+               {:languages [:js]
+                :summary {:js {:implemented 2 :abstract 1 :missing 0}}})]
+    [(string? value)
+     (str/includes? value "language")
+     (str/includes? value "implemented")
+     (str/includes? value "js")])
+  => [true true true true])
+
+^{:refer lang.seedgen.common-xtalk/render-matrix*}
+(fact "renders a feature matrix with status legend"
+  (let [value (subject/render-matrix*
+               {:languages [:js]
+                :features ['x:get-key]
+                :status {:js {'x:get-key :implemented}}})]
+    [(str/includes? value "Y=implemented")
+     (str/includes? value "x:get-key")
+     (str/includes? value "Y")])
+  => [true true true])
+
+^{:refer lang.seedgen.common-xtalk/render-support}
+(fact "renders summary and matrix views and rejects unknown views"
+  [(string? (subject/render-support {:langs [:js]
+                                     :features ['x:get-key]}))
+   (string? (subject/render-support {:langs [:js]
+                                     :features ['x:get-key]
+                                     :view :matrix}))
+   (try
+     (subject/render-support {:view :unknown})
+     false
+     (catch Throwable _ true))]
+  => [true true true])
+
+(pr-str (run {:namespace "lang.seedgen.common-xtalk-test"}))

@@ -1,0 +1,240 @@
+(ns lang.seedgen.form-bench-test
+  (:use code.test)
+  (:require [std.foundation.string :as str]
+            [std.fs :as fs]
+            [std.fs.path :as path]
+            [lang.seedgen.form-bench :as subject]))
+
+(def +sample-source+
+  (str "(ns xt.sample.multi-test\n"
+       "  (:use code.test)\n"
+       "  (:require [tahto.core :as l]))\n\n"
+       "^{:seedgen/root {:all true}}\n"
+       "(l/script- :js {:runtime :basic})\n\n"
+       "(l/script- :python {:runtime :basic})\n\n"
+       "^{:refer xt.lang.spec-base/example :added \"4.1\"}\n"
+       "(fact \"runtime branches\"\n"
+       "  (!.js (+ 1 2))\n"
+       "  => 3\n\n"
+       "  (!.python (+ 1 2))\n"
+       "  => 3)\n"))
+
+^{:refer lang.seedgen.form-bench/bench-rename-part->segments}
+(fact "expands rename parts for runtime namespaces"
+  [(subject/bench-rename-part->segments :lang :python)
+   (subject/bench-rename-part->segments [:prefix :lang 'tail] :lua)
+   (subject/bench-rename-part->segments 7 :js)]
+  => [["python"] ["prefix" "lua" "tail"] ["7"]])
+
+^{:refer lang.seedgen.form-bench/bench-requested-runtime-lang}
+(fact "normalizes runtime aliases before bench resolution"
+  [(subject/bench-requested-runtime-lang :ruby)
+   (subject/bench-requested-runtime-lang "python")]
+  => [:ruby :python])
+
+^{:refer lang.seedgen.form-bench/bench-display-lang}
+(fact "returns the display family for a requested runtime"
+  [(subject/bench-display-lang :python)
+   (subject/bench-display-lang :ruby)]
+  => [:python :ruby])
+
+^{:refer lang.seedgen.form-bench/bench-resolve-runtime-lang}
+(fact "chooses an available concrete runtime and falls back to the request"
+  [(subject/bench-resolve-runtime-lang :lua [:js :lua])
+   (subject/bench-resolve-runtime-lang :dart [:js :lua])]
+  => [:lua :dart])
+
+^{:refer lang.seedgen.form-bench/bench-target-ns}
+(fact "rewrites seed namespaces into bench namespaces"
+  [(subject/bench-target-ns 'xt.sample.multi-test :python nil)
+   (subject/bench-target-ns 'sample.multi-test :js '{sample [samplebench :lang]})]
+  => ['xtbench.python.sample.multi-test
+      'samplebench.js.multi-test])
+
+^{:refer lang.seedgen.form-bench/bench-project}
+(fact "normalizes legacy project keys for native project APIs"
+  (select-keys (subject/bench-project {:root "/tmp/project"
+                                       :test-paths ["test-lang"]})
+               [:root :test-paths :project/root :project/test-paths])
+  => {:root "/tmp/project"
+      :test-paths ["test-lang"]
+      :project/root "/tmp/project"
+      :project/test-paths ["test-lang"]})
+
+^{:refer lang.seedgen.form-bench/bench-target-path}
+(fact "places a bench namespace under the source test root"
+  (subject/bench-target-path
+   (subject/bench-project {:root "/tmp/project"
+                           :test-paths ["test-lang"]})
+   "/tmp/project/test-lang/xt/sample_test.clj"
+   'xtbench.python.sample-test)
+  => "/tmp/project/test-lang/xtbench/python/sample_test.clj")
+
+^{:refer lang.seedgen.form-bench/bench-resolve-targets}
+(fact "resolves requested targets from the seedgen root and project layout"
+  (let [root (fs/temp-directory "/" {:prefix "seedgen-bench-resolve-"})
+        file (path/join root "test" "multi_test.clj")
+        project {:root root :test-paths ["test"]}
+        lookup {'xt.sample.multi-test file}]
+    (try
+      (fs/create-directory (path/parent file)
+                           {:parents? true :exists-ok? true})
+      (fs/write-bytes file (str/encode-utf8 +sample-source+))
+      (let [value (subject/bench-resolve-targets
+                   'xt.sample.multi-test
+                   {:lang [:python]}
+                   lookup
+                   project)]
+        [(map? value)
+         (:target-langs value)
+         (-> value :targets first :ns)
+         (str/ends-with? (-> value :targets first :path)
+                         "/test/xtbench/python/sample/multi_test.clj")])
+      (finally
+        (fs/delete root {:recursive? true :missing-ok? true}))))
+  => [true
+      [:python]
+      'xtbench.python.sample.multi-test
+      true])
+
+^{:refer lang.seedgen.form-bench/bench-render-targets}
+(fact "renders each resolved target through the infile renderer"
+  (let [root (fs/temp-directory "/" {:prefix "seedgen-bench-render-"})
+        file (path/join root "test" "multi_test.clj")
+        project {:root root :test-paths ["test"]}
+        lookup {'xt.sample.multi-test file}]
+    (try
+      (fs/create-directory (path/parent file)
+                           {:parents? true :exists-ok? true})
+      (fs/write-bytes file (str/encode-utf8 +sample-source+))
+      (let [resolved (subject/bench-resolve-targets
+                      'xt.sample.multi-test {} lookup project)
+            target (first (subject/bench-render-targets
+                           (:output resolved)
+                           file
+                           (:targets resolved)))]
+        [(string? (:content target))
+         (str/includes? (:content target) "!.js")
+         (:ns target)])
+      (finally
+        (fs/delete root {:recursive? true :missing-ok? true}))))
+  => [true true 'xtbench.js.sample.multi-test])
+
+^{:refer lang.seedgen.form-bench/bench-output-functions}
+(fact "returns sorted fact function symbols from parsed output"
+  (subject/bench-output-functions
+   {:entries {'demo {'z-value {} 'a-value {}}}})
+  => ['a-value 'z-value])
+
+^{:refer lang.seedgen.form-bench/bench-error-state}
+(fact "identifies seedgen resolution error envelopes"
+  [(subject/bench-error-state {:status :error})
+   (subject/bench-error-state {:status :ok})]
+  => [true false])
+
+^{:refer lang.seedgen.form-bench/bench-relative-path}
+(fact "returns a project-relative output path"
+  (subject/bench-relative-path
+   (subject/bench-project {:root "/tmp/project"})
+   "/tmp/project/test/xtbench/js/sample_test.clj")
+  => "test/xtbench/js/sample_test.clj")
+
+^{:refer lang.seedgen.form-bench/bench-transform-output}
+(fact "writes a rendered target and reports its canonical edit status"
+  (let [root (fs/temp-directory "/" {:prefix "seedgen-bench-transform-"})
+        file (path/join root "test" "target.clj")
+        project (subject/bench-project {:root root :test-paths ["test"]})
+        target {:path file}]
+    (try
+      (let [value (subject/bench-transform-output
+                   project target "(ns demo.target)\n" true)]
+        [(select-keys value [:path :updated :verified])
+         (str/includes? (str/decode-utf8 (fs/read-bytes file))
+                        "demo.target")])
+      (finally
+        (fs/delete root {:recursive? true :missing-ok? true}))))
+  => [{:path "test/target.clj" :updated true :verified true}
+      true])
+
+^{:refer lang.seedgen.form-bench/seedgen-benchlist}
+(fact "lists target bench namespaces and returns missing-file errors"
+  (let [root (fs/temp-directory "/" {:prefix "seedgen-bench-list-"})
+        file (path/join root "test" "multi_test.clj")
+        project {:root root :test-paths ["test"]}
+        lookup {'xt.sample.multi-test file}]
+    (try
+      (fs/create-directory (path/parent file)
+                           {:parents? true :exists-ok? true})
+      (fs/write-bytes file (str/encode-utf8 +sample-source+))
+      [(subject/seedgen-benchlist 'xt.sample.multi-test
+                                  {:lang [:python :js]}
+                                  lookup
+                                  project)
+       (subject/seedgen-benchlist 'sample.missing-test {} lookup project)]
+      (finally
+        (fs/delete root {:recursive? true :missing-ok? true}))))
+  => [['xtbench.python.sample.multi-test
+       'xtbench.js.sample.multi-test]
+      {:status :error :data :no-test-file}])
+
+^{:refer lang.seedgen.form-bench/seedgen-benchadd}
+(fact "creates a bench target without mutating the canonical seed"
+  (let [root (fs/temp-directory "/" {:prefix "seedgen-bench-add-"})
+        file (path/join root "test" "multi_test.clj")
+        project {:root root :test-paths ["test"]}
+        lookup {'xt.sample.multi-test file}]
+    (try
+      (fs/create-directory (path/parent file)
+                           {:parents? true :exists-ok? true})
+      (fs/write-bytes file (str/encode-utf8 +sample-source+))
+      (let [value (subject/seedgen-benchadd
+                   'xt.sample.multi-test
+                   {:lang [:python] :write true}
+                   lookup
+                   project)
+            target (first (:outputs value))
+            target-path (path/join root (:path target))
+            content (str/decode-utf8 (fs/read-bytes target-path))]
+        [(select-keys target [:lang :ns :path :updated :verified])
+         (= +sample-source+
+            (str/decode-utf8 (fs/read-bytes file)))
+         (str/includes? content "(ns xtbench.python.sample.multi-test")
+         (str/includes? content "(!.python (+ 1 2))")
+         (not (str/includes? content "!.js"))])
+      (finally
+        (fs/delete root {:recursive? true :missing-ok? true}))))
+  => [{:lang :python
+       :ns 'xtbench.python.sample.multi-test
+       :path "test/xtbench/python/sample/multi_test.clj"
+       :updated true
+       :verified true}
+      true true true true])
+
+^{:refer lang.seedgen.form-bench/seedgen-benchremove}
+(fact "removes a selected bench target while leaving the seed source intact"
+  (let [root (fs/temp-directory "/" {:prefix "seedgen-bench-remove-"})
+        file (path/join root "test" "multi_test.clj")
+        project {:root root :test-paths ["test"]}
+        lookup {'xt.sample.multi-test file}]
+    (try
+      (fs/create-directory (path/parent file)
+                           {:parents? true :exists-ok? true})
+      (fs/write-bytes file (str/encode-utf8 +sample-source+))
+      (subject/seedgen-benchadd
+       'xt.sample.multi-test
+       {:lang [:python] :write true}
+       lookup
+       project)
+      (let [value (subject/seedgen-benchremove
+                   'xt.sample.multi-test
+                   {:lang [:python] :write true}
+                   lookup
+                   project)
+            target (first (:outputs value))]
+        [(select-keys target [:lang :updated :exists])
+         (fs/exists? (path/join root (:path target)))])
+      (finally
+        (fs/delete root {:recursive? true :missing-ok? true}))))
+  => [{:lang :python :updated true :exists true} false])
+
+(pr-str (run {:namespace "lang.seedgen.form-bench-test"}))

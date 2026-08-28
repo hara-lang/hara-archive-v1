@@ -5,6 +5,36 @@
 (def +up+ "\u001b[1A")
 (def +clearline+ "\u001b[2K")
 
+;; These ranges provide the terminal-cell approximation used by the portable
+;; formatter. Hara string indexes count Unicode characters, not display cells.
+(def +zero-width-ranges+
+  [[\u0000 \u001f]
+   [\u007f \u009f]
+   [\u0300 \u036f]
+   [\u200b \u200f]
+   [\u202a \u202e]
+   [\u2060 \u206f]
+   [\u20d0 \u20ff]
+   [\ufe00 \ufe0f]
+   [\ufe20 \ufe2f]])
+
+(def +wide-width-ranges+
+  [[\u1100 \u115f]
+   [\u231a \u231b]
+   [\u2329 \u232a]
+   [\u2e80 \u303e]
+   [\u3040 \u3247]
+   [\u3250 \u4dbf]
+   [\u4e00 \ua4c6]
+   [\ua960 \ua97c]
+   [\uac00 \ud7a3]
+   [\uf900 \ufaff]
+   [\ufe10 \ufe19]
+   [\ufe30 \ufe6b]
+   [\uff01 \uff60]
+   [\uffe0 \uffe6]
+   [(str/char-at "🌀" 0) (str/char-at "🫿" 0)]])
+
 (defn ^{:public true} line
   "Creates one structured output line with an optional semantic role."
   ([text]
@@ -20,6 +50,39 @@
     (nil? value) ""
     (string? value) value
     :else (pr-str value)))
+
+(defn character-width
+  [character]
+  (cond
+    (reduce
+     (fn [found pair]
+       (or found
+           (and (<= (first pair) character)
+                (<= character (second pair)))))
+     false
+     +zero-width-ranges+)
+    0
+    (reduce
+     (fn [found pair]
+       (or found
+           (and (<= (first pair) character)
+                (<= character (second pair)))))
+     false
+     +wide-width-ranges+)
+    2
+    :else 1))
+
+(defn ^{:public true} display-width
+  "Returns the approximate terminal-cell width of a value."
+  [value]
+  (let [text (value-text value)]
+    (loop [index 0
+           width 0]
+      (if (= index (str/length text))
+        width
+        (recur
+         (inc index)
+         (+ width (character-width (str/char-at text index))))))))
 
 (defn ^{:public true} cell
   "Creates a portable report cell with an optional presentation role."
@@ -40,19 +103,31 @@
 (defn truncate
   "Truncates display text to width, using an ellipsis when it fits."
   [text width]
-  (let [text (value-text text)]
+  (let [text (value-text text)
+        prefix
+        (fn [limit]
+          (loop [index 0
+                 used 0]
+            (if (or (= index (str/length text))
+                    (> (+ used
+                          (character-width (str/char-at text index)))
+                       limit))
+              (str/slice text 0 index)
+              (recur
+               (inc index)
+               (+ used (character-width (str/char-at text index)))))))]
     (if (or (nil? width)
-            (<= (str/length text) width))
+            (<= (display-width text) width))
       text
       (if (< width 4)
-        (str/slice text 0 width)
-        (str (str/slice text 0 (- width 3)) "...")))))
+        (prefix width)
+        (str (prefix (- width 3)) "...")))))
 
 (defn pad
   "Truncates and pads text to width using left, right, or center alignment."
   [text width align]
   (let [text (truncate text width)
-        missing (max 0 (- width (str/length text)))]
+        missing (max 0 (- width (display-width text)))]
     (case align
       :right
       (str (str/repeat " " missing) text)
