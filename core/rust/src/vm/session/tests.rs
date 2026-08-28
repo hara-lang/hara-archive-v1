@@ -27,7 +27,7 @@ fn live_session_runs_real_bytecode_and_emits_all_three_contracts() {
     let metrics = json(&session.metrics());
     assert!(metrics.contains("\"schema\":\"hal.bytecode-metrics/0-alpha\""));
     assert!(metrics.contains("\"instructions\":"));
-    assert!(metrics.contains("\"primitive\":"));
+    assert!(metrics.contains("\"intrinsic-call\":"));
 
     let events = json(&session.events());
     assert!(events.contains("\"schema\":\"hal.bytecode-events/0-alpha\""));
