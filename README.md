@@ -195,11 +195,9 @@ reference only; it is not the current language guide.
 ## Cloning this workspace
 
 This repository no longer uses Git submodules. Some build and test targets expect
-sibling repositories next to this one:
-=======
-Hara itself lives in `hara-lang/hara`. The Truffle build and several
-conformance suites also expect `hara-specs-registry` beside it.
->>>>>>> d48d55718af8942ef7db034dbea17ac72607fc7a
+sibling repositories next to this one. Hara itself lives in `hara-lang/hara`.
+The Truffle build and several conformance suites also expect
+`hara-specs-registry` beside it.
 
 ```shell
 git clone https://github.com/hara-lang/hara.git

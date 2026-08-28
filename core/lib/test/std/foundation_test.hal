@@ -377,7 +377,17 @@
    :expected '(if true (do 1) nil)}])
 
 ^{:refer std.foundation/ns-alias-state}
-(Test/run [])
+(Test/run
+ [{:name "reports the lifecycle state of a resolver-visible global alias"
+   :test (fn []
+           (do
+             (require [std.foundation.string])
+             (let [state (std.foundation/ns-alias-state 'str)]
+               [(get state :alias)
+                (get state :target)
+                (or (= :loaded (get state :state))
+                    (= :unloaded (get state :state)))])))
+   :expected ['str 'std.foundation.string true]}])
 
 ^{:refer std.foundation/intern-var}
 (Test/run
@@ -409,6 +419,12 @@
 (Test/run
  [{:name "evaluates a form value"
    :test (fn [] (std.foundation/eval '(+ 19 23)))
+   :expected 42}
+  {:name "resolves caller namespace definitions inside a function"
+   :test (fn []
+           (do
+             (def eval-visible-value 42)
+             ((fn [] (std.foundation/eval 'eval-visible-value)))))
    :expected 42}])
 
 ^{:refer std.foundation/defonce}
@@ -816,6 +832,14 @@
                  (std.foundation/pair? (std.foundation/vector 1 2))
                  (std.foundation/pair? '(1 2))])
    :expected [true true false false]}])
+
+^{:refer std.foundation/map-entry?}
+(Test/run
+ [{:name "recognizes map entry pairs"
+   :test (fn [] [(std.foundation/map-entry? (first {:a 1}))
+                 (std.foundation/map-entry? (std.foundation/tuple :a 1))
+                 (std.foundation/map-entry? (std.foundation/vector :a 1))])
+   :expected [true true false]}])
 
 ^{:refer std.foundation/set?}
 (Test/run

@@ -1249,25 +1249,25 @@ public final class HaraNodes {
     @Override
     public Object execute(VirtualFrame frame) {
       Object error = value.execute(frame);
+      if (error instanceof IExInfo) {
+        if (error instanceof Ex.Info info) {
+          com.oracle.truffle.api.source.SourceSection source = getSourceSection();
+          info.recordThrow(
+              new Ex.Info.Site(
+                  HaraLanguage.currentContext(this).currentNamespaceName(),
+                  source == null ? null : source.getSource().getName(),
+                  source == null ? 0 : source.getStartLine(),
+                  source == null ? 0 : source.getStartColumn()));
+        }
+        throw new ThrownValue(error);
+      }
       if (error instanceof RuntimeException runtime) {
         throw runtime;
       }
       if (error instanceof Error fatal) {
         throw fatal;
       }
-      if (!(error instanceof IExInfo)) {
-        throw new HaraException("throw expects an Exception value created by ex", this);
-      }
-      if (error instanceof Ex.Info info) {
-        com.oracle.truffle.api.source.SourceSection source = getSourceSection();
-        info.recordThrow(
-            new Ex.Info.Site(
-                HaraLanguage.currentContext(this).currentNamespaceName(),
-                source == null ? null : source.getSource().getName(),
-                source == null ? 0 : source.getStartLine(),
-                source == null ? 0 : source.getStartColumn()));
-      }
-      throw new ThrownValue(error);
+      throw new HaraException("throw expects an Exception value created by ex", this);
     }
   }
 

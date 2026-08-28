@@ -152,7 +152,7 @@ public class HaraGeneratedLibrariesTest {
                   HaraLanguage.ID,
                   "[(coll? {}) (counted? []) (pair? (first {:a 1}))]")
               .toString());
-      assertErrorContains(context, "(map-entry? (first {:a 1}))", "Unbound symbol");
+      assertTrue(context.eval(HaraLanguage.ID, "(map-entry? (first {:a 1}))").asBoolean());
       assertEquals(
           ":std.native.Tuple",
           context.eval(HaraLanguage.ID, "(type (first {:a 1}))").toString());

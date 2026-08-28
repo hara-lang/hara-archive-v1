@@ -177,6 +177,10 @@
   pair? "Returns true when value is a key/value pair." [value]
   (and (tuple? value) (= 2 (count value))))
 
+(defn ^{:schema [:fn [:any] :bool]}
+  map-entry? "Returns true when value is a map entry pair." [value]
+  (pair? value))
+
 (defn ^{:inline true :schema [:fn [& :any] :any]}
   tuple "Creates a fixed-width tuple from values." [& values] (apply Base/tuple values))
 

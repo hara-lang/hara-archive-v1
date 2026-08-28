@@ -686,6 +686,10 @@ pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, Stri
                     };
                     let protocol = match eval(&fs[2], env)? {
                         Value::Protocol(protocol) => protocol,
+                        Value::Var(var) => match var.deref_value() {
+                            Value::Protocol(protocol) => protocol,
+                            _ => return Err("extend-type expects a protocol".into()),
+                        },
                         _ => return Err("extend-type expects a protocol".into()),
                     };
                     let mut seen = HashSet::new();
