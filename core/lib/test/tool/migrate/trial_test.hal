@@ -1,0 +1,250 @@
+(ns tool.migrate.trial-test
+  (:use code.test)
+  (:require [std.fs :as fs]
+            [std.fs.path :as path]
+            [std.foundation.string :as string]
+            [tool.migrate.trial :as trial]))
+
+^{:refer tool.migrate.trial/+external-libraries+}
+(fact "the external trial catalog pins both read-only migration targets"
+  [(mapv :id trial/+external-libraries+)
+   (mapv :revision trial/+external-libraries+)
+   (mapv :repository trial/+external-libraries+)]
+  => [[:compojure :leipzig]
+      ["8a4758d28e8fcd28fa7610dca6e2908d039e6a4f"
+       "74855cb28c47e360819bcb847ad7ac32ea578e4a"]
+      ["https://github.com/weavejester/compojure"
+       "https://github.com/ctford/leipzig"]])
+
+^{:refer tool.migrate.trial/source-file?}
+(fact "source-file selects regular clj and cljc files only"
+  [(trial/source-file? {:type :file :path "demo.clj"})
+   (trial/source-file? {:type :file :path "demo.cljc"})
+   (trial/source-file? {:type :file :path "demo.cljs"})
+   (trial/source-file? {:type :directory :path "demo.clj"})]
+  => [true true false false])
+
+^{:refer tool.migrate.trial/source-sha256}
+(fact "source checksums use the shared sha256 wire form"
+  (trial/source-sha256 "abc")
+  => "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+
+^{:refer tool.migrate.trial/trial-target-path}
+(fact "trial targets preserve source-relative names and change the suffix"
+  (trial/trial-target-path "/tmp/hara-trial" "nested/demo.cljc")
+  => "/tmp/hara-trial/nested/demo.hal")
+
+^{:refer tool.migrate.trial/trial-root}
+(fact "trial-root resolves optional relative roots without changing an absolute checkout"
+  [(trial/trial-root "/tmp/library" nil)
+   (trial/trial-root "/tmp/library" ".")
+   (trial/trial-root "/tmp/library" "src/cljc")]
+  => ["/tmp/library" "/tmp/library" "/tmp/library/src/cljc"])
+
+^{:refer tool.migrate.trial/trial-diagnostic}
+(fact "trial diagnostics retain library identity and revision"
+  (select-keys
+   (trial/trial-diagnostic
+    {:id :demo :revision "revision-1"}
+    "missing source")
+   [:type :level :library/id :library/revision :message])
+  => {:type :tool.migrate/trial
+      :level :warning
+      :library/id :demo
+      :library/revision "revision-1"
+      :message "missing source"})
+
+^{:refer tool.migrate.trial/trial-error-diagnostic}
+(fact "translation errors identify the failing external source"
+  (select-keys
+   (trial/trial-error-diagnostic
+    {:id :demo :revision "revision-1"}
+    {:source/path "/tmp/demo.clj" :target/path "/tmp/demo.hal"}
+    "Unsupported hash dispatch: u")
+   [:type :level :library/id :library/revision :source/path :target/path
+    :reason :message])
+  => {:type :tool.migrate/unsupported
+      :level :error
+      :library/id :demo
+      :library/revision "revision-1"
+      :source/path "/tmp/demo.clj"
+      :target/path "/tmp/demo.hal"
+      :reason :translation-error
+      :message "Unable to migrate /tmp/demo.clj: Unsupported hash dispatch: u"})
+
+^{:refer tool.migrate.trial/trial-error-result}
+(fact "translation errors retain source provenance in a failed item"
+  (let [unit {:source/path "/tmp/demo.clj"
+              :target/path "/tmp/demo.hal"
+              :source/sha256 "sha256:source"}
+        diagnostic {:type :tool.migrate/unsupported :level :error}]
+    (select-keys
+     (trial/trial-error-result unit diagnostic)
+     [:path :source/path :target/path :source/sha256 :changed :mode
+      :rules/matched :rules/applied :diagnostics])
+    => ["/tmp/demo.hal" "/tmp/demo.clj" "/tmp/demo.hal"
+        "sha256:source" false :review [] []
+        [{:type :tool.migrate/unsupported :level :error}]]))
+
+^{:refer tool.migrate.trial/plan-unit}
+(fact "plan-unit isolates an unsupported tagged literal"
+  (let [unit {:source/path "/tmp/demo.clj"
+              :source/root "/tmp"
+              :source/text "(ns demo.core)\n(def value #uuid \"value\")\n"
+              :source/sha256 "sha256:source"
+              :target/path "/tmp/demo.hal"
+              :target/root "/tmp"}
+        plan (trial/plan-unit {:id :demo :revision "revision-1"} unit {})]
+    [(get-in plan [:summary :errors])
+     (get-in plan [:summary :unsupported])
+     (count (:items plan))
+     (get-in plan [:items 0 :result :changed])
+     (get-in plan [:items 0 :result :reason])
+     (get-in plan [:items 0 :result :diagnostics 0 :type])]
+    => [1 1 1 false nil :tool.migrate/unsupported]))
+
+^{:refer tool.migrate.trial/trial-plan}
+(fact "trial-plan keeps successful and failed units in one read-only plan"
+  (let [unit {:source/path "/tmp/demo.clj"
+              :source/root "/tmp"
+              :source/text "(ns demo.core)\n(def value #uuid \"value\")\n"
+              :source/sha256 "sha256:source"
+              :target/path "/tmp/demo.hal"
+              :target/root "/tmp"}
+        plan (trial/trial-plan {:id :demo :revision "revision-1"}
+                               [unit]
+                               {})]
+    [(:write plan)
+     (get-in plan [:summary :processed])
+     (get-in plan [:summary :errors])
+     (count (:diagnostics plan))
+     (count (:items plan))]
+    => [false 1 1 1 1]))
+
+^{:refer tool.migrate.trial/trial-source-unit}
+(fact "trial-source-unit reads source bytes and records immutable provenance"
+  (let [root (fs/temp-directory "/" {:prefix "hara-trial-unit-"})
+        source-root (path/join root "src")
+        target-root (path/join root "target")
+        source-path (path/join source-root "demo.clj")
+        _ (fs/create-directory source-root {:parents? true})
+        _ (fs/write-bytes source-path
+                           (string/encode-utf8 "(ns demo.core)\n"))
+        ]
+    (try
+      (let [unit (trial/trial-source-unit
+                  {:id :demo}
+                  target-root
+                  source-root
+                  :source
+                  {:type :file :path source-path}
+                  "revision-1")]
+        [(path/relativize root (get unit :source/path))
+         (get unit :trial/relative-path)
+         (path/relativize root (get unit :target/path))
+         (get unit :trial/kind)
+         (get unit :trial/revision)
+         (get unit :source/sha256)])
+      (finally
+        (fs/delete root {:recursive? true :missing-ok? true}))))
+  => ["src/demo.clj" "demo.clj" "target/demo.hal"
+      :source "revision-1"
+      "sha256:10e303c01c1bbec80f303959086b0f171986d623930940d83d97c4c63ddc5fce"])
+
+^{:refer tool.migrate.trial/existing-trial-roots}
+(fact "existing-trial-roots reports only configured checkout roots that exist"
+  (let [root (fs/temp-directory "/" {:prefix "hara-trial-roots-"})
+        source-root (path/join root "src")
+        _ (fs/create-directory source-root {:parents? true})
+        library {:root root
+                 :source-roots ["src"]
+                 :test-roots ["test"]}]
+    (try
+      (mapv (fn [entry] [(:kind entry) (:relative entry)])
+            (trial/existing-trial-roots library))
+      (finally
+        (fs/delete root {:recursive? true :missing-ok? true}))))
+  => [[:source "src"]])
+
+^{:refer tool.migrate.trial/discover-units}
+(fact "discover-units creates ordered source and test units without targets"
+  (let [root (fs/temp-directory "/" {:prefix "hara-trial-discover-"})
+        source-root (path/join root "src")
+        test-root (path/join root "test")
+        _ (fs/create-directory source-root {:parents? true})
+        _ (fs/create-directory test-root {:parents? true})
+        _ (fs/write-bytes
+           (path/join source-root "demo.cljc")
+           (string/encode-utf8 "(ns demo.core)\n"))
+        _ (fs/write-bytes
+           (path/join test-root "demo_test.clj")
+           (string/encode-utf8 "(ns demo.core-test)\n"))
+        library {:id :demo
+                 :root root
+                 :revision "revision-1"
+                 :source-roots ["src"]
+                 :test-roots ["test"]
+                 :target-root (path/join root "generated")}]
+    (try
+      (let [units (trial/discover-units library)]
+        [(count units)
+         (mapv :trial/kind units)
+         (mapv :trial/relative-path units)
+         (mapv (fn [unit] (path/relativize root (:target/path unit))) units)])
+      (finally
+        (fs/delete root {:recursive? true :missing-ok? true}))))
+  => [2
+      [:source :test]
+      ["demo.cljc" "demo_test.clj"]
+      ["generated/source/demo.hal" "generated/test/demo_test.hal"]])
+
+^{:refer tool.migrate.trial/trial-report}
+(fact "trial-report is write-disabled and carries missing-root diagnostics"
+  (let [report
+        (trial/trial-report
+         {:id :demo :repository "local" :revision "revision-1" :root "/tmp/demo"}
+         []
+         {:write false :summary {:total 0} :diagnostics [] :items []}
+         ["test"])]
+    [(:library/id report)
+     (:write report)
+     (:unit-count report)
+     (:missing-roots report)
+     (mapv :type (:diagnostics report))])
+  => [:demo false 0 ["test"] [:tool.migrate/trial]])
+
+^{:refer tool.migrate.trial/run-library}
+(fact "run-library plans a small checkout but never enables writes"
+  (let [root (fs/temp-directory "/" {:prefix "hara-trial-run-"})
+        source-root (path/join root "src")
+        _ (fs/create-directory source-root {:parents? true})
+        _ (fs/write-bytes
+           (path/join source-root "demo.clj")
+           (string/encode-utf8 "(ns demo.core)\n(def value 1)\n"))
+        library {:id :demo
+                 :root root
+                 :revision "revision-1"
+                 :source-roots ["src"]
+                 :test-roots []
+                 :target-root (path/join root "generated")}]
+    (try
+      (let [report (trial/run-library library)]
+        [(:write report)
+         (:unit-count report)
+         (:missing-roots report)
+         (= 1 (count (:units report)))])
+      (finally
+        (fs/delete root {:recursive? true :missing-ok? true}))))
+  => [false 1 [] true])
+
+^{:refer tool.migrate.trial/run-trials}
+(fact "run-trials orders reports by stable library identifier"
+  (mapv :library/id
+        (trial/run-trials
+         [{:id :zeta :root "/missing/zeta" :revision "z"
+           :source-roots ["src"] :test-roots []}
+          {:id :alpha :root "/missing/alpha" :revision "a"
+           :source-roots ["src"] :test-roots []}]))
+  => [:alpha :zeta])
+
+(pr-str (run {:namespace "tool.migrate.trial-test"}))

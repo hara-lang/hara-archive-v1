@@ -162,4 +162,16 @@
        :tool.lint/src-lang-foundation-refer-all
        :tool.lint/spec-schema-placement})
 
+^{:refer 'tool.lint/lint-source
+  :id 'set-removal-symbol-policy}
+(fact "accepts dissoc and reports disj as an unresolved Hara symbol"
+  (let [report
+        (report-data
+         (lint/lint-source
+          (str "(ns demo.core)\n"
+               "(dissoc #{:a} :a)\n"
+               "(" "disj" " #{:a} :a)\n")))]
+    (mapv :type (:findings report)))
+  => [:tool.lint/unresolved-symbol])
+
 (pr-str (run '[tool.lint-test]))

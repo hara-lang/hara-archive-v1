@@ -1,7 +1,19 @@
 (ns tool.migrate
   (:config {:role :facade})
-  (:require [tool.migrate.common.transform]))
+  (:require [tool.migrate.common.transform]
+            [tool.migrate.common.project :as project]
+            [tool.migrate.policy.foundation.xt :as foundation-xt]))
 
 ;; The public facade keeps the historical task surface while making the
 ;; registry-backed common transform directly available.
 (std.foundation/intern-all tool.migrate.common.transform)
+
+(std.foundation/intern-in
+ [foundation-xt-transform-source foundation-xt/transform-source]
+ [foundation-xt-plan foundation-xt/xt-plan]
+ [foundation-xt-validate-plan foundation-xt/validate-plan]
+ [foundation-xt-apply-plan foundation-xt/apply-plan]
+ [foundation-xt-inventory foundation-xt/xt-inventory]
+ [foundation-xt-write-inventory foundation-xt/write-inventory]
+ [project-plan project/plan]
+ [project-validate-write-plan project/validate-write-plan])

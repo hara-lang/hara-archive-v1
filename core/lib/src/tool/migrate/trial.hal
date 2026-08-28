@@ -1,0 +1,289 @@
+(ns tool.migrate.trial
+  (:config {:role :internal})
+  (:require [std.fs :as fs]
+            [std.fs.path :as path]
+            [std.fs.walk :as walk]
+            [std.foundation :refer [difference]]
+            [std.foundation.string :as str]
+            [tool.migrate.common.clojure :as clj]
+            [tool.migrate.common.project :as project]))
+
+(def +external-libraries+
+  [{:id :compojure
+    :repository "https://github.com/weavejester/compojure"
+    :revision "8a4758d28e8fcd28fa7610dca6e2908d039e6a4f"
+    :source-roots ["src"]
+    :test-roots ["test"]}
+   {:id :leipzig
+    :repository "https://github.com/ctford/leipzig"
+    :revision "74855cb28c47e360819bcb847ad7ac32ea578e4a"
+    :source-roots ["src/clj" "src/cljc"]
+    :test-roots ["test"]}])
+
+(defn source-file?
+  "Returns true for regular Clojure source files accepted by the trial."
+  [entry]
+  (and (= :file (:type entry))
+       (or (str/ends-with? (:path entry) ".clj")
+           (str/ends-with? (:path entry) ".cljc"))))
+
+(defn source-sha256
+  "Returns the stable wire checksum recorded for one source string."
+  [source]
+  (str "sha256:" (Crypto/sha256 (str/encode-utf8 source))))
+
+(defn trial-target-path
+  "Maps one source-root-relative path to an unwritten Hara target path."
+  [target-root relative-path]
+  (path/join target-root (clj/hal-path relative-path)))
+
+(defn trial-source-unit
+  "Reads one external source into an immutable project-planner unit."
+  [library-root target-root source-root kind entry revision]
+  (let [source-path (:path entry)
+        relative-path (path/relativize source-root source-path)
+        source (str/decode-utf8 (fs/read-bytes source-path))]
+    {:source/path source-path
+     :source/root source-root
+     :source/text source
+     :source/sha256 (source-sha256 source)
+     :target/root target-root
+     :target/path (trial-target-path target-root relative-path)
+     :trial/library (:id library-root)
+     :trial/kind kind
+     :trial/revision revision
+     :trial/source-root source-root
+     :trial/relative-path relative-path}))
+
+(defn trial-root
+  [library-root root]
+  (if (or (nil? root) (= root ".") (= root ""))
+    library-root
+    (path/join library-root root)))
+
+(defn existing-trial-roots
+  "Returns configured source/test roots that exist in a library checkout."
+  [library]
+  (let [library-root (:root library)]
+    (vec
+     (keep
+      (fn [entry]
+        (let [kind (first entry)
+              relative (second entry)
+              root (trial-root library-root relative)]
+          (if (fs/exists? root)
+            {:kind kind :relative relative :root root}
+            nil)))
+      (concat
+       (map (fn [value] [:source value]) (:source-roots library))
+       (map (fn [value] [:test value]) (:test-roots library)))))))
+
+(defn discover-units
+  "Discovers source and test units without creating or changing any files."
+  [library]
+  (let [library-root (:root library)
+        target-root (or (:target-root library)
+                        (path/join library-root ".hara-migration"))
+        revision (:revision library)]
+    (vec
+     (sort-by
+      (fn [unit] [(:trial/kind unit) (:source/path unit)])
+      (mapcat
+       (fn [root-info]
+         (map
+          (fn [entry]
+            (trial-source-unit
+             {:id (:id library)}
+             (path/join target-root (name (:kind root-info)))
+             (:root root-info)
+             (:kind root-info)
+             entry
+             revision))
+          (filter source-file?
+                  (walk/walk (:root root-info)))))
+       (existing-trial-roots library))))))
+
+(defn trial-diagnostic
+  [library message]
+  {:type :tool.migrate/trial
+   :level :warning
+   :library/id (:id library)
+   :library/revision (:revision library)
+   :message message})
+
+(defn trial-error-diagnostic
+  "Returns a blocking diagnostic for one source that cannot be parsed or planned."
+  [library unit message]
+  {:type :tool.migrate/unsupported
+   :level :error
+   :library/id (:id library)
+   :library/revision (:revision library)
+   :source/path (:source/path unit)
+   :target/path (:target/path unit)
+   :reason :translation-error
+   :message (str "Unable to migrate " (:source/path unit) ": " message)})
+
+(defn trial-error-result
+  "Returns a stable failed item result while keeping the rest of a trial runnable."
+  [unit diagnostic]
+  {:path (:target/path unit)
+   :source/path (:source/path unit)
+   :target/path (:target/path unit)
+   :source/sha256 (:source/sha256 unit)
+   :changed false
+   :source/changed false
+   :mode :review
+   :rules/matched []
+   :rules/applied []
+   :diagnostics [diagnostic]
+   :provenance {:source/path (:source/path unit)
+                :target/path (:target/path unit)
+                :source/sha256 (:source/sha256 unit)
+                :translation/mode :review}})
+
+(defn plan-unit
+  "Plans one unit and converts an isolated planner failure into a report item."
+  [library unit options]
+  (try
+    (let [plan
+          (project/plan
+           {:units [unit]
+            :translation/options (merge {:mode :review} (or options {}))})
+          item (first (:items plan))
+          result (:result item)]
+      (if (map? result)
+        plan
+        (let [message
+              (or (:error (first (:errors plan)))
+                  (try
+                    (clj/migration-result unit {:mode :review})
+                    "Planner returned no migration result"
+                    (catch Throwable source-error
+                      (ex-message source-error))))
+              diagnostic (trial-error-diagnostic library unit message)
+              item (or item
+                       {:item/id (str (:source/path unit)
+                                      " -> "
+                                      (:target/path unit))})]
+          (assoc plan
+                 :summary (assoc (:summary plan)
+                                  :unsupported
+                                  (inc (or (get-in plan [:summary :unsupported]) 0)))
+                 :diagnostics (conj (vec (:diagnostics plan)) diagnostic)
+                 :items [(assoc item
+                                :unit unit
+                                :result (trial-error-result unit diagnostic))]))))
+    (catch Throwable error
+      (let [message
+            (try
+              (clj/migration-result unit {:mode :review})
+              (ex-message error)
+              (catch Throwable source-error
+                (ex-message source-error)))
+            diagnostic (trial-error-diagnostic library unit message)]
+        {:operation :tool.migrate/project
+         :write false
+         :summary {:operation :tool.migrate/project
+                   :processed 1
+                   :selected 1
+                   :changed 0
+                   :unchanged 0
+                   :matched 0
+                   :applied 0
+                   :errors 1
+                   :warnings 0
+                   :unsupported 1
+                   :conflicts 0}
+         :diagnostics [diagnostic]
+         :items [{:item/id (str (:source/path unit)
+                                " -> "
+                                (:target/path unit))
+                  :unit unit
+                  :result (trial-error-result unit diagnostic)}]}))))
+
+(def +summary-fields+
+  [:processed :selected :changed :unchanged :matched :applied
+   :errors :warnings :unsupported :conflicts
+   :matched/safe :matched/review :matched/manual])
+
+(defn trial-plan
+  "Plans every unit independently so one unsupported external form is isolated."
+  [library units options]
+  (let [plans (mapv
+               (fn [unit]
+                 (plan-unit library unit options))
+               units)]
+    {:operation :tool.migrate/project
+     :write false
+     :summary
+     (reduce
+      (fn [output plan]
+        (reduce
+         (fn [output key]
+           (assoc output
+                  key
+                  (+ (or (get output key) 0)
+                     (or (get-in plan [:summary key]) 0))))
+         output
+         +summary-fields+))
+      {:operation :tool.migrate/project}
+      plans)
+     :diagnostics (vec (mapcat :diagnostics plans))
+     :items (vec (mapcat :items plans))}))
+
+(defn trial-report
+  "Reduces a project plan to a deterministic, read-only trial report."
+  [library units plan missing-roots]
+  {:library/id (:id library)
+   :library/repository (:repository library)
+   :library/revision (:revision library)
+   :library/root (:root library)
+   :write (:write plan)
+   :unit-count (count units)
+   :missing-roots (vec missing-roots)
+   :summary (:summary plan)
+   :diagnostics
+   (vec
+    (concat
+     (map (fn [root]
+            (trial-diagnostic
+             library
+             (str "Configured trial root is missing: " root)))
+          missing-roots)
+     (:diagnostics plan)))
+   :units
+   (vec
+    (map
+     (fn [item]
+       (let [result (:result item)]
+         (select-keys
+          result
+          [:path :source/path :target/path :source/sha256 :changed
+           :source/changed :mode :namespace :dependencies :public-symbols
+           :rules/matched :rules/applied :diagnostics :provenance])))
+     (:items plan)))})
+
+(defn run-library
+  "Runs one external library through the project planner in review mode."
+  ([library]
+   (run-library library {}))
+  ([library options]
+   (let [library (merge library options)
+         units (discover-units library)
+         configured
+         (set (concat (:source-roots library) (:test-roots library)))
+         present (set (map :relative (existing-trial-roots library)))
+         missing (vec (sort (difference configured present)))
+         plan (trial-plan library units (:translation/options options))]
+     (trial-report library units plan missing))))
+
+(defn run-trials
+  "Runs all supplied library specifications in deterministic identifier order."
+  ([libraries]
+   (run-trials libraries {}))
+  ([libraries options]
+   (vec
+    (map
+     (fn [library]
+       (run-library library options))
+     (sort-by (fn [library] (str (:id library))) libraries)))))

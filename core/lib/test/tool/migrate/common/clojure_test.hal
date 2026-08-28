@@ -2,7 +2,8 @@
   (:use code.test)
   (:require [tool.migrate.common.clojure :as clj]
             [std.block :as block]
-            [tool.migrate.common.block :as nav]))
+            [tool.migrate.common.block :as nav]
+            [std.foundation.string :as string]))
 
 (def source
   "(ns demo.core
@@ -10,7 +11,7 @@
                [clojure.tools.reader :as reader]
                [demo.local :as local]))
    (defn run [value]
-     (string/join \",\" (reader/read-string value) (local/value value))))")
+     (string/join \",\" (reader/read-string value) (local/value value)))")
 
 (def refer-source
   "(ns demo.core
@@ -31,19 +32,49 @@
        (inc value)
        (quote (str value))
        (clojure.core/reverse value)
-       (fold value))))")
+       (fold value)))")
+
+(def disj-catalog
+  {:document/id :demo/disj
+   :document/type :code-migration-spec
+   :migration/rules
+   [{:rule/id :clojure/disj-to-dissoc
+     :rule/languages [:clojure]
+     :rule/phase :expression
+     :rule/priority 1
+     :rule/kind :function
+     :rule/match {:clojure {:text "disj"}}
+     :rule/rewrite nil
+     :rule/function
+     {:clojure
+      {:match 'tool.migrate.common.clojure/match-disj
+       :rewrite 'tool.migrate.common.clojure/rewrite-disj}}
+     :rule/safety :safe
+     :rule/evidence {:source/path "clojure.core/disj"
+                     :target/spec :hara/foundation}}]})
+
+(def disj-source
+  "(ns demo.core)
+   (defn remove-one [values link]
+     (disj values link))
+   (defn remove-many [values link other]
+     (clojure.core/disj values link other))
+   (defn keep-local [disj values link]
+     (disj values link))
+   (def quoted '(disj values link))")
 
 ^{:refer tool.migrate.common.clojure/core-reference-options}
 (fact "refer-clojure controls expose excludes, renames, and unrestricted defaults"
-  [(clj/core-reference-options "(ns demo.core)")
-   (clj/core-reference-options
-    "(ns demo.core
-       (:refer-clojure :only [map reduce]
-                       :exclude [map]
-                       :rename {reduce fold}))")]
-  => [[(symbol "map")]
-      {:only nil :exclude #{} :rename {}}
-      {:only #{"map" "reduce"} :exclude #{"map"} :rename {"fold" "reduce"}}])
+  (let [options
+        (clj/core-reference-options
+         "(ns demo.core
+            (:refer-clojure :only [map reduce]
+                            :exclude [map]
+                            :rename {reduce fold}))")]
+    [(clj/core-reference-options "(ns demo.core)")
+     (select-keys options [:only :exclude :rename])])
+  => [{:only nil :exclude #{} :rename {}}
+      {:only #{"reduce" "map"} :exclude #{"map"} :rename {"fold" "reduce"}}])
 
 ^{:refer tool.migrate.common.clojure/namespace-clause-option}
 (fact "namespace clause options return the selected raw value"
@@ -188,16 +219,17 @@
              (and (= "fold" (:source/symbol reference))
                   (= "reduce" (:reference/name reference))))
            references)
-     (some (fn [reference]
-             (= "map" (:source/symbol reference)))
-           references)])
+     (boolean
+      (some (fn [reference]
+              (= "map" (:source/symbol reference)))
+            references))])
   => [#{["clojure.core/reverse" "reverse" :var :derived nil
          "clojure.core/reverse"]
         ["defn" "defn" :macro :derived nil "clojure.core/defn"]
         ["let" "let" :special-form :derived nil "clojure.core/let"]
-        ["quote" "quote" :special-form :derived nil "clojure.core/quote"]
         ["fold" "reduce" :var :derived nil "clojure.core/reduce"]}
-      #{["str" "str" :var :skipped :quoted-data nil]}
+      #{["str" "str" :var :skipped :quoted-data nil]
+        ["quote" "quote" :special-form :skipped :quoted-data nil]}
       #{["inc" "inc" :var :shadowed :lexical-binding nil]}
       true
       false])
@@ -240,11 +272,81 @@
   [(clj/dependency-operation "clojure.set" "difference")
    (clj/dependency-operation "clojure.string" "trimr")
    (clj/dependency-operation "clojure.core" "subs")
+   (clj/dependency-operation "clojure.core" "disj")
+   (clj/dependency-operation "clojure.core" "dissoc")
    (clj/dependency-operation "clojure.lang" "IPersistentVector")
    (clj/dependency-operation "clojure.tools.reader.reader-types"
                               "IndexingPushbackReader")]
-  => [:set-algebra :string-trimming :string-slice
+  => [:set-algebra :string-trimming :string-slice :set-removal
+      :associative-removal
       :persistent-collection-type :reader-state])
+
+^{:refer tool.migrate.common.clojure/hal-path}
+(fact "hal-path accepts both Clojure source extensions and rejects ClojureScript"
+  [(clj/hal-path "src/demo.clj")
+   (clj/hal-path "src/demo.cljc")
+   (try
+     (clj/hal-path "src/demo.cljs")
+     nil
+     (catch Throwable error
+       (ex-message error)))]
+  => ["src/demo.hal" "src/demo.hal"
+      "Clojure source path must end in .clj or .cljc"])
+
+^{:refer tool.migrate.common.clojure/core-reference-matches}
+(fact "core-reference-matches excludes quoted and shadowed disj references"
+  (set
+   (map
+    (fn [match] [(:source/symbol match) (:resolved/symbol match)])
+    (clj/core-reference-matches disj-source "disj")))
+  => #{["disj" "clojure.core/disj"]
+       ["clojure.core/disj" "clojure.core/disj"]})
+
+^{:refer tool.migrate.common.clojure/match-disj}
+(fact "match-disj exposes source evidence for executable core references"
+  (let [matches (clj/match-disj disj-source {})]
+    [(count matches)
+     (vector? (:path (first matches)))
+     (set (map :source/symbol matches))])
+  => [2 true #{"disj" "clojure.core/disj"}])
+
+^{:refer tool.migrate.common.clojure/rewrite-disj}
+(fact "rewrite-disj preserves qualification while selecting Hara dissoc"
+  (let [root (nav/block-input "(clojure.core/disj values link)")
+        match (first (clj/match-disj root {}))
+        result (clj/rewrite-disj root match {})]
+    [(nav/render (:root result))
+     (:source/symbol match)])
+  => ["(std.foundation/dissoc values link)" "clojure.core/disj"])
+
+^{:refer tool.migrate.common.clojure/function-resolver}
+(fact "the default resolver exposes the built-in disj semantic functions"
+  [(fn? (clj/function-resolver
+         'tool.migrate.common.clojure/match-disj))
+   (fn? (clj/function-resolver
+         'tool.migrate.common.clojure/rewrite-disj))
+   (clj/function-resolver 'demo/unknown)]
+  => [true true nil])
+
+^{:refer tool.migrate.common.clojure/migration-result}
+(fact "migration-result rewrites executable disj calls and preserves data boundaries"
+  (let [result
+        (clj/migration-result
+         {:source/path "/authority/demo.clj"
+          :source/root "/authority"
+          :source/text disj-source
+          :source/sha256 "sha256:source"
+          :target/path "/hara/demo.hal"
+          :target/root "/hara"
+          :target/text nil}
+         {:catalog disj-catalog :mode :review})
+        after (:after result)]
+    [(string/includes? after "(dissoc values link)")
+     (string/includes? after "(std.foundation/dissoc values link other)")
+     (string/includes? after "(disj values link)")
+     (count (:rules/applied result))
+     (mapv :rule/id (:rules/applied result))])
+  => [true true true 2 [:clojure/disj-to-dissoc :clojure/disj-to-dissoc]])
 
 ^{:refer tool.migrate.common.clojure/dependency-occurrences}
 (fact "dependency occurrences preserve source order and parser evidence"
@@ -275,7 +377,7 @@
   => {"join" "clojure.string"})
 
 ^{:refer tool.migrate.common.clojure/dependency-symbol-references}
-(fact "qualified references resolve aliases and exclude local namespaces"
+(fact "qualified references resolve aliases and retain local namespaces"
   (mapv
    (fn [reference]
      (select-keys reference
@@ -296,7 +398,13 @@
        :reference/namespace "clojure.tools.reader"
        :reference/name "read-string"
        :reference/idiom :reader
-       :reference/operation :reader-consumption}])
+       :reference/operation :reader-consumption}
+      {:source/symbol "local/value"
+       :resolved/symbol "demo.local/value"
+       :reference/namespace "demo.local"
+       :reference/name "value"
+       :reference/idiom :namespace
+       :reference/operation :namespace-operation}])
 
 ^{:refer tool.migrate.common.clojure/dependency-symbol-references}
 (fact "dependency references include explicit unqualified :refer imports"
@@ -320,5 +428,26 @@
      (:source/symbol (:reference/evidence reference))
      (vector? (:path (:reference/evidence reference)))]
     => [true "string/join" true]))
+
+^{:refer tool.migrate.common.clojure/migration-result}
+(fact "trusted canonical recipes bypass a second parser while retaining write evidence"
+  (let [result
+        (clj/migration-result
+         {:source/path "/authority/demo.clj"
+          :source/root "/authority"
+          :source/text "(ns demo.core)\n"
+          :source/sha256 "sha256:source"
+          :target/path "/hara/demo.hal"
+          :target/root "/hara"
+          :target/text nil
+          :translation/recipe {:id :demo/canonical
+                               :output "(ns demo.core)\n"}}
+         {:translation/trusted? true})]
+    [(= (:after result) "(ns demo.core)\n")
+     (:create result)
+     (:translation/recipe result)
+     (:rules/matched result)
+     (mapv :type (:diagnostics result))])
+  => [true true :demo/canonical [] [:tool.migrate/recipe-applied]])
 
 (pr-str (run {:namespace "tool.migrate.common.clojure-test"}))

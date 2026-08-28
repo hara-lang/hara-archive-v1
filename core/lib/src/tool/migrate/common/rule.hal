@@ -402,7 +402,29 @@
     :evidence (:evidence rule)}
    (select-keys match
                 [:path :file :start-offset :end-offset
-                 :row :col :end-row :end-col :source])))
+                :row :col :end-row :end-col :source])))
+
+(defn reader-conditional-location?
+  [location]
+  (has? #{:select :select-splice}
+        (block/tag (nav/current location))))
+
+(defn reader-conditional-locations
+  [root]
+  (vec
+   (filter reader-conditional-location?
+           (nav/walk-locations root))))
+
+(defn reader-conditional-diagnostic
+  [location]
+  (merge
+   (nav/evidence location)
+   {:type :tool.migrate/unsupported
+    :level :error
+    :rule/id :clojure/reader-conditional
+    :safety :manual
+    :reason :reader-conditional
+    :message "Reader conditionals require an explicit source-language projection."}))
 
 (defn call-arguments
   [root match]
@@ -690,27 +712,35 @@
          root (nav/block-input input)
          rules (or (:rules options) +ruleset+)
          matched (matches root rules options)
-         applied-result (apply-matches root matched rules mode options)
-         configured-root (if (:root-rewriter options)
-                           ((:root-rewriter options)
-                            (:root applied-result)
-                            options)
-                           (:root applied-result))
+         reader-conditional-sites (reader-conditional-locations root)
+         blocked? (not (empty? reader-conditional-sites))
+         applied-result (if blocked?
+                         {:root root :applied []}
+                         (apply-matches root matched rules mode options))
+         configured-root (if blocked?
+                           root
+                           (if (:root-rewriter options)
+                             ((:root-rewriter options)
+                              (:root applied-result)
+                              options)
+                             (:root applied-result)))
          normalized-root
          (cleanup-empty-dependency-clauses
           (normalize-dependency-aliases
            (cleanup-empty-dependency-clauses configured-root)
            options))
-         output (nav/render normalized-root)
+         output (if blocked? source (nav/render normalized-root))
          diagnostics
          (vec
-          (map
-           (fn [match]
-             (diagnostic
-              (rule-by-id rules (:rule/id match))
-              match
-              mode))
-           matched))]
+          (concat
+           (map
+            (fn [match]
+              (diagnostic
+               (rule-by-id rules (:rule/id match))
+               match
+               mode))
+            matched)
+           (map reader-conditional-diagnostic reader-conditional-sites)))]
      {:mode mode
       :source source
       :output output

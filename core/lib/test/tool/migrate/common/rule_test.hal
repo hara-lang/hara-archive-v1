@@ -1,6 +1,8 @@
 (ns tool.migrate.common.rule-test
   (:use code.test)
-  (:require [tool.migrate.common.rule :as rule]))
+  (:require [std.block :as block]
+            [tool.migrate.common.block :as nav]
+            [tool.migrate.common.rule :as rule]))
 
 (def foundation-source
   "(ns demo.core
@@ -46,5 +48,56 @@
      (str/includes? output "local/value")
      (not (str/includes? output "alias/value"))])
   => [true true true true])
+
+^{:refer tool.migrate.common.rule/reader-conditional-location?}
+(fact "reader-conditional-location identifies select and select-splice blocks"
+  (let [root (nav/block-input "#?(:clj value :cljs other)")
+        locations (nav/walk-locations root)
+        selected
+        (first
+         (filter
+          (fn [location]
+            (= :select (block/tag (nav/current location))))
+          locations))]
+    [(nil? selected)
+     (rule/reader-conditional-location? selected)])
+  => [false true])
+
+^{:refer tool.migrate.common.rule/reader-conditional-locations}
+(fact "reader-conditional-locations returns every reader conditional site"
+  (let [root (nav/block-input
+              "#?(:clj value :cljs other) #?@(:clj [one] :cljs [two])")]
+    (count (rule/reader-conditional-locations root)))
+  => 2)
+
+^{:refer tool.migrate.common.rule/reader-conditional-diagnostic}
+(fact "reader conditional diagnostics are blocking and retain source evidence"
+  (let [root (nav/block-input "#?(:clj value :cljs other)")
+        location (first (rule/reader-conditional-locations root))]
+    (select-keys
+     (rule/reader-conditional-diagnostic location)
+     [:type :level :rule/id :safety :reason :message :source]))
+  => {:type :tool.migrate/unsupported
+      :level :error
+      :rule/id :clojure/reader-conditional
+      :safety :manual
+      :reason :reader-conditional
+      :message "Reader conditionals require an explicit source-language projection."
+      :source "#?(:clj value :cljs other)"})
+
+^{:refer tool.migrate.common.rule/analyze-source}
+(fact "reader conditionals block translation and suppress partial rewrites"
+  (let [source "#?(:clj (disj values link) :cljs (disj values other))"
+        result (rule/analyze-source
+                source
+                {:source/language :clojure
+                 :target/language :hara
+                 :rules []})]
+    [(:output result)
+     (:changed result)
+     (:rules/applied result)
+     (mapv :type (:diagnostics result))])
+  => ["#?(:clj (disj values link) :cljs (disj values other))"
+      false [] [:tool.migrate/unsupported]])
 
 (pr-str (run {:namespace "tool.migrate.common.rule-test"}))

@@ -181,7 +181,7 @@
   ([link] (remove-link (ns-current) link))
   ([namespace link]
    (swap! +links+ update namespace
-          (fn [links] (disj (or links #{}) link)))
+          (fn [links] (difference (or links #{}) #{link})))
    (list-links namespace)))
 
 (defn parse-args

@@ -1,0 +1,675 @@
+(ns tool.migrate.policy.foundation.xt
+  (:config {:role :internal})
+  (:require [std.block :as block]
+            [std.fs :as fs]
+            [std.fs.path :as path]
+            [std.foundation.string :as str]
+            [tool.migrate.common.clojure :as clj]
+            [tool.migrate.common.git :as git]
+            [tool.migrate.common.write :as write]
+            [tool.migrate.policy.foundation.audit :as audit]
+            [tool.migrate.policy.foundation.profile :as profile]))
+
+;; The XT corpus is a language source corpus, not ordinary JVM Clojure.  The
+;; migration therefore keeps the source forms intact and changes only the
+;; host-owned namespace and declaration boundaries.  Parsing and printing the
+;; forms here is deliberate: it makes reader sugar (`@` and `#'`) explicit and
+;; lets the Hara reader carry metadata through the migration.
+
+(def +source-prefix+ "src-lang/xt/")
+(def +test-prefix+ "test-lang/xt/")
+(def +source-target-prefix+ "lib/src-lang/xt/")
+(def +test-target-prefix+ "lib/test-lang/xt/")
+(def +xt-profile+ profile/+foundation-f55f+)
+
+(def +parser-metadata-keys+
+  #{:file :line :column :end-line :end-column})
+
+;; Metadata used by the Foundation seed generator is not Hara test policy.
+(def +migration-metadata-keys+ #{:seedgen/skip})
+
+(defn semantic-meta
+  [value]
+  (let [metadata (meta value)]
+    (if (map? metadata)
+      (reduce (fn [output key] (dissoc output key))
+              metadata
+              (set (concat +parser-metadata-keys+
+                           +migration-metadata-keys+)))
+      metadata)))
+
+(defn preserve-meta
+  [value template]
+  (let [metadata (semantic-meta template)]
+    (if (nil? metadata)
+      value
+      (with-meta value metadata))))
+
+(defn foundation-root
+  [hara-root options]
+  (or (:foundation/root options)
+      (let [workspace-root (os/getenv "HARA_WORKSPACE_ROOT")]
+        (if workspace-root
+          (path/join workspace-root "reference/foundation-base")
+          (path/join hara-root "../../reference/foundation-base")))))
+
+(defn prefix-path?
+  [prefix value]
+  (and (string? value)
+       (str/starts-with? value prefix)))
+
+(defn xt-source-path?
+  "Returns true for one pinned Foundation XT implementation source."
+  [value]
+  (and (prefix-path? +source-prefix+ value)
+       (str/ends-with? value ".clj")))
+
+(defn xt-test-path?
+  "Returns true for one pinned Foundation XT path-matched test."
+  [value]
+  (and (prefix-path? +test-prefix+ value)
+       (str/ends-with? value ".clj")))
+
+(defn path-selected?
+  "Returns true when a corpus path belongs to the requested migration batch."
+  [value prefixes]
+  (or (nil? prefixes)
+      (empty? prefixes)
+      (not (nil? (some (fn [prefix]
+                         (if (str/starts-with? value prefix) true nil))
+                       prefixes)))))
+
+(defn relative-xt-path
+  [prefix value]
+  (str/slice value (count prefix) (count value)))
+
+(defn target-path
+  "Maps a Foundation XT path to the path-matched Hara source or test."
+  [value]
+  (cond
+    (xt-source-path? value)
+    (str +source-target-prefix+
+         (str/replace (relative-xt-path +source-prefix+ value) ".clj" ".hal"))
+
+    (xt-test-path? value)
+    (str +test-target-prefix+
+         (str/replace (relative-xt-path +test-prefix+ value) ".clj" ".hal"))
+
+    :else nil))
+
+(defn namespace-for-path
+  "Derives the path-authoritative XT namespace for a migrated file."
+  [value]
+  (cond
+    (xt-source-path? value)
+    (str "xt."
+         (str/replace
+          (str/replace
+           (str/slice (relative-xt-path +source-prefix+ value)
+                      0
+                      (- (count (relative-xt-path +source-prefix+ value)) 4))
+           "/"
+           ".")
+          "_"
+          "-"))
+
+    (xt-test-path? value)
+    (str "xt."
+         (str/replace
+          (str/replace
+           (str/slice (relative-xt-path +test-prefix+ value)
+                      0
+                      (- (count (relative-xt-path +test-prefix+ value)) 4))
+           "/"
+           ".")
+          "_"
+          "-"))
+
+    :else nil))
+
+(defn target-root
+  [hara-root value]
+  (if (xt-test-path? value)
+    (path/join hara-root +test-target-prefix+)
+    (path/join hara-root +source-target-prefix+)))
+
+(defn route-symbol
+  "Routes host-only namespace names to their Hara owners."
+  [value]
+  (if (symbol? value)
+    (let [text (str value)]
+      (cond
+        (str/starts-with? text "tahto.core/")
+        (symbol (str "lang.core/" (str/slice text 11)))
+
+        (str/starts-with? text "tahto.typed/")
+        (symbol (str "lang.core/" (str/slice text 12)))
+
+        (str/starts-with? text "tahto.common.book/")
+        (symbol (str "lang.common.book/" (str/slice text 18)))
+
+        (str/starts-with? text "tahto.base.")
+        (symbol (str "lang.common." (str/slice text 11)))
+
+        (str/starts-with? text "std.lib.foundation/")
+        (symbol (str "std.foundation/" (str/slice text 19)))
+
+        (str/starts-with? text "std.string.prose/")
+        (symbol (str "std.lib.format.prose/" (str/slice text 17)))
+
+        (str/starts-with? text "clojure.string/")
+        (symbol (str "std.foundation.string/" (str/slice text 15)))
+
+        (str/starts-with? text "clojure.set/")
+        (symbol (str "std.foundation/" (str/slice text 12)))
+
+        (= text "tahto.core") (symbol "lang.core")
+        (= text "tahto.typed") (symbol "lang.core")
+        (= text "tahto.common.book") (symbol "lang.common.book")
+        (= text "std.lib.foundation") (symbol "std.foundation")
+        (= text "std.string.prose") (symbol "std.lib.format.prose")
+        (= text "clojure.string") (symbol "std.foundation.string")
+        (= text "clojure.set") (symbol "std.foundation")
+        :else value))
+    value))
+
+(defn route-form
+  "Recursively routes qualified host symbols without touching string data."
+  [value]
+  (cond
+    (symbol? value) (route-symbol value)
+    (list? value) (apply list (map route-form value))
+    (vector? value) (vec (map route-form value))
+    (map? value) (reduce-kv (fn [output key item]
+                              (assoc output (route-form key) (route-form item)))
+                            {}
+                            value)
+    (set? value) (set (map route-form value))
+    :else value))
+
+(defn refer-option
+  [options key]
+  (loop [remaining (vec options)]
+    (if (or (empty? remaining) (= 1 (count remaining)))
+      nil
+      (if (= key (first remaining))
+        (second remaining)
+        (recur (vec (drop 2 remaining)))))))
+
+(defn remove-defspec-refer
+  [values]
+  (if (vector? values)
+    (vec
+     (remove (fn [value]
+               (and (symbol? value)
+                    (= "defspec.xt" (name value))))
+             values))
+    values))
+
+(defn route-require-spec
+  [spec]
+  (if (vector? spec)
+    (let [namespace (route-symbol (first spec))]
+      (loop [remaining (vec (rest spec))
+             output [namespace]
+             removed-refer? false]
+        (if (empty? remaining)
+          (if (and removed-refer? (= 1 (count output)))
+            nil
+            (vec output))
+          (let [key (first remaining)
+                value (second remaining)]
+            (if (= key :refer)
+              (let [refer (remove-defspec-refer (route-form value))]
+                (recur (vec (drop 2 remaining))
+                       (if (and (vector? refer) (empty? refer))
+                         output
+                         (conj (conj output key) refer))
+                       (and (vector? refer) (empty? refer))))
+              (recur (vec (drop 2 remaining))
+                     (conj (conj output key) (route-form value))
+                     removed-refer?))))))
+    (route-symbol spec)))
+
+(defn route-ns-clause
+  [clause]
+  (if (list? clause)
+    (let [head (first clause)]
+      (cond
+        (= head :require)
+        (apply list (concat [:require]
+                            (keep route-require-spec (rest clause))))
+
+        (= head :refer-clojure)
+        nil
+
+        :else
+        (route-form clause)))
+    (route-form clause)))
+
+(defn refer-clojure-excludes
+  [clauses]
+  (vec
+   (mapcat
+    (fn [clause]
+      (if (and (list? clause) (= :refer-clojure (first clause)))
+        (let [exclude (refer-option (rest clause) :exclude)]
+          (if (vector? exclude) (map route-symbol exclude) []))
+        []))
+    clauses)))
+
+(defn config-clause
+  [clauses]
+  (first
+   (filter (fn [clause]
+             (and (list? clause) (= :config (first clause))))
+           clauses)))
+
+(defn config-map
+  [clause]
+  (if (and (list? clause) (map? (second clause)))
+    (second clause)
+    {}))
+
+(defn merge-config
+  [clause excludes]
+  (let [current (config-map clause)
+        existing (if (vector? (get current :override))
+                   (get current :override)
+                   [])
+        overrides (vec (distinct (concat existing excludes)))]
+    (if (empty? overrides)
+      clause
+      (list :config (assoc current :override overrides)))))
+
+(defn route-namespace-form
+  ([form]
+   (route-namespace-form form nil))
+  ([form namespace-override]
+  (let [clauses (vec (drop 2 form))
+        excludes (refer-clojure-excludes clauses)
+        routed (vec (keep route-ns-clause clauses))
+        current (config-clause routed)
+        merged (merge-config current excludes)
+        without-config
+        (vec (remove (fn [clause]
+                       (and (list? clause) (= :config (first clause))))
+                     routed))]
+    (apply list
+           (concat [(quote ns)
+                    (if namespace-override
+                      (symbol namespace-override)
+                      (route-symbol (second form)))]
+                   (if merged
+                     (conj without-config merged)
+                     without-config))))))
+
+(defn defspec-form?
+  [form]
+  (and (list? form)
+       (= 'defspec.xt (first form))
+       (<= 3 (count form))))
+
+(defn route-defspec
+  "Turns Foundation's schema-only declaration into a Hara schema Var."
+  [form]
+  (let [symbol (second form)
+        schema (route-form (nth form 2))
+        metadata (assoc (or (meta symbol) {}) :schema schema)
+        symbol (with-meta (route-form symbol) metadata)]
+    (list 'def symbol nil)))
+
+(defn route-top-form
+  [form first?]
+  (let [routed (cond
+                 first? (route-namespace-form form)
+                 (defspec-form? form) (route-defspec form)
+                 :else (route-form form))]
+    (preserve-meta routed form)))
+
+(defn normalize-reader-sugar
+  "Normalizes the nested discard form that the Hara reader cannot consume."
+  [source]
+  (str/replace source
+               (str \# \_ \# \_ ":guard (fn:> false)")
+               (str \# \_ "(fn:> false)")))
+
+(defn render-metadata
+  [value]
+  (let [metadata (semantic-meta value)]
+    (if (or (nil? metadata) (empty? metadata))
+      ""
+      (str "^" (pr-str metadata) " "))))
+
+(defn render-form
+  "Prints a transformed form while retaining reader metadata prefixes."
+  [value]
+  (let [metadata (render-metadata value)
+        metadata-prefix (if (empty? metadata)
+                          ""
+                          (str (str/slice metadata 0 (- (count metadata) 1))
+                               "\n"))
+        named-definition?
+        (and (list? value)
+             (> (count value) 1)
+             (symbol? (first value))
+             (symbol? (second value))
+             (str/starts-with? (name (first value)) "def"))
+        name-value (if named-definition? (second value) nil)
+        name-meta (if name-value (semantic-meta name-value) nil)
+        printed (pr-str value)]
+    (if (and name-value (not (empty? name-meta)))
+      (str metadata-prefix
+           (str/replace-first printed
+                              (pr-str name-value)
+                              (str (render-metadata name-value)
+                                   (pr-str name-value))))
+      (str metadata-prefix printed))))
+
+(defn source-forms
+  [source]
+  (let [root (block/root-value
+              (block/parse-root (normalize-reader-sugar source)))]
+    (if (and (list? root) (= 'do (first root)))
+      (vec (rest root))
+      [root])))
+
+(defn transformed-source
+  "Returns canonical Hara output and its namespace from one parsed corpus blob."
+  ([source]
+   (transformed-source source nil))
+  ([source namespace-override]
+   (let [forms (source-forms source)
+        routed (vec
+                (map-indexed
+                 (fn [index form]
+                   (if (= index 0)
+                     (preserve-meta
+                      (route-namespace-form form namespace-override)
+                      form)
+                     (route-top-form form false)))
+                 forms))
+        namespace-form (first routed)
+        source-namespace-form (first forms)]
+      {:output (str (str/join "\n\n" (map render-form routed)) "\n")
+       :namespace (if (and (list? namespace-form)
+                           (= 'ns (first namespace-form)))
+                    (str (second namespace-form))
+                    nil)
+       :source/namespace (if (and (list? source-namespace-form)
+                                  (= 'ns (first source-namespace-form)))
+                           (str (second source-namespace-form))
+                           nil)})))
+
+^{:public true}
+(defn transform-source
+  "Converts one Foundation XT source string to canonical Hara source."
+  [source]
+  (:output (transformed-source source)))
+
+(defn file-source
+  [runner revision file-path]
+  (git/read-blob runner revision file-path))
+
+(defn error-message
+  [error]
+  (try
+    (ex-message error)
+    (catch Throwable ignored
+      "Hara could not render the migration error")))
+
+(defn source-sha256
+  [source]
+  (str "sha256:" (Crypto/sha256 (str/encode-utf8 source))))
+
+(defn canonical-path
+  [value]
+  (str/replace (File/resolve value "") "\\" "/"))
+
+(defn read-target
+  [value]
+  (if (fs/exists? value)
+    (str/decode-utf8 (fs/read-bytes value))
+    nil))
+
+(defn write-atomic
+  [value source]
+  (fs/write-bytes value
+                  (str/encode-utf8 source)
+                  {:mode :replace :parents? true}))
+
+(def +write-capabilities+
+  {:read-text read-target
+   :sha256 source-sha256
+   :canonical-path canonical-path
+   :write-atomic write-atomic})
+
+(defn plan-capabilities
+  "Adds the pinned Git blob index to the native filesystem capabilities."
+  [plan]
+  (let [sources (reduce
+                 (fn [output unit]
+                   (assoc output (:source/path unit) (:source/text unit)))
+                 {}
+                 (:units plan))]
+    (assoc +write-capabilities+
+           :read-text
+           (fn [value]
+             (or (read-target value)
+                 (get sources value))))))
+
+(defn xt-paths
+  ([runner revision]
+   (xt-paths runner revision nil))
+  ([runner revision prefixes]
+   (let [paths (git/list-tree runner revision)]
+     {:source (vec (sort (filter (fn [value]
+                                  (and (xt-source-path? value)
+                                       (path-selected? value prefixes)))
+                                paths)))
+      :test (vec (sort (filter (fn [value]
+                                (and (xt-test-path? value)
+                                     (path-selected? value prefixes)))
+                              paths)))})))
+
+(defn xt-unit
+  [runner revision hara-root file-path options]
+  (let [source (file-source runner revision file-path)
+        target-relative (target-path file-path)
+        target-absolute (path/join hara-root target-relative)
+        target (read-target target-absolute)
+        transformed-data (transformed-source source
+                                             (namespace-for-path file-path))
+        transformed (:output transformed-data)
+        output (if (and target (not (:replace-existing? options)))
+                 target
+                 transformed)
+        summary {:namespace (:namespace transformed-data)
+                 :source-namespace (:source/namespace transformed-data)}
+        target-root-value (target-root hara-root file-path)]
+    {:id file-path
+     :kind (if (xt-test-path? file-path) :test :source)
+     :source/path (path/join (:foundation/root options) file-path)
+     :source/root (:foundation/root options)
+     :source/text source
+     :source/sha256 (source-sha256 source)
+     :target/path target-absolute
+     :target/root target-root-value
+     :target/text target
+     :target/relative-path target-relative
+     :translation/recipe {:id :foundation-xt/canonical
+                          :output output}
+     :translation/options {:rules []}
+     :source/namespace (:source-namespace summary)
+     :target/namespace (:namespace summary)
+     :replace-existing? (:replace-existing? options)}))
+
+(defn failed-unit
+  [hara-root file-path options error]
+  (let [target-relative (target-path file-path)]
+    {:id file-path
+     :kind (if (xt-test-path? file-path) :test :source)
+     :source/path (path/join (:foundation/root options) file-path)
+     :source/root (:foundation/root options)
+     :target/path (path/join hara-root target-relative)
+     :target/root (target-root hara-root file-path)
+     :target/relative-path target-relative
+     :migration/error (error-message error)}))
+
+(defn xt-units
+  "Builds the complete pinned source/test unit list."
+  [runner revision hara-root options]
+  (let [paths (xt-paths runner revision (:path-prefixes options))
+        all-paths (vec (concat (:source paths) (:test paths)))]
+    (vec
+     (map (fn [file-path]
+            (try
+              (xt-unit runner revision hara-root file-path options)
+              (catch Throwable error
+                (failed-unit hara-root file-path options error))))
+          all-paths))))
+
+(defn xt-item
+  [unit]
+  (if (:migration/error unit)
+    (let [result {:path (:target/path unit)
+                  :source/path (:source/path unit)
+                  :target/path (:target/path unit)
+                  :target/root (:target/root unit)
+                  :changed false
+                  :create false
+                  :namespace nil
+                  :diagnostics [{:type :tool.migrate/unsupported
+                                 :level :error
+                                 :safety :manual
+                                 :path (:id unit)
+                                 :message (:migration/error unit)}]}]
+      {:item/id (:id unit)
+       :unit unit
+       :record {:item/id (:id unit)
+                :status :error
+                :error (:migration/error unit)}
+       :result result
+       :namespace nil
+       :kind (:kind unit)})
+    (let [translated (clj/migration-result unit {:translation/trusted? true})
+          result (if (:namespace translated)
+                   translated
+                   (assoc translated :namespace (:source/namespace unit)))]
+      {:item/id (:id unit)
+       :unit unit
+       :record {:item/id (:id unit)
+                :status :return
+                :data result}
+       :result result
+       :namespace (:namespace result)
+       :kind (:kind unit)})))
+
+^{:public true}
+(defn xt-plan
+  "Plans all 125 Foundation XT sources and 145 path-matched tests."
+  ([hara-root]
+   (xt-plan hara-root {}))
+  ([hara-root options]
+   (let [profile-value (or (:profile options) +xt-profile+)
+         foundation-root-value (foundation-root hara-root options)
+         runner (or (:git/runner options)
+                    (audit/git-runner
+                     (path/join foundation-root-value ".git")))
+         _ (profile/assert-profile profile-value)
+         snapshot (git/snapshot runner profile-value)
+         units (xt-units runner (:foundation/revision profile-value)
+                         hara-root
+                         (assoc options :foundation/root foundation-root-value))
+         items (vec (map xt-item units))
+         results (vec (map :result items))
+         diagnostics (vec (mapcat (fn [result]
+                                    (or (:diagnostics result) []))
+                                  results))
+         plan {:operation :tool.migrate/foundation-xt
+               :profile/id (:profile/id profile-value)
+               :foundation snapshot
+               :units units
+               :items items
+               :records (vec (map :record items))
+               :edits (vec (filter :changed results))
+               :write-intents (write/write-intents items)
+               :diagnostics diagnostics
+               :summary {:source/count (count (filter (fn [unit]
+                                                        (= :source (:kind unit)))
+                                                      units))
+                         :test/count (count (filter (fn [unit]
+                                                      (= :test (:kind unit)))
+                                                    units))
+                         :unit/count (count units)
+                         :changed/count (count (filter (fn [result]
+                                                         (:changed result))
+                                                       results))
+                         :error/count (count (filter (fn [item]
+                                                       (= :error
+                                                          (get-in item [:record :status])))
+                                                     items))
+                         :diagnostic/count (count diagnostics)}}]
+     plan)))
+
+^{:public true}
+(defn validate-plan
+  [plan]
+  (write/validate-write-plan
+   plan
+   (plan-capabilities plan)
+   {:authorized-roots
+    (vec (map :target/root (:units plan)))
+    :allow-manual? true}))
+
+^{:public true}
+(defn apply-plan
+  "Applies only checksum-validated XT target-root writes."
+  [plan]
+  (write/apply-plan plan (plan-capabilities plan)
+                    {:authorized-roots
+                     (vec (map :target/root (:units plan)))
+                     :allow-manual? true}))
+
+^{:public true}
+(defn xt-inventory
+  "Returns the pinned corpus/target inventory used by parity checks."
+  ([hara-root]
+   (xt-inventory hara-root {}))
+  ([hara-root options]
+   (let [plan (or (:plan options) (xt-plan hara-root options))
+         units (:units plan)
+         validation (validate-plan plan)]
+     {:document/type :tool-migrate/foundation-xt-parity
+      :document/version 1
+      :profile/id (:profile/id +xt-profile+)
+      :foundation (:foundation plan)
+      :counts (:summary plan)
+      :validation (select-keys validation [:valid? :errors])
+      :sources (vec (map (fn [unit]
+                           (select-keys unit [:id :kind :source/path :target/path
+                                              :source/namespace :target/namespace]))
+                         units))
+      :missing-targets
+      (vec (keep (fn [item]
+                   (if (:create (:result item))
+                     (:target/path (:unit item))
+                     nil))
+                 (:items plan)))})))
+
+^{:public true}
+(defn write-inventory
+  "Writes the deterministic XT parity ledger through the native filesystem API."
+  ([hara-root]
+   (write-inventory hara-root {}))
+  ([hara-root options]
+   (let [plan (:plan options)
+         inventory (xt-inventory hara-root
+                                 (if plan
+                                   (assoc options :plan plan)
+                                   options))
+         target (path/join hara-root "spec/tool-migrate/foundation-f55f-xt.edn")]
+     (write-atomic target (pr-str inventory))
+     {:path target
+      :counts (:counts inventory)
+      :valid? (get-in inventory [:validation :valid?])})))

@@ -2,6 +2,7 @@
   (:config {:role :internal})
   (:require [code.framework :as framework]
             [tool.migrate.common.block :as nav]
+            [tool.migrate.common.clojure :as clj]
             [tool.migrate.common.rule :as rule]
             [tool.migrate.common.rules :as catalog]))
 
@@ -10,7 +11,8 @@
   (or (:source/language options)
       (:source/language unit)
       (if (and (string? (:source/path unit))
-               (str/ends-with? (:source/path unit) ".clj"))
+               (or (str/ends-with? (:source/path unit) ".clj")
+                   (str/ends-with? (:source/path unit) ".cljc")))
         :clojure
         :hara)))
 
@@ -37,7 +39,8 @@
                  (merge
                   {:source/language source-language
                    :target/language target-language
-                   :rules rules}
+                   :rules rules
+                   :function-resolver clj/function-resolver}
                   options))
          output (:output result)]
      ;; Parsing the target is part of the transform contract. It catches a

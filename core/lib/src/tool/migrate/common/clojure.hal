@@ -72,10 +72,11 @@
 (defn hal-path
   [path]
   (if (and (string? path)
-           (str/ends-with? path ".clj"))
-    (str (str/slice path 0 (- (count path) 4)) ".hal")
+           (or (str/ends-with? path ".clj")
+               (str/ends-with? path ".cljc")))
+    (str (str/slice path 0 (- (count path) (if (str/ends-with? path ".cljc") 5 4))) ".hal")
     (throw
-     (ex :io {:source/path path} :ex/message "Clojure source path must end in .clj"))))
+     (ex :io {:source/path path} :ex/message "Clojure source path must end in .clj or .cljc"))))
 
 (defn join-path
   [root path]
@@ -381,6 +382,14 @@
     (and (str/starts-with? namespace "clojure.core")
          (has? #{"subs" "subvec"} name))
     :string-slice
+
+    (and (= namespace "clojure.core")
+         (= name "disj"))
+    :set-removal
+
+    (and (= namespace "clojure.core")
+         (= name "dissoc"))
+    :associative-removal
 
     (and (str/starts-with? namespace "clojure.core")
          (has? #{"map" "mapcat" "mapv" "filter" "filterv" "reduce"
@@ -698,7 +707,54 @@
           (:resolved/symbol reference)
           (:source/symbol reference)
           (get-in reference [:reference/evidence :path])])
-       (concat qualified implicit))))))
+     (concat qualified implicit))))))
+
+(defn core-reference-matches
+  "Returns executable references to one unshadowed Clojure core Var.
+
+   The returned values follow the function-rule matcher contract and retain
+   the parser evidence needed by diagnostics and deterministic rewrites."
+  [input name]
+  (vec
+   (keep
+    (fn [reference]
+      (if (and (= "clojure.core" (:reference/namespace reference))
+               (= name (:reference/name reference))
+               (= :derived (:reference/status reference)))
+        (merge
+         (:reference/evidence reference)
+         (select-keys reference
+                      [:source/symbol :resolved/symbol
+                       :reference/namespace :reference/name
+                       :reference/status :reference/reason]))
+        nil))
+    (core-symbol-references input))))
+
+(defn match-disj
+  "Matches unshadowed executable Clojure core `disj` references."
+  [root context]
+  (core-reference-matches root "disj"))
+
+(defn rewrite-disj
+  "Rewrites one matched core `disj` reference to Hara `dissoc`."
+  [root match context]
+  (let [source (:source match)
+        qualified? (and (string? source)
+                        (< 0 (or (str/index-of source "/") -1)))
+        target (if qualified? "std.foundation/dissoc" "dissoc")]
+    {:root
+     (nav/root-block
+      (nav/replace-at root (:path match) target))
+     :match match}))
+
+(defn function-resolver
+  "Resolves built-in semantic migration functions without hiding explicit
+   resolver injection used by embedders and policy-specific migrations."
+  [value]
+  (case (str value)
+    "tool.migrate.common.clojure/match-disj" match-disj
+    "tool.migrate.common.clojure/rewrite-disj" rewrite-disj
+    nil))
 
 (defn dependency-symbol-references
   "Collects qualified and explicitly referred tokens with deterministic
@@ -983,17 +1039,30 @@
    (translate-source-unit unit {}))
   ([unit options]
    (let [unit (source-unit unit options)
+         translation-options-value
+         (let [value (translation-options unit options)]
+           (if (:function-resolver value)
+             value
+             (assoc value :function-resolver function-resolver)))
          source (:source/text unit)
          before (:target/text unit)
          recipe (:translation/recipe unit)
          recipe-output (:output recipe)
          recipe-normalized
          (if (string? recipe-output)
-           (rule/translate-source
-            recipe-output
-            {:mode :review
-             :file (:target/path unit)
-             :rules (selected-rules (:translation/options unit))})
+           (if (:translation/trusted? options)
+             {:output recipe-output
+              :changed false
+              :mode :recipe
+              :rules/matched []
+              :rules/applied []
+              :diagnostics []}
+             (rule/translate-source
+              recipe-output
+             {:mode :review
+               :file (:target/path unit)
+               :rules (selected-rules translation-options-value)
+               :function-resolver (:function-resolver translation-options-value)}))
            nil)
          result
          (if (string? recipe-output)
@@ -1005,9 +1074,9 @@
             :diagnostics (:diagnostics recipe-normalized)}
            (rule/translate-source
             source
-            (assoc (:translation/options unit)
+            (assoc translation-options-value
                    :file (:source/path unit)
-                   :rules (selected-rules (:translation/options unit)))))
+                   :rules (selected-rules translation-options-value))))
          after (:output result)
          entry (:corpus/entry unit)
          summary (if (string? recipe-output)

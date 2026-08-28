@@ -52,4 +52,20 @@
     "^{:public true} (defn old [] 1)"))
   => "(defn ^{:public true} old [] 1)")
 
+^{:refer tool.migrate/project-plan}
+(fact "the migration facade exposes a read-only project plan"
+  (let [plan
+        (migrate/project-plan
+         {:units [{:source/path "/authority/demo.clj"
+                   :source/root "/authority"
+                   :source/text "(ns demo.core)\n(def value 1)\n"
+                   :source/sha256 "sha256:source"
+                   :target/path "/hara/demo.hal"
+                   :target/root "/hara"}]})]
+    [(:operation plan)
+     (:write plan)
+     (count (:units plan))
+     (fn? migrate/project-validate-write-plan)])
+  => [:tool.migrate/project false 1 true])
+
 (pr-str (run {:namespace "tool.migrate-test"}))

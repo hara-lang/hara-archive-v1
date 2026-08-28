@@ -102,7 +102,7 @@
     (swap! (get runtime :modules) conj module)
     runtime)
   (teardown-module [runtime module]
-    (swap! (get runtime :modules) disj module)
+    (swap! (get runtime :modules) dissoc module)
     runtime)
   (has-pointer? [runtime pointer]
     (boolean (get (deref (get runtime :pointers)) pointer)))
@@ -110,7 +110,7 @@
     (swap! (get runtime :pointers) conj pointer)
     runtime)
   (teardown-pointer [runtime pointer]
-    (swap! (get runtime :pointers) disj pointer)
+    (swap! (get runtime :pointers) dissoc pointer)
     runtime))
 
 (defn install-lang

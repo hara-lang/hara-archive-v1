@@ -50,6 +50,32 @@
      :rule/evidence {:source/path "src/demo.clj"
                      :target/spec :hara/native}}]})
 
+(def disj-catalog
+  {:document/id :demo/disj
+   :document/type :code-migration-spec
+   :migration/rules
+   [{:rule/id :clojure/disj-to-dissoc
+     :rule/languages [:clojure]
+     :rule/phase :expression
+     :rule/priority 1
+     :rule/kind :function
+     :rule/match {:clojure {:text "disj"}}
+     :rule/rewrite nil
+     :rule/function
+     {:clojure
+      {:match 'tool.migrate.common.clojure/match-disj
+       :rewrite 'tool.migrate.common.clojure/rewrite-disj}}
+     :rule/safety :safe
+     :rule/evidence {:source/path "clojure.core/disj"
+                     :target/spec :hara/foundation}}]})
+
+^{:refer tool.migrate.common.transform/language}
+(fact "language treats clj and cljc files as Clojure input"
+  [(transform/language {:source/path "src/demo.clj"} {})
+   (transform/language {:source/path "src/demo.cljc"} {})
+   (transform/language {:source/path "src/demo.hal"} {})]
+  => [:clojure :clojure :hara])
+
 ^{:refer tool.migrate.common.transform/transform-code}
 (fact "transform-code returns the canonical dry-run edit for Clojure"
   (let [result
@@ -75,6 +101,19 @@
      (:source/language result)
      (:target/language result)]
     => [true :hara :hara]))
+
+^{:refer tool.migrate.common.transform/analyze}
+(fact "the direct transform supplies the default semantic resolver"
+  (let [result
+        (transform/analyze
+         "(ns demo) (defn remove-one [values link] (disj values link))"
+         {:catalog disj-catalog
+          :source/language :clojure
+          :target/language :hara
+          :mode :review})]
+    [(str/includes? (:output result) "(dissoc values link)")
+     (mapv :rule/id (:rules/applied result))])
+  => [true [:clojure/disj-to-dissoc]])
 
 ^{:refer tool.migrate.common.rule/resolve-function}
 (fact "function rules use the injected resolver"
@@ -156,3 +195,5 @@
     ["lib/demo.hal" true true])])
 
 results
+
+(pr-str (run {:namespace "tool.migrate.common.transform-test"}))

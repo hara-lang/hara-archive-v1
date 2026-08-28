@@ -906,6 +906,9 @@
  [{:name "removes one key"
    :test (fn [] (std.foundation/dissoc {:a 1 :b 2} :a))
    :expected {:b 2}}
+  {:name "removes one member from a set"
+   :test (fn [] (std.foundation/dissoc #{:a :b} :a))
+   :expected #{:b}}
   {:name "removes multiple keys"
    :test (fn [] (std.foundation/dissoc {:a 1 :b 2 :c 3} :a :c))
    :expected {:b 2}}

@@ -1,0 +1,475 @@
+(ns tool.migrate.policy.foundation.xt-test
+  (:use code.test)
+  (:require [std.fs :as fs]
+            [std.fs.path :as path]
+            [std.foundation.string :as string]
+            [tool.migrate.policy.foundation.xt :as xt]
+            [tool.migrate.policy.foundation.profile :as profile]))
+
+(def sample-source
+  "(ns demo.core
+     (:require [tahto.core :as l :refer [defspec.xt]]
+               [clojure.string :as string])
+     (:refer-clojure :exclude [map]))
+   (defspec.xt Thing [:xt/str])
+   (defn.xt run [value]
+     #'value
+     @value)")
+
+(def fake-foundation-source
+  "(ns demo.core)\n(defn run [value] value)\n")
+
+(def fake-runner
+  (fn [argv input]
+    (cond
+      (= "ls-tree" (first argv))
+      {:exit 0
+       :out "src-lang/xt/demo.clj\ntest-lang/xt/demo_test.clj\n"}
+
+      (and (= "rev-parse" (first argv))
+           (string/ends-with? (second argv) "^{commit}"))
+      {:exit 0 :out (:foundation/revision profile/+foundation-f55f+)}
+
+      (and (= "rev-parse" (first argv))
+           (string/ends-with? (second argv) "^{tree}"))
+      {:exit 0 :out (:foundation/tree profile/+foundation-f55f+)}
+
+      (= "rev-parse" (first argv))
+      {:exit 0 :out "demo-blob"}
+
+      (= "cat-file" (first argv))
+      {:exit 0 :out fake-foundation-source}
+
+      :else
+      {:exit 1 :err "unexpected fake Foundation Git command"})))
+
+(defn test-options
+  [root]
+  {:foundation/root root
+   :git/runner fake-runner
+   :profile profile/+foundation-f55f+})
+
+^{:refer tool.migrate.policy.foundation.xt/foundation-root}
+(fact "Foundation root defaults beside the Hara repository and accepts an explicit root"
+  [(xt/foundation-root "/workspace/technology/hara" {})
+   (xt/foundation-root "/workspace/technology/hara"
+                       {:foundation/root "/authority/foundation-base"})]
+  => ["/workspace/reference/foundation-base"
+      "/authority/foundation-base"])
+
+^{:refer tool.migrate.policy.foundation.xt/prefix-path?}
+(fact "prefix matching is restricted to strings and preserves path boundaries"
+  [(xt/prefix-path? "src-lang/xt/" "src-lang/xt/demo.clj")
+   (xt/prefix-path? "src-lang/xt/" "test-lang/xt/demo.clj")
+   (xt/prefix-path? "src-lang/xt/" nil)]
+  => [true false false])
+
+^{:refer tool.migrate.policy.foundation.xt/xt-source-path?}
+(fact "XT source paths select only Clojure files under the source corpus"
+  [(xt/xt-source-path? "src-lang/xt/demo.clj")
+   (xt/xt-source-path? "src-lang/xt/demo.hal")
+   (xt/xt-source-path? "src-lang/lang/demo.clj")]
+  => [true false false])
+
+^{:refer tool.migrate.policy.foundation.xt/xt-test-path?}
+(fact "XT test paths select only Clojure files under the test corpus"
+  [(xt/xt-test-path? "test-lang/xt/demo_test.clj")
+   (xt/xt-test-path? "test-lang/xt/demo_test.hal")
+   (xt/xt-test-path? "test/xt/demo_test.clj")]
+  => [true false false])
+
+^{:refer tool.migrate.policy.foundation.xt/path-selected?}
+(fact "migration batches select complete path prefixes and default to the full corpus"
+  [(xt/path-selected? "src-lang/xt/lang/common_data.clj" nil)
+   (xt/path-selected? "src-lang/xt/lang/common_data.clj"
+                      ["src-lang/xt/lang/"])
+   (xt/path-selected? "src-lang/xt/net/http_fetch.clj"
+                      ["src-lang/xt/lang/"])]
+  => [true true false])
+
+^{:refer tool.migrate.policy.foundation.xt/relative-xt-path}
+(fact "relative XT paths remove only the requested corpus prefix"
+  (xt/relative-xt-path "src-lang/xt/" "src-lang/xt/sub/demo.clj")
+  => "sub/demo.clj")
+
+^{:refer tool.migrate.policy.foundation.xt/target-path}
+(fact "source and test paths retain their relative layout and switch to HAL"
+  [(xt/target-path "src-lang/xt/sub/demo.clj")
+   (xt/target-path "test-lang/xt/sub/demo_test.clj")
+   (xt/target-path "src/demo.clj")]
+  => ["lib/src-lang/xt/sub/demo.hal"
+      "lib/test-lang/xt/sub/demo_test.hal"
+      nil])
+
+^{:refer tool.migrate.policy.foundation.xt/namespace-for-path}
+(fact "path-derived namespaces preserve XT hierarchy and normalize filename separators"
+  [(xt/namespace-for-path "src-lang/xt/substrate/page_core.clj")
+   (xt/namespace-for-path "test-lang/xt/substrate/walkthrough/s01_basic_test.clj")
+   (xt/namespace-for-path "src/demo.clj")]
+  => ["xt.substrate.page-core"
+      "xt.substrate.walkthrough.s01-basic-test"
+      nil])
+
+^{:refer tool.migrate.policy.foundation.xt/target-root}
+(fact "target roots select the matching Hara source or test tree"
+  [(xt/target-root "/workspace/technology/hara" "src-lang/xt/demo.clj")
+   (xt/target-root "/workspace/technology/hara" "test-lang/xt/demo_test.clj")]
+  => ["/workspace/technology/hara/lib/src-lang/xt"
+      "/workspace/technology/hara/lib/test-lang/xt"])
+
+^{:refer tool.migrate.policy.foundation.xt/route-symbol}
+(fact "host namespace routes point to Hara owners while unrelated symbols remain stable"
+  [(str (xt/route-symbol 'tahto.core/defn.xt))
+   (str (xt/route-symbol 'tahto.common.book/module))
+   (str (xt/route-symbol 'std.lib.foundation/map))
+   (str (xt/route-symbol 'demo.core/value))
+   (str (xt/route-symbol 'tahto.core))]
+  => ["lang.core/defn.xt"
+      "lang.common.book/module"
+      "std.foundation/map"
+      "demo.core/value"
+      "lang.core"])
+
+^{:refer tool.migrate.policy.foundation.xt/semantic-meta}
+(fact "parser location metadata is removed without losing semantic metadata"
+  (xt/semantic-meta
+   (with-meta 'value {:file "source.clj" :line 4 :public true :seedgen/skip true}))
+  => {:public true})
+
+^{:refer tool.migrate.policy.foundation.xt/preserve-meta}
+(fact "metadata preservation avoids attaching nil metadata to transformed values"
+  [(meta (xt/preserve-meta '(value) nil))
+   (meta (xt/preserve-meta '(value) (with-meta '(source) {:public true})))]
+  => [nil {:public true}])
+
+^{:refer tool.migrate.policy.foundation.xt/route-form}
+(fact "form routing recursively rewrites qualified symbols and keeps data strings"
+  (xt/route-form
+   '(demo.core/run tahto.core/return "tahto.core/return"))
+  => '(demo.core/run lang.core/return "tahto.core/return"))
+
+^{:refer tool.migrate.policy.foundation.xt/refer-option}
+(fact "namespace options are read as key/value pairs"
+  [(xt/refer-option '[:exclude [map] :rename {reduce fold}] :exclude)
+   (xt/refer-option '[:exclude [map] :rename {reduce fold}] :missing)]
+  => [['map] nil])
+
+^{:refer tool.migrate.policy.foundation.xt/remove-defspec-refer}
+(fact "defspec.xt is removed from require refers while other imports remain"
+  [(xt/remove-defspec-refer '[defspec.xt defn.xt])
+   (xt/remove-defspec-refer '[defn.xt])]
+  => [['defn.xt] ['defn.xt]])
+
+^{:refer tool.migrate.policy.foundation.xt/route-require-spec}
+(fact "require specs route namespaces and drop the obsolete schema import"
+  [(xt/route-require-spec '[tahto.core :as l :refer [defspec.xt defn.xt]])
+   (xt/route-require-spec '[tahto.typed :refer [defspec.xt]])
+   (xt/route-require-spec 'demo.local)]
+  => '[[lang.core :as l :refer [defn.xt]] nil demo.local])
+
+^{:refer tool.migrate.policy.foundation.xt/route-ns-clause}
+(fact "namespace clauses route requires and eliminate refer-clojure"
+  [(xt/route-ns-clause '(:require [tahto.core :as l]))
+   (xt/route-ns-clause '(:refer-clojure :exclude [map]))
+   (xt/route-ns-clause '(:import java.util.UUID))]
+  => '[(:require [lang.core :as l]) nil (:import java.util.UUID)])
+
+^{:refer tool.migrate.policy.foundation.xt/refer-clojure-excludes}
+(fact "refer-clojure exclusions become explicit Hara override names"
+  (xt/refer-clojure-excludes
+   '((:refer-clojure :exclude [map reduce]) (:require [demo.local])))
+  => '[map reduce])
+
+^{:refer tool.migrate.policy.foundation.xt/config-clause}
+(fact "configuration lookup returns only a config namespace clause"
+  [(xt/config-clause '((:require [demo.local]) (:config {:role :internal})))
+   (xt/config-clause '((:require [demo.local])))]
+  => '[(:config {:role :internal}) nil])
+
+^{:refer tool.migrate.policy.foundation.xt/config-map}
+(fact "configuration maps are extracted defensively from clauses"
+  [(xt/config-map '(:config {:role :internal}))
+   (xt/config-map '(:config))]
+  => [{:role :internal} {}])
+
+^{:refer tool.migrate.policy.foundation.xt/merge-config}
+(fact "core exclusions merge into existing config overrides deterministically"
+  [(xt/merge-config '(:config {:role :internal :override [map]}) '[reduce map])
+   (xt/merge-config nil [])]
+  => '[(:config {:role :internal :override [map reduce]}) nil])
+
+^{:refer tool.migrate.policy.foundation.xt/route-namespace-form}
+(fact "namespace conversion retains clauses and replaces Clojure core exclusion syntax"
+  (xt/route-namespace-form
+   '(ns demo.core
+      (:require [tahto.core :as l])
+      (:refer-clojure :exclude [map])))
+  => '(ns demo.core
+        (:require [lang.core :as l])
+        (:config {:override [map]})))
+
+^{:refer tool.migrate.policy.foundation.xt/route-namespace-form}
+(fact "namespace conversion can use the path-authoritative Hara namespace"
+  (second
+   (xt/route-namespace-form
+    '(ns xt.substrate.s01-basic-test)
+    "xt.substrate.walkthrough.s01-basic-test"))
+  => 'xt.substrate.walkthrough.s01-basic-test)
+
+^{:refer tool.migrate.policy.foundation.xt/defspec-form?}
+(fact "defspec form detection requires the schema argument"
+  [(xt/defspec-form? '(defspec.xt Thing [:xt/str]))
+   (xt/defspec-form? '(defspec.xt Thing))
+   (xt/defspec-form? '(def Thing nil))]
+  => [true false false])
+
+^{:refer tool.migrate.policy.foundation.xt/route-defspec}
+(fact "schema declarations become metadata-bearing Hara Vars"
+  (let [value (xt/route-defspec '(defspec.xt Thing [:xt/str]))
+        symbol (second value)]
+    [(first value) symbol (meta symbol) (nth value 2)])
+  => ['def 'Thing {:schema [:xt/str]} nil])
+
+^{:refer tool.migrate.policy.foundation.xt/route-top-form}
+(fact "the first form receives namespace routing and later schema forms receive declaration routing"
+  (let [forms (xt/source-forms sample-source)]
+    [(first (xt/route-top-form (first forms) true))
+     (first (xt/route-top-form (second forms) false))])
+  => ['ns 'def])
+
+^{:refer tool.migrate.policy.foundation.xt/normalize-reader-sugar}
+(fact "the reader normalization preserves a double-discarded guard's effective value"
+  (xt/normalize-reader-sugar
+   "{:remote {:wrapper x #_#_:guard (fn:> false)}}")
+  => "{:remote {:wrapper x #_(fn:> false)}}")
+
+^{:refer tool.migrate.policy.foundation.xt/source-forms}
+(fact "source parsing returns one ordered value per top-level form"
+  (mapv first (xt/source-forms sample-source))
+  => ['ns 'defspec.xt 'defn.xt])
+
+^{:refer tool.migrate.policy.foundation.xt/render-metadata}
+(fact "metadata rendering emits a readable Hara prefix"
+  (xt/render-metadata (with-meta 'value {:public true}))
+  => "^{:public true} ")
+
+^{:refer tool.migrate.policy.foundation.xt/render-form}
+(fact "form rendering is canonical and retains nested semantic metadata"
+  (xt/render-form (with-meta '(def value 1) {:public true}))
+  => "^{:public true}\n(def value 1)")
+
+^{:refer tool.migrate.policy.foundation.xt/transformed-source}
+(fact "one parsed source pass supplies both canonical text and namespace evidence"
+  (xt/transformed-source "(ns demo.core) (def value 1)")
+  => {:output "(ns demo.core)\n\n(def value 1)\n"
+      :namespace "demo.core"
+      :source/namespace "demo.core"})
+
+^{:refer tool.migrate.policy.foundation.xt/transform-source}
+(fact "XT transformation routes namespaces, expands reader sugar, and preserves schemas"
+  (let [output (xt/transform-source sample-source)]
+    [(string/includes? output "[lang.core :as l]")
+     (string/includes? output "[std.foundation.string :as string]")
+     (string/includes? output "(:config {:override [map]})")
+     (string/includes? output "^{:schema [:xt/str]} Thing")
+     (string/includes? output "(var value)")
+     (string/includes? output "(deref value)")
+     (not (string/includes? output "defspec.xt"))
+     (not (string/includes? output "#'"))])
+  => [true true true true true true true true])
+
+^{:refer tool.migrate.policy.foundation.xt/file-source}
+(fact "file-source reads the pinned blob through the read-only Git adapter"
+  (xt/file-source fake-runner "revision" "src-lang/xt/demo.clj")
+  => fake-foundation-source)
+
+^{:refer tool.migrate.policy.foundation.xt/error-message}
+(fact "migration errors retain a stable user-facing message"
+  (xt/error-message (ex :host {} :ex/message "bad migration"))
+  => "bad migration")
+
+^{:refer tool.migrate.policy.foundation.xt/failed-unit}
+(fact "failed units retain exact source and target locations for blocking review"
+  (select-keys
+   (xt/failed-unit
+    "/hara"
+    "src-lang/xt/demo.clj"
+    {:foundation/root "/authority"}
+    (ex :host {} :ex/message "bad migration"))
+   [:id :kind :source/path :target/path :target/root :migration/error])
+  => {:id "src-lang/xt/demo.clj"
+      :kind :source
+      :source/path "/authority/src-lang/xt/demo.clj"
+      :target/path "/hara/lib/src-lang/xt/demo.hal"
+      :target/root "/hara/lib/src-lang/xt"
+      :migration/error "bad migration"})
+
+^{:refer tool.migrate.policy.foundation.xt/source-sha256}
+(fact "source checksums use the shared SHA-256 wire representation"
+  (xt/source-sha256 "abc")
+  => "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+
+^{:refer tool.migrate.policy.foundation.xt/canonical-path}
+(fact "canonical paths are absolute and use slash separators"
+  (let [root (fs/temp-directory "/" {:prefix "hara-xt-canonical-"})
+        value (xt/canonical-path root)]
+    (try
+      [(= value root)
+       (string/includes? value "\\")]
+      (finally
+        (fs/delete root {:recursive? true :missing-ok? true}))))
+  => [true false])
+
+^{:refer tool.migrate.policy.foundation.xt/read-target}
+(fact "target reading distinguishes an existing file from a missing target"
+  (let [current (fs/temp-file "/" {:prefix "hara-xt-read-"})]
+    (try
+      (xt/write-atomic current "target")
+      [(= (xt/read-target current) "target")
+       (xt/read-target "/tmp/hara-xt-target-that-does-not-exist")]
+      (finally
+        (fs/delete current {:missing-ok? true}))))
+  => [true nil])
+
+^{:refer tool.migrate.policy.foundation.xt/write-atomic}
+(fact "atomic target writing creates parent directories and replaces bytes"
+  (let [root (fs/temp-directory "/" {:prefix "hara-xt-write-"})
+        target (path/join root "nested" "target.hal")]
+    (try
+      (let [first-path (xt/write-atomic target "first")
+            second-path (xt/write-atomic target "second")]
+        [(string/ends-with? first-path "/nested/target.hal")
+         (string/ends-with? second-path "/nested/target.hal")
+         (xt/read-target target)])
+      (finally
+        (fs/delete root {:recursive? true :missing-ok? true}))))
+  => [true true "second"])
+
+^{:refer tool.migrate.policy.foundation.xt/plan-capabilities}
+(fact "plan capabilities read pinned source evidence when the mount cannot see the authority"
+  (let [capabilities
+        (xt/plan-capabilities
+         {:units [{:source/path "/authority/demo.clj"
+                   :source/text "(ns demo.core)\n"}]})]
+    [((:read-text capabilities) "/authority/demo.clj")
+     ((:read-text capabilities) "/authority/missing.clj")
+     ((:sha256 capabilities) "abc")])
+  => ["(ns demo.core)\n" nil
+      "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"])
+
+^{:refer tool.migrate.policy.foundation.xt/xt-paths}
+(fact "XT path discovery separates sorted source and test paths"
+  (xt/xt-paths fake-runner "revision")
+  => {:source ["src-lang/xt/demo.clj"]
+      :test ["test-lang/xt/demo_test.clj"]})
+
+^{:refer tool.migrate.policy.foundation.xt/xt-paths}
+(fact "XT path discovery can restrict one batch without changing path matching"
+  (xt/xt-paths fake-runner
+               "revision"
+               ["src-lang/xt/"])
+  => {:source ["src-lang/xt/demo.clj"]
+      :test []})
+
+^{:refer tool.migrate.policy.foundation.xt/xt-unit}
+(fact "XT units retain source evidence and derive an exact target path"
+  (let [unit (xt/xt-unit fake-runner
+                         "revision"
+                         "/workspace/technology/hara"
+                         "src-lang/xt/demo.clj"
+                         {:foundation/root "/authority/foundation-base"})]
+    (select-keys unit [:id :kind :source/path :target/path :source/namespace]))
+  => {:id "src-lang/xt/demo.clj"
+      :kind :source
+      :source/path "/authority/foundation-base/src-lang/xt/demo.clj"
+      :target/path "/workspace/technology/hara/lib/src-lang/xt/demo.hal"
+      :source/namespace "demo.core"})
+
+^{:refer tool.migrate.policy.foundation.xt/xt-units}
+(fact "unit discovery covers every source and test returned by the pinned tree"
+  (let [units (xt/xt-units fake-runner
+                           "revision"
+                           "/workspace/technology/hara"
+                           {:foundation/root "/authority/foundation-base"})]
+    [(count units) (mapv :kind units) (mapv :id units)])
+  => [2 [:source :test]
+      ["src-lang/xt/demo.clj" "test-lang/xt/demo_test.clj"]])
+
+^{:refer tool.migrate.policy.foundation.xt/xt-item}
+(fact "each XT unit produces a shared migration result with provenance"
+  (let [item (xt/xt-item
+              (xt/xt-unit fake-runner
+                          "revision"
+                          "/workspace/technology/hara"
+                          "src-lang/xt/demo.clj"
+                          {:foundation/root "/authority/foundation-base"}))]
+     [(get-in item [:record :status])
+     (:kind item)
+     (:namespace item)
+     (get-in item [:result :create])
+     (get-in item [:result :translation/recipe])])
+  => [:return :source "demo.core" true :foundation-xt/canonical])
+
+^{:refer tool.migrate.policy.foundation.xt/xt-plan}
+(fact "the native XT plan records the pinned snapshot and complete unit counts"
+  (let [plan (xt/xt-plan "/workspace/technology/hara"
+                         (test-options "/authority/foundation-base"))]
+    [(:operation plan)
+     (:foundation plan)
+     (:summary plan)
+     (count (:records plan))
+     (count (:write-intents plan))])
+  => [:tool.migrate/foundation-xt
+      {:repository "zcaudate-xyz/foundation-base"
+       :revision "f55f39855d5e9ea1b22f1d116df684c584323f80"
+       :tree "3beb10f32e7d57139910ee9c9de1370e966ca935"}
+      {:source/count 1 :test/count 1 :unit/count 2
+       :changed/count 2 :error/count 0 :diagnostic/count 2}
+      2 2])
+
+^{:refer tool.migrate.policy.foundation.xt/validate-plan}
+(fact "empty XT write plans validate without requiring a filesystem root"
+  (select-keys
+   (xt/validate-plan {:units [] :write-intents [] :records [] :diagnostics []})
+   [:valid? :write :intents :errors])
+  => {:valid? true :write false :intents [] :errors []})
+
+^{:refer tool.migrate.policy.foundation.xt/apply-plan}
+(fact "applying an empty validated XT plan is an idempotent no-op"
+  (select-keys
+   (xt/apply-plan {:units [] :write-intents [] :records [] :diagnostics []})
+   [:write :count])
+  => {:write true :count 0})
+
+^{:refer tool.migrate.policy.foundation.xt/xt-inventory}
+(fact "XT inventory publishes counts, source mappings, and missing targets"
+  (let [inventory (xt/xt-inventory
+                   "/workspace/technology/hara"
+                   (test-options "/authority/foundation-base"))]
+    [(:document/type inventory)
+     (:counts inventory)
+     (count (:sources inventory))
+     (count (:missing-targets inventory))
+     (get-in inventory [:validation :valid?])])
+  => [:tool-migrate/foundation-xt-parity
+      {:source/count 1 :test/count 1 :unit/count 2
+       :changed/count 2 :error/count 0 :diagnostic/count 2}
+      2 2 true])
+
+^{:refer tool.migrate.policy.foundation.xt/write-inventory}
+(fact "inventory writing uses the native filesystem boundary and is repeatable"
+  (let [root (fs/temp-directory "/" {:prefix "hara-xt-inventory-"})]
+    (try
+      (let [result (xt/write-inventory root (test-options "/authority/foundation-base"))
+            path (:path result)]
+        [(fs/exists? path)
+         (:counts result)
+         (:valid? result)])
+      (finally
+        (fs/delete root {:recursive? true :missing-ok? true}))))
+  => [true
+      {:source/count 1 :test/count 1 :unit/count 2
+       :changed/count 2 :error/count 0 :diagnostic/count 2}
+      true])
+
+(pr-str (run {:namespace "tool.migrate.policy.foundation.xt-test"}))
