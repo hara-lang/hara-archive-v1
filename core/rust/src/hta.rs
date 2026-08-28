@@ -92,7 +92,13 @@ pub const HTA0_TAG_INVENTORY: &[(u8, &str)] = &[
 
 fn decode_exception_provenance(
     value: Value,
-) -> Result<(Option<crate::core::ExceptionSite>, Vec<crate::core::ExceptionSite>), String> {
+) -> Result<
+    (
+        Option<crate::core::ExceptionSite>,
+        Vec<crate::core::ExceptionSite>,
+    ),
+    String,
+> {
     let entries = crate::core::map_entries(&value)
         .ok_or_else(|| "hta/value-malformed: invalid exception provenance".to_string())?;
     if entries.len() != 2 {
@@ -127,9 +133,9 @@ fn decode_exception_site(value: &Value) -> Result<crate::core::ExceptionSite, St
         return Err("hta/value-malformed: invalid exception provenance site".into());
     }
     let get = |name: &str| {
-        entries.iter().find_map(|(key, value)| {
-            field_name(key, name).then_some(value)
-        })
+        entries
+            .iter()
+            .find_map(|(key, value)| field_name(key, name).then_some(value))
     };
     let namespace = match get("namespace") {
         Some(Value::Nil) => None,
@@ -395,7 +401,11 @@ fn encode_bare(value: &Value, output: &mut Vec<u8>, depth: usize) -> Result<(), 
                 output,
                 depth + 1,
             )?;
-            encode_bare(&crate::core::exception_provenance_value(value), output, depth + 1)?;
+            encode_bare(
+                &crate::core::exception_provenance_value(value),
+                output,
+                depth + 1,
+            )?;
         }
         Value::Result(value) => {
             output.push(STRUCT);
@@ -730,10 +740,7 @@ impl Reader<'_> {
                         data: Box::new(data),
                         cause,
                         provenance: std::rc::Rc::new(std::cell::RefCell::new(
-                            crate::core::ExceptionProvenance {
-                                created_at,
-                                throws,
-                            },
+                            crate::core::ExceptionProvenance { created_at, throws },
                         )),
                     },
                 )))
@@ -932,7 +939,10 @@ mod tests {
         ] {
             let encoded = encode(&Value::BigInteger(value)).unwrap();
             assert_eq!(encoded[4], tag);
-            assert_eq!(decode_canonical(&encoded).unwrap(), decode(&encoded).unwrap());
+            assert_eq!(
+                decode_canonical(&encoded).unwrap(),
+                decode(&encoded).unwrap()
+            );
         }
     }
 
@@ -990,9 +1000,24 @@ mod tests {
 
     #[test]
     fn tag_inventory_keeps_legacy_var_distinct_from_var_reference() {
-        assert_eq!(HTA0_TAG_INVENTORY.iter().find(|(_, name)| *name == "character"), Some(&(19, "character")));
-        assert_eq!(HTA0_TAG_INVENTORY.iter().find(|(_, name)| *name == "pointer"), Some(&(34, "pointer")));
-        assert_eq!(HTA0_TAG_INVENTORY.iter().find(|(_, name)| *name == "var-ref"), Some(&(35, "var-ref")));
+        assert_eq!(
+            HTA0_TAG_INVENTORY
+                .iter()
+                .find(|(_, name)| *name == "character"),
+            Some(&(19, "character"))
+        );
+        assert_eq!(
+            HTA0_TAG_INVENTORY
+                .iter()
+                .find(|(_, name)| *name == "pointer"),
+            Some(&(34, "pointer"))
+        );
+        assert_eq!(
+            HTA0_TAG_INVENTORY
+                .iter()
+                .find(|(_, name)| *name == "var-ref"),
+            Some(&(35, "var-ref"))
+        );
         assert!(decode(b"HTA0\x0e\x07\0\0\0\x04rank\0").is_err());
     }
 

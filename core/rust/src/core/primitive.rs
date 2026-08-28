@@ -69,7 +69,10 @@ impl IntrinsicOp {
 /// Applies a primitive to already-evaluated arguments. The evaluator calls
 /// this after evaluating argument forms; the bytecode VM calls it directly
 /// from the operand stack.
-pub(crate) fn apply_intrinsic(primitive: IntrinsicOp, arguments: &[Value]) -> Result<Value, String> {
+pub(crate) fn apply_intrinsic(
+    primitive: IntrinsicOp,
+    arguments: &[Value],
+) -> Result<Value, String> {
     let op = primitive.operator();
     if let [left, right] = arguments {
         return apply_binary_intrinsic(primitive, left, right);
@@ -396,7 +399,10 @@ pub(crate) fn number_conversion_value(operation: &str, value: Value) -> Result<V
         },
         "parse-double" => match value {
             Value::String(value) if !value.is_empty() && value.trim() == value => {
-                if matches!(value.as_str(), "NaN" | "Infinity" | "+Infinity" | "-Infinity") {
+                if matches!(
+                    value.as_str(),
+                    "NaN" | "Infinity" | "+Infinity" | "-Infinity"
+                ) {
                     return Err("non-finite number".into());
                 }
                 if !decimal_double_text(&value) {
@@ -982,7 +988,8 @@ fn native_exception_values(operation: &str, values: Vec<Value>) -> Result<Value,
         "new" => {
             if !(2..=3).contains(&values.len()) {
                 return Err(
-                    "std.native.Exception/new expects a message, data map, and optional cause".into(),
+                    "std.native.Exception/new expects a message, data map, and optional cause"
+                        .into(),
                 );
             }
             let Value::String(message) = &values[0] else {

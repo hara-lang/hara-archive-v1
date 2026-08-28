@@ -97,21 +97,23 @@ impl Dispatcher {
 
     fn dispatch(&self, event: ReaderEvent) {
         match event {
-            ReaderEvent::Frame(bytes) => match hta::decode_canonical(&bytes).and_then(Self::response) {
-                Ok((request, result)) => {
-                    if let Some(pending) = self.pending.borrow_mut().remove(&request) {
-                        match result {
-                            Ok(value) => {
-                                pending.promise.resolve(value);
-                            }
-                            Err(error) => {
-                                pending.promise.reject(error);
+            ReaderEvent::Frame(bytes) => {
+                match hta::decode_canonical(&bytes).and_then(Self::response) {
+                    Ok((request, result)) => {
+                        if let Some(pending) = self.pending.borrow_mut().remove(&request) {
+                            match result {
+                                Ok(value) => {
+                                    pending.promise.resolve(value);
+                                }
+                                Err(error) => {
+                                    pending.promise.reject(error);
+                                }
                             }
                         }
                     }
+                    Err(error) => self.fail_all(error),
                 }
-                Err(error) => self.fail_all(error),
-            },
+            }
             ReaderEvent::Closed(error) => self.fail_all(error),
         }
     }

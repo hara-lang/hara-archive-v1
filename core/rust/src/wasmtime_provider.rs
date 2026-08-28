@@ -672,13 +672,8 @@ impl HtaProviderState {
             );
             (task as u64, operation)
         };
-        self.trace.emit(
-            "call-enter",
-            Some(task),
-            Some(operation),
-            None,
-            None,
-        );
+        self.trace
+            .emit("call-enter", Some(task), Some(operation), None, None);
         let weak = Rc::downgrade(self);
         let manifest_for_poll = manifest.clone();
         promise.set_poller(Rc::new(move || {
@@ -754,13 +749,8 @@ impl HtaProviderState {
         }
         if let Err(error) = execute_release(session, &frame) {
             session.handles.insert(key);
-            self.trace.emit(
-                "release",
-                None,
-                None,
-                Some("error"),
-                Some(error.clone()),
-            );
+            self.trace
+                .emit("release", None, None, Some("error"), Some(error.clone()));
             return Err(error);
         }
         self.trace.emit("release", None, None, Some("ok"), None);
@@ -865,7 +855,11 @@ impl HtaProviderState {
                         }
                     }
                     self.trace.emit(
-                        if kind == 0 { "call-return" } else { "call-error" },
+                        if kind == 0 {
+                            "call-return"
+                        } else {
+                            "call-error"
+                        },
                         Some(task),
                         Some(pending.operation.clone()),
                         Some(if kind == 0 { "ok" } else { "error" }),
@@ -1783,13 +1777,7 @@ mod tests {
     fn hta_lifecycle_trace_is_stable_and_shutdown_is_idempotent() {
         let trace = HtaProviderTrace::new();
         trace.emit("start", None, None, Some("ok"), None);
-        trace.emit(
-            "call-enter",
-            Some(7),
-            Some("demo/echo".into()),
-            None,
-            None,
-        );
+        trace.emit("call-enter", Some(7), Some("demo/echo".into()), None, None);
         trace.emit_shutdown(Some("ok"), None);
         trace.emit_shutdown(Some("error"), Some("late".into()));
 

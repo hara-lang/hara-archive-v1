@@ -94,7 +94,10 @@ fn runtime_codec_compacts_big_integer_widths_and_rejects_noncanonical_frames() {
     ] {
         let encoded = hta::encode(&Value::BigInteger(value)).unwrap();
         assert_eq!(encoded[4], tag);
-        assert_eq!(hta::decode_canonical(&encoded).unwrap(), hta::decode(&encoded).unwrap());
+        assert_eq!(
+            hta::decode_canonical(&encoded).unwrap(),
+            hta::decode(&encoded).unwrap()
+        );
     }
 
     let noncanonical = b"HTA0\x14\0\0\0\x02\x34\x32";
