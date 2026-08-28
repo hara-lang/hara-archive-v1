@@ -2,7 +2,9 @@
 
 use sha2::{Digest, Sha256};
 
-use crate::{core, kernel, Runtime, EAGER_HAL_RESOURCES, EMBEDDED_HAL_RESOURCES};
+use crate::{
+    core, kernel, Runtime, EAGER_HAL_RESOURCES, EMBEDDED_CLI_RESOURCES, EMBEDDED_HAL_RESOURCES,
+};
 
 #[path = "bundle/order.rs"]
 mod order;
@@ -54,6 +56,21 @@ pub fn embedded_foundation_bootstrap_sources() -> Vec<ModuleSource<'static>> {
         .collect::<Vec<_>>();
     order_module_sources(&sources)
         .expect("embedded Foundation bootstrap dependencies must be acyclic")
+        .into_iter()
+        .map(|index| sources[index])
+        .collect()
+}
+
+/// Returns the embedded CLI/test-support namespace closure in deterministic
+/// dependency order. Foundation namespaces are deliberately excluded because
+/// they are already supplied by the runtime's Foundation artifact.
+pub fn embedded_cli_sources() -> Vec<ModuleSource<'static>> {
+    let sources = EMBEDDED_CLI_RESOURCES
+        .iter()
+        .map(|(resource, _, source)| ModuleSource { resource, source })
+        .collect::<Vec<_>>();
+    order_module_sources(&sources)
+        .expect("embedded CLI bootstrap dependencies must be acyclic")
         .into_iter()
         .map(|index| sources[index])
         .collect()
@@ -125,6 +142,17 @@ pub fn compile_embedded_foundation_bootstrap_bundle() -> Result<Vec<u8>, String>
     compile_bytecode_bundle(&embedded_foundation_bootstrap_sources())
 }
 
+/// Compiles the immutable CLI and `code.test` closure against the already
+/// bootstrapped Foundation context. The resulting bundle is installed lazily,
+/// so a test or CLI process pays only for the namespaces it actually requires.
+pub fn compile_embedded_cli_bundle() -> Result<Vec<u8>, String> {
+    let foundation = embedded_foundation_bootstrap_sources();
+    let cli = embedded_cli_sources();
+    let mut context = foundation;
+    context.extend(cli.iter().copied());
+    compile_package_bytecode_bundle(&context, &cli)
+}
+
 /// Compatibility name retained for embedding hosts built against the original
 /// standard-library bundle API. The embedded artifact is now Foundation-only.
 pub fn compile_embedded_standard_library_bundle() -> Result<Vec<u8>, String> {
@@ -147,8 +175,6 @@ pub fn eval_bytecode_bundle(runtime: &mut Runtime, bytes: &[u8]) -> Result<(), S
                 module.resource
             ));
         }
-        crate::vm::decode_program(&module.artifact)
-            .map_err(|error| format!("{}: invalid bytecode artifact: {error}", module.resource))?;
     }
     let namespaces_before = runtime.namespace_registry.snapshot();
     let environment_before = runtime.execution.snapshot();
@@ -159,11 +185,28 @@ pub fn eval_bytecode_bundle(runtime: &mut Runtime, bytes: &[u8]) -> Result<(), S
     let loaded_before = runtime.loaded_resources.clone();
     let loaded = (|| {
         for module in &modules {
-            let source = runtime.resources.get(&module.resource);
-            if source.is_none() && standard_library_namespace(&module.resource) {
-                continue;
-            }
+            let source = if let Some(source) = runtime.resources.get(&module.resource) {
+                Some(source.clone())
+            } else {
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    runtime
+                        .source_paths
+                        .get(&module.resource)
+                        .map(|path| {
+                            std::fs::read_to_string(path).map_err(|error| {
+                                format!("cannot read bundled source {}: {error}", path.display())
+                            })
+                        })
+                        .transpose()?
+                }
+                #[cfg(target_arch = "wasm32")]
+                {
+                    None
+                }
+            };
             let source_is_current = source
+                .as_deref()
                 .map(|source| {
                     let digest: [u8; 32] = Sha256::digest(source.as_bytes()).into();
                     digest == module.source_digest

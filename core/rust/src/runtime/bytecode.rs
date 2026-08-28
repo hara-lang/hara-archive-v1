@@ -7,6 +7,81 @@
 /// Programs are returned inside `Rc` because compiled closures share the
 /// program with their executing machines; `Rc::clone` is the cheap way to
 /// pass one around.
+#[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+#[derive(Clone)]
+pub(crate) struct SourceBytecodeCache {
+    directory: std::path::PathBuf,
+}
+
+#[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+impl SourceBytecodeCache {
+    pub(crate) fn new(root: &std::path::Path, source_index_fingerprint: [u8; 32]) -> Self {
+        Self {
+            directory: root
+                .join("target/hara/test-bytecode/v1")
+                .join(hex_digest(&source_index_fingerprint)),
+        }
+    }
+
+    fn path_for(&self, namespace: &str, source: &str) -> std::path::PathBuf {
+        use sha2::{Digest, Sha256};
+
+        let mut digest = Sha256::new();
+        digest.update(b"hara-direct-native-source-v1\0");
+        digest.update(env!("CARGO_PKG_VERSION").as_bytes());
+        digest.update([0]);
+        digest.update(namespace.as_bytes());
+        digest.update([0]);
+        digest.update(source.as_bytes());
+        self.directory
+            .join(format!("{}.hbc", hex_digest(&digest.finalize())))
+    }
+
+    fn load(
+        &self,
+        namespace: &str,
+        source: &str,
+    ) -> Option<crate::direct_native::ValidatedProgram> {
+        let path = self.path_for(namespace, source);
+        let bytes = std::fs::read(path).ok()?;
+        let program = crate::vm::decode_program(&bytes).ok()?;
+        if program.namespace.as_deref() != Some(namespace) {
+            return None;
+        }
+        Some(crate::direct_native::ValidatedProgram::from_artifact(
+            Rc::new(program),
+        ))
+    }
+
+    fn store(&self, namespace: &str, source: &str, program: &crate::vm::Program) {
+        let path = self.path_for(namespace, source);
+        if path.is_file() {
+            return;
+        }
+        let Ok(bytes) = crate::vm::encode_program(program) else {
+            return;
+        };
+        if std::fs::create_dir_all(&self.directory).is_err() {
+            return;
+        }
+        let temporary = path.with_extension(format!("hbc.tmp-{}", std::process::id()));
+        if std::fs::write(&temporary, bytes).is_ok() {
+            let _ = std::fs::rename(temporary, path);
+        }
+    }
+}
+
+#[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+fn hex_digest(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut output = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        output.push(HEX[(byte >> 4) as usize] as char);
+        output.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    output
+}
+
 #[cfg(feature = "bytecode-vm")]
 pub fn bytecode_namespace_registry() -> kernel::NamespaceRegistry<core::Value> {
     core::minimal_namespace_registry()
@@ -323,7 +398,17 @@ impl Runtime {
         &mut self,
         program: std::rc::Rc<vm::Program>,
     ) -> Result<crate::direct_native::NativeExecutionReport, String> {
-        if let Some(namespace) = &program.namespace {
+        let program = crate::direct_native::ValidatedProgram::validate(program)?;
+        self.execute_compiled_direct_native_validated(program)
+    }
+
+    #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+    fn execute_compiled_direct_native_validated(
+        &mut self,
+        program: crate::direct_native::ValidatedProgram,
+    ) -> Result<crate::direct_native::NativeExecutionReport, String> {
+        let program_image = program.program();
+        if let Some(namespace) = &program_image.namespace {
             self.namespace_registry.set_current(namespace);
         }
         let mut declaration_environment = HashMap::new();
@@ -345,16 +430,21 @@ impl Runtime {
                                                 let loader = Self::direct_native_namespace_loader(
                                                     self.direct_native.clone(),
                                                     self.direct_native_multimethods.clone(),
+                                                    self.direct_native_source_cache.clone(),
                                                 );
                                                 core::with_direct_native_namespace_loader(
                                                     loader,
                                                     || {
                                                         core::with_declaration_transaction(
                                                             &mut declaration_environment,
-                                                            |_| self.direct_native.execute_blocking_with_multimethods(
-                                                                program,
-                                                                self.direct_native_multimethods.clone(),
-                                                            ),
+                                                            |_| {
+                                                                self.direct_native
+                                                                    .execute_blocking_validated_with_multimethods(
+                                                                        program,
+                                                                        self.direct_native_multimethods
+                                                                            .clone(),
+                                                                    )
+                                                            },
                                                         )
                                                     },
                                                 )
@@ -390,6 +480,7 @@ impl Runtime {
     pub(crate) fn direct_native_namespace_loader(
         engine: crate::direct_native::NativeEngine,
         multimethods: core::MultiMethodRegistry,
+        source_cache: Option<SourceBytecodeCache>,
     ) -> Rc<
         dyn Fn(
             &str,
@@ -398,7 +489,14 @@ impl Runtime {
         ) -> Result<(), String>,
     > {
         Rc::new(move |name, resource, environment| {
-            load_direct_native_namespace(&engine, &multimethods, name, resource, environment)
+            load_direct_native_namespace(
+                &engine,
+                &multimethods,
+                source_cache.as_ref(),
+                name,
+                resource,
+                environment,
+            )
         })
     }
 
@@ -409,8 +507,10 @@ impl Runtime {
     #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
     pub fn eval_direct_native(&mut self, source: &str) -> Result<String, String> {
         let program = self.compile_bytecode_for_direct_native(source)?;
-        self.execute_compiled_direct_native(program)
-            .map(|report| report.value.display())
+        self.execute_compiled_direct_native_validated(
+            crate::direct_native::ValidatedProgram::from_compiler(program),
+        )
+        .map(|report| report.value.display())
     }
 
     /// Compiles against this runtime's namespaces and persists the validated
@@ -455,7 +555,9 @@ impl Runtime {
             let function_types = program.function_types.clone();
             let inferred_function_types = program.inferred_function_types.clone();
             let result = self
-                .execute_compiled_direct_native(program)
+                .execute_compiled_direct_native_validated(
+                    crate::direct_native::ValidatedProgram::from_artifact(program),
+                )
                 .map(|report| report.value.display());
             if result.is_ok() {
                 self.halc_schema_types.extend(schema_types);
@@ -506,17 +608,18 @@ impl Runtime {
 fn load_direct_native_namespace(
     engine: &crate::direct_native::NativeEngine,
     multimethods: &core::MultiMethodRegistry,
+    source_cache: Option<&SourceBytecodeCache>,
     name: &str,
     resource: core::NamespaceResource,
     environment: &mut HashMap<String, core::Value>,
 ) -> Result<(), String> {
     let program = match &resource {
         core::NamespaceResource::Source(_) => {
-            compile_direct_native_source_namespace(name, &resource, environment)?
+            compile_direct_native_source_namespace(name, &resource, environment, source_cache)?
         }
         #[cfg(not(target_arch = "wasm32"))]
         core::NamespaceResource::SourcePath(_) => {
-            compile_direct_native_source_namespace(name, &resource, environment)?
+            compile_direct_native_source_namespace(name, &resource, environment, source_cache)?
         }
         core::NamespaceResource::Bytecode {
             namespace_form,
@@ -535,11 +638,11 @@ fn load_direct_native_namespace(
             let mut program = vm::decode_program(&artifact)
                 .map_err(|error| format!("{name}: direct-native artifact: {error}"))?;
             program.namespace = Some(name.to_owned());
-            Rc::new(program)
+            crate::direct_native::ValidatedProgram::from_artifact(Rc::new(program))
         }
     };
     engine
-        .execute_blocking_with_multimethods(program, multimethods.clone())
+        .execute_blocking_validated_with_multimethods(program, multimethods.clone())
         .map(|_| ())
         .map_err(|error| format!("{name}: direct-native execution: {error}"))
 }
@@ -549,7 +652,8 @@ fn compile_direct_native_source_namespace(
     name: &str,
     resource: &core::NamespaceResource,
     environment: &mut HashMap<String, core::Value>,
-) -> Result<Rc<vm::Program>, String> {
+    source_cache: Option<&SourceBytecodeCache>,
+) -> Result<crate::direct_native::ValidatedProgram, String> {
     let source = core::read_source_resource(resource, name)?;
     let forms = kernel::read_forms(&source).map_err(|error| error.to_string())?;
     let mut body_offset = 0;
@@ -564,6 +668,9 @@ fn compile_direct_native_source_namespace(
         core::eval_bytecode_management_in(&namespace_value, environment)
             .map_err(|error| format!("{name}: namespace declaration: {error}"))?;
         body_offset = forms[0].span.end.offset;
+    }
+    if let Some(program) = source_cache.and_then(|cache| cache.load(name, &source)) {
+        return Ok(program);
     }
     let config = vm::source_namespace_config(&forms)
         .map_err(|error| format!("{name}: namespace configuration: {error}"))?;
@@ -583,5 +690,62 @@ fn compile_direct_native_source_namespace(
     let mut program = core::without_direct_native_execution(compile)
         .map_err(|error| format!("{name}: direct-native compilation: {error}"))?;
     program.namespace = Some(name.to_owned());
-    Ok(Rc::new(program))
+    if let Some(cache) = source_cache {
+        cache.store(name, &source, &program);
+    }
+    Ok(crate::direct_native::ValidatedProgram::from_compiler(
+        Rc::new(program),
+    ))
+}
+
+#[cfg(all(
+    test,
+    feature = "bytecode-vm",
+    feature = "direct-native",
+    not(target_arch = "wasm32")
+))]
+mod source_cache_tests {
+    use super::SourceBytecodeCache;
+    use std::fs;
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    struct TempRoot(PathBuf);
+
+    impl Drop for TempRoot {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn temp_root() -> TempRoot {
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let suffix = NEXT.fetch_add(1, Ordering::Relaxed);
+        let path = std::env::temp_dir().join(format!(
+            "hara-source-bytecode-cache-{}-{suffix}",
+            std::process::id()
+        ));
+        fs::create_dir(&path).expect("cache test temporary root must be new");
+        TempRoot(path)
+    }
+
+    #[test]
+    fn caches_only_the_matching_namespace_and_source() {
+        let root = temp_root();
+        let namespace = "example.cache";
+        let source = "(+ 1 2)";
+        let mut program = crate::vm::compile_source(source).expect("source must compile");
+        program.namespace = Some(namespace.to_owned());
+        let cache = SourceBytecodeCache::new(&root.0, [7; 32]);
+
+        assert!(cache.load(namespace, source).is_none());
+        cache.store(namespace, source, &program);
+
+        let loaded = cache
+            .load(namespace, source)
+            .expect("stored source must be readable");
+        assert_eq!(loaded.program().namespace.as_deref(), Some(namespace));
+        assert!(cache.load(namespace, "(+ 1 3)").is_none());
+        assert!(cache.load("example.other", source).is_none());
+    }
 }

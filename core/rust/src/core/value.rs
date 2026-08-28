@@ -1496,7 +1496,8 @@ fn native_promise_values(method: &str, arguments: Vec<Value>) -> Result<Value, S
         )?))),
         ("run", [Value::Function(function)]) => {
             let function = function.clone();
-            let task = Rc::new(move || call_function(&function, Vec::new()));
+            let context = crate::core::NativeCallbackContext::capture();
+            let task = Rc::new(move || context.with(|| call_function(&function, Vec::new())));
             Ok(Value::Promise(promise_provider().run(task)))
         }
         ("new", [Value::Function(function)]) => {
@@ -1522,7 +1523,8 @@ fn native_promise_values(method: &str, arguments: Vec<Value>) -> Result<Value, S
             let millis = value_u64_integer(millis, "promise/delay")
                 .map_err(|_| "promise/delay expects non-negative milliseconds".to_string())?;
             let function = function.clone();
-            let task = Rc::new(move || call_function(&function, Vec::new()));
+            let context = crate::core::NativeCallbackContext::capture();
+            let task = Rc::new(move || context.with(|| call_function(&function, Vec::new())));
             Ok(Value::Promise(
                 promise_provider().delay(std::time::Duration::from_millis(millis), task),
             ))

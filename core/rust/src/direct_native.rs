@@ -17,6 +17,39 @@ use std::rc::Rc;
 use crate::core::Value;
 use crate::vm::{Program, VmFiber};
 
+/// A program which has crossed the native execution validation boundary.
+///
+/// Compiler output is already validated by the compiler's `finish` step and
+/// artifact output is already validated by `decode_program`. Keeping that
+/// fact in a separate type lets internal callers execute either form without
+/// paying the structural validation cost again. Public entry points still
+/// accept an ordinary `Rc<Program>` and validate it before constructing this
+/// wrapper.
+#[derive(Clone)]
+pub(crate) struct ValidatedProgram {
+    program: Rc<Program>,
+}
+
+impl ValidatedProgram {
+    pub(crate) fn from_compiler(program: Rc<Program>) -> Self {
+        Self { program }
+    }
+
+    pub(crate) fn from_artifact(program: Rc<Program>) -> Self {
+        Self { program }
+    }
+
+    pub(crate) fn validate(program: Rc<Program>) -> Result<Self, String> {
+        crate::vm::validate::validate(&program)
+            .map_err(|error| format!("native backend received invalid bytecode: {error}"))?;
+        Ok(Self { program })
+    }
+
+    pub(crate) fn program(&self) -> Rc<Program> {
+        self.program.clone()
+    }
+}
+
 /// The result of one native-substrate execution.
 #[derive(Debug, Clone)]
 pub struct NativeExecutionReport {
@@ -74,10 +107,9 @@ thread_local! {
 
 /// A reusable native-substrate runtime boundary.
 ///
-/// The engine intentionally has no Hara-function or Cranelift program cache.
-/// Bytecode programs own their VM closures and the VM owns structural
-/// execution. Sharing an engine shares only counters, which keeps namespace,
-/// provider, protocol, and mutable Var state isolated between Runtime owners.
+/// The engine owns the native execution boundary and cumulative telemetry.
+/// Persistent source/artifact caching is configured by the Runtime owner so
+/// namespace, provider, protocol, and mutable Var state remain isolated.
 #[derive(Clone, Default)]
 pub struct NativeEngine {
     state: Rc<NativeEngineState>,
@@ -111,27 +143,33 @@ impl NativeEngine {
     /// Executes a validated Hara program through the VM's synchronous fiber
     /// boundary. No tree-evaluator fallback is available from this path.
     pub fn execute(&self, program: Rc<Program>) -> Result<NativeExecutionReport, String> {
-        self.execute_vm(program)
+        self.execute_vm(ValidatedProgram::validate(program)?)
     }
 
     /// Executes a validated Hara program and drives settled VM promises to the
     /// same blocking boundary used by `Runtime::eval_native`.
     pub fn execute_blocking(&self, program: Rc<Program>) -> Result<NativeExecutionReport, String> {
-        self.execute_vm(program)
+        self.execute_vm(ValidatedProgram::validate(program)?)
     }
 
-    pub(crate) fn execute_blocking_with_multimethods(
+    pub(crate) fn execute_blocking_validated_with_multimethods(
         &self,
-        program: Rc<Program>,
+        program: ValidatedProgram,
         multimethods: crate::core::MultiMethodRegistry,
     ) -> Result<NativeExecutionReport, String> {
         let context = crate::core::DirectNativeContext::capture_with_multimethods(multimethods);
-        context.with(|| self.execute_blocking(program))
+        context.with(|| self.execute_validated(program))
     }
 
-    fn execute_vm(&self, program: Rc<Program>) -> Result<NativeExecutionReport, String> {
-        crate::vm::validate::validate(&program)
-            .map_err(|error| format!("native backend received invalid bytecode: {error}"))?;
+    fn execute_validated(
+        &self,
+        validated: ValidatedProgram,
+    ) -> Result<NativeExecutionReport, String> {
+        self.execute_vm(validated)
+    }
+
+    fn execute_vm(&self, validated: ValidatedProgram) -> Result<NativeExecutionReport, String> {
+        let program = validated.program();
         let bytecode_functions = program.functions.len();
         let bytecode_instructions = program
             .functions

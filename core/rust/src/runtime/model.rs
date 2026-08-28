@@ -199,6 +199,8 @@ pub struct Runtime {
     direct_native: crate::direct_native::NativeEngine,
     #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
     direct_native_multimethods: core::MultiMethodRegistry,
+    #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+    direct_native_source_cache: Option<SourceBytecodeCache>,
     #[cfg(not(target_arch = "wasm32"))]
     extension_roots: Vec<std::path::PathBuf>,
 }

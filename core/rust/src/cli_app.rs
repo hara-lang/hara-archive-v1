@@ -22,6 +22,10 @@ pub const EXTENSION_WIT_IMPORT_MANIFEST_SOURCE: &str =
 pub const EXTENSION_WIT_PROJECT_MANIFEST_SOURCE: &str =
     include_str!("../resources/hara-cli-extension-wit-project.edn");
 
+#[cfg(feature = "bytecode-vm")]
+const EMBEDDED_CLI_BYTECODE: &[u8] =
+    include_bytes!(concat!(env!("HARA_SOURCE_ROOT"), "/assets/cli.hbx"));
+
 #[derive(Clone, Copy)]
 pub struct ManifestSource;
 
@@ -60,4 +64,16 @@ pub fn install_embedded_cli_sources(runtime: &mut crate::Runtime) {
     for &(namespace, _, source) in crate::EMBEDDED_CLI_RESOURCES {
         runtime.register_resource(namespace, source);
     }
+}
+
+/// Installs the verified CLI/test-support bytecode index. Modules remain lazy;
+/// only the namespace requested by a test or command is decoded and executed.
+#[cfg(feature = "bytecode-vm")]
+pub fn install_embedded_cli_bytecode(runtime: &mut crate::Runtime) -> Result<(), String> {
+    crate::vm::eval_bytecode_bundle(runtime, EMBEDDED_CLI_BYTECODE)
+}
+
+#[cfg(feature = "bytecode-vm")]
+pub fn embedded_cli_bytecode() -> &'static [u8] {
+    EMBEDDED_CLI_BYTECODE
 }

@@ -1,3 +1,5 @@
+#[cfg(feature = "bytecode-vm")]
+use hara_wasm::cli_app;
 #[cfg(feature = "direct-native")]
 use hara_wasm::direct_native::NativeEngine;
 use hara_wasm::kernel::{parse, parse_forms, Form};
@@ -175,44 +177,54 @@ fn execute_test_file(
         }
     };
     kernel.set_test_runner("native")?;
-    kernel.set_execution_backend(backend.runtime_name())?;
-    register_project_sources(&root, &mut kernel)?;
+    register_project_sources(&root, &mut kernel, backend)?;
     let root_session = SessionId::parse("ROOT")?;
     let mount = kernel.create_native_filesystem(&root_text);
     kernel.attach_filesystem(&root_session, mount)?;
     let session = kernel.session_mut(&root_session)?;
     session.install_native_socket_provider();
     session.install_native_process_provider();
+    // Install host capabilities before switching from the interpreter
+    // bootstrap to direct-native. The handoff recompiles any evaluator-built
+    // protocol closures, and those closures must capture the session's actual
+    // capability context rather than the zero-authority bootstrap context.
+    kernel.set_execution_backend(backend.runtime_name())?;
     let mut namespace_ready = false;
+    let mut ordinary_forms = Vec::new();
     for (form, declares_namespace) in prefix {
-        let source = if backend == TestBackend::Interpreter {
-            // Preserve the interpreter runner's historical namespace handoff:
-            // prefix forms after `ns` are explicitly evaluated in the test
-            // namespace, while forms before it run in ROOT.
-            if namespace_ready {
-                let namespace = test_namespace
-                    .as_deref()
-                    .expect("a namespace declaration made the test namespace available");
-                format!("(eval-in-ns (quote {namespace}) (quote [(do {form} nil)]))")
-            } else {
-                format!("(do {form} nil)")
+        if declares_namespace || is_management_form(&form) {
+            evaluate_prefix_forms(
+                &mut kernel,
+                &root_session,
+                backend,
+                test_namespace.as_deref(),
+                namespace_ready,
+                &mut ordinary_forms,
+                &file,
+            )?;
+            // Keep the namespace declaration and top-level requires at the
+            // runtime's management boundary. Wrapping either in `do` would
+            // turn it into ordinary bytecode before the namespace loader sees
+            // it on the native path.
+            kernel
+                .eval(&root_session, &form)
+                .map_err(|error| format!("{}: {error}", file.display()))?;
+            if backend == TestBackend::Interpreter {
+                namespace_ready |= declares_namespace;
             }
-        } else if declares_namespace || is_management_form(&form) {
-            // Keep the namespace declaration at the runtime's management
-            // boundary. The same applies to a top-level require: wrapping it
-            // in `do` would make the direct backend treat the management form
-            // as ordinary bytecode before the native namespace loader sees it.
-            form
         } else {
-            format!("(do {form} nil)")
-        };
-        kernel
-            .eval(&root_session, &source)
-            .map_err(|error| format!("{}: {error}", file.display()))?;
-        if backend == TestBackend::Interpreter {
-            namespace_ready |= declares_namespace;
+            ordinary_forms.push(form);
         }
     }
+    evaluate_prefix_forms(
+        &mut kernel,
+        &root_session,
+        backend,
+        test_namespace.as_deref(),
+        namespace_ready,
+        &mut ordinary_forms,
+        &file,
+    )?;
     let final_source = if backend == TestBackend::Interpreter {
         match test_namespace.as_deref() {
             Some(namespace) => {
@@ -304,10 +316,48 @@ fn test_run_source(namespace: &str) -> String {
     )
 }
 
-fn register_project_sources(root: &Path, kernel: &mut SessionKernel) -> Result<(), String> {
+fn evaluate_prefix_forms(
+    kernel: &mut SessionKernel,
+    session: &SessionId,
+    backend: TestBackend,
+    test_namespace: Option<&str>,
+    namespace_ready: bool,
+    forms: &mut Vec<String>,
+    file: &Path,
+) -> Result<(), String> {
+    if forms.is_empty() {
+        return Ok(());
+    }
+    let body = forms.join(" ");
+    let source = if backend == TestBackend::Interpreter && namespace_ready {
+        let namespace = test_namespace.expect("namespace is available after ns");
+        format!("(eval-in-ns (quote {namespace}) (quote [(do {body} nil)]))")
+    } else {
+        format!("(do {body} nil)")
+    };
+    kernel
+        .eval(session, &source)
+        .map_err(|error| format!("{}: {error}", file.display()))?;
+    forms.clear();
+    Ok(())
+}
+
+fn register_project_sources(
+    root: &Path,
+    kernel: &mut SessionKernel,
+    backend: TestBackend,
+) -> Result<(), String> {
     let current_project = project::read(root)?;
     let catalog = project::source_catalog(&current_project)?;
     kernel.register_source_catalog(&catalog);
+    #[cfg(feature = "direct-native")]
+    if backend == TestBackend::Native {
+        kernel.configure_native_source_cache(root, catalog.fingerprint()?);
+        #[cfg(feature = "bytecode-vm")]
+        kernel.install_bytecode_bundle(cli_app::embedded_cli_bytecode())?;
+    }
+    #[cfg(not(feature = "direct-native"))]
+    let _ = backend;
     Ok(())
 }
 
