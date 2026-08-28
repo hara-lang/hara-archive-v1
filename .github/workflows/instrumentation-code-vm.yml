@@ -102,8 +102,9 @@ jobs:
             core/rust/src/live_session/instrumented_hbc.rs
 
       - name: Compile the Runtime-owned interpreter instrumentation path
-        run: cargo test --locked --manifest-path core/rust/Cargo.toml \
-          --package hara-runtime --lib --no-run
+        run: |
+          cargo test --locked --manifest-path core/rust/Cargo.toml \
+            --package hara-runtime --lib --no-run
 
       - name: Compile the instrumented HBC observation feature slice
         run: |
