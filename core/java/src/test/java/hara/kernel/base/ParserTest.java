@@ -25,6 +25,9 @@ public class ParserTest {
     assertThrows(
         RuntimeException.class,
         () -> Parser.LispReader.readString("9223372036854775808", null));
+    assertThrows(
+        RuntimeException.class,
+        () -> Parser.LispReader.readString("-9223372036854775809", null));
   }
 
   @Test

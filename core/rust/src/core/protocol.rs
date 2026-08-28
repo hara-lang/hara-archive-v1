@@ -1133,6 +1133,7 @@ fn native_base_values(operation: &str, values: &[Value]) -> Result<Value, String
             [value] => Ok(Value::Atom(Box::new(RuntimeAtom::new(value.clone(), true)))),
             _ => Err("Base/atom expects one value".into()),
         },
+        "bytes" => native_bytes_new(values),
         "pointer" => match values {
             [descriptor] => pointer_from_descriptor(descriptor.clone()),
             _ => Err("Base/pointer expects one descriptor map".into()),
@@ -1185,8 +1186,16 @@ fn native_base_values(operation: &str, values: &[Value]) -> Result<Value, String
             _ => Err("Base/resolve expects one symbol".into()),
         },
         "satisfies?" => match values {
-            [Value::Protocol(protocol), value] => {
-                Ok(Value::Bool(protocol_satisfies(protocol, value)))
+            [protocol, value] => {
+                let protocol = match protocol {
+                    Value::Protocol(protocol) => protocol.clone(),
+                    Value::Var(var) => match var.deref_value() {
+                        Value::Protocol(protocol) => protocol,
+                        _ => return Err("Base/satisfies? expects a protocol and value".into()),
+                    },
+                    _ => return Err("Base/satisfies? expects a protocol and value".into()),
+                };
+                Ok(Value::Bool(protocol_satisfies(protocol.as_ref(), value)))
             }
             _ => Err("Base/satisfies? expects a protocol and value".into()),
         },
@@ -2513,7 +2522,20 @@ fn promise_chain(source: Promise, operation: &str, function: Rc<Function>) -> Pr
 
 #[cfg(test)]
 mod protocol_tests {
-    use super::{protocol_display, Value};
+    use super::{native_base_values, protocol_display, Value};
+
+    #[test]
+    fn native_base_bytes_constructs_a_byte_buffer() {
+        let value = native_base_values(
+            "Base/bytes",
+            &[Value::Number(1), Value::Number(2), Value::Number(-3)],
+        )
+        .unwrap();
+        let Value::ByteBuffer(bytes) = value else {
+            panic!("Base/bytes did not return a byte buffer");
+        };
+        assert_eq!(*bytes.borrow(), vec![1, 2, 253]);
+    }
 
     #[test]
     fn idisplay_renders_characters() {

@@ -1748,7 +1748,10 @@ fn native_runtime_values(
             if values.len() != 1 {
                 return Err("std.native.Runtime/eval expects one form".into());
             }
-            eval_value(values[0].clone(), env)
+            let mut environment = crate::core::current_namespace_environment()?;
+            let result = eval_value(values[0].clone(), &mut environment);
+            crate::core::save_namespace_environment(&registry, &mut environment);
+            result
         }
         "load-string" => {
             let [Value::String(source)] = values.as_slice() else {
@@ -1854,12 +1857,21 @@ fn native_runtime_values(
             let Some(namespace) = registry.find(&owner) else {
                 return Ok(Value::Nil);
             };
+            // Global aliases are resolver-visible even when the owning namespace
+            // has not materialized a local alias entry. Report the same target
+            // and lifecycle state that qualified symbol resolution observes.
             let target = namespace.lazy_target(alias.as_str()).or_else(|| {
                 namespace
                     .aliases()
                     .into_iter()
                     .find(|(name, _)| name == alias)
                     .map(|(_, target)| target.name().clone())
+            }).or_else(|| {
+                registry
+                    .global_aliases()
+                    .into_iter()
+                    .find(|(name, _)| name == alias)
+                    .map(|(_, target)| target)
             });
             let Some(target) = target else {
                 return Ok(Value::Nil);
@@ -2059,6 +2071,10 @@ fn eval_direct_native_declaration(expected_operator: &str, form: &Form) -> Resul
             };
             let protocol = match eval_direct_native_form(&items[2])? {
                 Value::Protocol(protocol) => protocol,
+                Value::Var(var) => match var.deref_value() {
+                    Value::Protocol(protocol) => protocol,
+                    _ => return Err("extend-type expects a protocol".into()),
+                },
                 _ => return Err("extend-type expects a protocol".into()),
             };
             let mut seen = HashSet::new();
