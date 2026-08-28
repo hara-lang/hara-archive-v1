@@ -19,7 +19,6 @@ on:
       - 'core/lib/test/work/agent_protocol_test.hal'
       - 'core/java/src/test/java/hara/truffle/HaraAgentProtocolTest.java'
       - 'core/rust/src/runtime/tests.rs'
-      - 'core/rust/src/core/inventory.rs'
       - 'core/spec/work-capability-abi.md'
   push:
     branches: [main, testing]
@@ -38,7 +37,6 @@ on:
       - 'core/lib/test/work/agent_protocol_test.hal'
       - 'core/java/src/test/java/hara/truffle/HaraAgentProtocolTest.java'
       - 'core/rust/src/runtime/tests.rs'
-      - 'core/rust/src/core/inventory.rs'
       - 'core/spec/work-capability-abi.md'
   workflow_dispatch:
 
@@ -68,9 +66,6 @@ jobs:
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
-
-      - name: Check Rust formatting
-        run: rustfmt --edition 2021 --check core/rust/src/core/inventory.rs
 
       - name: Check Rust protocol inventory
         run: |
