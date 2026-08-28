@@ -553,9 +553,6 @@ fn runtime(
             .bootstrap_source_foundation()
             .expect("source Foundation bootstrap must be valid");
     }
-    runtime
-        .configure_execution_backend(execution_backend)
-        .expect("validated execution backend must configure");
     if let Some(root) = root {
         runtime.install_native_file_provider(root.to_string_lossy().as_ref());
     }
@@ -565,6 +562,12 @@ fn runtime(
     if allow_process {
         runtime.install_native_process_provider();
     }
+    // Native bootstrap recompiles evaluator-created protocol closures. Install
+    // the host providers first so those closures capture the runtime's actual
+    // authority instead of the zero-provider bootstrap context.
+    runtime
+        .configure_execution_backend(execution_backend)
+        .expect("validated execution backend must configure");
     if allow_postgres {
         runtime
             .install_native_module(hara_db_postgres::module())

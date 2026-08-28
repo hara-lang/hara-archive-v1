@@ -255,6 +255,14 @@ impl ProtocolRegistry {
             .retain(|(candidate, _, _), _| candidate != &protocol);
     }
 
+    #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+    pub(crate) fn has_interpreted_guest_functions(&self) -> bool {
+        self.guest_methods
+            .borrow()
+            .values()
+            .any(|function| !is_direct_native_function(function))
+    }
+
     pub fn invoke(
         &self,
         protocol: &str,

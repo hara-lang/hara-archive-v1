@@ -2493,29 +2493,32 @@ fn promise_chain(source: Promise, operation: &str, function: Rc<Function>) -> Pr
     }));
     let operation = operation.to_string();
     let destination = output.clone();
-    source.on_settle(Rc::new(move |state| match state.clone() {
-        PromiseState::Fulfilled(value) if operation == "promise/then" => {
-            settle_promise_result(&destination, call_function(&function, vec![value]));
-        }
-        PromiseState::Rejected(error) if operation == "promise/catch" => {
-            settle_promise_result(&destination, call_function(&function, vec![error.value()]));
-        }
-        PromiseState::Fulfilled(_) | PromiseState::Rejected(_)
-            if operation == "promise/finally" =>
-        {
-            finish_promise(
-                destination.clone(),
-                state,
-                call_function(&function, Vec::new()),
-            );
-        }
-        PromiseState::Fulfilled(value) => {
-            destination.resolve(value);
-        }
-        PromiseState::Rejected(error) => {
-            destination.reject_rejection(error);
-        }
-        PromiseState::Pending => {}
+    let context = crate::core::NativeCallbackContext::capture();
+    source.on_settle(Rc::new(move |state| {
+        context.with(|| match state.clone() {
+            PromiseState::Fulfilled(value) if operation == "promise/then" => {
+                settle_promise_result(&destination, call_function(&function, vec![value]));
+            }
+            PromiseState::Rejected(error) if operation == "promise/catch" => {
+                settle_promise_result(&destination, call_function(&function, vec![error.value()]));
+            }
+            PromiseState::Fulfilled(_) | PromiseState::Rejected(_)
+                if operation == "promise/finally" =>
+            {
+                finish_promise(
+                    destination.clone(),
+                    state,
+                    call_function(&function, Vec::new()),
+                );
+            }
+            PromiseState::Fulfilled(value) => {
+                destination.resolve(value);
+            }
+            PromiseState::Rejected(error) => {
+                destination.reject_rejection(error);
+            }
+            PromiseState::Pending => {}
+        })
     }));
     output
 }

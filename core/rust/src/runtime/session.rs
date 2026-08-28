@@ -15,6 +15,8 @@ pub struct SessionKernel {
     execution_backend: String,
     #[cfg(not(target_arch = "wasm32"))]
     source_catalog: Option<crate::project::SourceCatalog>,
+    #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+    native_source_cache: Option<SourceBytecodeCache>,
 }
 
 #[derive(Default)]
@@ -346,6 +348,8 @@ impl SessionKernel {
             execution_backend,
             #[cfg(not(target_arch = "wasm32"))]
             source_catalog: None,
+            #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+            native_source_cache: None,
         }
     }
 
@@ -382,6 +386,36 @@ impl SessionKernel {
         }
     }
 
+    /// Enables the project-local direct-native source-program cache for every
+    /// current session and for sessions created later by this kernel.
+    #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+    pub fn configure_native_source_cache(
+        &mut self,
+        root: &std::path::Path,
+        source_index_fingerprint: [u8; 32],
+    ) {
+        let cache = SourceBytecodeCache::new(root, source_index_fingerprint);
+        self.native_source_cache = Some(cache.clone());
+        for session in self.session_registry.entries.values_mut() {
+            session
+                .runtime_mut()
+                .expect("kernel cannot retain a closed session")
+                .set_direct_native_source_cache(cache.clone());
+        }
+    }
+
+    /// Installs a verified HBX namespace bundle in every current session.
+    /// Bundle loading is transactional per session and remains explicit so a
+    /// kernel cannot accidentally make an application package available to a
+    /// later session without the host opting into it.
+    #[cfg(feature = "bytecode-vm")]
+    pub fn install_bytecode_bundle(&mut self, bytes: &[u8]) -> Result<(), String> {
+        for session in self.session_registry.entries.values_mut() {
+            crate::vm::eval_bytecode_bundle(session.runtime_mut()?, bytes)?;
+        }
+        Ok(())
+    }
+
     pub fn create_session(&mut self, id: SessionId) -> Result<(), String> {
         let spec = SessionSpec::new(id, SessionAuthorityPolicy::ZERO);
         if self.session_registry.entries.contains_key(spec.id.as_str()) {
@@ -393,6 +427,10 @@ impl SessionKernel {
         #[cfg(not(target_arch = "wasm32"))]
         if let Some(source_catalog) = &self.source_catalog {
             runtime.register_source_catalog(source_catalog);
+        }
+        #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+        if let Some(source_cache) = &self.native_source_cache {
+            runtime.set_direct_native_source_cache(source_cache.clone());
         }
         for (resource, source) in &self.development_resources.entries {
             runtime.register_resource(resource, source);

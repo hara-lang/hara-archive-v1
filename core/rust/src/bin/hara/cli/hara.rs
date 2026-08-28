@@ -26,15 +26,7 @@ fn run_hara(options: &Options, argv: &[String]) -> Result<(), String> {
     let cwd = std::env::current_dir().map_err(|error| format!("cannot read cwd: {error}"))?;
     let root = capability_root(options, &cwd);
     let mut runtime = Runtime::new();
-    runtime
-        .set_execution_backend(options.backend.runtime_name())
-        .map_err(|_| backend_error(options.backend))?;
     runtime.install_native_file_provider(root.to_string_lossy().as_ref());
-    let source_catalog = super::project_source_catalog(options)?;
-    if let Some(catalog) = source_catalog.as_ref() {
-        runtime.register_source_catalog(catalog);
-    }
-    cli_app::install_embedded_cli_sources(&mut runtime);
     let process_allowed = options.allow_process
         || argv
             .first()
@@ -45,6 +37,18 @@ fn run_hara(options: &Options, argv: &[String]) -> Result<(), String> {
     if options.native_sockets {
         runtime.install_native_socket_provider();
     }
+    // The direct-native handoff can recompile protocol closures created by the
+    // interpreter bootstrap; make the session capabilities visible first.
+    runtime
+        .set_execution_backend(options.backend.runtime_name())
+        .map_err(|_| backend_error(options.backend))?;
+    let source_catalog = super::project_source_catalog(options)?;
+    if let Some(catalog) = source_catalog.as_ref() {
+        runtime.register_source_catalog(catalog);
+    }
+    #[cfg(feature = "bytecode-vm")]
+    cli_app::install_embedded_cli_bytecode(&mut runtime)?;
+    cli_app::install_embedded_cli_sources(&mut runtime);
     let broker = match source_catalog {
         Some(catalog) => RuntimeBroker::start_with_backend_and_source_catalog(
             Some(root.clone()),

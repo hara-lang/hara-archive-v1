@@ -100,6 +100,8 @@ impl Runtime {
             direct_native: crate::direct_native::NativeEngine::new(),
             #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
             direct_native_multimethods: Rc::new(RefCell::new(HashMap::new())),
+            #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+            direct_native_source_cache: None,
             #[cfg(not(target_arch = "wasm32"))]
             extension_roots: native_extension::configured_roots(),
         }
@@ -159,7 +161,63 @@ impl Runtime {
         if self.execution_backend == backend {
             return Ok(());
         }
+        let previous = self.execution_backend.clone();
         self.execution_backend = backend.into();
+        #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+        if backend == "direct-native" {
+            if let Err(error) = self.recompile_source_bootstrap_for_direct_native() {
+                self.execution_backend = previous;
+                return Err(error);
+            }
+        }
+        Ok(())
+    }
+
+    /// Source Foundation must be interpreted once to establish macros and
+    /// namespace wiring. Its resulting Vars are evaluator-backed, though, so
+    /// a later direct-native backend cannot call them from compiled source.
+    /// Re-load the small bootstrap family through the direct-native namespace
+    /// loader at the backend handoff. This compiles the callees into VM-backed
+    /// closures without widening the native target catalog or allowing an
+    /// evaluator fallback for ordinary user functions.
+    #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+    fn recompile_source_bootstrap_for_direct_native(&mut self) -> Result<(), String> {
+        let mut names = Vec::with_capacity(EAGER_HAL_RESOURCES.len() + 1);
+        names.push("std.foundation");
+        names.extend(EAGER_HAL_RESOURCES.iter().copied());
+
+        // Bytecode loaded while the runtime was still in interpreter mode
+        // materializes `extend-type` method closures through the evaluator.
+        // Namespace mappings alone cannot see those protocol-owned closures,
+        // so reload the small bootstrap family when that boundary is present.
+        let has_interpreted_guest_functions = self.protocols.has_interpreted_guest_functions();
+
+        for name in names {
+            let needs_compile = self.namespace_registry.find(name).is_some_and(|namespace| {
+                namespace.mappings().into_iter().any(|(_, var)| {
+                    matches!(
+                        var.deref_value(),
+                        core::Value::Function(function)
+                            if !core::is_direct_native_function(&function)
+                    )
+                })
+            }) || has_interpreted_guest_functions;
+            if !needs_compile {
+                continue;
+            }
+
+            let has_resource = self.resources.contains_key(name)
+                || self.source_paths.contains_key(name)
+                || self.bytecode_resources.contains_key(name);
+            if !has_resource {
+                continue;
+            }
+
+            self.eval_text(&format!("(require [{name} :reload true])"))
+                .map_err(|error| {
+                    format!("direct-native bootstrap compilation failed for {name}: {error}")
+                })?;
+        }
         Ok(())
     }
 
@@ -616,11 +674,12 @@ impl Runtime {
                                             };
                                             #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
                                             if self.execution_backend == "direct-native" {
-                                return core::with_direct_native_namespace_loader(
-                                    Self::direct_native_namespace_loader(
-                                        self.direct_native.clone(),
-                                        self.direct_native_multimethods.clone(),
-                                    ),
+                                                return core::with_direct_native_namespace_loader(
+                                                    Self::direct_native_namespace_loader(
+                                                        self.direct_native.clone(),
+                                                        self.direct_native_multimethods.clone(),
+                                                        self.direct_native_source_cache.clone(),
+                                                    ),
                                                     evaluate,
                                                 );
                                             }
@@ -1131,6 +1190,7 @@ impl Runtime {
                                 Self::direct_native_namespace_loader(
                                     self.direct_native.clone(),
                                     self.direct_native_multimethods.clone(),
+                                    self.direct_native_source_cache.clone(),
                                 ),
                                 || {
                                     core::require_namespace(
@@ -1546,6 +1606,7 @@ impl Runtime {
                                                 Self::direct_native_namespace_loader(
                                                     self.direct_native.clone(),
                                                     self.direct_native_multimethods.clone(),
+                                                    self.direct_native_source_cache.clone(),
                                                 ),
                                                 require,
                                             );
@@ -1576,6 +1637,13 @@ impl Runtime {
         let mut runtime = Self::new();
         runtime.direct_native = engine;
         runtime
+    }
+
+    /// Installs the optional persistent source-program cache used by short
+    /// lived native runners. The cache contains only validated HBC artifacts;
+    /// a cache miss or an unreadable entry always falls back to compilation.
+    pub(crate) fn set_direct_native_source_cache(&mut self, cache: SourceBytecodeCache) {
+        self.direct_native_source_cache = Some(cache);
     }
 
     /// Returns cumulative counters from the Runtime-owned bytecode VM and
