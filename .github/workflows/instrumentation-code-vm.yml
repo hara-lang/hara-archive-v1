@@ -15,7 +15,6 @@ on:
       - 'core/lib/src/code/vm.hal'
       - 'core/lib/src/code/vm/instrument/**'
       - 'core/lib/test/code/vm/instrument/**'
-      - 'core/rust/src/runtime/evaluator.rs'
       - 'core/rust/src/runtime/session_live.rs'
       - 'core/rust/src/live_session.rs'
       - 'core/rust/src/live_session/instrumented_interpreter.rs'
@@ -40,7 +39,6 @@ on:
       - 'core/lib/src/code/vm.hal'
       - 'core/lib/src/code/vm/instrument/**'
       - 'core/lib/test/code/vm/instrument/**'
-      - 'core/rust/src/runtime/evaluator.rs'
       - 'core/rust/src/runtime/session_live.rs'
       - 'core/rust/src/live_session.rs'
       - 'core/rust/src/live_session/instrumented_interpreter.rs'
@@ -98,7 +96,6 @@ jobs:
       - name: Check instrumented LiveSession formatting
         run: |
           rustfmt --edition 2021 --check \
-            core/rust/src/runtime/evaluator.rs \
             core/rust/src/runtime/session_live.rs \
             core/rust/src/live_session.rs \
             core/rust/src/live_session/instrumented_interpreter.rs \
