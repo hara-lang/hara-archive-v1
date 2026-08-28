@@ -45,6 +45,7 @@ pub(crate) struct Options {
     pub(crate) root: Option<PathBuf>,
     pub(crate) project: Option<PathBuf>,
     pub(crate) lite_project: Option<PathBuf>,
+    pub(crate) lite_mode: bool,
     pub(crate) backend: ExecutionBackend,
     pub(crate) native_sockets: bool,
     pub(crate) allow_file: bool,
@@ -203,9 +204,11 @@ pub(crate) fn run(mut options: Options) -> Result<(), String> {
 ///
 /// This path is intentionally limited to evaluator and REPL operations so a
 /// source checkout remains usable while higher-level HAL tooling is being
-/// repaired. Project sources are still registered by the ordinary native
-/// evaluator when `--project` is supplied.
+/// repaired. Project sources are indexed lazily from `project.edn` when
+/// `--project` is supplied; the evaluator reads each namespace's `.hal` file
+/// when it is required.
 pub(crate) fn run_lite(mut options: Options) -> Result<(), String> {
+    options.lite_mode = true;
     options.lite_project = bundled_lite_project();
     let command = options.command.clone();
     match command.first().map(String::as_str) {
@@ -240,6 +243,12 @@ pub(crate) fn run_lite(mut options: Options) -> Result<(), String> {
         Some("repl") | None => crate::repl::run_repl(&options, true),
         Some(command) => Err(format!("unknown lite command: {command}")),
     }
+}
+
+pub(crate) fn project_source_catalog(
+    options: &Options,
+) -> Result<Option<hara_wasm::project::SourceCatalog>, String> {
+    project::source_catalog_for_options(options)
 }
 
 fn bundled_lite_project() -> Option<PathBuf> {

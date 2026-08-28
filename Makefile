@@ -33,7 +33,7 @@ build-rust:
 	$(CARGO) build --release --manifest-path "$(RUST_MANIFEST)" --bin hara
 
 build-rust-lite:
-	$(CARGO) build --release --manifest-path "$(RUST_MANIFEST)" --bin hara-lite
+	$(CARGO) build --release --manifest-path "$(RUST_MANIFEST)" --no-default-features --features direct-native --bin hara-lite
 
 build-truffle:
 	$(MVN) -f "$(TRUFFLE_POM)" -Ptruffle -DskipTests package

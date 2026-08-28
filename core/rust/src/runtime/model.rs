@@ -171,6 +171,8 @@ pub struct Runtime {
     providers: core::ProviderRegistry,
     package_catalog: core::PackageCatalog,
     resources: HashMap<String, String>,
+    #[cfg(not(target_arch = "wasm32"))]
+    source_paths: HashMap<String, std::path::PathBuf>,
     resource_overrides: HashSet<String>,
     #[cfg(feature = "bytecode-vm")]
     bytecode_resources: HashMap<String, (String, Vec<u8>)>,

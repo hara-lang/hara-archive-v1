@@ -1005,11 +1005,31 @@ pub(crate) fn active_protocol_registry() -> Result<ProtocolRegistry, String> {
 #[derive(Clone)]
 pub enum NamespaceResource {
     Source(String),
+    /// A native host source whose contents are read only when the namespace
+    /// crosses the require boundary.
+    #[cfg(not(target_arch = "wasm32"))]
+    SourcePath(std::path::PathBuf),
     #[cfg(feature = "bytecode-vm")]
     Bytecode {
         namespace_form: String,
         artifact: Vec<u8>,
     },
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn read_source_resource(
+    resource: &NamespaceResource,
+    namespace: &str,
+) -> Result<String, String> {
+    match resource {
+        NamespaceResource::Source(source) => Ok(source.clone()),
+        NamespaceResource::SourcePath(path) => std::fs::read_to_string(path)
+            .map_err(|error| format!("{namespace}: cannot read {}: {error}", path.display())),
+        #[cfg(feature = "bytecode-vm")]
+        NamespaceResource::Bytecode { .. } => {
+            Err(format!("{namespace}: bytecode resource is not source text"))
+        }
+    }
 }
 
 pub(crate) fn thrown_error(value: Value) -> String {

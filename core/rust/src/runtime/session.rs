@@ -13,6 +13,8 @@ pub struct SessionKernel {
     runtime_factory: Rc<dyn Fn() -> Runtime>,
     test_runner: String,
     execution_backend: String,
+    #[cfg(not(target_arch = "wasm32"))]
+    source_catalog: Option<crate::project::SourceCatalog>,
 }
 
 #[derive(Default)]
@@ -342,6 +344,8 @@ impl SessionKernel {
             runtime_factory,
             test_runner: "code.test".into(),
             execution_backend,
+            #[cfg(not(target_arch = "wasm32"))]
+            source_catalog: None,
         }
     }
 
@@ -365,6 +369,19 @@ impl SessionKernel {
         Ok(())
     }
 
+    /// Mounts a lazy native source catalog in every current session and
+    /// carries it into sessions created later by this kernel.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn register_source_catalog(&mut self, catalog: &crate::project::SourceCatalog) {
+        self.source_catalog = Some(catalog.clone());
+        for session in self.session_registry.entries.values_mut() {
+            session
+                .runtime_mut()
+                .expect("kernel cannot retain a closed session")
+                .register_source_catalog(catalog);
+        }
+    }
+
     pub fn create_session(&mut self, id: SessionId) -> Result<(), String> {
         let spec = SessionSpec::new(id, SessionAuthorityPolicy::ZERO);
         if self.session_registry.entries.contains_key(spec.id.as_str()) {
@@ -373,6 +390,10 @@ impl SessionKernel {
         let mut runtime = (self.runtime_factory)();
         runtime.configure_test_runner(&self.test_runner)?;
         runtime.configure_execution_backend(&self.execution_backend)?;
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(source_catalog) = &self.source_catalog {
+            runtime.register_source_catalog(source_catalog);
+        }
         for (resource, source) in &self.development_resources.entries {
             runtime.register_resource(resource, source);
         }

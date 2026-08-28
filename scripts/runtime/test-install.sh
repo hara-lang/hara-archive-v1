@@ -4,7 +4,8 @@
 # Builds a fake "release" (tarball + SHA256SUMS) from the locally compiled
 # release binary, serves it over file://, and exercises the installer.
 #
-# Prereq: cargo build --release --manifest-path core/rust/Cargo.toml --bin hara --bin hara-lite
+# Prereq: cargo build --release --manifest-path core/rust/Cargo.toml --features native-jit --bin hara
+#         cargo build --release --manifest-path core/rust/Cargo.toml --no-default-features --features direct-native --bin hara-lite
 # Usage:  sh scripts/runtime/test-install.sh
 set -eu
 
@@ -42,7 +43,7 @@ if [ ! -x "$BINARY" ]; then
 fi
 if [ ! -x "$LITE_BINARY" ]; then
   echo "missing release binary at $LITE_BINARY" >&2
-  echo "run: cargo build --release --manifest-path $HARA_ROOT/core/rust/Cargo.toml --bin hara-lite" >&2
+  echo "run: cargo build --release --manifest-path $HARA_ROOT/core/rust/Cargo.toml --no-default-features --features direct-native --bin hara-lite" >&2
   exit 1
 fi
 

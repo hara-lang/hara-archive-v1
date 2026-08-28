@@ -1,6 +1,5 @@
 use crate::cli::Options;
 use hara_wasm::native_cli::RuntimeBroker;
-use hara_wasm::project;
 use hara_wasm::resp::RespServer;
 use rustyline::completion::{Completer, Pair};
 use rustyline::error::ReadlineError;
@@ -110,28 +109,38 @@ pub(crate) fn parse_endpoint(value: &str, fallback_host: &str) -> Result<(String
     Ok((host.into(), port))
 }
 
-fn register_project_resources(options: &Options, broker: &RuntimeBroker) -> Result<(), String> {
-    for path in [options.lite_project.as_deref(), options.project.as_deref()]
-        .into_iter()
-        .flatten()
-    {
-        let selected = project::discover(path)?;
-        for (namespace, source) in project::source_resources(&selected)? {
-            broker.register_resource(&namespace, &source)?;
-        }
-    }
-    Ok(())
-}
-
 pub(crate) fn run_repl(options: &Options, offline: bool) -> Result<(), String> {
-    let broker = RuntimeBroker::start_with_backend(
-        options.root.clone().or_else(|| options.project.clone()),
-        options.native_sockets,
-        options.allow_process,
-        options.allow_postgres,
-        options.backend.runtime_name(),
-    )?;
-    register_project_resources(options, &broker)?;
+    let root = options.root.clone().or_else(|| options.project.clone());
+    let source_catalog = crate::cli::project_source_catalog(options)?;
+    let broker = if options.lite_mode {
+        let source_catalog = source_catalog
+            .ok_or_else(|| "hara-lite requires a bundled or explicit project.edn".to_owned())?;
+        RuntimeBroker::start_with_source_catalog(
+            root,
+            options.native_sockets,
+            options.allow_process,
+            options.allow_postgres,
+            options.backend.runtime_name(),
+            source_catalog,
+        )?
+    } else if let Some(source_catalog) = source_catalog {
+        RuntimeBroker::start_with_backend_and_source_catalog(
+            root,
+            options.native_sockets,
+            options.allow_process,
+            options.allow_postgres,
+            options.backend.runtime_name(),
+            source_catalog,
+        )?
+    } else {
+        RuntimeBroker::start_with_backend(
+            root,
+            options.native_sockets,
+            options.allow_process,
+            options.allow_postgres,
+            options.backend.runtime_name(),
+        )?
+    };
     let mut resp = RespController::new(options.host.clone(), options.port, broker.clone());
     if !offline {
         resp.start(None)?;
@@ -852,10 +861,7 @@ unsafe fn libc_isatty(_fd: i32) -> i32 {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        command_hint, fuzzy_score, gradient, incomplete, register_project_resources,
-        rendered_splash, DEFAULT_SPLASH,
-    };
+    use super::{command_hint, fuzzy_score, gradient, incomplete, rendered_splash, DEFAULT_SPLASH};
     use crate::cli::Options;
     use hara_wasm::native_cli::RuntimeBroker;
     use std::fs;
@@ -922,9 +928,23 @@ mod tests {
         let mut options = Options::default();
         options.project = Some(root.clone());
         options.root = Some(root.clone());
-        let broker = RuntimeBroker::start_with(Some(root.clone()), false, false, false).unwrap();
-        register_project_resources(&options, &broker).unwrap();
-        assert_eq!(broker.resources().unwrap(), vec!["demo.app", "demo.helper"]);
+        let catalog = crate::cli::project_source_catalog(&options)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            catalog.namespaces().collect::<Vec<_>>(),
+            vec!["demo.app", "demo.helper"]
+        );
+        let broker = RuntimeBroker::start_with_backend_and_source_catalog(
+            Some(root.clone()),
+            false,
+            false,
+            false,
+            "interpreter",
+            catalog,
+        )
+        .unwrap();
+        assert!(broker.resources().unwrap().is_empty());
         assert_eq!(
             broker
                 .eval(

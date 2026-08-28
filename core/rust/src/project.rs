@@ -497,6 +497,7 @@ pub fn files_in(root: &Path, paths: &[PathBuf]) -> Result<Vec<PathBuf>, String> 
 #[path = "project/resources.rs"]
 mod resources;
 pub use resources::source_resources;
+pub use resources::{source_catalog, source_catalogs, SourceCatalog};
 
 /// Registers namespaces from the automatically selected native Rust profile.
 pub fn register_sources(project: &Project, runtime: &mut Runtime) -> Result<(), String> {
@@ -543,12 +544,24 @@ pub fn main_file(project: &Project) -> Result<PathBuf, String> {
 }
 
 fn declared_namespace(source: &str) -> Result<Option<String>, String> {
-    Ok(parse_forms(source)?.into_iter().find_map(|form| match form {
+    Ok(parse_forms(source)?
+        .into_iter()
+        .find_map(declared_namespace_form))
+}
+
+fn declared_namespace_form(form: Form) -> Option<String> {
+    match form {
+        Form::Metadata(_, value) => declared_namespace_form(*value),
         Form::List(values) if matches!(values.first(), Some(Form::Symbol(head)) if head == "ns" || head == "ns+") => {
-            match values.get(1) { Some(Form::Symbol(namespace)) => Some(namespace.clone()), _ => None }
+            match values.get(1) {
+                Some(Form::Symbol(namespace)) if !namespace.contains('/') => {
+                    Some(namespace.clone())
+                }
+                _ => None,
+            }
         }
         _ => None,
-    }))
+    }
 }
 
 /// Creates or validates the lockfile for graphs that need no remote packages.

@@ -2,6 +2,10 @@ use super::{ExecutionBackend, Options};
 use hara_wasm::cli_app;
 use hara_wasm::kernel::{parse, Form};
 use hara_wasm::native_cli::{install_native_kernel, RuntimeBroker};
+#[cfg(all(
+    feature = "bytecode-vm",
+    not(any(target_arch = "wasm32", feature = "raw-wasm"))
+))]
 use hara_wasm::project;
 #[cfg(all(
     feature = "bytecode-vm",
@@ -26,12 +30,9 @@ fn run_hara(options: &Options, argv: &[String]) -> Result<(), String> {
         .set_execution_backend(options.backend.runtime_name())
         .map_err(|_| backend_error(options.backend))?;
     runtime.install_native_file_provider(root.to_string_lossy().as_ref());
-    for path in [options.lite_project.as_deref(), options.project.as_deref()]
-        .into_iter()
-        .flatten()
-    {
-        let current_project = project::discover(path)?;
-        project::register_sources(&current_project, &mut runtime)?;
+    let source_catalog = super::project_source_catalog(options)?;
+    if let Some(catalog) = source_catalog.as_ref() {
+        runtime.register_source_catalog(catalog);
     }
     cli_app::install_embedded_cli_sources(&mut runtime);
     let process_allowed = options.allow_process
@@ -44,22 +45,23 @@ fn run_hara(options: &Options, argv: &[String]) -> Result<(), String> {
     if options.native_sockets {
         runtime.install_native_socket_provider();
     }
-    let broker = RuntimeBroker::start_with_backend(
-        Some(root.clone()),
-        options.native_sockets,
-        process_allowed,
-        options.allow_postgres,
-        options.backend.runtime_name(),
-    )?;
-    for path in [options.lite_project.as_deref(), options.project.as_deref()]
-        .into_iter()
-        .flatten()
-    {
-        let current_project = project::discover(path)?;
-        for (namespace, source) in project::source_resources(&current_project)? {
-            broker.register_resource(&namespace, &source)?;
-        }
-    }
+    let broker = match source_catalog {
+        Some(catalog) => RuntimeBroker::start_with_backend_and_source_catalog(
+            Some(root.clone()),
+            options.native_sockets,
+            process_allowed,
+            options.allow_postgres,
+            options.backend.runtime_name(),
+            catalog,
+        )?,
+        None => RuntimeBroker::start_with_backend(
+            Some(root.clone()),
+            options.native_sockets,
+            process_allowed,
+            options.allow_postgres,
+            options.backend.runtime_name(),
+        )?,
+    };
     install_native_kernel(&mut runtime, broker);
     let full_argv = launcher_argv(options, argv);
     let capabilities = capability_edn(options, process_allowed);
