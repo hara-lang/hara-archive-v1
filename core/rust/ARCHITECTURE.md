@@ -36,9 +36,11 @@ intentionally an internal workspace boundary while its source root remains
 shared with the distribution package. Experimental bytecode and WebAssembly
 adapters stay at the runtime boundary. Its library target is not independently
 publishable: the source graph intentionally lives outside that manifest and
-the root distribution package remains the test and publication owner. Keep
-path-sensitive runtime tests on the root package until that source root is
-physically packageable.
+the root distribution package remains the publication facade. The runtime
+package owns the implementation unit-test target so filtered Cargo commands
+cannot pass while testing the empty delivery facade. `hara-wasm` owns
+integration, raw-Wasm, and browser tests. Keep path-sensitive source ownership
+in `runtime_lib.rs`; do not create a second included source graph.
 
 ## Live execution and compiler products
 

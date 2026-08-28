@@ -156,17 +156,9 @@ fn float_binary(op: ArithmeticOp, left: f64, right: f64) -> Result<Value, String
         ArithmeticOp::Subtract => left - right,
         ArithmeticOp::Multiply => left * right,
         ArithmeticOp::Divide => left / right,
-        ArithmeticOp::Remainder => left % right,
-        ArithmeticOp::Modulo => {
-            let remainder = left % right;
-            if remainder == 0.0 || remainder.is_nan() {
-                remainder
-            } else if remainder.is_sign_negative() != right.is_sign_negative() {
-                remainder + right
-            } else {
-                remainder
-            }
-        }
+        // `mod` is the canonical named remainder operator in the Hara
+        // bytecode contract. Both spellings preserve the dividend sign.
+        ArithmeticOp::Remainder | ArithmeticOp::Modulo => left % right,
     };
     Ok(Value::Float(finite_float(value)?))
 }
@@ -184,15 +176,9 @@ fn integer_binary(op: ArithmeticOp, left: BigInt, right: BigInt) -> Result<Value
         ArithmeticOp::Subtract => left - right,
         ArithmeticOp::Multiply => left * right,
         ArithmeticOp::Divide => left / right,
-        ArithmeticOp::Remainder => left % right,
-        ArithmeticOp::Modulo => {
-            let remainder = &left % &right;
-            if remainder.is_zero() || remainder.is_negative() == right.is_negative() {
-                remainder
-            } else {
-                remainder + right
-            }
-        }
+        // `mod` is named for source compatibility, but has remainder
+        // semantics at the shared numeric boundary.
+        ArithmeticOp::Remainder | ArithmeticOp::Modulo => left % right,
     };
     Ok(compact_integer(value))
 }

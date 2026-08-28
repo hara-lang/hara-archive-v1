@@ -1887,10 +1887,7 @@ mod tests {
     fn numeric_and_boolean_predicates_match_foundation_types() {
         let cases = [
             ("(long? 42)", Value::Bool(true)),
-            (
-                "(bigint? 9223372036854775808)",
-                Value::Bool(true),
-            ),
+            ("(bigint? 9223372036854775808)", Value::Bool(true)),
             ("(integer? 9223372036854775808)", Value::Bool(true)),
             ("(integer? 1.0)", Value::Bool(false)),
             ("(double? 42.0)", Value::Bool(true)),

@@ -69,7 +69,10 @@ impl IntrinsicOp {
 /// Applies a primitive to already-evaluated arguments. The evaluator calls
 /// this after evaluating argument forms; the bytecode VM calls it directly
 /// from the operand stack.
-pub(crate) fn apply_intrinsic(primitive: IntrinsicOp, arguments: &[Value]) -> Result<Value, String> {
+pub(crate) fn apply_intrinsic(
+    primitive: IntrinsicOp,
+    arguments: &[Value],
+) -> Result<Value, String> {
     let op = primitive.operator();
     if let [left, right] = arguments {
         return apply_binary_intrinsic(primitive, left, right);
@@ -273,28 +276,14 @@ fn apply_binary_numbers_promoting(
                 )
             }
         },
-        IntrinsicOp::Remainder => match left.checked_rem(right) {
-            Some(value) => Value::Number(value),
-            None => {
-                return numeric::numeric_binary(
-                    ArithmeticOp::Remainder,
-                    &Value::Number(left),
-                    &Value::Number(right),
-                )
-            }
-        },
-        IntrinsicOp::Modulo => {
+        IntrinsicOp::Remainder | IntrinsicOp::Modulo => {
             if left == i64::MIN && right == -1 {
                 Value::Number(0)
             } else {
-                let remainder = left
-                    .checked_rem(right)
-                    .expect("modulo overflow handled above");
-                if remainder == 0 || (remainder < 0) == (right < 0) {
-                    Value::Number(remainder)
-                } else {
-                    Value::Number(remainder + right)
-                }
+                Value::Number(
+                    left.checked_rem(right)
+                        .expect("remainder overflow handled above"),
+                )
             }
         }
         IntrinsicOp::Equal => Value::Bool(left == right),
@@ -329,14 +318,14 @@ mod primitive_tests {
     }
 
     #[test]
-    fn modulo_uses_the_divisor_sign_while_remainder_keeps_the_dividend_sign() {
+    fn mod_and_remainder_keep_the_dividend_sign() {
         assert_eq!(
             apply_intrinsic_name("mod", &[Value::Number(-7), Value::Number(3)]).unwrap(),
-            Value::Number(2)
+            Value::Number(-1)
         );
         assert_eq!(
             apply_intrinsic_name("mod", &[Value::Number(7), Value::Number(-3)]).unwrap(),
-            Value::Number(-2)
+            Value::Number(1)
         );
         assert_eq!(
             apply_binary_intrinsic(
@@ -410,7 +399,10 @@ pub(crate) fn number_conversion_value(operation: &str, value: Value) -> Result<V
         },
         "parse-double" => match value {
             Value::String(value) if !value.is_empty() && value.trim() == value => {
-                if matches!(value.as_str(), "NaN" | "Infinity" | "+Infinity" | "-Infinity") {
+                if matches!(
+                    value.as_str(),
+                    "NaN" | "Infinity" | "+Infinity" | "-Infinity"
+                ) {
                     return Err("non-finite number".into());
                 }
                 if !decimal_double_text(&value) {
@@ -996,7 +988,8 @@ fn native_exception_values(operation: &str, values: Vec<Value>) -> Result<Value,
         "new" => {
             if !(2..=3).contains(&values.len()) {
                 return Err(
-                    "std.native.Exception/new expects a message, data map, and optional cause".into(),
+                    "std.native.Exception/new expects a message, data map, and optional cause"
+                        .into(),
                 );
             }
             let Value::String(message) = &values[0] else {

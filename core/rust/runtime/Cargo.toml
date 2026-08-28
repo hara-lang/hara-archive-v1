@@ -18,7 +18,10 @@ build = "build.rs"
 # making consumers depend on an implementation crate.
 path = "../src/runtime_lib.rs"
 crate-type = ["rlib"]
-test = false
+# The runtime package owns the source graph and its implementation unit tests.
+# The hara-wasm delivery facade remains test-free and is exercised through
+# integration, raw-Wasm, and browser targets.
+test = true
 
 [features]
 default = ["bytecode-vm", "bytecode-instrumentation", "browser-wasm"]

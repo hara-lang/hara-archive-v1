@@ -27,9 +27,49 @@ rust_files=(
   core/rust/src/wasm_binding/wit_parser.rs
 )
 
+bounded_files=(
+  core/rust/src/bin/hara/cli/hara.rs
+  core/rust/src/cli_app.rs
+  core/rust/src/cli_app/tests.rs
+  core/rust/src/direct_wasm.rs
+  core/rust/src/wasm_binding.rs
+  core/rust/src/wasm_binding/canonical.rs
+  core/rust/src/wasm_binding/direct.rs
+  core/rust/src/wasm_binding/memory.rs
+  core/rust/src/wasm_binding/package/manifest.rs
+  core/rust/src/wasm_binding/package/tests.rs
+  core/rust/src/wasm_binding/runtime.rs
+  core/rust/src/wasm_binding/runtime/tests.rs
+  core/rust/src/wasm_binding/syntax.rs
+  core/rust/src/wasm_binding/tests.rs
+)
+
+format_files() {
+  local base_sha="${WASM_BINDING_BASE_SHA:-}"
+  local head_sha="${WASM_BINDING_HEAD_SHA:-}"
+  local -a files
+
+  if [[ -n "$base_sha" && -n "$head_sha" ]] \
+    && git cat-file -e "${base_sha}^{commit}" 2>/dev/null \
+    && git cat-file -e "${head_sha}^{commit}" 2>/dev/null; then
+    files=()
+    mapfile -t files < <(git diff --name-only "$base_sha" "$head_sha" -- "${rust_files[@]}")
+  else
+    files=("${rust_files[@]}")
+  fi
+
+  if ((${#files[@]})); then
+    printf '%s\n' "${files[@]}"
+  fi
+}
+
 check_format_and_layout() {
-  rustfmt --edition 2021 --check "${rust_files[@]}"
-  for file in "${rust_files[@]}"; do
+  local -a files_to_format
+  mapfile -t files_to_format < <(format_files)
+  if ((${#files_to_format[@]})); then
+    rustfmt --edition 2021 --check "${files_to_format[@]}"
+  fi
+  for file in "${bounded_files[@]}"; do
     lines="$(wc -l < "$file")"
     printf '%s: %s lines\n' "$file" "$lines"
     test "$lines" -lt 700

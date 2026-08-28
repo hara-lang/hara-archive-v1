@@ -15,7 +15,6 @@ on:
       - 'core/lib/src/code/vm.hal'
       - 'core/lib/src/code/vm/instrument/**'
       - 'core/lib/test/code/vm/instrument/**'
-      - 'core/rust/src/runtime/evaluator.rs'
       - 'core/rust/src/runtime/session_live.rs'
       - 'core/rust/src/live_session.rs'
       - 'core/rust/src/live_session/instrumented_interpreter.rs'
@@ -40,7 +39,6 @@ on:
       - 'core/lib/src/code/vm.hal'
       - 'core/lib/src/code/vm/instrument/**'
       - 'core/lib/test/code/vm/instrument/**'
-      - 'core/rust/src/runtime/evaluator.rs'
       - 'core/rust/src/runtime/session_live.rs'
       - 'core/rust/src/live_session.rs'
       - 'core/rust/src/live_session/instrumented_interpreter.rs'
@@ -98,25 +96,27 @@ jobs:
       - name: Check instrumented LiveSession formatting
         run: |
           rustfmt --edition 2021 --check \
-            core/rust/src/runtime/evaluator.rs \
             core/rust/src/runtime/session_live.rs \
             core/rust/src/live_session.rs \
             core/rust/src/live_session/instrumented_interpreter.rs \
             core/rust/src/live_session/instrumented_hbc.rs
 
       - name: Compile the Runtime-owned interpreter instrumentation path
-        run: cargo test --locked --manifest-path core/rust/Cargo.toml --lib --no-run
+        run: |
+          cargo test --locked --manifest-path core/rust/Cargo.toml \
+            --package hara-runtime --lib --no-run
 
       - name: Compile the instrumented HBC observation feature slice
         run: |
           cargo test --locked --manifest-path core/rust/Cargo.toml \
-            --features bytecode-observation --lib --no-run
+            --package hara-runtime --features bytecode-observation --lib --no-run
 
       - name: Test LiveSession model and adapters
         run: |
-          cargo test --locked --manifest-path core/rust/Cargo.toml --lib live_session
           cargo test --locked --manifest-path core/rust/Cargo.toml \
-            --features bytecode-observation --lib live_session
+            --package hara-runtime --lib live_session
+          cargo test --locked --manifest-path core/rust/Cargo.toml \
+            --package hara-runtime --features bytecode-observation --lib live_session
 
       - name: Test private Session ownership and fencing
         run: |
@@ -133,10 +133,10 @@ jobs:
           grep -Fx 'code.vm.instrument.trace' core/rust/standard-library.namespaces
 
       - name: Run portable instrumentation contract tests
-        run: ./scripts/runtime/run-lib-tests core/lib/test/code/vm/instrument_test.hal
+        run: ./scripts/runtime/run-lib-tests --backend interpreter core/lib/test/code/vm/instrument_test.hal
 
       - name: Run passive live trace conversion tests
-        run: ./scripts/runtime/run-lib-tests core/lib/test/code/vm/instrument/trace_test.hal
+        run: ./scripts/runtime/run-lib-tests --backend interpreter core/lib/test/code/vm/instrument/trace_test.hal
 
       - name: Reject control or runtime ownership from pure trace namespace
         run: |

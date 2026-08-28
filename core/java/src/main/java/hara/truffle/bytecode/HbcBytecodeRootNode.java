@@ -177,7 +177,7 @@ public abstract class HbcBytecodeRootNode extends RootNode implements BytecodeRo
           builder.beginIfThenElse();
           builder.beginBlock();
           emitProbe(builder, program, functionIndex, branch.conditionalIp());
-          builder.emitLoadLocal(stack[condition]);
+          emitTruthy(builder, stack[condition]);
           builder.endBlock();
           builder.beginBlock();
           emitStructuredRange(
@@ -209,7 +209,7 @@ public abstract class HbcBytecodeRootNode extends RootNode implements BytecodeRo
           builder.beginIfThen();
           builder.beginBlock();
           emitProbe(builder, program, functionIndex, branch.conditionalIp());
-          builder.emitLoadLocal(stack[condition]);
+          emitTruthy(builder, stack[condition]);
           builder.endBlock();
           builder.beginBlock();
           emitStructuredRange(
@@ -434,6 +434,13 @@ public abstract class HbcBytecodeRootNode extends RootNode implements BytecodeRo
     builder.emitInstructionProbe(new HbcNativeInstruction(program, functionIndex, ip));
   }
 
+  private static void emitTruthy(
+      HbcBytecodeRootNodeGen.Builder builder, BytecodeLocal value) {
+    builder.beginTruthy();
+    builder.emitLoadLocal(value);
+    builder.endTruthy();
+  }
+
   private static void loadArguments(
       HbcBytecodeRootNodeGen.Builder builder, BytecodeLocal[] stack, int start, int count) {
     for (int index = 0; index < count; index++) {
@@ -507,6 +514,15 @@ public abstract class HbcBytecodeRootNode extends RootNode implements BytecodeRo
     @TruffleBoundary
     public static void execute(HbcNativeInstruction instruction) {
       HbcInstrumentationBridge.instruction(HaraLanguage.currentContext(), instruction);
+    }
+  }
+
+  @Operation
+  public static final class Truthy {
+    @Specialization
+    @TruffleBoundary
+    public static boolean execute(Object value) {
+      return !HaraBox.isNil(value) && !Boolean.FALSE.equals(HaraBox.unwrap(value));
     }
   }
 

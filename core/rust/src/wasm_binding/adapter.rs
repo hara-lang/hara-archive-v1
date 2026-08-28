@@ -1123,7 +1123,7 @@ mod tests {
         let mut event = vec![0; event_size];
         memory.read(&store, event_pointer, &mut event).unwrap();
         assert_eq!(
-            crate::hta::decode(&event).unwrap(),
+            crate::hta::decode_canonical(&event).unwrap(),
             crate::core::Value::Vector(
                 vec![
                     crate::core::Value::Number(0),

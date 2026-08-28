@@ -115,3 +115,15 @@ fn metadata_integer_widths_are_canonicalized() {
     );
     assert_eq!(encode_program(&decoded).unwrap(), encoded);
 }
+
+#[test]
+fn integer_constants_use_canonical_hta_widths() {
+    let mut program = compile_source("42").unwrap();
+    assert_eq!(program.constants.len(), 1);
+    program.constants[0] = Value::BigInteger(BigInt::from(42));
+
+    let encoded = encode_program(&program).unwrap();
+    let decoded = decode_program(&encoded).unwrap();
+    assert_eq!(decoded.constants, vec![Value::Number(42)]);
+    assert_eq!(encode_program(&decoded).unwrap(), encoded);
+}

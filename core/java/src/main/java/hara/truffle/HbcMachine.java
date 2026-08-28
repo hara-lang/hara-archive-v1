@@ -9,6 +9,7 @@ import com.oracle.truffle.api.interop.InteropLibrary;
 import hara.lang.data.Symbol;
 import hara.lang.data.Keyword;
 import hara.lang.data.TaggedLiteral;
+import hara.lang.base.primitive.Num;
 import hara.kernel.builtin.BuiltinStruct;
 import hara.lang.protocol.IMetadata;
 import hara.lang.protocol.IExInfo;
@@ -1191,6 +1192,20 @@ public final class HbcMachine {
       Object first = iterator.next();
       if (primitive == HbcProgram.Primitive.FIRST) return first;
       return iterator.hasNext() ? iterator.next() : null;
+    }
+    if (primitive == HbcProgram.Primitive.REMAINDER
+        || primitive == HbcProgram.Primitive.MODULO) {
+      if (arguments.length != 2) {
+        throw new HaraException(primitiveName(id) + " expects two numbers");
+      }
+      Object left = HaraBox.unwrap(arguments[0]);
+      Object right = HaraBox.unwrap(arguments[1]);
+      if (!(left instanceof Number) || !(right instanceof Number)) {
+        throw new HaraException(primitiveName(id) + " expects two numbers");
+      }
+      return primitive == HbcProgram.Primitive.REMAINDER
+          ? Num.remainder(left, right)
+          : Num.mod(left, right);
     }
     try {
       String name = primitiveName(id);

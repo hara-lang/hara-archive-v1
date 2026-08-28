@@ -87,7 +87,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 1
+          fetch-depth: 0
 
       - name: Check out hara-specs-registry
         uses: actions/checkout@v4
@@ -114,6 +114,9 @@ jobs:
           cache-dependency-path: core/java/pom.xml
 
       - name: Check formatting and module bounds
+        env:
+          WASM_BINDING_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          WASM_BINDING_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: ./scripts/runtime/check-wasm-binding format
 
       - name: Test the restricted interface, package and memory executor

@@ -149,6 +149,8 @@ fn whole_wasm_falls_back_to_hbc_for_values_outside_i64() {
 
     let artifact = compile_artifact(&program).expect("source must compile to HNW0");
     let mut native = NativeModule::load(&artifact).expect("HNW0 must instantiate");
+    let decoded = decode_artifact(&artifact).expect("HNW0 must decode");
+    assert!(!decoded.capabilities[usize::from(decoded.program.entry)]);
     assert_eq!(native.call_entry_value(), Ok(expected));
 }
 

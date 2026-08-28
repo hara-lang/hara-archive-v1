@@ -41,7 +41,7 @@
       (throw (ex :serialization {:value value :length length} :ex/message "Hex input must contain an even number of digits")))
     (loop [index 0 output []]
       (if (= index length)
-        (apply std.native.Bytes/new output)
+        (apply Bytes/new output)
         (let [high (digit (str/char-at value index) index)
               low-index (inc index)
               low (digit (str/char-at value low-index) low-index)]

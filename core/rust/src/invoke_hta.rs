@@ -87,11 +87,13 @@ impl Runtime {
         arguments_hta: &[u8],
     ) -> Result<Vec<u8>, InvokeHtaError> {
         let (namespace_name, var_name) = split_qualified_var(qualified_var)?;
-        let decoded = hta::decode(arguments_hta).map_err(InvokeHtaError::MalformedInput)?;
-        let canonical = hta::encode(&decoded).map_err(InvokeHtaError::MalformedInput)?;
-        if canonical != arguments_hta {
-            return Err(InvokeHtaError::NoncanonicalInput);
-        }
+        let decoded = match hta::decode_canonical(arguments_hta) {
+            Ok(value) => value,
+            Err(error) if error.starts_with("hta/value-noncanonical:") => {
+                return Err(InvokeHtaError::NoncanonicalInput)
+            }
+            Err(error) => return Err(InvokeHtaError::MalformedInput(error)),
+        };
         let arguments = match decoded {
             Value::Vector(values) => values.iter().cloned().collect::<Vec<_>>(),
             _ => return Err(InvokeHtaError::ArgumentsNotVector),

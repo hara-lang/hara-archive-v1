@@ -1341,7 +1341,7 @@ where
             emit_overflow_check(out, op, a, b, result);
             out.instruction(&Instruction::LocalGet(result));
         }
-        IntrinsicOp::Divide | IntrinsicOp::Remainder => {
+        IntrinsicOp::Divide => {
             out.instruction(&Instruction::LocalGet(b));
             out.instruction(&Instruction::I64Eqz);
             out.instruction(&Instruction::If(BlockType::Empty));
@@ -1359,13 +1359,9 @@ where
             out.instruction(&Instruction::End);
             out.instruction(&Instruction::LocalGet(a));
             out.instruction(&Instruction::LocalGet(b));
-            out.instruction(&if op == IntrinsicOp::Divide {
-                Instruction::I64DivS
-            } else {
-                Instruction::I64RemS
-            });
+            out.instruction(&Instruction::I64DivS);
         }
-        IntrinsicOp::Modulo => {
+        IntrinsicOp::Remainder | IntrinsicOp::Modulo => {
             out.instruction(&Instruction::LocalGet(b));
             out.instruction(&Instruction::I64Eqz);
             out.instruction(&Instruction::If(BlockType::Empty));
@@ -1374,26 +1370,6 @@ where
             out.instruction(&Instruction::LocalGet(a));
             out.instruction(&Instruction::LocalGet(b));
             out.instruction(&Instruction::I64RemS);
-            out.instruction(&Instruction::LocalSet(result));
-            out.instruction(&Instruction::LocalGet(result));
-            out.instruction(&Instruction::I64Eqz);
-            out.instruction(&Instruction::If(BlockType::Empty));
-            out.instruction(&Instruction::Else);
-            out.instruction(&Instruction::LocalGet(result));
-            out.instruction(&Instruction::I64Const(0));
-            out.instruction(&Instruction::I64LtS);
-            out.instruction(&Instruction::LocalGet(b));
-            out.instruction(&Instruction::I64Const(0));
-            out.instruction(&Instruction::I64LtS);
-            out.instruction(&Instruction::I32Xor);
-            out.instruction(&Instruction::If(BlockType::Empty));
-            out.instruction(&Instruction::LocalGet(result));
-            out.instruction(&Instruction::LocalGet(b));
-            out.instruction(&Instruction::I64Add);
-            out.instruction(&Instruction::LocalSet(result));
-            out.instruction(&Instruction::End);
-            out.instruction(&Instruction::End);
-            out.instruction(&Instruction::LocalGet(result));
         }
         IntrinsicOp::Equal
         | IntrinsicOp::Less

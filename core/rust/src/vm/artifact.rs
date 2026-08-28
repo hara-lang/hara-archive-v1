@@ -73,7 +73,7 @@ pub fn decode_program(bytes: &[u8]) -> Result<Program, String> {
     let mut reader = Reader::new(payload);
     let entry = reader.u16()?;
     let namespace = reader.option_string()?;
-    let constants = reader.many(|reader| crate::hta::decode(reader.bytes()?))?;
+    let constants = reader.many(|reader| crate::hta::decode_canonical(reader.bytes()?))?;
     let var_metadata = reader.many(|reader| read_metadata(reader))?;
     let schema_types = read_schema_map(&mut reader)?;
     let function_types = read_schema_map(&mut reader)?;

@@ -37,7 +37,6 @@ FORBIDDEN_RUNTIME = [
     "(defn run-fact-with-events",
     "(defn suite-work",
     "(defn remaining-items",
-    "(defn cancelled-fact-result",
     "(defn cancelled-fact-results",
     "WorkReporter",
     "ITestReporter",
@@ -58,8 +57,9 @@ REQUIRED_EVENTS = [
 ]
 REQUIRED_GRAPH = [
     "(def +runner-work+ (runner-work +default-revision+))",
+    "(defn fact-batch-body",
     "code.test/fact-batch-items",
-    "code.test/suite-scope",
+    "code.test/suite-start",
     "code.test/fact-stop",
     "code.test/fact-cancel",
     "(defn resolve-subject-fact",

@@ -1,5 +1,6 @@
 package hara.truffle.bytecode;
 
+import hara.lang.base.G;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
@@ -8,6 +9,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import org.graalvm.polyglot.Value;
 
 /** Decoder for the Rust-generated HCC0 bytecode conformance artifact. */
 public final class HbcConformanceCorpus {
@@ -44,6 +46,17 @@ public final class HbcConformanceCorpus {
       throw new HbcFormatException("trailing bytes in bytecode conformance corpus");
     }
     return List.copyOf(cases);
+  }
+
+  /** Returns the Hara display form for a value exported through the polyglot boundary. */
+  public static String display(Value value) {
+    if (value.isNull()) return "nil";
+    if (value.isString()) return G.display(value.asString());
+    if (value.isNumber()) {
+      Object exported = value.as(Object.class);
+      if (exported instanceof Double || exported instanceof Float) return G.display(exported);
+    }
+    return value.toString();
   }
 
   private static String text(ByteBuffer input) {

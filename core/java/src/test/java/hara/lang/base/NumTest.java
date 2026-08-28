@@ -78,7 +78,9 @@ public class NumTest {
   public void testRemainder() {
     assertEquals(1L, Num.remainder(7L, 3L));
     assertEquals(-2L, Num.remainder(-5L, 3L));
-    assertEquals(1L, Num.mod(-5L, 3L));
+    assertEquals(-2L, Num.mod(-5L, 3L));
+    assertEquals(-1L, Num.mod(-7L, 3L));
+    assertEquals(1L, Num.mod(7L, -3L));
     assertEquals(1.0, (double) Num.remainder(7.0, 3.0), 0.0);
   }
 

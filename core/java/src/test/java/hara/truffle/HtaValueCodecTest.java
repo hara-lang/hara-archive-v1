@@ -10,6 +10,7 @@ import hara.lang.data.Keyword;
 import hara.lang.protocol.ILinearType;
 import hara.lang.protocol.IMapType;
 import hara.spec.SpecRegistry;
+import java.math.BigInteger;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -36,6 +37,25 @@ public class HtaValueCodecTest {
       }
       assertThrows(HaraException.class, () -> HtaValueCodec.decode(frame));
     }
+  }
+
+  @Test
+  public void canonicalizesBigIntegerWireWidthsAndRejectsNoncanonicalText() {
+    for (BigInteger value :
+        List.of(
+            BigInteger.valueOf(Long.MIN_VALUE),
+            BigInteger.valueOf(42),
+            BigInteger.valueOf(Long.MAX_VALUE))) {
+      byte[] encoded = HtaValueCodec.encode(value);
+      assertEquals(3, Byte.toUnsignedInt(encoded[4]));
+    }
+    byte[] large = HtaValueCodec.encode(BigInteger.ONE.shiftLeft(63));
+    assertEquals(20, Byte.toUnsignedInt(large[4]));
+
+    byte[] noncanonical = {'H', 'T', 'A', '0', 20, 0, 0, 0, 2, '4', '2'};
+    HaraException error =
+        assertThrows(HaraException.class, () -> HtaValueCodec.decodeCanonical(noncanonical));
+    assertTrue(error.getMessage().startsWith("hta/value-noncanonical:"));
   }
 
   @Test

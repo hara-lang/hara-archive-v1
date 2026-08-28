@@ -135,8 +135,12 @@ test("Chromium/Wasm produces deterministic instrumentation conformance evidence"
   });
   expect(reports[0]).toEqual(reports[1]);
   expect(reports[0].runtime).toBe("wasm");
-  expect(reports[0].cases).toHaveLength(4);
-  expect(reports[0].cases[0].events[2].phase).toBe("replay");
-  expect(reports[0].cases[2].state.generation).toBe(1);
-  expect(reports[0].cases[3].state.result).toBe("3");
+  expect(reports[0].schema).toBe("hara.instrumentation.conformance-report/1");
+  expect(reports[0].cases).toHaveLength(11);
+  expect(reports[0].cases[0].observation.eventOrder).toEqual([
+    "semantic-boundary",
+    "execution-terminal"
+  ]);
+  expect(reports[0].cases[9].reset.generation).toBe(1);
+  expect(reports[0].cases[10].result).toBe("3");
 });

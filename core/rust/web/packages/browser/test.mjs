@@ -174,6 +174,8 @@ test("browser SDK compiles and executes whole-function WebAssembly", async () =>
   assert.equal(product.manifest["abi-version"], "hnw0/0");
   const loaded = await hara.loadWholeWasm(product);
   assert.equal(loaded.call(), 42n);
+  const overflow = await hara.compileWholeWasm("(+ 9223372036854775807 1)");
+  assert.equal(overflow.call(), 9223372036854775808n);
   await assert.rejects(
     () => hara.loadWholeWasm({
       artifact: product.artifact,

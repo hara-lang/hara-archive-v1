@@ -71,7 +71,7 @@ list_groups() {
 }
 
 print_command() {
-    local -a command=("$CARGO_BIN" test --locked --manifest-path "$MANIFEST" --lib)
+    local -a command=("$CARGO_BIN" test --locked --manifest-path "$MANIFEST" --package hara-runtime --lib)
     if [[ "$NO_DEFAULT_FEATURES" == true ]]; then
         command+=(--no-default-features)
     fi
@@ -91,7 +91,7 @@ run_filter() {
         return 0
     fi
 
-    local -a command=("$CARGO_BIN" test --locked --manifest-path "$MANIFEST" --lib)
+    local -a command=("$CARGO_BIN" test --locked --manifest-path "$MANIFEST" --package hara-runtime --lib)
     if [[ "$NO_DEFAULT_FEATURES" == true ]]; then
         command+=(--no-default-features)
     fi
@@ -99,6 +99,24 @@ run_filter() {
         command+=(--features "$FEATURES")
     fi
     command+=("$filter" -- --nocapture)
+    local -a list_command=("$CARGO_BIN" test --locked --manifest-path "$MANIFEST" --package hara-runtime --lib)
+    if [[ "$NO_DEFAULT_FEATURES" == true ]]; then
+        list_command+=(--no-default-features)
+    fi
+    if [[ -n "$FEATURES" ]]; then
+        list_command+=(--features "$FEATURES")
+    fi
+    list_command+=("$filter" -- --list)
+    local listed
+    if ! listed=$("${list_command[@]}" 2>&1); then
+        printf '%s\n' "$listed" >&2
+        return 1
+    fi
+    if ! grep -qE ': test$' <<<"$listed"; then
+        echo "test filter matched zero hara-runtime tests: $filter" >&2
+        printf '%s\n' "$listed" >&2
+        return 1
+    fi
     "${command[@]}"
 }
 

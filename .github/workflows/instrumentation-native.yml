@@ -77,17 +77,18 @@ jobs:
             core/rust/src/instrumentation/native/tests.rs \
             core/rust/src/instrumentation/native_identity.rs \
             core/rust/src/instrumentation/native_identity/tests.rs \
+            core/rust/src/instrumentation/native_identity/whole_wasm_tests.rs \
             core/rust/src/runtime/session_instrumentation.rs
 
       - name: Test trusted native service with the production feature set
         run: |
           cargo test --locked --manifest-path core/rust/Cargo.toml \
-            --lib trusted_native_
+            --package hara-runtime --lib trusted_native_
 
       - name: Exercise trusted native attachment over instrumented HBC
         run: |
           cargo test --locked --manifest-path core/rust/Cargo.toml \
-            --features bytecode-observation --lib \
+            --package hara-runtime --features bytecode-observation --lib \
             trusted_native_binds_and_observes_real_hbc_live_target
 
       - name: Test trusted native service without optional bytecode features
@@ -100,7 +101,7 @@ jobs:
       - name: Preserve shared hub and private Session behavior
         run: |
           cargo test --locked --manifest-path core/rust/Cargo.toml \
-            --lib instrumentation::tests
+            --package hara-runtime --lib instrumentation::tests
           cargo test --locked --manifest-path core/rust/Cargo.toml \
             --test sandbox_private_live_session
 

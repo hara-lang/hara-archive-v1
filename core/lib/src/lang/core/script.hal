@@ -153,13 +153,13 @@
         value-type (type value)]
     (cond
       (= :std.native.SchemaType value-type)
-      (portable-schema-form (std.native.Schema/form value))
+      (portable-schema-form (Schema/form value))
 
       (or (= :std.native.StructType value-type)
           (= :std.native.MutableType value-type))
-      (let [schema-value (std.native.Schema/of variable)]
+      (let [schema-value (Schema/of variable)]
         (when schema-value
-          (portable-schema-form (std.native.Schema/form schema-value))))
+          (portable-schema-form (Schema/form schema-value))))
 
       :else nil)))
 
@@ -169,10 +169,10 @@
   (let [value-type (type value)]
     (cond
       (= :std.native.Var value-type)
-      (list 'var (std.native.Runtime/var-sym value))
+      (list 'var (Runtime/var-sym value))
 
       (= :std.native.SchemaType value-type)
-      (portable-schema-form (std.native.Schema/form value))
+      (portable-schema-form (Schema/form value))
 
       (vector? value)
       (vec (map portable-schema-form value))
@@ -214,7 +214,7 @@
   "Collects portable schemas from all declaration Vars in a module namespace."
   [module-id]
   (let [source (module-source-symbol module-id)
-        variables (std.native.Runtime/vars source)]
+        variables (Runtime/vars source)]
     (reduce-kv
      (fn [output var-name variable]
        (if-let [form (schema-value-form variable)]

@@ -56,7 +56,7 @@
       (throw (ex :serialization {:value source :length length} :ex/message "Base64 length must be a multiple of four")))
     (loop [index 0 output []]
       (if (= index length)
-        (apply std.native.Bytes/new output)
+        (apply Bytes/new output)
         (let [last? (= (+ index 4) length)
               ca (str/char-at source index)
               cb (str/char-at source (inc index))

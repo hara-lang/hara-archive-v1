@@ -4,7 +4,6 @@ import hara.truffle.bytecode.HbcCodec;
 import hara.truffle.bytecode.HbcConformanceCorpus;
 import hara.truffle.bytecode.HbcDisassembler;
 import hara.truffle.bytecode.HbxBundleCodec;
-import hara.lang.base.G;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.file.Files;
@@ -79,10 +78,7 @@ final class HaraBytecodeTool {
         // and practical for native-image CI's complete opcode corpus.
         try (Context context = Context.newBuilder(HaraLanguage.ID).engine(engine).build()) {
           Value actual = context.eval(source);
-          String display =
-              actual.isNull()
-                  ? "nil"
-                  : actual.isString() ? G.display(actual.asString()) : actual.toString();
+          String display = HbcConformanceCorpus.display(actual);
           if (!testCase.expectedDisplay().equals(display)) {
             throw new HaraException(
                 "HBC0 conformance failed for :"

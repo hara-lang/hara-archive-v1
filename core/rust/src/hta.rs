@@ -3,6 +3,7 @@ use crate::core::{ResultValue, Value};
 use crate::lang::data::{Tuple as PTuple, Vector as PVector};
 use crate::lang::protocol::INamespaced;
 use num_bigint::BigInt;
+use num_traits::ToPrimitive;
 
 const MAGIC: &[u8; 4] = b"HTA0";
 pub const MAX_FRAME_BYTES: usize = 64 * 1024 * 1024;
@@ -91,7 +92,13 @@ pub const HTA0_TAG_INVENTORY: &[(u8, &str)] = &[
 
 fn decode_exception_provenance(
     value: Value,
-) -> Result<(Option<crate::core::ExceptionSite>, Vec<crate::core::ExceptionSite>), String> {
+) -> Result<
+    (
+        Option<crate::core::ExceptionSite>,
+        Vec<crate::core::ExceptionSite>,
+    ),
+    String,
+> {
     let entries = crate::core::map_entries(&value)
         .ok_or_else(|| "hta/value-malformed: invalid exception provenance".to_string())?;
     if entries.len() != 2 {
@@ -126,9 +133,9 @@ fn decode_exception_site(value: &Value) -> Result<crate::core::ExceptionSite, St
         return Err("hta/value-malformed: invalid exception provenance site".into());
     }
     let get = |name: &str| {
-        entries.iter().find_map(|(key, value)| {
-            field_name(key, name).then_some(value)
-        })
+        entries
+            .iter()
+            .find_map(|(key, value)| field_name(key, name).then_some(value))
     };
     let namespace = match get("namespace") {
         Some(Value::Nil) => None,
@@ -191,6 +198,19 @@ pub fn decode(bytes: &[u8]) -> Result<Value, String> {
     Ok(value)
 }
 
+/// Decodes an HTA0 frame and verifies that its bytes are canonical.
+///
+/// The ordinary decoder is intentionally permissive for trusted legacy state;
+/// transport and artifact boundaries should use this entry point instead.
+pub fn decode_canonical(bytes: &[u8]) -> Result<Value, String> {
+    let value = decode(bytes)?;
+    let canonical = encode(&value)?;
+    if canonical != bytes {
+        return Err("hta/value-noncanonical: frame bytes are not canonical".into());
+    }
+    Ok(value)
+}
+
 fn encode_bare(value: &Value, output: &mut Vec<u8>, depth: usize) -> Result<(), String> {
     if depth > MAX_NESTING_DEPTH {
         return Err("hta/value-too-deep: nesting exceeds 256".into());
@@ -215,8 +235,13 @@ fn encode_bare(value: &Value, output: &mut Vec<u8>, depth: usize) -> Result<(), 
             output.extend_from_slice(&u32::from(*value).to_be_bytes());
         }
         Value::BigInteger(value) => {
-            output.push(BIG_INTEGER);
-            encode_bytes(value.to_string().as_bytes(), output)?;
+            if let Some(value) = value.to_i64() {
+                output.push(I64);
+                output.extend_from_slice(&value.to_be_bytes());
+            } else {
+                output.push(BIG_INTEGER);
+                encode_bytes(value.to_string().as_bytes(), output)?;
+            }
         }
         Value::Regex(value) => {
             output.push(REGEX);
@@ -376,7 +401,11 @@ fn encode_bare(value: &Value, output: &mut Vec<u8>, depth: usize) -> Result<(), 
                 output,
                 depth + 1,
             )?;
-            encode_bare(&crate::core::exception_provenance_value(value), output, depth + 1)?;
+            encode_bare(
+                &crate::core::exception_provenance_value(value),
+                output,
+                depth + 1,
+            )?;
         }
         Value::Result(value) => {
             output.push(STRUCT);
@@ -711,10 +740,7 @@ impl Reader<'_> {
                         data: Box::new(data),
                         cause,
                         provenance: std::rc::Rc::new(std::cell::RefCell::new(
-                            crate::core::ExceptionProvenance {
-                                created_at,
-                                throws,
-                            },
+                            crate::core::ExceptionProvenance { created_at, throws },
                         )),
                     },
                 )))
@@ -904,6 +930,40 @@ mod tests {
     }
 
     #[test]
+    fn big_integer_wire_widths_are_canonicalized() {
+        for (value, tag) in [
+            (BigInt::from(i64::MIN), I64),
+            (BigInt::from(42_i64), I64),
+            (BigInt::from(i64::MAX), I64),
+            (BigInt::from(i64::MAX) + 1, BIG_INTEGER),
+        ] {
+            let encoded = encode(&Value::BigInteger(value)).unwrap();
+            assert_eq!(encoded[4], tag);
+            assert_eq!(
+                decode_canonical(&encoded).unwrap(),
+                decode(&encoded).unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn canonical_decoder_rejects_noncanonical_big_integer_and_map_frames() {
+        let noncanonical_integer = b"HTA0\x14\0\0\0\x02\x34\x32";
+        assert!(decode_canonical(noncanonical_integer)
+            .unwrap_err()
+            .starts_with("hta/value-noncanonical:"));
+
+        let mut noncanonical_map = b"HTA0\x0b\0\0\0\x02".to_vec();
+        noncanonical_map.extend(bare(&Value::String("b".into()), 0).unwrap());
+        noncanonical_map.extend(bare(&Value::Number(2), 0).unwrap());
+        noncanonical_map.extend(bare(&Value::String("a".into()), 0).unwrap());
+        noncanonical_map.extend(bare(&Value::Number(1), 0).unwrap());
+        assert!(decode_canonical(&noncanonical_map)
+            .unwrap_err()
+            .starts_with("hta/value-noncanonical:"));
+    }
+
+    #[test]
     fn portable_language_scalars_round_trip() {
         for value in [
             Value::Character('雪'),
@@ -940,9 +1000,24 @@ mod tests {
 
     #[test]
     fn tag_inventory_keeps_legacy_var_distinct_from_var_reference() {
-        assert_eq!(HTA0_TAG_INVENTORY.iter().find(|(_, name)| *name == "character"), Some(&(19, "character")));
-        assert_eq!(HTA0_TAG_INVENTORY.iter().find(|(_, name)| *name == "pointer"), Some(&(34, "pointer")));
-        assert_eq!(HTA0_TAG_INVENTORY.iter().find(|(_, name)| *name == "var-ref"), Some(&(35, "var-ref")));
+        assert_eq!(
+            HTA0_TAG_INVENTORY
+                .iter()
+                .find(|(_, name)| *name == "character"),
+            Some(&(19, "character"))
+        );
+        assert_eq!(
+            HTA0_TAG_INVENTORY
+                .iter()
+                .find(|(_, name)| *name == "pointer"),
+            Some(&(34, "pointer"))
+        );
+        assert_eq!(
+            HTA0_TAG_INVENTORY
+                .iter()
+                .find(|(_, name)| *name == "var-ref"),
+            Some(&(35, "var-ref"))
+        );
         assert!(decode(b"HTA0\x0e\x07\0\0\0\x04rank\0").is_err());
     }
 

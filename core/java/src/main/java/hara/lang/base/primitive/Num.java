@@ -529,12 +529,9 @@ public interface Num {
   }
 
   public static Number mod(Object x, Object y) {
-    Number remainder = remainder(x, y);
-    if (isZero(remainder)) return remainder;
-    if ((isNeg(remainder) && isPos(y)) || (isPos(remainder) && isNeg(y))) {
-      return addP(remainder, y);
-    }
-    return remainder;
+    // `mod` is the canonical named remainder operator in the Hara
+    // bytecode contract; preserve the dividend sign at this boundary.
+    return remainder(x, y);
   }
 
   public static double minus(double x) {
@@ -846,6 +843,7 @@ public interface Num {
 
   public static long remainder(long x, long y) {
     if (y == 0) throw new ArithmeticException("Divide by zero");
+    if (x == Long.MIN_VALUE && y == -1) return 0;
     return x % y;
   }
 
