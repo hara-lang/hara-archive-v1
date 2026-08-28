@@ -77,7 +77,10 @@ fn whole_wasm_target_accepts_protocol_call_instrumentation() {
             "whole-wasm",
             "session",
             TargetKind::WholeWasm,
-            [Capability::EventSemanticBoundary, Capability::InspectSnapshot],
+            [
+                Capability::EventSemanticBoundary,
+                Capability::InspectSnapshot,
+            ],
         ))
         .expect("whole-Wasm target registration");
     let instrument = hub
