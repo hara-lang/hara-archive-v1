@@ -1,0 +1,23 @@
+(ns xt.db.system.impl-memory-test (:use code.test) (:require [lang.core :as l] [xt.lang.common-notify :as notify]))
+
+^{:seedgen/root {:all true}} (l/script- :js {:require [[xt.lang.spec-base :as xt] [xt.lang.common-data :as xtd] [xt.lang.common-repl :as repl] [xt.lang.spec-promise :as promise] [xt.db.system.impl-memory :as impl] [xt.db.helpers.data-main-test :as sample]] :runtime :basic})
+
+(fact:global {:teardown [(l/rt:stop)] :setup [(l/rt:restart)]})
+
+^{:added "4.1" :refer xt.db.system.impl-memory/pull} (fact "pull reads through async semantics" (!.js (var impl (impl/impl-memory sample/Schema sample/SchemaLookup)) (impl/record-add impl "UserAccount" [sample/RootUser]) (impl/pull impl ["UserAccount" {"id" "00000000-0000-0000-0000-000000000000"} ["nickname"]])) => [{"nickname" "root"}])
+
+^{:added "4.1" :refer xt.db.system.impl-memory/pull-async} (fact "pull-async resolves through promise semantics" (notify/wait-on :js (var impl (impl/impl-memory sample/Schema sample/SchemaLookup)) (impl/record-add impl "UserAccount" [sample/RootUser]) (-> (impl/pull-async impl ["UserAccount" {"id" "00000000-0000-0000-0000-000000000000"} ["nickname"]]) (promise/x:promise-then (fn [out] (repl/notify out))))) => [{"nickname" "root"}])
+
+^{:added "4.1" :refer xt.db.system.impl-memory/record-add} (fact "record-add writes through async semantics" (!.js (var impl (impl/impl-memory sample/Schema sample/SchemaLookup)) (impl/record-add impl "UserAccount" [{"nickname" "echo" "id" "USER-10"}]) (xtd/get-in impl ["rows" "UserAccount" "USER-10" "record" "data"])) => {"nickname" "echo" "id" "USER-10"})
+
+^{:added "4.1" :refer xt.db.system.impl-memory/record-delete} (fact "record-delete removes ids with async semantics" (!.js (var impl (impl/impl-memory sample/Schema sample/SchemaLookup)) (impl/record-add impl "UserAccount" [sample/RootUser]) (impl/record-delete impl "UserAccount" ["00000000-0000-0000-0000-000000000000"]) (xtd/get-in impl ["rows" "UserAccount" "00000000-0000-0000-0000-000000000000"])) => nil)
+
+^{:added "4.1" :refer xt.db.system.impl-memory/clear-db} (fact "clear-db removes all rows from the memory impl" (!.js (var impl (impl/impl-memory sample/Schema sample/SchemaLookup)) (impl/record-add impl "UserAccount" [sample/RootUser]) (impl/clear-db impl) [(xtd/get-in impl ["rows" "UserAccount" "00000000-0000-0000-0000-000000000000"]) (xt/x:len (xt/x:obj-keys (xtd/get-in impl ["rows"])))]) => [nil 0])
+
+^{:added "4.1" :refer xt.db.system.impl-memory/process-add-event} (fact "process-add-event merges nested data into client and links" (!.js (var impl (impl/impl-memory sample/Schema sample/SchemaLookup)) (var out (impl/process-add-event impl {"UserAccount" [sample/RootUser]})) [(xt/x:len out) (xtd/get-in impl ["rows" "UserAccount" "00000000-0000-0000-0000-000000000000" "record" "data" "nickname"]) (xtd/get-in impl ["rows" "UserAccount" "00000000-0000-0000-0000-000000000000" "record" "rev_links" "profile"]) (xtd/get-in impl ["rows" "UserProfile" "c4643895-b0ce-44cc-b07b-2386bf18d43b" "record" "ref_links" "account"])]) => [2 "root" {"c4643895-b0ce-44cc-b07b-2386bf18d43b" true} {"00000000-0000-0000-0000-000000000000" true}])
+
+^{:added "4.1" :refer xt.db.system.impl-memory/process-remove-event} (fact "process-remove-event removes nested data in lookup order" (!.js (var impl (impl/impl-memory sample/Schema sample/SchemaLookup)) (impl/process-add-event impl {"UserAccount" [sample/RootUser]}) [(impl/process-remove-event impl {"UserAccount" [sample/RootUser]}) (xtd/get-in impl ["rows" "UserAccount" "00000000-0000-0000-0000-000000000000"]) (xtd/get-in impl ["rows" "UserProfile" "c4643895-b0ce-44cc-b07b-2386bf18d43b"])]) => [["UserAccount" "UserProfile"] nil nil])
+
+^{:added "4.1" :refer xt.db.system.impl-memory/rpc-call-async} (fact "rpc call not implemented")
+
+^{:added "4.1" :refer xt.db.system.impl-memory/impl-memory} (fact "creates the thin memory impl record with stored schema context" (!.js (impl/impl-memory sample/Schema sample/SchemaLookup)) => (contains-in {"::" "xt.db.system.impl_memory/ImplMemory" "schema" map? "rows" {} "lookup" map?}))

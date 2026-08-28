@@ -14,7 +14,7 @@
   (apply list (quote do)
          (map (fn [sym]
                 (let [pg-sym (symbol (str "pg-" sym))]
-                  (list (quote defmacro.xt) sym (quote [& args])
+                  (list (quote defmacro.pg) sym (quote [& args])
                         (list (quote apply) (quote list)
                               (list (quote quote) pg-sym) (quote args)))))
               symbols)))

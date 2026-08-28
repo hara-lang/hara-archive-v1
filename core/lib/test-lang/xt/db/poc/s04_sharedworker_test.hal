@@ -1,0 +1,13 @@
+(ns xt.db.poc.s04-sharedworker-test (:use code.test) (:require [lang.core :as l] [xt.lang.spec-base :as xt] [xt.substrate :as substrate] [xt.db.node.kernel-base :as kernel]))
+
+(l/script- :js {:runtime :basic})
+
+^{:refer xt.db.node.kernel-base/init-handlers :added "4.1"}
+(fact "the shared-worker POC boots the kernel handler registry locally"
+  (!.js
+   (var node (substrate/node-create {"id" "shared-worker"}))
+   (kernel/init-handlers node)
+   [(xt/x:not-nil? (xt/x:get-key (xt/x:get-key node "handlers") "@xt.db/kernel-init"))
+    (xt/x:not-nil? (xt/x:get-key (xt/x:get-key node "handlers") "@xt.db/pull-call"))
+    (xt/x:not-nil? (xt/x:get-key (xt/x:get-key node "handlers") "@xt.db/dataview-call"))])
+  => [true true true])

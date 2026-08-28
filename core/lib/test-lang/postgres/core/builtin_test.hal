@@ -1,0 +1,97 @@
+(ns postgres.core.builtin-test
+  (:require [lang.core :as l]
+            [postgres.core.builtin :as builtin])
+  (:use code.test))
+
+(l/script :postgres postgres.core.builtin-test {:macro-only true})
+
+(builtin/defpg-builtins [probe])
+
+^{:refer postgres.core.builtin/+functions+}
+(fact "keeps the general PostgreSQL builtin inventory"
+  [(count builtin/+functions+)
+   (first builtin/+functions+)
+   (last builtin/+functions+)]
+  => [126 'enum-first 'gen-salt])
+
+^{:refer postgres.core.builtin/+array+}
+(fact "keeps the array builtin inventory"
+  [(count builtin/+array+)
+   (first builtin/+array+)
+   (last builtin/+array+)]
+  => [35 'array-agg 'unnest])
+
+^{:refer postgres.core.builtin/+math+}
+(fact "keeps the math builtin inventory"
+  [(count builtin/+math+)
+   (first builtin/+math+)
+   (last builtin/+math+)]
+  => [45 'abs 'trunc])
+
+^{:refer postgres.core.builtin/+jsonb+}
+(fact "keeps the JSONB builtin inventory"
+  [(count builtin/+jsonb+)
+   (first builtin/+jsonb+)
+   (last builtin/+jsonb+)]
+  => [62 'jsonb-agg 'to-jsonb])
+
+^{:refer postgres.core.builtin/+current+}
+(fact "keeps the current-value builtin inventory"
+  [(count builtin/+current+)
+   (first builtin/+current+)
+   (last builtin/+current+)]
+  => [7 'current-database 'current-user])
+
+^{:refer postgres.core.builtin/+has+}
+(fact "keeps the privilege builtin inventory"
+  [(count builtin/+has+)
+   (first builtin/+has+)
+   (last builtin/+has+)]
+  => [12 'has-any-column-privilege 'has-type-privilege])
+
+^{:refer postgres.core.builtin/+xml+}
+(fact "keeps the XML builtin inventory"
+  [(count builtin/+xml+)
+   (first builtin/+xml+)
+   (last builtin/+xml+)]
+  => [23 'cursor-to-xml 'xmlvalidate])
+
+^{:refer postgres.core.builtin/+bit+}
+(fact "keeps the bit builtin inventory"
+  [(count builtin/+bit+)
+   (first builtin/+bit+)
+   (last builtin/+bit+)]
+  => [23 'bit 'overlay])
+
+^{:refer postgres.core.builtin/+regexp+}
+(fact "keeps the regular-expression builtin inventory"
+  [(count builtin/+regexp+)
+   (first builtin/+regexp+)
+   (last builtin/+regexp+)]
+  => [5 'regexp-match 'regexp-split-to-table])
+
+^{:refer postgres.core.builtin/+pgjwt+}
+(fact "keeps the pgjwt builtin inventory"
+  [(count builtin/+pgjwt+)
+   (first builtin/+pgjwt+)
+   (last builtin/+pgjwt+)]
+  => [1 'verify 'verify])
+
+^{:refer postgres.core.builtin/pg-tmpl}
+(fact "creates a canonical PostgreSQL template form"
+  (builtin/pg-tmpl 'hello)
+  => '(def$.pg hello hello))
+
+^{:refer postgres.core.builtin/defpg-builtins}
+(fact "creates callable PostgreSQL builtin macros"
+  [(macroexpand-1 '(probe 1 2))
+   (macroexpand-1 '(builtin/abs -3))]
+  => ['(quote (probe 1 2)) '(quote (abs -3))])
+
+^{:refer postgres.core.builtin/__tahto_load__}
+(fact "marks the builtin namespace as loaded"
+  builtin/__tahto_load__
+  => true)
+
+(let [summary (run {:namespace '[postgres.core.builtin-test] :no-report true})]
+  (pr-str (select-keys summary [:status :counts])))

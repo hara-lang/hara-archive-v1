@@ -1,0 +1,25 @@
+(ns postgres.application
+  (:config {:role :facade})
+  (:require [postgres.application.internal :as internal]
+            [std.foundation :as foundation]))
+
+(foundation/intern-in
+ [*applications* internal/*applications*]
+ [application-string internal/application-string]
+ [app-list-entries internal/app-list-entries]
+ [app-get-entry internal/app-get-entry]
+ [app-get-deps internal/app-get-deps]
+ [app-modules internal/app-modules]
+ [app-create-raw internal/app-create-raw]
+ [module-typed internal/module-typed]
+ [app-create-typed internal/app-create-typed]
+ [app-create internal/app-create]
+ [app-list internal/app-list]
+ [app internal/app]
+ [app-clear internal/app-clear]
+ [app-rebuild internal/app-rebuild]
+ [app-rebuild-tables internal/app-rebuild-tables]
+ [app-schema internal/app-schema]
+ [app-typed internal/app-typed]
+ [register-app internal/register-app]
+ [app-reset internal/app-reset])

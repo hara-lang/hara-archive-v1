@@ -211,13 +211,47 @@ pub fn decode_canonical(bytes: &[u8], max_bytes: usize) -> Result<AbiValue, Stri
     immutable_to_abi(decode_immutable_canonical(bytes, max_bytes)?)
 }
 
+pub(crate) fn canonical_big_integer(value: &str) -> Result<Value, String> {
+    let (negative, digits) = match value.strip_prefix('-') {
+        Some(digits) => (true, digits),
+        None => (false, value),
+    };
+    if digits.is_empty() || !digits.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err("hta/value-malformed: invalid big integer".into());
+    }
+    let digits = digits.trim_start_matches('0');
+    let digits = if digits.is_empty() { "0" } else { digits };
+    let canonical = if negative && digits != "0" {
+        format!("-{digits}")
+    } else {
+        digits.to_owned()
+    };
+    match canonical.parse::<i64>() {
+        Ok(value) => Ok(Value::Integer(value)),
+        Err(_) => Ok(Value::BigInteger(canonical)),
+    }
+}
+
+pub(crate) fn validate_canonical_big_integer(value: &str) -> Result<(), String> {
+    match canonical_big_integer(value)? {
+        Value::BigInteger(canonical) if canonical == value => Ok(()),
+        Value::BigInteger(_) => {
+            Err("hta/value-noncanonical: big integer text is not canonical".into())
+        }
+        Value::Integer(_) => {
+            Err("hta/value-noncanonical: signed 64-bit integers use the i64 tag".into())
+        }
+        _ => unreachable!("canonical big integer returned a non-integer value"),
+    }
+}
+
 fn abi_to_immutable(value: &AbiValue) -> Result<Value, String> {
     Ok(match value {
         AbiValue::Nil => Value::Nil,
         AbiValue::Boolean(value) => Value::Boolean(*value),
         AbiValue::String(value) => Value::String(value.clone()),
         AbiValue::Integer(value) => Value::Integer(*value),
-        AbiValue::BigInteger(value) => Value::BigInteger(value.clone()),
+        AbiValue::BigInteger(value) => canonical_big_integer(value)?,
         AbiValue::Float(value) => {
             if !value.is_finite() {
                 return Err("hta/non-finite number".into());
@@ -247,7 +281,11 @@ fn immutable_to_abi(value: Value) -> Result<AbiValue, String> {
         Value::Boolean(value) => AbiValue::Boolean(value),
         Value::String(value) => AbiValue::String(value),
         Value::Integer(value) => AbiValue::Integer(value),
-        Value::BigInteger(value) => AbiValue::BigInteger(value),
+        Value::BigInteger(value) => match canonical_big_integer(&value)? {
+            Value::Integer(value) => AbiValue::Integer(value),
+            Value::BigInteger(value) => AbiValue::BigInteger(value),
+            _ => unreachable!("canonical big integer returned a non-integer value"),
+        },
         Value::Float(value) => {
             if !value.is_finite() {
                 return Err("hta/non-finite number".into());
@@ -299,7 +337,14 @@ fn encode_value(value: &Value, depth: usize, output: &mut Vec<u8>) -> Result<(),
             push(output, CHARACTER)?;
             write(output, &u32::from(*value).to_be_bytes())
         }
-        Value::BigInteger(value) => write_sized(output, BIG_INTEGER, value.as_bytes()),
+        Value::BigInteger(value) => match canonical_big_integer(value)? {
+            Value::Integer(value) => {
+                push(output, I64)?;
+                write(output, &value.to_be_bytes())
+            }
+            Value::BigInteger(value) => write_sized(output, BIG_INTEGER, value.as_bytes()),
+            _ => unreachable!("canonical big integer returned a non-integer value"),
+        },
         Value::String(value) => write_sized(output, STRING, value.as_bytes()),
         Value::Bytes(value) => write_sized(output, BYTES, value),
         Value::Keyword(value) => write_sized(output, KEYWORD, value.as_bytes()),
@@ -538,7 +583,7 @@ impl Reader<'_> {
             BYTES => Ok(Value::Bytes(self.sized()?.to_vec())),
             KEYWORD => Ok(Value::Keyword(self.text()?)),
             SYMBOL => Ok(Value::Symbol(self.text()?)),
-            BIG_INTEGER => Ok(Value::BigInteger(self.text()?)),
+            BIG_INTEGER => canonical_big_integer(&self.text()?),
             REGEX => Ok(Value::Regex(self.text()?)),
             LIST => self.sequence(depth).map(Value::List),
             VECTOR => self.vector(depth),

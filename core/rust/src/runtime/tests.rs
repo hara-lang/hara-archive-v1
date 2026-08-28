@@ -6978,6 +6978,8 @@ mod tests {
         runtime.eval_text("(ns type.runtime)").unwrap();
         for (source, expected) in [
             ("nil", ":std.native.Nil"),
+            ("1", ":std.native.Long"),
+            ("9223372036854775808", ":std.native.BigInteger"),
             (":key", ":std.native.Keyword"),
             ("(symbol \"hara/name\")", ":std.native.Symbol"),
             ("[]", ":std.native.Tuple"),
@@ -8643,7 +8645,29 @@ mod tests {
         assert_eq!(runtime.eval_text("(neg? -1)").unwrap(), "true");
         assert_eq!(runtime.eval_text("(even? 4)").unwrap(), "true");
         assert_eq!(runtime.eval_text("(odd? 3)").unwrap(), "true");
-        assert!(runtime.eval_text("(integer? 1)").is_err());
+        assert_eq!(runtime.eval_text("(long? 1)").unwrap(), "true");
+        assert_eq!(runtime.eval_text("(long? 1.0)").unwrap(), "false");
+        assert_eq!(
+            runtime
+                .eval_text("(long? 9223372036854775808)")
+                .unwrap(),
+            "false"
+        );
+        assert_eq!(
+            runtime
+                .eval_text("(bigint? 9223372036854775808)")
+                .unwrap(),
+            "true"
+        );
+        assert_eq!(runtime.eval_text("(bigint? 1)").unwrap(), "false");
+        assert_eq!(runtime.eval_text("(integer? 1)").unwrap(), "true");
+        assert_eq!(
+            runtime
+                .eval_text("(integer? 9223372036854775808)")
+                .unwrap(),
+            "true"
+        );
+        assert_eq!(runtime.eval_text("(integer? 1.0)").unwrap(), "false");
         assert_eq!(runtime.eval_text("(nil? nil)").unwrap(), "true");
         assert_eq!(runtime.eval_text("(true? true)").unwrap(), "true");
         assert_eq!(runtime.eval_text("(false? false)").unwrap(), "true");
@@ -9575,6 +9599,18 @@ mod tests {
                 .eval_text("(long? (inc 9223372036854775807))")
                 .unwrap(),
             "false"
+        );
+        assert_eq!(
+            runtime
+                .eval_text("(bigint? (inc 9223372036854775807))")
+                .unwrap(),
+            "true"
+        );
+        assert_eq!(
+            runtime
+                .eval_text("(integer? (inc 9223372036854775807))")
+                .unwrap(),
+            "true"
         );
     }
 

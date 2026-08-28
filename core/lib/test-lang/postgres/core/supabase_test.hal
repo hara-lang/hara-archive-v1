@@ -1,7 +1,10 @@
 (ns postgres.core.supabase-test
-  (:require [postgres.core.supabase :as s]
+  (:require [lang.core :as l]
+            [postgres.core.supabase :as s]
             [lang.core.script :as script])
   (:use code.test))
+
+(l/script :postgres postgres.core.supabase-test {:macro-only true})
 
 (def payload {"db/sync" {"Entry" []}})
 
@@ -115,3 +118,6 @@
 (fact "emits Supabase role inspection"
   (emit '(s/show-roles))
   => "SELECT rolname,rolsuper,rolbypassrls,rolcanlogin FROM pg_roles WHERE rolname IN ('authenticated','service_role','anon')")
+
+(let [summary (run {:namespace '[postgres.core.supabase-test] :no-report true})]
+  (pr-str (select-keys summary [:status :counts])))

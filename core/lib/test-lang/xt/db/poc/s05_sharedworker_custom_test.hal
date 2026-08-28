@@ -1,0 +1,14 @@
+(ns xt.db.poc.s05-sharedworker-custom-test (:use code.test) (:require [lang.core :as l] [xt.lang.spec-base :as xt] [xt.substrate :as substrate] [xt.db.node.runtime :as runtime]))
+
+(l/script- :js {:runtime :basic})
+
+^{:refer xt.db.node.runtime/init-server-proxy :added "4.1"}
+(fact "the custom shared-worker POC boots a proxy-capable node without a browser"
+  (!.js
+   (var node (substrate/node-create {"id" "shared-worker-proxy"}))
+   (runtime/init-server-proxy node)
+   (var handlers (xt/x:get-key node "handlers"))
+   {"kernel" (xt/x:not-nil? (xt/x:get-key handlers "@xt.db/kernel-init"))
+    "proxy" (xt/x:not-nil? (xt/x:get-key handlers "@page/group-open"))
+    "supabase" (xt/x:not-nil? (xt/x:get-key handlers "@xt.supabase/health"))})
+  => {"kernel" true "proxy" true "supabase" true})

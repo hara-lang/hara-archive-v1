@@ -1,5 +1,6 @@
 (ns postgres.typed.export.json-openapi
   (:require
+            [std.foundation :refer [nth second]]
             [postgres.typed.typed-analyze :as analyze]
             [postgres.typed.typed-common :as types]
             [postgres.typed.typed-infer :as typed-infer]

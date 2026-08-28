@@ -1,6 +1,6 @@
 (ns postgres.core.graph-view
   (:config {:blank true})
-  (:require [std.foundation :as foundation :refer [atom ex reduce-kv]]
+  (:require [std.foundation :as foundation :refer [= apply assoc atom conj count deref ex filter first get get-in has? keys keyword list list? map map? merge meta name namespace nil? not not= nth range reduce reduce-kv rest second set? str swap! symbol symbol? vec vector? with-meta]]
             [lang.common.util :as util]
             [postgres.core.graph-base :as graph]
             [postgres.core.graph-query :as query]))
@@ -27,8 +27,9 @@
     :else nil)))
 
 (defn- view-tag [sym table]
-  (let [full (name sym)
-        prefix (str (name table) "-")]
+  (let [table-name (if (map? table) (:id table) table)
+        full (name sym)
+        prefix (str (name table-name) "-")]
     (if (str/starts-with? full prefix)
       (str/slice full (str/length prefix)) full)))
 
@@ -38,16 +39,17 @@
   ([sym runtime-args caller-ns]
    (let [metadata (meta sym)
          table (first (:- metadata))
+         table-name (if (map? table) (:id table) table)
          entry (or (:table-entry metadata) (resolve-entry table caller-ns))
          table-symbol (or (and entry (util/sym-full entry)) table)]
-     {:table table-symbol
+    {:table table-symbol
       :table-entry entry
-      :key (keyword (name table))
+      :key (keyword (name table-name))
       :scope (:scope metadata)
       :args (or runtime-args (:args metadata) [])
       :guards (:guards metadata)
       :autos (:autos metadata)
-      :tag (or (:tag metadata) (view-tag sym table))})))
+      :tag (or (:tag metadata) (view-tag sym table-name))})))
 
 (defn primary-key [table]
   (let [entry (or (resolve-entry table) table)

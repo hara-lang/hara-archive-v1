@@ -175,14 +175,14 @@ public class HaraGeneratedLibrariesTest {
   public void portableTypeReturnsCanonicalAndNamedKeywords() {
     try (Context context = context()) {
       assertEquals(
-          "[:std.native.Nil :std.native.Integer :std.native.Float :std.native.String :std.native.Keyword "
+          "[:std.native.Nil :std.native.Long :std.native.BigInteger :std.native.Float :std.native.String :std.native.Keyword "
               + ":std.native.Symbol :std.native.Tuple :std.native.Vector :std.native.HashMap "
               + ":std.native.OrderedSet :std.native.Pointer :std.native.Function :std.native.Atom :std.native.Tuple "
               + ":std.native.Tuple :std.native.Vector :std.native.RegExp]",
           context
               .eval(
                   HaraLanguage.ID,
-                  "[(type nil) (type 1) (type 1.5) (type \"x\") (type :x) "
+                  "[(type nil) (type 1) (type 9223372036854775808) (type 1.5) (type \"x\") (type :x) "
                       + "(type 'x) (type []) (type (vector)) (type {}) "
                       + "(type #{}) (type #ptr {:context :kernel}) (type (fn [x] x)) "
                       + "(type (atom 0)) (std.foundation/type []) "

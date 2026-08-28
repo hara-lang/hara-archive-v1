@@ -1,6 +1,6 @@
 (ns postgres.core.impl-insert
   (:config {:blank true})
-  (:require [std.foundation :refer [ex]]
+  (:require [std.foundation :refer [= apply assoc concat conj count deref ex filter first get has? into keys list map map? merge nil? not nth reduce second sort-by symbol? vec vector? with-meta]]
             [postgres.core.impl-base :as base]
             [lang.common.util :as util]))
 
@@ -74,8 +74,12 @@
         json (base/t-wrap-json returned as (first pair) (:into params) nil)]
     (with-meta (base/t-wrap-into json (:into params) {}) {:op/type :insert})))
 
-(defn t-insert [spec data params]
-  (t-insert-raw (base/prep-table spec false {}) data (or params {})))
+(defn t-insert
+  ([spec data params]
+   (t-insert spec data params nil))
+  ([spec data params caller-ns]
+   (t-insert-raw (base/prep-table spec false {:caller-ns caller-ns})
+                 data (or params {}))))
 
 (defn t-upsert-raw [prepared data params]
   (let [table-schema (second prepared)
@@ -118,7 +122,11 @@
     (with-meta (t-insert-raw prepared data (assoc params :args args))
                {:op/type :upsert})))
 
-(defn t-upsert [spec data params]
-  (t-upsert-raw (base/prep-table spec false {}) data (or params {})))
+(defn t-upsert
+  ([spec data params]
+   (t-upsert spec data params nil))
+  ([spec data params caller-ns]
+   (t-upsert-raw (base/prep-table spec false {:caller-ns caller-ns})
+                 data (or params {}))))
 
 (def __tahto_load__ true)

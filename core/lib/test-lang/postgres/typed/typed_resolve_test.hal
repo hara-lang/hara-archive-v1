@@ -57,3 +57,6 @@
      (types/fn-def? (resolve/resolve-function-def fn-def))
      (types/fn-def? (resolve/resolve-function-def 'demo/inner))])
   => [true true true])
+
+(let [summary (run {:namespace '[postgres.typed.typed-resolve-test] :no-report true})]
+  (pr-str (select-keys summary [:status :counts])))

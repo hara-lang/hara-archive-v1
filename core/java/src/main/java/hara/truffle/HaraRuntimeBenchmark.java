@@ -1,7 +1,10 @@
 package hara.truffle;
 
+import java.lang.management.ManagementFactory;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.Base64;
+import com.sun.management.ThreadMXBean;
 import org.graalvm.polyglot.Context;
 import org.graalvm.polyglot.Source;
 import org.graalvm.polyglot.Value;
@@ -44,13 +47,25 @@ final class HaraRuntimeBenchmark {
       long firstNanos = System.nanoTime() - firstStart;
       assertValue(id, expected, first);
       long[] samples = new long[windows];
+      long[] allocations = new long[windows];
+      Arrays.fill(allocations, -1L);
+      ThreadMXBean allocationBean = allocationBean();
+      long threadId = Thread.currentThread().threadId();
       for (int window = 0; window < windows; window++) {
+        long allocatedBefore = allocatedBytes(allocationBean, threadId);
         long started = System.nanoTime();
+        Value last = null;
         for (int call = 0; call < calls; call++) {
-          assertValue(id, expected, prepared.execute());
+          last = prepared.execute();
         }
         samples[window] = (System.nanoTime() - started) / calls;
+        long allocatedAfter = allocatedBytes(allocationBean, threadId);
+        assertValue(id, expected, last);
+        if (allocatedBefore >= 0L && allocatedAfter >= allocatedBefore) {
+          allocations[window] = (allocatedAfter - allocatedBefore) / calls;
+        }
       }
+      long allocationPerCall = median(allocations);
       output.print("{\"runtime\":\"");
       output.print(json(runtime));
       output.print("\",\"workload\":\"");
@@ -61,12 +76,20 @@ final class HaraRuntimeBenchmark {
       output.print(prepareNanos);
       output.print(",\"first_ns\":");
       output.print(firstNanos);
+      output.print(",\"artifact_bytes\":");
+      if ("vm".equals(representation)) output.print(payload.length);
+      else output.print("null");
+      output.print(",\"execution_path\":\"");
+      output.print("vm".equals(representation) ? "bytecode" : "truffle");
+      output.print("\"");
       output.print(",\"samples_ns\":[");
       for (int index = 0; index < samples.length; index++) {
         if (index > 0) output.print(',');
         output.print(samples[index]);
       }
-      output.println("]}");
+      output.print("],\"allocation_bytes_per_call\":");
+      output.print(allocationPerCall >= 0L ? Long.toString(allocationPerCall) : "null");
+      output.println("}");
       return 0;
     } catch (Exception failure) {
       error.println(id + ": " + failure.getMessage());
@@ -83,5 +106,22 @@ final class HaraRuntimeBenchmark {
 
   private static String json(String value) {
     return value.replace("\\", "\\\\").replace("\"", "\\\"");
+  }
+
+  private static ThreadMXBean allocationBean() {
+    java.lang.management.ThreadMXBean bean = ManagementFactory.getThreadMXBean();
+    return bean instanceof ThreadMXBean ? (ThreadMXBean) bean : null;
+  }
+
+  private static long allocatedBytes(ThreadMXBean bean, long threadId) {
+    if (bean == null || !bean.isThreadAllocatedMemorySupported()) return -1L;
+    return bean.getThreadAllocatedBytes(threadId);
+  }
+
+  private static long median(long[] values) {
+    long[] available = Arrays.stream(values).filter(value -> value >= 0L).toArray();
+    if (available.length == 0) return -1L;
+    Arrays.sort(available);
+    return available[available.length / 2];
   }
 }

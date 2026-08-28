@@ -1,0 +1,47 @@
+(ns xt.db.text.base-schema-test (:use code.test) (:require [std.json :as json] [lang.core :as l]))
+
+^{:seedgen/root {:all true}} (l/script- :js {:require [[xt.db.text.base-schema :as sch] [xt.db.text.sql-util :as ut] [xt.db.helpers.data-main-test :as sample]] :runtime :basic})
+
+(fact:global {:teardown [(l/rt:stop)] :setup [(l/rt:restart)]})
+
+^{:refer xt.db.text.base-schema/get-ident-id :added "4.0"} (fact "gets the ident id for a schema entry" (!.js (sch/get-ident-id {"ident" "name" "type" "text"})) => "name" (!.js (sch/get-ident-id {"ident" "owner" "type" "ref"})) => "owner_id")
+
+^{:refer xt.db.text.base-schema/list-tables :added "4.0"} (fact "list schema tables" (!.js (sch/list-tables sample/Schema)) => (just ["Asset" "Currency" "Organisation" "OrganisationAccess" "RegionCity" "RegionCountry" "RegionState" "UserAccount" "UserNotification" "UserPrivilege" "UserProfile" "Wallet" "WalletAsset"] :in-any-order))
+
+^{:refer xt.db.text.base-schema/get-cached-schema :added "4.0"} (fact "get lookup" (!.js (sch/get-cached-schema sample/Schema)) => map?)
+
+^{:refer xt.db.text.base-schema/create-data-keys :added "4.0"} (fact "creates data keys" (!.js (sch/create-data-keys sample/SchemaCurrency "Currency")) => ["id" "type" "symbol" "native" "decimal" "name" "plural" "description"])
+
+^{:refer xt.db.text.base-schema/create-ref-keys :added "4.0"} (fact "creates ref keys" (!.js (sch/create-ref-keys sample/Schema "UserProfile")) => (just ["account" "state" "country"] :in-any-order))
+
+^{:refer xt.db.text.base-schema/create-rev-keys :added "4.0"} (fact "creates rev keys" (!.js (sch/create-rev-keys sample/Schema "UserAccount")) => (just ["organisations" "profile" "privileges" "organisation_accesses" "wallets" "notification"] :in-any-order))
+
+^{:refer xt.db.text.base-schema/create-table-entries :added "4.0"} (fact "creates the table keys" (!.js (sch/create-table-entries sample/Schema "Wallet")) => [{"primary" true "ident" "id" "scope" "id" "type" "uuid" "cardinality" "one" "order" 0} {"ident" "slug" "scope" "data" "type" "citext" "cardinality" "one" "sql" {"default" "default"} "order" 1} {"ident" "owner" "ref" {"val" "owner" "ns" "UserAccount" "rkey" "_owner" "rval" "wallets" "rident" "wallets" "key" "owner" "type" "forward" "link" {"section" "code" "module" "xt.db.helpers.seed-user-test" "lang" "postgres" "id" "UserAccount"}} "scope" "ref" "type" "ref" "required" true "cardinality" "one" "order" 2}])
+
+^{:refer xt.db.text.base-schema/create-defaults :added "4.0"} (fact "creates defaults from sql inputs" (!.js (sch/create-defaults sample/Schema "Wallet")) => {"slug" "default"})
+
+^{:refer xt.db.text.base-schema/create-all-keys :setup [(def +all-wallet+ {"rev" ["entries"] "ref_id" {"owner_id" "owner"} "data" ["id" "slug"] "table" [{"primary" true "ident" "id" "scope" "id" "type" "uuid" "cardinality" "one" "order" 0} {"ident" "slug" "scope" "data" "type" "citext" "cardinality" "one" "sql" {"default" "default"} "order" 1} {"ident" "owner" "ref" {"val" "owner" "ns" "UserAccount" "rkey" "_owner" "rval" "wallets" "rident" "wallets" "key" "owner" "type" "forward" "link" {"section" "code" "module" "xt.db.helpers.seed-user-test" "lang" "postgres" "id" "UserAccount"}} "scope" "ref" "type" "ref" "required" true "cardinality" "one" "order" 2}] "defaults" {"slug" "default"} "ref" ["owner"]})] :added "4.0"} (fact "creates all keys" (!.js (sch/create-all-keys sample/Schema "Wallet")) => +all-wallet+)
+
+^{:refer xt.db.text.base-schema/get-all-keys :setup [(def +all-org+ {"rev" ["access"] "ref_id" {"owner_id" "owner"} "data" ["id" "name" "title" "description" "tags"] "table" [{"primary" true "ident" "id" "scope" "id" "type" "uuid" "cardinality" "one" "order" 0} {"ident" "name" "unique" true "scope" "data" "type" "citext" "required" true "cardinality" "one" "order" 1} {"ident" "title" "scope" "data" "type" "text" "required" true "cardinality" "one" "order" 2} {"ident" "description" "scope" "data" "type" "text" "cardinality" "one" "order" 3} {"ident" "tags" "scope" "data" "type" "array" "cardinality" "one" "order" 4} {"ident" "owner" "ref" {"val" "owner" "ns" "UserAccount" "rkey" "_owner" "rval" "organisations" "rident" "organisations" "key" "owner" "type" "forward" "link" {"section" "code" "module" "xt.db.helpers.seed-user-test" "lang" "postgres" "id" "UserAccount"}} "scope" "ref" "type" "ref" "cardinality" "one" "order" 5}] "defaults" {} "ref" ["owner"]})] :added "4.0"} (fact "get all keys" (!.js (sch/get-all-keys sample/Schema "Organisation")) => +all-org+)
+
+^{:refer xt.db.text.base-schema/data-keys :added "4.0"} (fact "gets data keys" (!.js (sch/data-keys sample/Schema "UserAccount")) => ["id" "nickname" "password_hash" "password_salt" "password_updated" "is_super" "is_suspended" "is_official"])
+
+^{:refer xt.db.text.base-schema/ref-keys :added "4.0"} (fact "gets ref keys" (!.js (sch/ref-keys sample/Schema "UserProfile")) => ["account" "state" "country"])
+
+^{:refer xt.db.text.base-schema/ref-id-keys :added "4.0"} (fact "gets ref id keys" (!.js (sch/ref-id-keys sample/Schema "UserProfile")) => {"country_id" "country" "state_id" "state" "account_id" "account"})
+
+^{:refer xt.db.text.base-schema/rev-keys :added "4.0"} (fact "gets rev keys" (set (!.js (sch/rev-keys sample/Schema "UserAccount"))) => #{"organisations" "profile" "privileges" "organisation_accesses" "wallets" "notification"})
+
+^{:refer xt.db.text.base-schema/table-defaults :added "4.0"} (fact "gets the table defaults" (!.js (sch/table-defaults sample/Schema "Wallet")) => {"slug" "default"})
+
+^{:refer xt.db.text.base-schema/table-entries :added "4.0"} (fact "gets the table entries" (!.js (sch/table-entries sample/Schema "Wallet")) => [{"primary" true "ident" "id" "scope" "id" "type" "uuid" "cardinality" "one" "order" 0} {"ident" "slug" "scope" "data" "type" "citext" "cardinality" "one" "sql" {"default" "default"} "order" 1} {"ident" "owner" "ref" {"val" "owner" "ns" "UserAccount" "rkey" "_owner" "rval" "wallets" "rident" "wallets" "key" "owner" "type" "forward" "link" {"section" "code" "module" "xt.db.helpers.seed-user-test" "lang" "postgres" "id" "UserAccount"}} "scope" "ref" "type" "ref" "required" true "cardinality" "one" "order" 2}])
+
+^{:refer xt.db.text.base-schema/table-columns :setup [(def +out+ ["id" "account_id" "first_name" "last_name" "city" "state_id" "country_id" "about" "language" "detail"])] :added "4.0"} (fact "ges the table columns" (!.js (sch/table-columns sample/Schema "UserProfile")) => +out+)
+
+^{:refer xt.db.text.base-schema/create-table-order :setup [(def +ordered+ ["UserAccount" "UserProfile" "UserNotification" "UserPrivilege" "Asset" "Wallet" "WalletAsset" "Organisation" "OrganisationAccess" "Currency" "RegionCountry" "RegionState" "RegionCity"])] :added "4.0"} (fact "creates the table order" (!.js (sch/create-table-order sample/SchemaLookup)) => +ordered+)
+
+^{:refer xt.db.text.base-schema/table-order :added "4.0"} (fact "table order with caching" (!.js (sch/table-order sample/SchemaLookup)) => +ordered+)
+
+^{:refer xt.db.text.base-schema/table-coerce :added "4.0"} (fact "coerces output given schema and type functions" (!.js [(sch/table-coerce sample/Schema "UserAccount" {:is-super 1} {:boolean ut/sqlite-to-boolean}) (sch/table-coerce sample/Schema "UserAccount" {:organisations [{:name "hello"}] :is-super 1} {:boolean ut/sqlite-to-boolean})]) => [{"is_super" true} {"is_super" true "organisations" [{"name" "hello"}]}])
+
+(comment (s/run [(quote xt.db.text.base-schema)]) (s/seedgen-langadd (quote xt.db.text.base-schema) {:lang [:lua :python] :write true}) (s/seedgen-langremove (quote xt.db.text.base-schema) {:lang [:lua :python] :write true}))

@@ -1,6 +1,6 @@
 (ns postgres.core.graph-base
   (:config {:blank true})
-  (:require [std.foundation :refer [ex reduce-kv]]
+  (:require [std.foundation :refer [= assoc conj count empty? ex first get get-in has? keys keyword list map map? name nil? not nth reduce reduce-kv second set? str string? symbol vec vector?]]
             [lang.common.util :as util]
             [postgres.core.impl-base :as base]
             [postgres.core.impl-main :as main]
@@ -25,12 +25,15 @@
 
 (declare where-fn)
 
-(defn- prepare [spec]
-  (let [prepared (base/prep-table spec true {})
-        entry (first prepared)
-        options (nth prepared 2)]
-    [entry (second prepared)
-     (if (:schema entry) (assoc options :schema (:schema entry)) options)]))
+(defn- prepare
+  ([spec]
+   (prepare spec nil))
+  ([spec caller-ns]
+   (let [prepared (base/prep-table spec true {:caller-ns caller-ns})
+         entry (first prepared)
+         options (nth prepared 2)]
+     [entry (second prepared)
+      (if (:schema entry) (assoc options :schema (:schema entry)) options)])))
 
 (defn where-pair-ref [pair where-transform attr options]
   (let [key (first pair)
@@ -97,58 +100,82 @@
     (nil? where) nil
     :else (throw (ex :database {:schema (keys schema) :input where} :ex/message "Entry not valid"))))
 
-(defn id-where-fn [spec params]
-  (let [prepared (prepare spec)
-        schema (second prepared)
-        output (where-fn schema (:where params) (nth prepared 2))]
-    [(reduce-kv (fn [out key value]
-                  (assoc out
-                         (if (= :ref (:type (attrs schema key)))
-                           (keyword (str (name key) "_id")) key)
-                         value)) {} output)]))
+(defn id-where-fn
+  ([spec params]
+   (id-where-fn spec params nil))
+  ([spec params caller-ns]
+   (let [prepared (prepare spec caller-ns)
+         schema (second prepared)
+         output (where-fn schema (:where params) (nth prepared 2))]
+     [(reduce-kv (fn [out key value]
+                   (assoc out
+                          (if (= :ref (:type (attrs schema key)))
+                            (keyword (str (name key) "_id")) key)
+                          value)) {} output)])))
 
-(defn id-fn [spec params]
-  (let [prepared (prepare spec)]
-    (main/t-id-raw prepared
-                   (assoc params :where (where-fn (second prepared) (:where params)
-                                                   (nth prepared 2))))))
+(defn id-fn
+  ([spec params]
+   (id-fn spec params nil))
+  ([spec params caller-ns]
+   (let [prepared (prepare spec caller-ns)]
+     (main/t-id-raw prepared
+                    (assoc params :where (where-fn (second prepared) (:where params)
+                                                    (nth prepared 2)))))))
 
-(defn count-fn [spec params]
-  (let [prepared (prepare spec)]
-    (main/t-count-raw prepared
-                      (assoc params :where (where-fn (second prepared) (:where params)
-                                                      (nth prepared 2))))))
-
-(defn exists-fn [spec params]
-  (let [prepared (prepare spec)]
-    (main/t-exists-raw prepared
+(defn count-fn
+  ([spec params]
+   (count-fn spec params nil))
+  ([spec params caller-ns]
+   (let [prepared (prepare spec caller-ns)]
+     (main/t-count-raw prepared
                        (assoc params :where (where-fn (second prepared) (:where params)
-                                                       (nth prepared 2))))))
+                                                       (nth prepared 2)))))))
+
+(defn exists-fn
+  ([spec params]
+   (exists-fn spec params nil))
+  ([spec params caller-ns]
+   (let [prepared (prepare spec caller-ns)]
+     (main/t-exists-raw prepared
+                        (assoc params :where (where-fn (second prepared) (:where params)
+                                                        (nth prepared 2)))))))
 
 (defn select-fn-raw [prepared params]
   (main/t-select-raw prepared
                      (assoc params :where (where-fn (second prepared) (:where params)
                                                      (nth prepared 2)))))
 
-(defn select-fn [spec params]
-  (select-fn-raw (prepare spec) params))
+(defn select-fn
+  ([spec params]
+   (select-fn spec params nil))
+  ([spec params caller-ns]
+   (select-fn-raw (prepare spec caller-ns) params)))
 
-(defn delete-fn [spec params]
-  (let [prepared (prepare spec)]
-    (main/t-delete-raw prepared
-                       (assoc params :where (where-fn (second prepared) (:where params)
-                                                       (nth prepared 2))))))
+(defn delete-fn
+  ([spec params]
+   (delete-fn spec params nil))
+  ([spec params caller-ns]
+   (let [prepared (prepare spec caller-ns)]
+     (main/t-delete-raw prepared
+                        (assoc params :where (where-fn (second prepared) (:where params)
+                                                        (nth prepared 2)))))))
 
-(defn update-fn [spec params]
-  (let [prepared (prepare spec)]
-    (update/t-update-raw prepared
-                         (assoc params :where (where-fn (second prepared) (:where params)
-                                                         (nth prepared 2))))))
+(defn update-fn
+  ([spec params]
+   (update-fn spec params nil))
+  ([spec params caller-ns]
+   (let [prepared (prepare spec caller-ns)]
+     (update/t-update-raw prepared
+                          (assoc params :where (where-fn (second prepared) (:where params)
+                                                          (nth prepared 2)))))))
 
-(defn modify-fn [spec params]
-  (let [prepared (prepare spec)]
-    (update/t-modify-raw prepared
-                         (assoc params :where (where-fn (second prepared) (:where params)
-                                                         (nth prepared 2))))))
+(defn modify-fn
+  ([spec params]
+   (modify-fn spec params nil))
+  ([spec params caller-ns]
+   (let [prepared (prepare spec caller-ns)]
+     (update/t-modify-raw prepared
+                          (assoc params :where (where-fn (second prepared) (:where params)
+                                                          (nth prepared 2)))))))
 
 (def __tahto_load__ true)

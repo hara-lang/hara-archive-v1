@@ -1,0 +1,66 @@
+(ns xt.db.helpers.test-fixtures
+  "Deterministic XT fixtures shared by the local JavaScript test corpus.
+
+   The Foundation version populated these values from a live Postgres sample
+   application.  XT tests only need the serialized schema, lookup and seed
+   contracts, so keeping them as data makes the fixture usable in every local
+   target without a database process."
+  (:require [lang.core :as l]))
+
+(def +scratch-env+ {"port" "5432" "host" "127.0.0.1" "user" "postgres" "database" "test-scratch" "password" "postgres"})
+
+(def +task-tree+
+  {"Task" {"id" {"order" 0 "ident" "id" "type" "uuid" "primary" true}
+            "status" {"order" 1 "ident" "status" "type" "text"}
+            "name" {"order" 2 "ident" "name" "type" "text"}}})
+
+(def +task-lookup+ {"Task" {"position" 0}})
+
+(def +schema+
+  {"Entry" {"id" {"order" 0 "ident" "id" "type" "uuid" "primary" true}
+             "name" {"order" 1 "ident" "name" "type" "text"}
+             "tags" {"order" 2 "ident" "tags" "type" "array"}
+             "__deleted__" {"order" 3 "ident" "__deleted__" "type" "boolean"}}})
+
+(def +lookup+ {"Entry" {"schema" +schema+ "position" 0}})
+
+(def +inline-query+ {"select_args" ["alpha"] "return_entry" {"view" {"query" ["name" "tags"]} "input" [{"symbol" "i_entry_id" "type" "text"}]} "table" "Entry" "select_entry" {"view" {"query" {"name" "{{i_name}}" "__deleted__" false}} "input" [{"symbol" "i_name" "type" "text"}]}})
+
+(def +model-query+ {"return_entry" {"view" {"query" ["id" "name" "tags" "time_created" "time_updated"]} "input" [{"symbol" "i_entry_id" "type" "text"}]} "table" "Entry" "select_entry" {"view" {"query" {"__deleted__" false}} "input" []}})
+
+(def +resolver-inline-query+ {"select_args" ["alpha"] "return_entry" {"view" {"query" ["name" "tags"]} "input" [{"symbol" "i_entry_id" "type" "text"}]} "table" "Entry" "select_entry" {"view" {"query" {"name" "{{i_name}}" "__deleted__" false}} "input" [{"symbol" "i_name" "type" "text"}]} "type" "db/query"})
+
+(def +resolver-model-query+ {"return_entry" {"view" {"query" ["id" "name" "tags" "time_created" "time_updated"]} "input" [{"symbol" "i_entry_id" "type" "text"}]} "table" "Entry" "select_entry" {"view" {"query" {"__deleted__" false}} "input" []} "type" "db/query"})
+
+(def +model-spec+ {"views" {"entries" {"resolver" +resolver-model-query+ "input" []}}})
+
+(def +entry-seed+ {"Entry" [{"name" "alpha" "id" "00000000-0000-0000-0000-0000000000c1" "tags" ["guide" "sql"] "__deleted__" false} {"name" "beta" "id" "00000000-0000-0000-0000-0000000000c2" "tags" ["guide"] "__deleted__" false}]})
+
+(defn ^{:public true} seed-entry-rows
+  "Returns a fresh deterministic copy of the shared Entry seed.
+
+   The returned value is data rather than a database side effect; callers can
+   load it into an in-memory implementation and repeat tests without cleanup
+   races or an external Postgres service."
+  []
+  +entry-seed+)
+
+(l/script :xtalk {:require [[xt.lang.spec-base :as xt]]})
+
+(def.xt Schema +task-tree+)
+
+(def.xt Lookup ((deref !) +task-lookup+))
+
+(def.xt SchemaLookup {"Task" {"schema" -/Schema "position" 0}})
+
+(def.xt Views {"Task" {"return" {"default" {"view" {"access" {"roles" {}} "query" ["status"] "type" "return" "tag" "default" "guards" [] "table" "Task"} "input" [{"symbol" "i_task_id" "type" "uuid"}] "return" "jsonb"}} "select" {"by_status" {"view" {"access" {"roles" {}} "query" {"status" "{{i_status}}"} "type" "select" "tag" "by_status" "guards" [] "table" "Task"} "input" [{"symbol" "i_status" "type" "text"}] "return" "jsonb"}}}})
+
+(def.xt InstallOpts {"schema" -/Schema "views" -/Views "lookup" -/Lookup})
+
+(def.xt EntrySeed +entry-seed+)
+
+(def.xt ModelSpec {"views" {"open" {"resolver" {"table" "Task" "select_entry" {"view" {"access" {"roles" {}} "query" {"status" "{{i_status}}"} "type" "select" "tag" "by_status" "guards" [] "table" "Task"} "input" [{"symbol" "i_status" "type" "text"}] "return" "jsonb"} "type" "db/query"} "default_input" ["open"]} "main" {"resolver" {"return_entry" {"view" {"access" {"roles" {}} "query" ["status"] "type" "return" "tag" "default" "guards" [] "table" "Task"} "input" [{"symbol" "i_task_id" "type" "uuid"}] "return" "jsonb"} "return_id" "00000000-0000-0000-0000-0000000000a1" "table" "Task" "type" "db/query"} "input" []}}})
+
+(def.xt DependentModelSpec {"views" {"open" {"deps" ["main"] "resolver" {"select_method" "by_status" "table" "Task" "type" "db/query"} "default_input" ["open"]} "main" {"resolver" {"return_id" "00000000-0000-0000-0000-0000000000a1" "table" "Task" "return_method" "default" "type" "db/query"} "input" []}}})
+
+(def.xt Seed {"Task" [{"name" "alpha-task" "status" "open" "id" "00000000-0000-0000-0000-0000000000a1"} {"name" "beta-task" "status" "closed" "id" "00000000-0000-0000-0000-0000000000a2"}]})

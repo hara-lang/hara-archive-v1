@@ -1,0 +1,93 @@
+(ns postgres.gen.mcp-test
+  (:use code.test)
+  (:require [postgres.gen.mcp :as mcp]
+            [lang.core.script :as script]
+            [std.foundation.string :as string]))
+
+(def mcp-entry
+  {:id 'log-append-public
+   :module 'postgres.gen.mcp-test
+   :static/input [{:symbol 'i_message :modifiers [:text]}]
+   :static/return [:jsonb]
+   :api/meta {:mcp {:name "log_append_public"
+                    :title "Append public log"
+                    :description "Appends a log row for the current authenticated user."}}})
+
+(def non-mcp-entry
+  {:id 'internal-log
+   :module 'postgres.gen.mcp-test
+   :static/input []
+   :static/return [:text]
+   :api/flags [:internal]})
+
+(def log-append-public mcp-entry)
+(def internal-log non-mcp-entry)
+
+(defn with-module
+  [module code function]
+  (let [before @script/+modules+]
+    (try
+      (swap! script/+modules+ assoc module {:code code})
+      (function)
+      (finally
+        (reset! script/+modules+ before)))))
+
+^{:refer postgres.gen.mcp/pg-type-schema}
+(fact "maps PostgreSQL types to the portable JSON Schema subset"
+  [(mcp/pg-type-schema "uuid")
+   (mcp/pg-type-schema "numeric")
+   (mcp/pg-type-schema "jsonb")
+   (mcp/pg-type-schema "text")]
+  => [{:type "string" :format "uuid"}
+      {:type "number"}
+      {:type "object"}
+      {:type "string"}])
+
+^{:refer postgres.gen.mcp/input-schema}
+(fact "preserves source argument casing and uses snake_case descriptor keys"
+  (mcp/input-schema [{:symbol "i_message" :type "text"}])
+  => {:type "object"
+      :properties {"i_message" {:type "string"}}
+      :required ["i_message"]
+      :additional_properties false})
+
+^{:refer postgres.gen.mcp/output-schema}
+(fact "uses the same conservative schema mapping for function returns"
+  [(mcp/output-schema "uuid")
+   (mcp/output-schema "bytea")]
+  => [{:type "string" :format "uuid"}
+      {:type "string" :contentEncoding "base64"}])
+
+^{:refer postgres.gen.mcp/tool-descriptor}
+(fact "extracts MCP metadata without attaching an executable database handler"
+  (mcp/tool-descriptor mcp-entry)
+  => {:name "log_append_public"
+      :title "Append public log"
+      :description "Appends a log row for the current authenticated user."
+      :input_schema {:type "object"
+                     :properties {"i_message" {:type "string"}}
+                     :required ["i_message"]
+                     :additional_properties false}
+      :output_schema {:type "object"}})
+
+^{:refer postgres.gen.mcp/tool-entries}
+(fact "only includes explicitly opted-in PostgreSQL definitions"
+  (with-module
+   'postgres.gen.mcp-test
+   {'log-append-public mcp-entry
+    'internal-log non-mcp-entry}
+   (fn []
+     (map (fn [entry] (:name (second entry)))
+          (mcp/tool-entries ['postgres.gen.mcp-test]))))
+  => ["log_append_public"])
+
+^{:refer postgres.gen.mcp/render-module}
+(fact "renders MCP data through the generic module template"
+  (let [rendered
+        (mcp/render-module
+         'xt.mcp.sample
+         ['postgres.gen.mcp-test])]
+    [(string/includes? rendered "^{:api/type :mcp}")
+     (string/includes? rendered ":input_schema")
+     (not (string/includes? rendered "xt.db"))])
+  => [true true true])

@@ -3,6 +3,7 @@
             [lang.core.script :as script])
   (:use code.test))
 
+^{:refer lang.runtime.postgres.base.application/application-string}
 (fact "provides Foundation application inspection functions"
   (app/application-string
    {:tables {'users/User {} 'posts/Post {}}})
@@ -26,6 +27,7 @@
    'users/User)
   => '#{required.module})
 
+^{:refer lang.runtime.postgres.base.application/app-create-raw}
 (fact "creates linked schema, pointer, ordering, and typed application data"
   (let [links {'Account {:id 'Account
                          :module 'demo
@@ -47,6 +49,7 @@
       {:demo/User 0}
       {:tables {} :enums {} :functions {}}])
 
+^{:refer lang.runtime.postgres.base.application/module-typed}
 (fact "creates typed table and module function indexes"
   (let [module {:id 'demo.application
                 :code
@@ -64,41 +67,55 @@
      (count (:functions application-typed))])
   => [1 0 1 1])
 
+^{:refer lang.runtime.postgres.base.application/app-create}
 (fact "creates applications from registered PostgreSQL table entries"
-  (let [module-name 'demo.application
-        _ (swap! script/+modules+
-                 assoc module-name
-                 {:id module-name
-                  :static {:application ["portable-app"]}
-                  :code
-                  {'User
-                   {:id 'User
-                    :module module-name
-                    :op 'deftype
-                    :lang :postgres
-                    :section :code
-                    :static/public true
-                    :static/schema-seed
-                    {:User {:id {:type :uuid :primary true}}}}}})
-        application (app/app-create "portable-app")]
-    [(count (app/app-modules "portable-app"))
-     (get-in application [:schema :tree "User" :id 0 :type])
-     (get-in application [:pointers 'User :module])])
+  (let [original-modules (deref script/+modules+)
+        module-name 'demo.application
+        result
+        (try
+          (reset! script/+modules+
+                  {module-name
+                   {:id module-name
+                    :static {:application ["portable-app"]}
+                    :code
+                    {'User
+                     {:id 'User
+                      :module module-name
+                      :op 'deftype
+                      :lang :postgres
+                      :section :code
+                      :static/public true
+                      :static/schema-seed
+                      {:User {:id {:type :uuid :primary true}}}}}}})
+          (let [application (app/app-create "portable-app")]
+            [(count (app/app-modules "portable-app"))
+             (get-in application [:schema :tree "User" :id 0 :type])
+             (get-in application [:pointers 'User :module])])
+          (finally
+            (reset! script/+modules+ original-modules)))]
+    result)
   => [1 :uuid 'demo.application])
 
+^{:refer lang.runtime.postgres.base.application/app-reset}
 (fact "rebuilds, lazily types, and clears registered applications"
-  (let [_ (reset! app/*applications* {})
-        _ (app/register-app
+  (let [original (app/app)
+        result
+        (try
+          (app/app-reset)
+          (app/register-app
            "portable-app"
            {:tables {'User [:id {:type :uuid :primary true}]}
             :pointers {}})
-        typed-info (app/app-typed "portable-app")
-        rebuilt (app/app-rebuild "portable-app")
-        cleared (app/app-clear "portable-app")]
-    [(count (:tables typed-info))
-     (count (:tables (:typed rebuilt)))
-     cleared
-     (app/app "portable-app")])
+          (let [typed-info (app/app-typed "portable-app")
+                rebuilt (app/app-rebuild "portable-app")
+                cleared (app/app-clear "portable-app")]
+            [(count (:tables typed-info))
+             (count (:tables (:typed rebuilt)))
+             cleared
+             (app/app "portable-app")])
+          (finally
+            (reset! app/*applications* original)))]
+    result)
   => [1 1 nil nil])
 
 (pr-str (run '[lang.runtime.postgres.base.application-test]))

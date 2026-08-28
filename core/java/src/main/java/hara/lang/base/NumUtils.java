@@ -19,6 +19,25 @@ public class NumUtils {
     return value;
   }
 
+  /** Returns true when value has the language's canonical signed 64-bit width. */
+  public static boolean isLongValue(Object value) {
+    if (value instanceof Byte
+        || value instanceof Short
+        || value instanceof Integer
+        || value instanceof Long) {
+      return true;
+    }
+    if (value instanceof BigInteger integer) {
+      return integer.bitLength() < Long.SIZE;
+    }
+    return false;
+  }
+
+  /** Returns true only for arbitrary-precision integers outside signed 64-bit range. */
+  public static boolean isBigIntegerValue(Object value) {
+    return value instanceof BigInteger && !isLongValue(value);
+  }
+
   public static BigInteger toBigInteger(Object x) {
     if (x instanceof BigInteger) return (BigInteger) x;
     if (x instanceof Double || x instanceof Float) {

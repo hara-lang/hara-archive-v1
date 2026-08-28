@@ -1,0 +1,14 @@
+(ns xt.db.poc.n04-adaptor-test (:use code.test) (:require [lang.core :as l] [xt.lang.spec-base :as xt] [xt.substrate :as substrate] [xt.db.node.kernel-base :as kernel] [xt.db.node.runtime :as runtime]))
+
+(l/script- :js {:runtime :basic})
+
+^{:refer xt.db.node.runtime/init-server :added "4.1"}
+(fact "the adaptor POC installs database and proxy handlers locally"
+  (!.js
+   (var node (substrate/node-create {"id" "adaptor"}))
+   (runtime/init-server node)
+   (var handlers (xt/x:get-key node "handlers"))
+   [(xt/x:not-nil? (xt/x:get-key handlers "@xt.db/kernel-init"))
+    (xt/x:not-nil? (xt/x:get-key handlers "@xt.db/attach-model"))
+    (xt/x:not-nil? (xt/x:get-key handlers "@page/group-open"))])
+  => [true true true])

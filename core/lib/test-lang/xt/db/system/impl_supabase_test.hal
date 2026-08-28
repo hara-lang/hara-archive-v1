@@ -1,0 +1,79 @@
+(ns xt.db.system.impl-supabase-test (:use code.test) (:require [lang.core :as l] [xt.lang.common-notify :as notify] [xt.lang.common-data :as xtd] [xt.lang.spec-base :as xt] [xt.lang.spec-promise :as promise] [xt.net.http-fetch :as http-fetch] [xt.db.system.impl-supabase :as impl]))
+
+(l/script- :js {:runtime :basic})
+
+(def.js +schema+
+  {"Log" {"id" {"type" "uuid" "primary" true "order" 0}
+          "message" {"type" "text" "order" 1}}})
+
+(def.js +lookup+ {"Log" {"schema" "scratch" "position" 0}})
+
+(defn.js mock-client [body]
+  (return {"defaults" {"host" "api.example" "port" 80 "apikey" "key"}
+           "::/override"
+           {"request_http"
+            (fn [_ input]
+              (return {"status" 200 "headers" {} "body" body
+                       "request" input}))}}))
+
+^{:refer xt.db.system.impl-supabase/cmd-pull-async :added "4.1"}
+(fact "builds a PostgREST GET request with the schema profile"
+  (!.js
+   (impl/cmd-pull-async
+    (impl/impl-supabase (-/mock-client []) +schema+ +lookup+)
+    ["Log"]))
+  => {"method" "GET" "path" "/rest/v1/Log?select=*"
+      "headers" {"Accept-Profile" "scratch" "Content-Profile" "scratch"}})
+
+^{:refer xt.db.system.impl-supabase/pull-async :added "4.1"}
+(fact "returns the body from a deterministic HTTP response"
+  (notify/wait-on :js
+    (var source (impl/impl-supabase (-/mock-client [{"id" "log-1"}]) +schema+ +lookup+))
+    (-> (impl/pull-async source ["Log"])
+        (promise/x:promise-then (fn [out] (return out)))))
+  => [{"id" "log-1"}])
+
+^{:refer xt.db.system.impl-supabase/cmd-rpc-call-async :added "4.1"}
+(fact "builds a schema-qualified RPC POST request"
+  (!.js
+   (impl/cmd-rpc-call-async
+    nil
+    {"return" "jsonb" "input" [{"type" "text" "symbol" "i_message"}]
+     "id" "log_append" "schema" "scratch" "flags" {}}
+    ["hello"] {"token" "abc"}))
+  => {"method" "POST" "path" "/rest/v1/rpc/log_append"
+      "body" "{\"i_message\":\"hello\"}"
+      "headers" {"Content-Profile" "scratch" "Accept-Profile" "scratch"}
+      "token" "abc"})
+
+^{:refer xt.db.system.impl-supabase/rpc-call-async :added "4.1"}
+(fact "returns RPC response data through the HTTP protocol"
+  (notify/wait-on :js
+    (var source (impl/impl-supabase (-/mock-client {"ok" true}) +schema+ +lookup+))
+    (-> (impl/rpc-call-async source
+                             {"return" "jsonb" "input" []
+                              "id" "ping" "schema" "scratch"}
+                             [] {})
+        (promise/x:promise-then (fn [out] (return out)))))
+  => {"ok" true})
+
+^{:refer xt.db.system.impl-supabase/create-ws-client :added "4.1"}
+(fact "uses the configured websocket factory"
+  (!.js
+   (var client {"create_ws_client"
+                (fn [defaults] (return {"kind" "fake-ws" "defaults" defaults}))})
+   (var source (impl/impl-supabase client +schema+ +lookup+))
+   (impl/create-ws-client source {"id" "realtime"}))
+  => {"kind" "fake-ws" "defaults" {"id" "realtime"}})
+
+^{:refer xt.db.system.impl-supabase/impl-supabase :added "4.1"}
+(fact "creates a Supabase implementation with isolated mutable state"
+  (!.js
+   (var source (impl/impl-supabase (-/mock-client nil) +schema+ +lookup+))
+   {"type" (xt/x:get-key source "::")
+    "schema" (xt/x:get-key source "schema")
+    "lookup" (xt/x:get-key source "lookup")
+    "state" (xtd/get-in source ["state" "realtimes"])
+    "session" (xtd/get-in source ["state" "session"])})
+  => {"type" "xt.db.system.impl_supabase/ImplSupabase"
+      "schema" +schema+ "lookup" +lookup+ "state" {} "session" nil})

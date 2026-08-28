@@ -30,13 +30,7 @@ public interface BuiltinCheck {
 
   @Module.Fn(name = "long?", complete = true)
   public static <TYPE> boolean isLong(TYPE x) {
-    if (!(x instanceof Number)) return false;
-    try {
-      NumUtils.toBigInteger(x).longValueExact();
-      return true;
-    } catch (ArithmeticException | IllegalArgumentException error) {
-      return false;
-    }
+    return NumUtils.isLongValue(x);
   }
 
   @Module.Fn(name = "double?", complete = true)

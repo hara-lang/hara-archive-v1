@@ -8,7 +8,7 @@
 
 (defn- collect-pg-ops*
   [form operations]
-  (if (or (list? form) (vector? form) (set? form) (map? form))
+  (if (or (list? form) (vector? form) (map? form) (set? form))
     (let [operation (when (list? form)
                       (get analyze/+pg-operations+ (first form)))
           next-operations (if operation

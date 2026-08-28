@@ -1,0 +1,7 @@
+(ns xt.ui.frames.form "Schema-driven form frame over serializable form state and actions." (:require [lang.core :as l]))
+
+(l/script :xtalk {:require [[xt.lang.spec-base :as xt] [xt.lang.common-data :as xtd] [xt.ui.core :as ui]]})
+
+(defn.xt invoke [actions action-id payload] (var handler (xt/x:get-key (or actions {}) action-id)) (when (xt/x:is-function? handler) (return (handler payload))) (return nil))
+
+(defn.xt view [frame state actions] (var form (or (. state ["form"]) state)) (var draft (or (. form ["draft"]) {})) (var errors (or (. form ["errors"]) {})) (var fields (or (. frame ["opts"] ["fields"]) [])) (var children []) (xt/for:array [field fields] (var #{id} field) (var component (or (. field ["component"]) "ui/input")) (xt/x:arr-push children (ui/node "ui/column" {"class" "gap-2" "key" id} [(ui/node "ui/label" {"for" id "value" (or (. field ["label"]) id)} []) (ui/node component {"on_change" (fn [value] (return (-/invoke actions "set_field" {"value" value "field" id}))) "value" (or (xt/x:get-key draft id) "") "id" id "disabled" (== true (. form ["pending"]))} []) (ui/node "ui/alert" {"hidden" (xt/x:nil? (xt/x:get-key errors id)) "tone" "error"} [(ui/text (or (xt/x:get-key errors id) "") {})])]))) (xt/x:arr-push children (ui/node "ui/button" {"on_press" (fn [_] (return (-/invoke actions "submit" draft))) "pending" (== true (. form ["pending"])) "disabled" (or (not= true (. form ["valid"])) (== true (. form ["pending"])))} [(ui/text "Save" {})])) (return (ui/node "ui/column" {"class" "gap-4"} children)))

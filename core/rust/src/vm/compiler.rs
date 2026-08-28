@@ -953,7 +953,9 @@ impl Compiler {
             Form::String(value) => self.constant(Value::String(value.clone()), span),
             Form::Keyword(value) => self.constant(Value::Keyword(value.clone().into()), span),
             Form::Character(value) => self.constant(Value::Character(*value), span),
-            Form::BigInteger(value) => self.constant(Value::BigInteger(value.clone()), span),
+            Form::BigInteger(value) => {
+                self.constant(crate::numeric::compact_integer(value.clone()), span)
+            }
             Form::Regex(value) => self.constant(Value::Regex(value.clone()), span),
             // Collection identity is observable even when language equality
             // is structural across concrete sequential/map/set types.  Do

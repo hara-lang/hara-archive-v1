@@ -1,0 +1,15 @@
+(ns xt.db.helpers.test-fixtures-test (:use code.test) (:require [xt.db.helpers.test-fixtures :as fixtures]))
+
+^{:refer xt.db.helpers.test-fixtures/+schema+ :added "4.1"}
+(fact "exposes deterministic schema and lookup fixtures"
+  [(keys fixtures/+schema+)
+   (keys fixtures/+lookup+)
+   (keys fixtures/+task-tree+)
+   (get-in fixtures/+schema+ ["Entry" "id" "primary"])]
+  => [["Entry"] ["Entry"] ["Task"] true])
+
+^{:refer xt.db.helpers.test-fixtures/seed-entry-rows :added "4.1"}
+(fact "returns repeatable seed data without a database side effect"
+  [(seed-entry-rows)
+   (= (seed-entry-rows) fixtures/+entry-seed+)]
+  => [fixtures/+entry-seed+ true])

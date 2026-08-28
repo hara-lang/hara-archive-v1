@@ -2,6 +2,7 @@ package hara.truffle.bytecode;
 
 import hara.lang.data.Keyword;
 import hara.lang.data.Symbol;
+import hara.lang.base.NumUtils;
 import hara.truffle.HalcSchema;
 import hara.truffle.HtaValueCodec;
 import hara.truffle.bytecode.HbcProgram.CatchEntry;
@@ -455,6 +456,9 @@ public final class HbcCodec {
 
   private static MetadataValue readMetadataValue(Reader in) {
     MetadataValue.Kind kind = metadataKind(in.u8());
+    if (kind == MetadataValue.Kind.BIG_INTEGER) {
+      return readMetadataBigInteger(in.string());
+    }
     Object value =
         switch (kind) {
           case NIL -> null;
@@ -465,7 +469,7 @@ public final class HbcCodec {
             if (!Double.isFinite(floating)) throw malformed("non-finite number");
             yield floating;
           }
-          case BIG_INTEGER -> new BigInteger(in.string());
+          case BIG_INTEGER -> throw new AssertionError("big integer metadata was handled above");
           case RESERVED_DECIMAL -> throw malformed("bytecode artifact contains reserved decimal metadata");
           case CHARACTER -> requireUnicodeScalar(Math.toIntExact(in.u32()));
           case REGEX -> Pattern.compile(in.string());
@@ -479,8 +483,27 @@ public final class HbcCodec {
     return new MetadataValue(kind, value);
   }
 
+  private static MetadataValue readMetadataBigInteger(String text) {
+    try {
+      BigInteger value = new BigInteger(text);
+      if (NumUtils.isLongValue(value)) {
+        return new MetadataValue(MetadataValue.Kind.NUMBER, value.longValue());
+      }
+      return new MetadataValue(MetadataValue.Kind.BIG_INTEGER, value);
+    } catch (NumberFormatException error) {
+      throw malformed("bytecode artifact contains invalid big integer metadata");
+    }
+  }
+
   @SuppressWarnings("unchecked")
   private static void writeMetadataValue(Writer out, MetadataValue metadata) {
+    if (metadata.kind() == MetadataValue.Kind.BIG_INTEGER
+        && metadata.value() instanceof BigInteger integer
+        && NumUtils.isLongValue(integer)) {
+      out.u8(MetadataValue.Kind.NUMBER.ordinal());
+      out.i64(integer.longValue());
+      return;
+    }
     out.u8(metadata.kind().ordinal());
     Object value = metadata.value();
     switch (metadata.kind()) {

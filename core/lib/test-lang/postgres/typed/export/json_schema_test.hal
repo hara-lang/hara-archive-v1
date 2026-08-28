@@ -4,18 +4,18 @@
   (:use code.test))
 
 (fact "resolves primitive, enum, and fallback schema types"
-  (json-schema/resolve-type (types/make-type-ref :primitive nil :uuid) :jschema)
+  (postgres.typed.export.json-schema/resolve-type (types/make-type-ref :primitive nil :uuid) :jschema)
   => {:type "string" :format "uuid"}
-  (json-schema/resolve-type {:type :enum :enum-ref {:ns 'Status}} :jschema)
+  (postgres.typed.export.json-schema/resolve-type {:type :enum :enum-ref {:ns 'Status}} :jschema)
   => {:$ref "#/definitions/Status"}
-  (json-schema/resolve-type :unknown :jschema) => {:type "string"})
+  (postgres.typed.export.json-schema/resolve-type :unknown :jschema) => {:type "string"})
 
 (fact "converts field descriptors"
-  (json-schema/field->json-schema {:type :uuid :nullable? false})
+  (postgres.typed.export.json-schema/field->json-schema {:type :uuid :nullable? false})
   => {:type "string" :format "uuid"}
-  (json-schema/field->json-schema {:type :array :items {:type :text}})
+  (postgres.typed.export.json-schema/field->json-schema {:type :array :items {:type :text}})
   => {:type "array" :items {:type "string"}}
-  (json-schema/field->json-schema {:is-ref? true})
+  (postgres.typed.export.json-schema/field->json-schema {:is-ref? true})
   => {:type "string" :format "uuid"})
 
 (fact "converts nested shapes and preserves literal keys"
@@ -23,14 +23,14 @@
                 {"UserEmail" {:type :array :items {:type :jsonb}}})
         value (types/make-jsonb-shape
                {"db/remove" {:type :jsonb :shape nested}})
-        result (json-schema/shape->json-schema value)]
+        result (postgres.typed.export.json-schema/shape->json-schema value)]
     [(get-in result [:properties "db/remove" :type])
      (get-in result [:properties "db/remove" :properties "UserEmail" :type])
      (get-in result [:properties "db_remove"])])
   => ["object" "array" nil])
 
 (fact "marks non-nullable fields as required"
-  (json-schema/shape->json-schema
+  (postgres.typed.export.json-schema/shape->json-schema
    (types/make-jsonb-shape {:id {:type :uuid :nullable? false}
                             :bio {:type :text :nullable? true}}))
   => {:type "object"
@@ -45,8 +45,11 @@
                         (types/make-table-def "demo" "User" [] :id))
   (types/register-type 'demo/Status
                         (types/make-enum-def "demo" "Status" [:active :disabled] nil))
-  (let [result (json-schema/generate-json-schema)]
+  (let [result (postgres.typed.export.json-schema/generate-json-schema)]
     [(:$schema result)
      (get-in result [:definitions "User" :type])
      (get-in result [:definitions "Status" :type])])
   => ["http://json-schema.org/draft-07/schema#" "object" "string"])
+
+(let [summary (run {:namespace '[postgres.typed.export.json-schema-test] :no-report true})]
+  (pr-str (select-keys summary [:status :counts])))

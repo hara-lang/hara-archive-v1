@@ -1,0 +1,14 @@
+(ns xt.db.poc.s06-supabase-auth-test (:use code.test) (:require [lang.core :as l] [xt.lang.spec-base :as xt] [xt.substrate :as substrate] [xt.db.node.kernel-supabase :as kernel]))
+
+(l/script- :js {:runtime :basic})
+
+^{:refer xt.db.node.kernel-supabase/init-handlers :added "4.1"}
+(fact "the auth POC registers every Supabase action on a local node"
+  (!.js
+   (var node (substrate/node-create {"id" "auth"}))
+   (kernel/init-handlers node)
+   (var handlers (xt/x:get-key node "handlers"))
+   [(xt/x:not-nil? (xt/x:get-key handlers "@xt.supabase/sign-up"))
+    (xt/x:not-nil? (xt/x:get-key handlers "@xt.supabase/current-session"))
+    (xt/x:not-nil? (xt/x:get-key handlers "@xt.supabase/health"))])
+  => [true true true])

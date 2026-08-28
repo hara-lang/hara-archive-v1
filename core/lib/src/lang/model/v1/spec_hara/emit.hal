@@ -549,7 +549,7 @@
         "x:to-number" (list 'double (lowered (argument 0)))
         "x:is-string?" (list 'string? (lowered (argument 0)))
         "x:is-number?" (list 'number? (lowered (argument 0)))
-        "x:is-integer?" (list 'long? (lowered (argument 0)))
+        "x:is-integer?" (list 'integer? (lowered (argument 0)))
         "x:is-boolean?" (list 'boolean? (lowered (argument 0)))
         "x:is-function?" (list 'fn? (lowered (argument 0)))
         "x:is-object?" (list 'lang.runtime.standard/obj?

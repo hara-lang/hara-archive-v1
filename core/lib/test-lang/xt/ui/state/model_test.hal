@@ -1,0 +1,180 @@
+(ns xt.ui.state.model-test (:use code.test) (:require [lang.core :as l] [xt.lang.common-notify :as notify]))
+
+^{:seedgen/root {:all true}} (l/script- :js {:require [[xt.lang.spec-base :as xt] [xt.lang.spec-promise :as promise] [xt.lang.common-repl :as repl] [xt.substrate :as substrate] [xt.substrate.page-core :as page-core] [xt.ui.state.model :as ui-model]] :runtime :basic})
+
+(defn.js create-store [] (var node (substrate/node-create {"id" "ui-model-test"})) (page-core/group-add-attach node "app/account" "account/settings" {"draft" {"pipeline" {"check_disabled" (fn [_context] (return false)) "check_args" (fn [context] (return [(xt/x:get-key context "input")]))} "handler" (fn [_context value] (return value)) "defaults" {"output" {} "args" []} "options" {}} "save" {"pipeline" {} "handler" (fn [_context value] (return {"saved" value})) "defaults" {"output" {} "args" []} "options" {}}}) (return (ui-model/store-create node "app/account" "account/settings" "local" {})))
+
+^{:refer xt.ui.state.model/listener-key :added "4.1"}
+(fact "uses the same stable listener key as page-core"
+  (!.js (ui-model/listener-key "app/account" "account/settings" "draft"))
+  => "[\"app/account\",[\"account/settings\",\"draft\"]]")
+
+^{:refer xt.ui.state.model/patch-input! :added "4.1"} (fact "patches drafts and reads standardized model slots" (notify/wait-on :js (var store (-/create-store)) (promise/x:promise-then (ui-model/patch-input! store "draft" ["first_name"] "Ada" {}) (fn [_] (repl/notify [(ui-model/model-input store "draft" ["first_name"] nil) (ui-model/model-pending? store "draft") (ui-model/model-error store "draft")])))) => ["Ada" false nil])
+
+^{:refer xt.ui.state.model/subscribe! :added "4.1"} (fact "subscribes to page model changes and removes listeners on close" (notify/wait-on :js (var store (-/create-store)) (var captured []) (ui-model/subscribe! store "screen" (fn [_id data _t meta] (xt/x:arr-push captured [(xt/x:get-key meta "model_id") (xt/x:get-key data "type")]) (return nil))) (promise/x:promise-then (ui-model/patch-input! store "draft" ["language"] "EN" {}) (fn [_] (return (promise/x:promise-then (ui-model/store-close store) (fn [_] (repl/notify {"captured" captured "listeners" (xt/x:obj-keys (xt/x:get-key store "listeners"))}))))))) => (contains-in {"captured" vector? "listeners" []}))
+
+^{:refer xt.ui.state.model/store-create :added "4.1"}
+(fact "creates a local store with clean lifecycle state"
+  (!.js
+    (var store (-/create-store))
+    [(xt/x:get-key store "mode")
+     (xt/x:get-key store "space_id")
+     (xt/x:get-key store "group_id")
+     (ui-model/store-version store)
+     (xt/x:obj-keys (xt/x:get-key store "listeners"))])
+  => ["local" "app/account" "account/settings" 0 []])
+
+^{:refer xt.ui.state.model/store-version :added "4.1"}
+(fact "returns the store revision"
+  (!.js (ui-model/store-version {"revision" 4}))
+  => 4)
+
+^{:refer xt.ui.state.model/store-open :added "4.1"}
+(fact "opens a local store after its group has been installed"
+  (notify/wait-on :js
+    (var store (-/create-store))
+    (-> (ui-model/store-open store)
+        (promise/x:promise-then
+         (fn [opened]
+           (repl/notify [(== opened store)
+                         (xt/x:get-key opened "control")])))))
+  => [true nil])
+
+^{:refer xt.ui.state.model/model :added "4.1"}
+(fact "returns a named page model from the store group"
+  (!.js
+    (var store (-/create-store))
+    (var model (ui-model/model store "draft"))
+    [(xt/x:get-key model "::")
+     (xt/x:is-object? model)])
+  => ["event.model" true])
+
+^{:refer xt.ui.state.model/model-slot :added "4.1"}
+(fact "reads a nested model slot and uses its fallback at a missing path"
+  (!.js
+    (var store (-/create-store))
+    (var model (ui-model/model store "draft"))
+    (xt/x:set-key model "remote" {"current" {"value" 7}})
+    [(ui-model/model-slot store "draft" ["remote" "current"] ["value"] 0)
+     (ui-model/model-slot store "draft" ["remote" "current"] ["missing"] "fallback")])
+  => [7 "fallback"])
+
+^{:refer xt.ui.state.model/model-input :added "4.1"}
+(fact "reads the current input slot"
+  (!.js
+    (var store (-/create-store))
+    (var model (ui-model/model store "draft"))
+    (xt/x:set-key model "input" {"current" {"data" {"name" "Ada"}}})
+    (ui-model/model-input store "draft" ["name"] nil))
+  => "Ada")
+
+^{:refer xt.ui.state.model/model-output :added "4.1"}
+(fact "reads the current output slot"
+  (!.js
+    (var store (-/create-store))
+    (var model (ui-model/model store "draft"))
+    (xt/x:set-key model "output" {"current" {"value" "ready"}})
+    (ui-model/model-output store "draft" ["value"] nil))
+  => "ready")
+
+^{:refer xt.ui.state.model/model-pending? :added "4.1"}
+(fact "reports whether output is pending"
+  (!.js
+    (var store (-/create-store))
+    (var model (ui-model/model store "draft"))
+    (xt/x:set-key model "output" {"pending" true})
+    [(ui-model/model-pending? store "draft")
+     (xt/x:set-key model "output" {"pending" false})
+     (ui-model/model-pending? store "draft")])
+  => [true {"pending" false} false])
+
+^{:refer xt.ui.state.model/model-disabled? :added "4.1"}
+(fact "reports whether output is disabled"
+  (!.js
+    (var store (-/create-store))
+    (var model (ui-model/model store "draft"))
+    (xt/x:set-key model "output" {"disabled" true})
+    (ui-model/model-disabled? store "draft"))
+  => true)
+
+^{:refer xt.ui.state.model/model-error :added "4.1"}
+(fact "returns output only for an errored model"
+  (!.js
+    (var store (-/create-store))
+    (var model (ui-model/model store "draft"))
+    (xt/x:set-key model "output" {"errored" true "current" {"message" "bad"}})
+    [(ui-model/model-error store "draft")
+     (xt/x:set-key model "output" {"errored" false "current" {"message" "ignored"}})
+     (ui-model/model-error store "draft")])
+  => [{"message" "bad"} {"errored" false "current" {"message" "ignored"}} nil])
+
+^{:refer xt.ui.state.model/model-remote :added "4.1"}
+(fact "reads remote output values with a fallback"
+  (!.js
+    (var store (-/create-store))
+    (var model (ui-model/model store "draft"))
+    (xt/x:set-key model "remote" {"current" {"status" "sent"}})
+    (ui-model/model-remote store "draft" ["status"] nil))
+  => "sent")
+
+^{:refer xt.ui.state.model/model-sync :added "4.1"}
+(fact "reads sync output values with a fallback"
+  (!.js
+    (var store (-/create-store))
+    (var model (ui-model/model store "draft"))
+    (xt/x:set-key model "sync" {"current" {"revision" 3}})
+    (ui-model/model-sync store "draft" ["revision"] 0))
+  => 3)
+
+^{:refer xt.ui.state.model/set-input! :added "4.1"}
+(fact "sets input through the page model and exposes it immediately"
+  (notify/wait-on :js
+    (var store (-/create-store))
+    (-> (ui-model/set-input! store "draft" {"data" ["hello"]} {})
+        (promise/x:promise-then
+         (fn [_]
+           (repl/notify (ui-model/model-input store "draft" ["data"] nil))))))
+  => ["hello"])
+
+^{:refer xt.ui.state.model/invoke! :added "4.1"}
+(fact "invokes the remote model path and resolves a promise"
+  (notify/wait-on :js
+    (var store (-/create-store))
+    (-> (ui-model/invoke! store "draft" ["hello"])
+        (promise/x:promise-then (fn [out] (repl/notify (xt/x:not-nil? out))))
+        (promise/x:promise-catch (fn [_] (repl/notify false)))))
+  => true)
+
+^{:refer xt.ui.state.model/refresh! :added "4.1"}
+(fact "refreshes the local model through its main handler"
+  (notify/wait-on :js
+    (var store (-/create-store))
+    (-> (ui-model/patch-input! store "draft" ["name"] "Ada" {})
+        (promise/x:promise-then
+         (fn [_]
+           (return (ui-model/refresh! store "draft" {}))))
+        (promise/x:promise-then
+         (fn [_]
+           (repl/notify (ui-model/model-output store "draft" nil nil))))))
+  => {"data" {"name" "Ada"}})
+
+^{:refer xt.ui.state.model/unsubscribe! :added "4.1"}
+(fact "removes a named subscription"
+  (notify/wait-on :js
+    (var store (-/create-store))
+    (ui-model/subscribe! store "screen" (fn [_ _ _ _] nil))
+    (ui-model/unsubscribe! store "screen")
+    (repl/notify (xt/x:obj-keys (xt/x:get-key store "listeners"))))
+  => [])
+
+^{:refer xt.ui.state.model/store-close :added "4.1"}
+(fact "closes subscriptions and leaves the store reusable"
+  (notify/wait-on :js
+    (var store (-/create-store))
+    (ui-model/subscribe! store "screen" (fn [_ _ _ _] nil))
+    (-> (ui-model/store-close store)
+        (promise/x:promise-then
+         (fn [closed]
+           (repl/notify [closed
+                         (xt/x:obj-keys (xt/x:get-key store "listeners"))])))))
+  => [true []])

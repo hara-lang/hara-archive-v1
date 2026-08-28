@@ -1,0 +1,27 @@
+(ns xt.event.util-decorate (:require [lang.core :as l]))
+
+(l/script :xtalk {:require [[xt.lang.spec-base :as xt] [xt.lang.common-data :as xtd] [xt.lang.spec-promise :as spec-promise]]})
+
+(def ^{:schema [:fn [] [:fn [] :xt/str]]} incr-fn nil)
+
+(def ^{:schema [:fn [:xt/any] :xt/any]} plugin-timing nil)
+
+(def ^{:schema [:fn [:xt/any] :xt/any]} plugin-counts nil)
+
+(def ^{:schema [:fn [[:xt/maybe :xt/any]] :xt/any]} to-handle-callback nil)
+
+(def ^{:schema [:fn [[:fn [:xt/any] :xt/any] [:xt/array [:fn [:xt/any] :xt/any]] [:xt/maybe :xt/any]] :xt/any]} new-handle nil)
+
+(def ^{:schema [:fn [:xt/any [:xt/maybe [:xt/array :xt/any]] [:xt/maybe :xt/any]] :xt/promise]} run-handle nil)
+
+(defn.xt incr-fn [] (var state {:value -1}) (var next-id-fn (fn [] (var i (+ 1 (. state ["value"]))) (xt/x:set-key state "value" i) (return (xt/x:cat "id-" (xt/x:to-string i))))) (return next-id-fn))
+
+(defn.xt plugin-timing "plugin timing" {:added "4.1"} [handle] (var result {:output {}}) (var on-setup (fn [args] (xt/x:set-key result "output" {:start (xt/x:now-ms)}))) (var on-teardown (fn [] (var #{output} result) (var t-end (xt/x:now-ms)) (var t-elapsed (- t-end (. output ["start"]))) (xt/x:set-key output "end" t-end) (xt/x:set-key output "elapsed" t-elapsed))) (var on-reset (fn [] (xt/x:set-key result "output" {}))) (return (xt/x:obj-assign result {:on-setup on-setup :on-teardown on-teardown :name "timing" :on-reset on-reset})))
+
+(defn.xt plugin-counts "plugin counts" {:added "4.1"} [handle] (var result {:output {:error 0 :success 0}}) (var on-success (fn [ret] (var #{output} result) (xt/x:set-key output "success" (+ 1 (. output ["success"]))))) (var on-error (fn [ret] (var #{output} result) (xt/x:set-key output "error" (+ 1 (. output ["error"]))))) (var on-reset (fn [] (xt/x:set-key result "output" {:error 0 :success 0}))) (return (xt/x:obj-assign result {:on-success on-success :on-error on-error :name "counts" :on-reset on-reset})))
+
+(defn.xt to-handle-callback "adapts a cb map to the handle callback" {:added "4.1"} [cb] (when (xt/x:nil? cb) (:= cb {})) (return {:on-teardown (. cb ["finally"]) :on-success (. cb ["success"]) :on-error (. cb ["error"])}))
+
+(defn.xt new-handle "creates a new handle" {:added "4.1"} [handler plugin-fns opts] (var #{create-fn wrap-fn dump-fn id-fn delay name} opts) (when (xt/x:nil? id-fn) (:= id-fn (-/incr-fn))) (when (xt/x:nil? create-fn) (:= create-fn (fn [x] (return x)))) (when (xt/x:nil? delay) (:= delay 0)) (var handle (create-fn {"::" "handle" :id-fn id-fn :name name :handler handler :wrap-fn wrap-fn :delay delay})) (var plugins (xt/x:arr-map plugin-fns (fn [f] (return (f handle))))) (xt/x:set-key handle "plugins" plugins) (return handle))
+
+(defn.xt run-handle "runs a handle and resolves to a receipt" {:added "4.1"} [handle args tcb] (var #{handler wrap-fn delay id-fn plugins} handle) (when (xt/x:nil? args) (:= args [])) (var tcbs (xt/x:arr-clone plugins)) (when (xt/x:not-nil? tcb) (if (xt/x:is-array? tcb) (xt/x:arr-assign tcbs tcb) (xt/x:arr-push tcbs tcb))) (when (xt/x:is-function? delay) (:= delay (delay))) (var receipt {:id (id-fn)}) (var teardown-fn (fn [] (xt/for:array [cb tcbs] (var #{on-teardown name output} cb) (when (xt/x:not-nil? on-teardown) (on-teardown)) (when (and (xt/x:not-nil? name) (xt/x:not-nil? output)) (xt/x:set-key receipt name output))) (return receipt))) (var run-fn (fn [] (xt/for:array [cb tcbs] (var #{on-setup} cb) (when (xt/x:not-nil? on-setup) (on-setup args))) (var base-thunk (fn [] (return (xt/x:apply handler args)))) (var base-promise (:? (< 0 (:? (xt/x:nil? delay) 0 delay)) (spec-promise/x:with-delay delay base-thunk) (spec-promise/x:promise base-thunk))) (return (spec-promise/x:promise-finally (spec-promise/x:promise-catch (spec-promise/x:promise-then base-promise (fn [ret] (xt/for:array [cb tcbs] (var #{on-success} cb) (when (xt/x:not-nil? on-success) (on-success ret))) (xt/x:set-key receipt "status" "success") (xt/x:set-key receipt "value" ret) (return receipt))) (fn [err] (xt/for:array [cb tcbs] (var #{on-error} cb) (when (xt/x:not-nil? on-error) (on-error err))) (xt/x:set-key receipt "status" "error") (xt/x:set-key receipt "error" err) (var reject-fn (fn [] (xt/x:throw receipt))) (return (spec-promise/x:promise reject-fn)))) teardown-fn)))) (var proc (:? (xt/x:not-nil? wrap-fn) (wrap-fn run-fn args receipt handle) (run-fn))) (return (spec-promise/x:promise-run proc)))

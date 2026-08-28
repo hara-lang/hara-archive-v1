@@ -1,0 +1,11 @@
+(ns xt.net.ws-native-test (:use code.test) (:require [lang.core :as l] [xt.net.ws-native :refer :all]))
+
+^{:seedgen/root {:all true :langs [:js :lua :python :ruby]}} (l/script- :js {:require [[xt.net.ws-native :as ws-native]] :runtime :basic})
+
+(l/script- :lua {:require [[xt.net.ws-native :as ws-native]] :runtime :basic})
+
+(l/script- :python {:require [[xt.net.ws-native :as ws-native]] :runtime :basic})
+
+(fact:global {:teardown [(l/rt:stop)] :setup [(l/rt:restart)]})
+
+^{:refer xt.net.ws-native/prepare-url :added "4.1"} (fact "returns an explicit url or builds a websocket url from client defaults" (!.js [(ws-native/prepare-url {"defaults" {"port" "8080" "host" "example.com"}} {"url" "ws://given"}) (ws-native/prepare-url {"defaults" {"port" "8080" "host" "example.com"}} {}) (ws-native/prepare-url {"defaults" {"host" "example.com" "secured" true "basepath" "/api"}} {"path" "/ws"}) (ws-native/prepare-url {"defaults" {"host" "example.com"}} {"path" "/ws"})]) => ["ws://given" "ws://example.com:8080" "wss://example.com:80/api/ws" "ws://example.com:80/ws"] (!.lua [(ws-native/prepare-url {"defaults" {"port" "8080" "host" "example.com"}} {"url" "ws://given"}) (ws-native/prepare-url {"defaults" {"port" "8080" "host" "example.com"}} {}) (ws-native/prepare-url {"defaults" {"host" "example.com" "secured" true "basepath" "/api"}} {"path" "/ws"}) (ws-native/prepare-url {"defaults" {"host" "example.com"}} {"path" "/ws"})]) => ["ws://given" "ws://example.com:8080" "wss://example.com:80/api/ws" "ws://example.com:80/ws"] (!.py [(ws-native/prepare-url {"defaults" {"port" "8080" "host" "example.com"}} {"url" "ws://given"}) (ws-native/prepare-url {"defaults" {"port" "8080" "host" "example.com"}} {}) (ws-native/prepare-url {"defaults" {"host" "example.com" "secured" true "basepath" "/api"}} {"path" "/ws"}) (ws-native/prepare-url {"defaults" {"host" "example.com"}} {"path" "/ws"})]) => ["ws://given" "ws://example.com:8080" "wss://example.com:80/api/ws" "ws://example.com:80/ws"])

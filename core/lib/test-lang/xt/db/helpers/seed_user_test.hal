@@ -1,0 +1,43 @@
+(ns xt.db.helpers.seed-user-test (:require [postgres.core :as pg :refer [defsel.pg defret.pg]] [lang.core :as l]))
+
+(l/script :postgres {:require [[postgres.core :as pg] [xt.db.helpers.seed-system-test :as data]] :static {:seed ["scratch-sample-db"] :application ["test-db-helpers"] :all {:schema ["scratch-sample-db"]}}})
+
+(defn.pg as-array [:jsonb input] (when (== input "{}") (return "[]")) (return input))
+
+(deftype.pg ^{:public true} UserAccount [:id {:sql {:default (pg/uuid-generate-v4)} :type :uuid :primary true} :nickname {:type :citext :scope :-/info :required true :unique true} :password-hash {:type :text :scope :-/hidden :required true} :password-salt {:type :text :scope :-/hidden :required true} :password-updated {:type :long :web {:example 0} :sql {:default (pg/time-us)}} :is-super {:sql {:default false} :type :boolean :scope :-/info :required true} :is-suspended {:sql {:default false} :type :boolean :scope :-/info :required true} :is-official {:sql {:default false} :type :boolean :scope :-/info :required true}])
+
+(deftype.pg ^{:public true} UserProfile [:id {:sql {:default (pg/uuid-generate-v4)} :type :uuid :primary true} :account {:sql {:cascade true} :type :ref :ref {:ns -/UserAccount :rval :profile} :required true :unique true} :first-name {:web {:example "Test"} :type :text :scope :-/info} :last-name {:web {:example "User"} :type :text :scope :-/info} :city {:web {:example "This is the test user account"} :type :text} :state {:type :ref :ref {:ns data/RegionState}} :country {:type :ref :ref {:ns data/RegionCountry}} :about {:web {:example "This is the test user account"} :type :text} :language {:sql {:default "en"} :type :citext :required true} :detail {:type :map :scope :-/detail}])
+
+(deftype.pg ^{:public true} UserNotification [:id {:sql {:default (pg/uuid-generate-v4)} :type :uuid :primary true} :account {:sql {:cascade true} :type :ref :ref {:ns -/UserAccount :rval :notification} :required true :unique true} :general {:type :jsonb :required true} :trading {:type :jsonb :required true} :funding {:type :jsonb :required true}])
+
+(deftype.pg ^{:public true} UserPrivilege [:id {:sql {:default (pg/uuid-generate-v4)} :type :uuid :primary true} :account {:sql {:cascade true} :type :ref :ref {:ns -/UserAccount :rval :privileges}} :type {:type :citext :check #{"pool" "rake"} :required true} :start-time {:type :long :required true} :end-time {:type :long :required true}])
+
+(deftype.pg ^{:public true} Asset [:id {:sql {:default (pg/uuid-generate-v4)} :type :uuid :primary true} :currency {:web {:example "STATS"} :type :ref :ref {:ns data/Currency} :required true}])
+
+(deftype.pg ^{:public true} Wallet [:id {:sql {:default (pg/uuid-generate-v4)} :type :uuid :primary true} :slug {:sql {:default "default" :unique "default"} :type :citext} :owner {:sql {:cascade true :unique "default"} :type :ref :ref {:ns -/UserAccount} :required true}])
+
+(deftype.pg ^{:public true} WalletAsset [:id {:sql {:default (pg/uuid-generate-v4)} :type :uuid :primary true} :asset {:sql {:cascade true :unique "default"} :type :ref :ref {:ns -/Asset :rval :linked-wallet} :unique true} :wallet {:sql {:cascade true :unique "default"} :type :ref :ref {:ns -/Wallet :rval :entries} :required true}])
+
+(deftype.pg ^{:public true} Organisation [:id {:sql {:default (pg/uuid-generate-v4)} :type :uuid :primary true} :name {:type :citext :required true :unique true} :title {:type :text :required true} :description {:type :text} :tags {:sql {:process -/as-array} :type :array} :owner {:sql {:cascade true} :type :ref :ref {:ns -/UserAccount}}])
+
+(deftype.pg OrganisationAccess [:id {:sql {:default (pg/uuid-generate-v4)} :type :uuid :primary true} :organisation {:sql {:cascade true :unique "default"} :type :ref :ref {:ns -/Organisation :rval :access} :required true} :account {:sql {:cascade true :unique "default"} :type :ref :ref {:ns -/UserAccount} :required true} :role {:sql {:default "member"} :type :text :required true}])
+
+(defn.pg organisation-assert-is-member [:uuid i-account-id :uuid i-organisation-id] (return true))
+
+(defsel.pg ^{:- [-/Organisation] :args [:text i-name] :api/view true} organisation-by-name {:name i-name})
+
+(defsel.pg ^{:- [-/Organisation] :scope #{:personal} :args [:uuid i-account-id] :api/view true} organisation-all-as-owner)
+
+(defsel.pg ^{:- [-/Organisation] :scope #{:personal} :args [:uuid i-account-id] :api/view true} organisation-all-as-owner)
+
+(defsel.pg ^{:- [-/Organisation] :scope #{:personal} :args [:uuid i-account-id] :api/view true} organisation-all-as-admin)
+
+(defsel.pg ^{:- [-/Organisation] :scope #{:personal} :args [:uuid i-account-id] :api/view true} organisation-all-as-member)
+
+(defret.pg ^{:- [-/UserAccount] :scope #{:public} :api/view true} user-account-info [:uuid i-account-id] #{:id :nickname [:profile #{:*/standard}]})
+
+(defsel.pg ^{:guards [(-/organisation-assert-is-member <%> i-organisation-id)] :- [-/UserAccount] :args [:uuid i-organisation-id] :api/view true} user-account-by-organisation {:organisation-accesses {:organisation i-organisation-id}})
+
+(defret.pg ^{:- [-/Organisation] :api/view true} organisation-view-membership [:uuid i-organisation-id] #{:*/data [:access #{:*/data [:account #{:id :nickname}]}]})
+
+(defret.pg ^{:- [-/Organisation] :scope #{:public} :api/view true} organisation-view-default [:uuid i-organisation-id] #{:*/data})

@@ -1,0 +1,197 @@
+(ns xt.db.system.impl-supabase-realtime-test (:use code.test) (:require [lang.core :as l] [xt.lang.common-notify :as notify] [xt.lang.common-data :as xtd] [xt.lang.spec-base :as xt] [xt.lang.spec-promise :as promise] [xt.db.system.impl-supabase-realtime :as realtime]))
+
+(l/script- :js {:runtime :basic})
+
+(defn.js make-ws []
+  (var client
+       {"::" "test/Websocket"
+        "state" {"topics" {} "callbacks" {}}
+        "::/override"
+        {"connect" (fn [client _opts] (return (promise/x:promise-run client)))
+         "disconnect" (fn [client] (xtd/set-in client ["state" "disconnected"] true) (return true))
+         "add_listeners" (fn [client listeners] (xtd/set-in client ["state" "listeners"] listeners) (return client))
+         "start_heartbeat" (fn [_client _name _callback _interval] (return true))
+         "send"
+         (fn [client input]
+           (var frame (xt/x:json-decode input))
+           (var topic (xt/x:get-key frame "topic"))
+           (var entry (xtd/get-in client ["state" "topics" topic]))
+           (when (xt/x:is-object? entry)
+             (xtd/set-in client ["state" "topics" topic "ready"] true)
+             (var deferred (xt/x:get-key entry "deferred"))
+             (var resolve (xt/x:get-key deferred "resolve"))
+             (when (xt/x:is-function? resolve) (resolve true)))
+           (return true))}})
+  (return client))
+
+(defn.js make-impl []
+  (return {"client" {"defaults" {"host" "realtime.example" "port" 443 "secured" true "apikey" "anon"}
+                       "create_ws_client" (fn [_defaults] (return (-/make-ws)))}
+           "state" {"realtimes" {}}}))
+
+^{:refer xt.db.system.impl-supabase-realtime/prepare-connect-url :added "4.1"}
+(fact "builds the realtime websocket URL"
+  (!.js (realtime/prepare-connect-url (-/make-impl) {"vsn" "1.0.0"}))
+  => "wss://realtime.example:443/realtime/v1/websocket?apikey=anon&vsn=1.0.0")
+
+^{:refer xt.db.system.impl-supabase-realtime/get-auth-token :added "4.1"}
+(fact "prefers the active session token over the client api key"
+  (!.js
+   (var impl (-/make-impl))
+   [(realtime/get-auth-token impl)
+    (do (xtd/set-in impl ["state" "session" "access_token"] "session-token")
+        (realtime/get-auth-token impl))])
+  => ["anon" "session-token"])
+
+^{:refer xt.db.system.impl-supabase-realtime/topic-join-payload :added "4.1"}
+(fact "builds an authenticated Phoenix join frame"
+  (!.js (realtime/topic-join-payload (-/make-impl) "room:test"))
+  => {"topic" "room:test" "event" "phx_join"
+      "payload" {"config" {"broadcast" {"ack" false "self" false}}
+                  "access_token" "anon"}
+      "ref" "#/join/room:test" "join_ref" "#/join/room:test"})
+
+^{:refer xt.db.system.impl-supabase-realtime/topic-join-payload :added "4.1"}
+(fact "omits the access token when no credentials exist"
+  (!.js (realtime/topic-join-payload
+         {"client" {"defaults" {"host" "realtime.example"}}
+          "state" {"realtimes" {}}}
+         "room:test"))
+  => {"topic" "room:test" "event" "phx_join"
+      "payload" {"config" {"broadcast" {"ack" false "self" false}}}
+      "ref" "#/join/room:test" "join_ref" "#/join/room:test"})
+
+^{:refer xt.db.system.impl-supabase-realtime/topic-leave-payload :added "4.1"}
+(fact "builds a Phoenix leave frame"
+  (!.js (realtime/topic-leave-payload (-/make-impl) "room:test"))
+  => {"topic" "room:test" "event" "phx_leave" "payload" {}
+      "ref" "#/leave/room:test" "join_ref" "#/leave/room:test"})
+
+^{:refer xt.db.system.impl-supabase-realtime/create-realtime-on-message :added "4.1"}
+(fact "routes broadcast payloads to registered callbacks"
+  (!.js
+   (var calls [])
+   (var client {"state" {"callbacks" {"cb" (fn [event] (xt/x:arr-push calls event))}
+                           "topics" {"room:test" {"ready" false}}}})
+   (var handler (realtime/create-realtime-on-message client))
+   (handler "{\"event\":\"broadcast\",\"topic\":\"room:test\",\"payload\":{\"event\":\"xt.db/event\",\"payload\":{\"value\":1}}}")
+   calls)
+  => [{"topic" "room:test" "value" 1}])
+
+^{:refer xt.db.system.impl-supabase-realtime/create-realtime :added "4.1"}
+(fact "creates a websocket client with callback and topic state"
+  (!.js
+   (var client (realtime/create-realtime (-/make-impl) "default"))
+   {"callbacks" (xtd/get-in client ["state" "callbacks"])
+    "topics" (xtd/get-in client ["state" "topics"])
+    "init" (xt/x:not-nil? (xtd/get-in client ["state" "init"]))})
+  => {"callbacks" {} "topics" {} "init" true})
+
+^{:refer xt.db.system.impl-supabase-realtime/get-realtime :added "4.1"}
+(fact "returns nil for an unknown realtime connection"
+  (!.js (realtime/get-realtime (-/make-impl) "missing"))
+  => nil)
+
+^{:refer xt.db.system.impl-supabase-realtime/set-realtime :added "4.1"}
+(fact "stores and returns a realtime connection"
+  (!.js
+   (var impl (-/make-impl))
+   (var client {"id" "test"})
+   [(realtime/set-realtime impl "default" client)
+    (realtime/get-realtime impl "default")])
+  => [{"id" "test"} {"id" "test"}])
+
+^{:refer xt.db.system.impl-supabase-realtime/ensure-realtime :added "4.1"}
+(fact "creates a connection once and reuses it"
+  (!.js
+   (var impl (-/make-impl))
+   (var first (realtime/ensure-realtime impl "default"))
+   (var second (realtime/ensure-realtime impl "default"))
+   [(== first second) (xt/x:not-nil? (xtd/get-in first ["state" "init"]))])
+  => [true true])
+
+^{:refer xt.db.system.impl-supabase-realtime/remove-realtime :added "4.1"}
+(fact "disconnects and removes a connection"
+  (!.js
+   (var impl (-/make-impl))
+   (var client (realtime/ensure-realtime impl "default"))
+   (realtime/remove-realtime impl "default")
+   [ (xt/x:nil? (realtime/get-realtime impl "default"))
+     (xtd/get-in client ["state" "disconnected"])])
+  => [true true])
+
+^{:refer xt.db.system.impl-supabase-realtime/get-realtime-callback :added "4.1"}
+(fact "reads a callback from a realtime connection"
+  (!.js
+   (var impl (-/make-impl))
+   (var handler (fn [_] true))
+   (realtime/set-realtime impl "default" {"state" {"callbacks" {"cb" handler}}})
+   (xt/x:is-function? (realtime/get-realtime-callback impl "default" "cb")))
+  => true)
+
+^{:refer xt.db.system.impl-supabase-realtime/add-realtime-callback :added "4.1"}
+(fact "adds a callback to the connection state"
+  (!.js
+   (var impl (-/make-impl))
+   (var handler (fn [_] true))
+   (realtime/set-realtime impl "default" {"state" {"callbacks" {}}})
+   (realtime/add-realtime-callback impl "default" "cb" handler)
+   (xt/x:is-function? (realtime/get-realtime-callback impl "default" "cb")))
+  => true)
+
+^{:refer xt.db.system.impl-supabase-realtime/remove-realtime-callback :added "4.1"}
+(fact "removes a callback from the connection state"
+  (!.js
+   (var impl (-/make-impl))
+   (realtime/set-realtime impl "default" {"state" {"callbacks" {"cb" (fn [_] true)}}})
+   (realtime/remove-realtime-callback impl "default" "cb")
+   (xt/x:nil? (realtime/get-realtime-callback impl "default" "cb")))
+  => true)
+
+^{:refer xt.db.system.impl-supabase-realtime/get-topics :added "4.1"}
+(fact "returns the topic map or an empty map"
+  (!.js
+   (var impl (-/make-impl))
+   [(realtime/get-topics impl "default")
+    (realtime/get-topics impl "missing")])
+  => [{} {}])
+
+^{:refer xt.db.system.impl-supabase-realtime/create-sync-callback :added "4.1"}
+(fact "applies sync and remove events to the linked cache"
+  (!.js
+   (var impl (-/make-impl))
+   (var cache {"::/override"
+               {"process_add_event" (fn [target data] (xtd/set-in target ["sync"] data) (return true))
+                "record_delete" (fn [target table ids] (xtd/set-in target ["remove"] {"table" table "ids" ids}) (return true))}})
+   (xtd/set-in impl ["state" "caching_fn"] (fn [] (return cache)))
+   (var callback (realtime/create-sync-callback impl))
+   (callback {"db/sync" {"Log" [{"id" "1"}]}})
+   (callback {"db/remove" {"Log" ["1"]}})
+   {"sync" (xtd/get-in cache ["sync"])
+    "remove" (xtd/get-in cache ["remove"])})
+  => {"sync" {"Log" [{"id" "1"}]}
+      "remove" {"table" "Log" "ids" ["1"]}})
+
+^{:refer xt.db.system.impl-supabase-realtime/subscribe :added "4.1"}
+(fact "joins topics and resolves each topic readiness promise"
+  (notify/wait-on :js
+    (var impl (-/make-impl))
+    (-> (realtime/subscribe impl "default" ["room:a" "room:b"])
+        (promise/x:promise-then
+         (fn [ready]
+           (return {"ready" ready
+                    "topics" (xt/x:obj-keys (realtime/get-topics impl "default"))})))))
+  => {"ready" [true true] "topics" ["room:a" "room:b"]})
+
+^{:refer xt.db.system.impl-supabase-realtime/unsubscribe :added "4.1"}
+(fact "leaves topics and removes them from state"
+  (notify/wait-on :js
+    (var impl (-/make-impl))
+    (-> (realtime/subscribe impl "default" ["room:a"])
+        (promise/x:promise-then
+         (fn [_]
+           (return (realtime/unsubscribe impl "default" ["room:a"]))))
+        (promise/x:promise-then
+         (fn [ok] (return {"ok" ok
+                           "topics" (realtime/get-topics impl "default")})))))
+  => {"ok" true "topics" {}})

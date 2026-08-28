@@ -1,7 +1,7 @@
 (ns postgres.core.graph
   (:config {:blank true})
   (:require [lang.core :as l]
-            [std.foundation :refer [IDeref IComponent ex resolve]]
+            [std.foundation :refer [= IDeref IComponent empty? ex list merge nil? resolve with-meta]]
             [postgres.core.graph-base :as base]
             [postgres.core.graph-insert :as insert]
             [postgres.core.graph-query :as query]
@@ -11,37 +11,45 @@
   postgres.core
   {:macro-only true})
 
-(defmacro.xt g:where [spec where]
+(defmacro.pg g:where [spec where]
   (when (or (nil? where) (empty? where))
     (throw (ex :database {:where where} :ex/message "No WHERE clause")))
-  (base/id-where-fn spec {:where where}))
+  (base/id-where-fn spec {:where where} (:ns &env)))
 
-(defmacro.xt g:id [spec params]
+(defmacro.pg g:id [spec params]
   (when (nil? (:where params))
     (throw (ex :database params :ex/message "No WHERE clause")))
-  (base/id-fn spec (or params {})))
+  (base/id-fn spec (or params {}) (:ns &env)))
 
-(defmacro.xt g:count [spec params] (base/count-fn spec (or params {})))
-(defmacro.xt g:exists [spec params] (base/exists-fn spec (or params {})))
-(defmacro.xt g:select [spec params] (base/select-fn spec (or params {})))
+(defmacro.pg g:count [spec params]
+  (base/count-fn spec (or params {}) (:ns &env)))
+(defmacro.pg g:exists [spec params]
+  (base/exists-fn spec (or params {}) (:ns &env)))
+(defmacro.pg g:select [spec params]
+  (base/select-fn spec (or params {}) (:ns &env)))
 
-(defmacro.xt g:get [spec params]
+(defmacro.pg g:get [spec params]
   (when (nil? (:where params))
     (throw (ex :database params :ex/message "No WHERE clause")))
-  (with-meta (base/select-fn spec (merge {:single true} params))
+  (with-meta (base/select-fn spec (merge {:single true} params) (:ns &env))
              {:op/type :get}))
 
-(defmacro.xt g:update [spec params] (base/update-fn spec (or params {})))
-(defmacro.xt g:modify [spec params] (base/modify-fn spec (or params {})))
-(defmacro.xt g:delete [spec params] (base/delete-fn spec (or params {})))
-(defmacro.xt g:insert [spec data params] (insert/insert-fn spec data (or params {})))
-(defmacro.xt q [spec params] (query/query-fn spec (or params {})))
+(defmacro.pg g:update [spec params]
+  (base/update-fn spec (or params {}) (:ns &env)))
+(defmacro.pg g:modify [spec params]
+  (base/modify-fn spec (or params {}) (:ns &env)))
+(defmacro.pg g:delete [spec params]
+  (base/delete-fn spec (or params {}) (:ns &env)))
+(defmacro.pg g:insert [spec data params]
+  (insert/insert-fn spec data (or params {}) (:ns &env)))
+(defmacro.pg q [spec params]
+  (query/query-fn spec (or params {}) (:ns &env)))
 
-(defmacro.xt q:get [spec params]
-  (with-meta (query/query-fn spec (merge (or params {}) {:single true}))
+(defmacro.pg q:get [spec params]
+  (with-meta (query/query-fn spec (merge (or params {}) {:single true}) (:ns &env))
              {:op/type :get}))
 
-(defmacro.xt view [return-view select-view options]
+(defmacro.pg view [return-view select-view options]
   (view/view-form return-view select-view options))
 
 (def __tahto_load__ true)

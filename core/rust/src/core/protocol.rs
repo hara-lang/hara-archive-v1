@@ -72,7 +72,7 @@ fn metadata_to_value(value: &MetadataValue) -> Result<Value, String> {
         MetadataValue::Boolean(value) => Ok(Value::Bool(*value)),
         MetadataValue::Number(value) => Ok(Value::Number(*value)),
         MetadataValue::Float(value) => Ok(Value::Float(crate::numeric::finite_float(*value)?)),
-        MetadataValue::BigInteger(value) => Ok(Value::BigInteger(value.clone())),
+        MetadataValue::BigInteger(value) => Ok(crate::numeric::compact_integer(value.clone())),
         MetadataValue::Character(value) => Ok(Value::Character(*value)),
         MetadataValue::Regex(value) => Ok(Value::Regex(value.clone())),
         MetadataValue::Tagged(tag, value) => Ok(Value::Tagged(Box::new(PTaggedLiteral::new(
@@ -1210,7 +1210,7 @@ fn native_base_values(operation: &str, values: &[Value]) -> Result<Value, String
         predicate if predicate.ends_with('?') => match values {
             [value] => Ok(Value::Bool(match predicate {
                 "number?" => numeric::is_numeric_value(value),
-                "long?" => numeric::to_i64_exact(value).is_ok(),
+                "long?" => numeric::is_long_value(value),
                 _ => return Err(format!("unknown Base predicate: {predicate}")),
             })),
             _ => Err(format!("Base/{predicate} expects one value")),

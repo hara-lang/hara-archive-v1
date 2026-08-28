@@ -412,7 +412,7 @@
    list
    'do
    (map (fn [sym]
-          (list 'defmacro.xt sym '[& args]
+          (list 'defmacro.pg sym '[& args]
                 (list 'apply 'list (list 'quote sym) 'args)))
         symbols)))
 

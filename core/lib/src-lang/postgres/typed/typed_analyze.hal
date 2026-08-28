@@ -1,5 +1,5 @@
 (ns postgres.typed.typed-analyze
-  (:require 
+  (:require [std.foundation :refer [nth reduce-kv second]]
             [postgres.typed.typed-common :as types]
             [postgres.typed.typed-infer :as typed-infer]
             [postgres.typed.typed-resolve :as typed-resolve]
@@ -645,17 +645,16 @@
      :modifiers (json-safe (:modifiers x))
      :role (json-safe (:role x))}
 
+    (map? x)
+    (reduce-kv (fn [out key value]
+                 (assoc out
+                        (if (symbol? key) (str key) key)
+                        (json-safe value)))
+               {}
+               x)
+
     (set? x)
     (vec (sort-by pr-str (map json-safe x)))
-
-    (map? x)
-    (reduce (fn [out entry]
-              (let [key (first entry)]
-                (assoc out
-                       (if (symbol? key) (str key) key)
-                       (json-safe (second entry)))))
-            {}
-            x)
 
     (or (list? x) (vector? x))
     (vec (map json-safe x))
@@ -740,16 +739,15 @@
 
 (defn- json-output-safe [value]
   (cond (map? value)
-        (reduce (fn [out entry]
-                  (let [key (first entry)]
-                    (assoc out
-                           (cond (keyword? key) (name key)
-                                 (symbol? key) (str key)
-                                 (string? key) key
-                                 :else (str key))
-                           (json-output-safe (second entry)))))
-                {}
-                value)
+        (reduce-kv (fn [out key entry-value]
+                     (assoc out
+                            (cond (keyword? key) (name key)
+                                  (symbol? key) (str key)
+                                  (string? key) key
+                                  :else (str key))
+                            (json-output-safe entry-value)))
+                   {}
+                   value)
         (or (vector? value) (list? value))
         (vec (map json-output-safe value))
         :else value))
@@ -757,8 +755,8 @@
 (defn report-json
   "Serializes an infer report to JSON."
   ([report]
-   (json/write (json-output-safe report)))
+   (Json/write (json-output-safe report)))
   ([report pretty?]
    (if pretty?
-     (json/pretty (json-output-safe report) {})
-     (json/write (json-output-safe report)))))
+     (Json/pretty (json-output-safe report) {})
+     (Json/write (json-output-safe report)))))

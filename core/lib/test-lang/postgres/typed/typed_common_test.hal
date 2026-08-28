@@ -9,6 +9,12 @@
   (types/typescript-key :foo-bar) => "foo_bar"
   (types/typescript-key "two words") => "\"two words\"")
 
+^{:refer postgres.typed.typed-common/normalize-key}
+(fact "handles one-character symbols without string protocol errors"
+  [(types/normalize-key (symbol "m"))
+   (types/typescript-key (symbol "m"))]
+  => ["m" "m"])
+
 (fact "constructs and recognizes the typed data model"
   (types/type-ref? (types/make-type-ref :primitive nil :uuid)) => true
   (types/table-def? (types/make-table-def :core "User" [] :id)) => true
@@ -30,7 +36,9 @@
 (fact "validates and maintains the type registry"
   (types/valid-key? 'demo/User) => true
   (types/valid-key? 'User) => false
-  (types/register-type 'demo/User (types/make-type-ref :table :demo "User")) => anything
+  (do (types/register-type 'demo/User (types/make-type-ref :table :demo "User"))
+      (types/valid-key? 'demo/User))
+  => true
   (:name (types/get-type 'demo/User)) => "User"
   (types/register-type :demo/User :bad) => (throws)
   (do (types/clear-registry) (types/get-type 'demo/User)) => nil)
@@ -107,3 +115,6 @@
   => {:id :uuid :name :text}
   (types/flatten-shape {:fields {:x :uuid}}) => {:x :uuid}
   (types/flatten-shape nil) => {})
+
+(let [summary (run {:namespace '[postgres.typed.typed-common-test] :no-report true})]
+  (pr-str (select-keys summary [:status :counts])))

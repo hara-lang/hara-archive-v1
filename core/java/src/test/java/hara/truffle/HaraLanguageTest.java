@@ -756,7 +756,17 @@ public class HaraLanguageTest {
     try (Context context = context()) {
       assertTrue(context.eval(HaraLanguage.ID, "(= -0.0 0.0)").asBoolean());
       assertTrue(context.eval(HaraLanguage.ID, "(= 1.0 1.00)").asBoolean());
-      assertThrows(PolyglotException.class, () -> context.eval(HaraLanguage.ID, "(integer? 1)"));
+      assertTrue(context.eval(HaraLanguage.ID, "(long? 1)").asBoolean());
+      assertFalse(context.eval(HaraLanguage.ID, "(long? 1.0)").asBoolean());
+      assertFalse(
+          context.eval(HaraLanguage.ID, "(long? 9223372036854775808)").asBoolean());
+      assertTrue(
+          context.eval(HaraLanguage.ID, "(bigint? 9223372036854775808)").asBoolean());
+      assertFalse(context.eval(HaraLanguage.ID, "(bigint? 1)").asBoolean());
+      assertTrue(context.eval(HaraLanguage.ID, "(integer? 1)").asBoolean());
+      assertTrue(
+          context.eval(HaraLanguage.ID, "(integer? 9223372036854775808)").asBoolean());
+      assertFalse(context.eval(HaraLanguage.ID, "(integer? 1.0)").asBoolean());
       for (String source :
           new String[] {
             "##NaN",

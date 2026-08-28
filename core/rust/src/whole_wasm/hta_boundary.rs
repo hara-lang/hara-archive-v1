@@ -239,7 +239,9 @@ fn validate_primitive(name: &str, value: &Value, path: &str) -> Result<(), Strin
         "any" | "value" => true,
         "nil" => matches!(value, Value::Nil),
         "bool" | "boolean" => matches!(value, Value::Bool(_)),
-        "int" | "i64" => matches!(value, Value::Number(_) | Value::BigInteger(_)),
+        "int" | "long" | "i64" => crate::numeric::is_long_value(value),
+        "bigint" => crate::numeric::is_big_integer_value(value),
+        "integer" => crate::numeric::integer_kind(value).is_some(),
         "float" | "f64" => matches!(value, Value::Float(_)),
         "number" => matches!(
             value,
@@ -401,7 +403,9 @@ fn value_kind(value: &Value) -> &'static str {
     match value {
         Value::Nil => "nil",
         Value::Bool(_) => "boolean",
-        Value::Number(_) | Value::BigInteger(_) => "integer",
+        Value::Number(_) => "long",
+        Value::BigInteger(_) if crate::numeric::is_long_value(value) => "long",
+        Value::BigInteger(_) => "bigint",
         Value::Float(_) => "float",
         Value::String(_) => "string",
         Value::Keyword(_) => "keyword",

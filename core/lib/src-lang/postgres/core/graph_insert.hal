@@ -1,6 +1,6 @@
 (ns postgres.core.graph-insert
   (:config {:blank true})
-  (:require [std.foundation :refer [ex reduce-kv]]
+  (:require [std.foundation :refer [= assoc atom concat count deref dissoc empty? ex first get get-in has? inc into keys keyword keyword? last list map map? merge meta name nil? not nth reduce reduce-kv second set? str swap! symbol vals vec vector?]]
             [postgres.core.graph-walk :as walk]
             [postgres.core.impl-base :as base]
             [postgres.core.impl-insert :as insert]))
@@ -161,13 +161,16 @@
         linked (walk/link-data {table data} schema)]
     (insert-gen-sql linked params options)))
 
-(defn insert-fn [spec data params]
-  (let [prepared (base/prep-table spec true {})
-        entry (first prepared)
-        options (nth prepared 2)
-        prepared (if (:schema entry)
-                   [entry (second prepared) (assoc options :schema (:schema entry))]
-                   prepared)]
-    (insert-fn-raw prepared data params)))
+(defn insert-fn
+  ([spec data params]
+   (insert-fn spec data params nil))
+  ([spec data params caller-ns]
+   (let [prepared (base/prep-table spec true {:caller-ns caller-ns})
+         entry (first prepared)
+         options (nth prepared 2)
+         prepared (if (:schema entry)
+                    [entry (second prepared) (assoc options :schema (:schema entry))]
+                    prepared)]
+     (insert-fn-raw prepared data params))))
 
 (def __tahto_load__ true)

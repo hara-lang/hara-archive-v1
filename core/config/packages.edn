@@ -63,6 +63,7 @@
                           :dependencies [lang.common]}
   lang.model.v1.postgres {:description "Postgres model, graph, typed, and generator support"
                           :include [[lang.model.v1.spec-postgres :complete]
+                                    [postgres.application :complete]
                                     [postgres.core :complete]
                                     [postgres.typed :complete]
                                     [postgres.gen :complete]]

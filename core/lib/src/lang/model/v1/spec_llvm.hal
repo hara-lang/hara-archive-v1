@@ -7,8 +7,7 @@
             [lang.common.emit-preprocess :as preprocess]
             [lang.common.preprocess-base :as preprocess-base]
             [lang.common.grammar :as grammar]
-            [lang.common.util :as ut]
-            [std.lib.collection :as collection]))
+            [lang.common.util :as ut]))
 
 (defn tf-define
   "Transforms an LLVM define form."
@@ -178,7 +177,7 @@
                   :define {:raw ""}
                   :function {:raw ""}}
         :token {:symbol {:replace {\- "_"}}}}
-       (collection/merge-nested (emit/default-grammar))))
+       (merge-nested (emit/default-grammar))))
 
 (def +grammar+
   (grammar/grammar :llvm

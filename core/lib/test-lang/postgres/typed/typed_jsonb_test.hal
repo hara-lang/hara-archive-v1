@@ -124,3 +124,6 @@
   => [true #{:a :b :c} :medium true]
   (jsonb/infer-jsonb-arg-access-shape 'm {:body-meta {:raw-body []}} nil :track)
   => nil)
+
+(let [summary (run {:namespace '[postgres.typed.typed-jsonb-test] :no-report true})]
+  (pr-str (select-keys summary [:status :counts])))

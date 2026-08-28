@@ -269,7 +269,9 @@ fn global_state_value(registry: &NamespaceRegistry<Value>, display_chars: usize)
 
 fn global_value_snapshot(value: &Value, display_chars: usize) -> Value {
     let kind = match value {
-        Value::Number(_) | Value::BigInteger(_) => "integer",
+        Value::Number(_) => "long",
+        Value::BigInteger(_) if crate::numeric::is_long_value(value) => "long",
+        Value::BigInteger(_) => "bigint",
         Value::Float(_) => "float",
         Value::Character(_) => "character",
         Value::Bool(_) => "boolean",

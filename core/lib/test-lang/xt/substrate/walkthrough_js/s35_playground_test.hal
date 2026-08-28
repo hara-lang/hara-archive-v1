@@ -1,0 +1,28 @@
+(ns xt.substrate.walkthrough-js.s35-playground-test "Walkthrough test demonstrating js.react.ext-page against a substrate node\n   running inside a browser page served by the `:playground` runtime.\n\n   The `:playground` runtime starts an http-kit server that serves an HTML\n   page with an embedded WebSocket eval client. A headless Chrome instance is\n   navigated to that page, the substrate/React modules are scaffolded into the\n   browser over the WebSocket, and then `!.js` forms drive substrate page\n   models through `js.react.ext-page`." (:use code.test) (:require [lang.core :as l] [std.lib.component :as component] [xt.lang.common-notify :as notify]))
+
+(require (quote [tahto.runtime.js-playground :as js-playground]) (quote [tahto.runtime.chromedriver :as chromedriver]))
+
+(l/script- :js {:emit {:lang/jsx false} :config {:port 0} :require [[xt.lang.spec-base :as xt] [xt.lang.common-repl :as repl] [xt.lang.spec-promise :as promise] [xt.event.base-model :as event-model] [xt.substrate :as substrate] [xt.substrate.page-core :as page-core] [tahto.runtime.js-playground.client :as client] [js.react.ext-page :as ext-page]] :test-mode true :runtime :playground})
+
+(defn.js create-node "creates the substrate node spec" {:added "4.1"} [] (return {"spaces" {"space/a" {"state" {}}} "id" "s35-node"}))
+
+(defn.js setup-node "creates a substrate node with a single page model" {:added "4.1"} [] (var node (substrate/node-create (-/create-node))) (page-core/group-add-attach node "space/a" "page" {"greet" {"handler" (fn [ctx] (var args (. ctx ["args"])) (return {"value" (xt/x:get-idx args 0)})) "defaults" {"args" ["hello"]} "options" {"trigger" true}}}) (return node))
+
+(defn.js modelOutputValue "reads the current output value of the page model via ext-page" {:added "4.1"} [node] (var model (ext-page/get-model node "space/a" ["page" "greet"])) (var output (event-model/get-current model nil)) (return (:? (xt/x:nil? output) nil (. output ["value"]))))
+
+(defn.js runModelCheck "creates a node, sets input, waits for the pipeline, and calls notifyFn with the output" {:added "4.1"} [data notifyFn] (var node (-/setup-node)) (page-core/model-set-input node "space/a" "page" "greet" {"data" [data]} {}) (var p (promise/x:with-delay 200 (fn [] (return (-/modelOutputValue node))))) (return (promise/x:promise-then p notifyFn)))
+
+(defn- wait-for-channel "waits up to 5s for the playground websocket channel to be connected" [rt] (let [channel (:channel rt)] (loop [i 0] (when (and (< i 50) (not (deref channel))) (Thread/sleep 100) (recur (inc i))))))
+
+(fact:global {:teardown [(l/rt:stop) (component/stop +browser+)] :setup [(l/rt:restart :js) (l/rt:scaffold-imports :js) (def +url+ (js-playground/play-url (l/rt :js))) (def +browser+ (chromedriver/browser {})) (chromedriver/goto +url+ 5000 +browser+) (wait-for-channel (l/rt :js))]})
+
+^{:adopt true :refer xt.substrate.walkthrough-js.s35-playground-test/CANARY :added "4.1"}
+(fact "basic eval reaches the playground-served browser" (!.js (+ 1 2 3)) => 6)
+
+^{:refer xt.substrate.walkthrough-js.s35-playground-test/ext-page-renders-initial-output :added "4.1"}
+(fact "ext-page can read the substrate model in a playground-served browser" (notify/wait-on [:js 5000] (-/runModelCheck "hello" (fn [v] (repl/notify v)))) => "hello")
+
+^{:refer xt.substrate.walkthrough-js.s35-playground-test/ext-page-follows-model-updates :added "4.1"}
+(fact "ext-page follows model updates in a playground-served browser" (notify/wait-on [:js 5000] (-/runModelCheck "world" (fn [v] (repl/notify v)))) => "world")
+
+(comment (!.js (window.PLAYGROUND.setStage [:div "hello world"])) (!.js (+ 1 2 3)))

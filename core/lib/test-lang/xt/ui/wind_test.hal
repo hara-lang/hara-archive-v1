@@ -1,0 +1,62 @@
+(ns xt.ui.wind-test (:use code.test) (:require [lang.core :as l]))
+
+^{:seedgen/root {:all true}} (l/script- :js {:require [[xt.lang.spec-base :as xt] [xt.ui.core :as ui] [xt.ui.wind :as wind-ui]] :runtime :basic})
+
+^{:refer xt.ui.wind/prepare :added "4.1"} (fact "transforms portable functions into Wind WDynamic json and actions" (!.js (var changed nil) (var runtime (ui/runtime-create nil (wind-ui/flutter-registry) {} {} {})) (var bundle (wind-ui/prepare runtime (ui/node "ui/column" {"class" "gap-4"} [(ui/node "ui/input" {"on_change" (fn [value] (:= changed value)) "value" "Ada"} [])]))) (var input (xt/x:get-key (xt/x:get-key (xt/x:get-key bundle "json") "children") 0)) (var action-id (xt/x:get-path input ["props" "onChange" "action"])) ((xt/x:get-key (xt/x:get-key bundle "actions") action-id) {"_value" "Grace"}) [(xt/x:get-path bundle ["json" "type"]) (xt/x:get-path bundle ["json" "props" "className"]) (xt/x:get-key input "type") changed]) => ["WDiv" "flex flex-col gap-4" "WInput" "Grace"])
+
+^{:refer xt.ui.wind/flutter-registry :added "4.1"}
+(fact "composes the portable catalog with Wind renderer ids"
+  (!.js
+    (var registry (wind-ui/flutter-registry))
+    [(xt/x:get-key registry "id")
+     (ui/registry-renderer registry "ui/column")
+     (ui/registry-renderer registry "ui/input")
+     (xt/x:not-nil? (ui/registry-renderer registry "ui/table"))])
+  => ["composed" "WDiv" "WInput" true])
+
+^{:refer xt.ui.wind/action-add! :added "4.1"}
+(fact "registers a deterministic action and forwards value events"
+  (!.js
+    (var state {"next" 0 "actions" {}})
+    (var captured nil)
+    (var event (wind-ui/action-add! state "onChange"
+                                    (fn [value] (:= captured value))
+                                    true))
+    (var action-id (xt/x:get-path event ["onChange" "action"]))
+    ((xt/x:get-key (xt/x:get-key state "actions") action-id) {"_value" "Ada"})
+    [event captured (xt/x:get-key state "next")])
+  => [{"onChange" {"action" "xt_ui_0"}} "Ada" 1])
+
+^{:refer xt.ui.wind/normalize-props :added "4.1"}
+(fact "normalizes Wind prop names and omits portable-only flags"
+  (!.js
+    (var state {"next" 0 "actions" {}})
+    (wind-ui/normalize-props
+     "ui/textarea"
+     {"class" "wide"
+      "aria_label" "About"
+      "read_only" true
+      "pending" true
+      "rows" 3
+      "hidden" true}
+     state))
+  => {"className" "wide"
+      "semanticLabel" "About"
+      "readOnly" true
+      "isLoading" true
+      "maxLines" 3})
+
+^{:refer xt.ui.wind/prepare-node :added "4.1"}
+(fact "prepares primitives, hidden nodes and unknown components"
+  (!.js
+    (var runtime (ui/runtime-create nil (wind-ui/flutter-registry) {} {} {}))
+    [(wind-ui/prepare-node runtime "hello" {"next" 0 "actions" {}})
+     (wind-ui/prepare-node runtime {"component" "ui/text" "props" {"value" "ready"} "children" []} {"next" 0 "actions" {}})
+     (wind-ui/prepare-node runtime {"component" "ui/unknown" "props" {} "children" ["fallback"]} {"next" 0 "actions" {}})
+     (wind-ui/prepare-node runtime {"component" "ui/text" "props" {"hidden" true} "children" []} {"next" 0 "actions" {}})])
+  => [{"props" {"text" "hello"} "type" "WText"}
+      {"props" {"text" "ready"} "type" "WText" "children" []}
+      {"props" {"className" "flex flex-col"}
+       "type" "WDiv"
+       "children" {"props" {"text" "fallback"} "type" "WText"}}
+      nil])

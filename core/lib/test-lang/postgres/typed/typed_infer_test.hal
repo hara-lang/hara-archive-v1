@@ -130,3 +130,6 @@
     (get-in result [:fields :tags :type]))
   => :text
   (infer/infer-jsonb-arg-shape* 'm (update-function) #{} :track) => nil)
+
+(let [summary (run {:namespace '[postgres.typed.typed-infer-test] :no-report true})]
+  (pr-str (select-keys summary [:status :counts])))

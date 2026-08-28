@@ -122,3 +122,6 @@
   (types/enum-def? (types/get-type 'ns/TestEnum)) => true
   (types/fn-def? (types/get-type 'ns/testFn)) => true
   (do (types/clear-registry) true) => true)
+
+(let [summary (run {:namespace '[postgres.typed.typed-parse-test] :no-report true})]
+  (pr-str (select-keys summary [:status :counts])))

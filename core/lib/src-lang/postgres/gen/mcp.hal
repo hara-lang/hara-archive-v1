@@ -1,0 +1,139 @@
+(ns postgres.gen.mcp
+  (:config {:role :internal})
+  (:require [std.foundation :as foundation]
+            [postgres.gen.bind-macro :as bind]
+            [postgres.gen.template-code :as template]))
+
+(def +integer-types+
+  #{"smallint" "integer" "bigint" "int2" "int4" "int8"})
+
+(def +number-types+
+  #{"decimal" "numeric" "real" "double precision" "float4" "float8"})
+
+(def +boolean-types+
+  #{"boolean" "bool"})
+
+(def +object-types+
+  #{"json" "jsonb"})
+
+(def +timestamp-types+
+  #{"timestamp" "timestamptz" "timestamp with time zone"
+    "timestamp without time zone"})
+
+(defn ^{:public true}
+  pg-type-schema
+  "Maps a bound PostgreSQL type to the portable MCP JSON Schema subset."
+  [type]
+  (cond
+    (has? +integer-types+ type) {:type "integer"}
+    (has? +number-types+ type) {:type "number"}
+    (has? +boolean-types+ type) {:type "boolean"}
+    (has? +object-types+ type) {:type "object"}
+    (= "uuid" type) {:type "string" :format "uuid"}
+    (= "date" type) {:type "string" :format "date"}
+    (has? +timestamp-types+ type) {:type "string" :format "date-time"}
+    (= "bytea" type) {:type "string" :contentEncoding "base64"}
+    :else {:type "string"}))
+
+(defn ^{:public true}
+  input-schema
+  "Derives an object schema while preserving PostgreSQL argument names exactly."
+  [input]
+  {:type "object"
+   :properties
+   (reduce
+    (fn [output entry]
+      (assoc output
+             (:symbol entry)
+             (pg-type-schema (:type entry))))
+    {}
+    (sort-by (fn [entry] (:symbol entry)) input))
+   :required (vec (map (fn [entry] (:symbol entry)) input))
+   :additional_properties false})
+
+(defn ^{:public true}
+  output-schema
+  "Derives a conservative result schema from a PostgreSQL return type."
+  [return]
+  (pg-type-schema return))
+
+(defn ^{:public true}
+  tool-descriptor
+  "Extracts one opt-in descriptor from a PostgreSQL pointer."
+  [ptr]
+  (let [entry (bind/bind-entry ptr)
+        metadata (get-in entry [:api/meta :mcp])]
+    (when (not (nil? metadata))
+      (let [bound (bind/bind-function ptr)
+            descriptor (merge
+                        {:input_schema (input-schema (:input bound))
+                         :output_schema (output-schema (:return bound))}
+                        metadata)]
+        (when (not (and (string? (:name descriptor))
+                        (not (empty? (:name descriptor)))))
+          (throw
+           (ex :argument
+               {:entry (:id entry) :mcp metadata}
+               :ex/message "MCP metadata requires a non-empty :name")))
+        (when (not (and (string? (:description descriptor))
+                        (not (empty? (:description descriptor)))))
+          (throw
+           (ex :argument
+               {:entry (:id entry) :mcp metadata}
+               :ex/message "MCP metadata requires a non-empty :description")))
+        descriptor))))
+
+(defn ^{:public true}
+  tool-entries
+  "Extracts deterministic, uniquely named MCP descriptors from namespaces."
+  [source-namespaces]
+  (let [entries
+        (reduce
+         (fn [output ns-sym]
+           (require ns-sym)
+           (reduce
+            (fn [output pair]
+              (let [sym (second pair)
+                    resolved (foundation/resolve sym)
+                    descriptor (if resolved
+                                 (tool-descriptor (deref resolved))
+                                 nil)]
+                (if descriptor
+                  (conj output [sym descriptor])
+                  output)))
+            output
+            (bind/list-all ns-sym)))
+         []
+         source-namespaces)
+        entries
+        (vec
+         (sort-by
+          (fn [entry]
+            [(:name (second entry)) (str (first entry))])
+          entries))
+        grouped (group-by (fn [entry] (:name (second entry))) entries)
+        duplicates
+        (vec
+         (filter
+          (fn [entry]
+            (> (count (second entry)) 1))
+          (seq grouped)))]
+    (when (not (empty? duplicates))
+      (throw
+       (ex :conflict
+           {:duplicates
+            (vec
+             (map
+              (fn [entry]
+                {:name (first entry)
+                 :sources (vec (map (fn [match] (str (first match)))
+                                    (second entry)))})
+              duplicates))}
+           :ex/message "Duplicate generated MCP tool names")))
+    entries))
+
+(defn ^{:public true}
+  render-module
+  "Renders MCP data through the generic descriptor module template."
+  [target-ns source-namespaces]
+  (template/render-module target-ns :mcp (tool-entries source-namespaces)))

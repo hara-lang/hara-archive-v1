@@ -1,0 +1,766 @@
+(ns postgres.entity
+  (:require [lang.model.v1.spec-postgres.postgres-entity-util :as ut]
+            [lang.core :as l]
+            [lang.common.grammar-spec :as grammar-spec]
+            [std.foundation :as foundation]
+            [std.foundation.string :as string]))
+
+(foundation/intern-in ut/init-addons
+             ut/init-default-ns-str
+             ut/get-addon
+             ut/add-addon)
+
+(def ^:dynamic *resolve* foundation/resolve)
+
+(def ESpec
+  {:id     #{:id/none :id/v4 :id/v1 :id/text map?}
+   :class  #{:none
+             :0d/base :0d/entry :0d/log
+             :1d/base :1d/entry :1d/log
+             :2d/base :2d/entry :2d/log}
+   :addons #{keyword? vector? map?}
+   :owner #{symbol? vector?}
+   :provides #{map?}
+   :track  #{:track/none
+             :track/data
+             :track/log
+             :track/record
+             :track/time}
+   :access #{:access/public
+             :access/auth
+             :access/system
+             :access/hidden
+             :none}
+   :class-types #{nil? false? string? symbol? keyword? coll?}})
+
+(def +structural-columns+
+  #{:class-table :class-link :class-context :class-ref})
+
+(def +coord->column+
+  {:table :class-table
+   :context :class-context
+   :id :class-ref
+   :link :class-link})
+
+(def +compatibility+
+  {:entity { [2 :log]   #{[2 :base]}
+             [1 :log]   #{[1 :entry] [1 :base]}
+             [2 :entry] #{[2 :base]}
+             [1 :entry] #{[1 :base]}}
+   :addons { [1 :entry] #{[2 :base] [1 :base]}
+             [0 :entry] #{[0 :base] [0 :entry] [1 :base] [2 :base]}
+             [0 :base]  #{[0 :base] [0 :entry]}}})
+
+(defn parse-class
+  [class]
+  (if (= :none class)
+    [nil :none]
+    (let [depth (namespace class)
+          role  (name class)]
+      [(parse-long (string/slice depth 0 1))
+       (keyword role)])))
+
+(defn basis-for
+  [[depth role] basis-kind]
+  (case [depth role basis-kind]
+    [0 :base  :minimal] #{}
+    [0 :base  :expanded] #{}
+    [0 :entry :minimal] #{}
+    [0 :entry :expanded] #{:table :context}
+    [0 :log   :minimal] #{}
+    [0 :log   :expanded] #{}
+
+    [1 :base  :minimal] #{:table :id}
+    [1 :base  :expanded] #{:table :context :id}
+    [1 :entry :minimal] #{:table}
+    [1 :entry :expanded] #{:table :context :link}
+    [1 :log   :minimal] #{:table}
+    [1 :log   :expanded] #{:table}
+
+    [2 :base  :minimal] #{:table :context :id}
+    [2 :base  :expanded] #{:table :context :id}
+    [2 :entry :minimal] #{:table :context}
+    [2 :entry :expanded] #{:table :context}
+    [2 :log   :minimal] #{:table :context}
+    [2 :log   :expanded] #{:table :context}
+
+    #{}))
+
+(defn local-support-columns
+  [[depth role] basis-kind relation]
+  (case [relation depth role basis-kind]
+    [:addon 0 :base  :minimal] []
+    [:addon 0 :entry :minimal] []
+    [:addon 0 :entry :expanded] [:class-table :class-context]
+    [:addon 1 :base  :minimal] [:class-table]
+    [:addon 1 :base  :expanded] [:class-table :class-context]
+    [:addon 1 :entry :minimal] [:class-table]
+    [:addon 1 :entry :expanded] [:class-table :class-link]
+    [:addon 1 :log   :minimal] [:class-table]
+    [:addon 2 :base  :minimal] [:class-table :class-context]
+    [:addon 2 :entry :minimal] [:class-table :class-context]
+    [:addon 2 :log   :minimal] [:class-table :class-context]
+
+    [:entity 0 :base  :minimal] []
+    [:entity 0 :entry :minimal] []
+    [:entity 0 :entry :expanded] [:class-table :class-context]
+    [:entity 1 :base  :minimal] [:class-table]
+    [:entity 1 :base  :expanded] [:class-table :class-context]
+    [:entity 1 :entry :minimal] [:class-table]
+    [:entity 1 :entry :expanded] [:class-table]
+    [:entity 1 :log   :minimal] [:class-table]
+    [:entity 2 :base  :minimal] [:class-table :class-context]
+    [:entity 2 :entry :minimal] [:class-table :class-context]
+    [:entity 2 :log   :minimal] [:class-table :class-context]
+
+    [:owner 1 :entry :minimal] [:class-table]
+    [:owner 1 :entry :expanded] [:class-table]
+    [:owner 1 :log   :minimal] [:class-table]
+    [:owner 2 :entry :minimal] [:class-table :class-context]
+    [:owner 2 :log   :minimal] [:class-table :class-context]
+
+    []))
+
+(defn target-support-columns
+  [[depth _]]
+  (case (long depth)
+    0 []
+    1 [:class-table]
+    2 [:class-table :class-context]
+    []))
+
+(defn project-support-columns
+  [relation source-tuple basis-kind target-tuple]
+  (let [local-cols  (local-support-columns source-tuple basis-kind relation)
+        remote-cols (target-support-columns target-tuple)
+        remote-cols (if (and (= relation :addon)
+                             (= source-tuple [1 :entry])
+                             (= target-tuple [2 :base]))
+                      [:class-context :class-table]
+                      remote-cols)]
+    (when (> (count remote-cols) (count local-cols))
+      (throw (ex :database
+                 {:relation relation
+                  :source source-tuple
+                  :basis basis-kind
+                  :target target-tuple
+                  :local-cols local-cols
+                  :remote-cols remote-cols}
+                 :ex/message "Not enough local support columns")))
+    (zipmap local-cols remote-cols)))
+
+(defn column->coord
+  [column]
+  (first (keep (fn [[coord k]]
+                 (when (= column k)
+                   coord))
+               (seq +coord->column+))))
+
+(defn required-basis-for-plan
+  [projection]
+  (->> (keys projection)
+       (map column->coord)
+       (remove nil?)
+       set))
+
+(defn allowed-target?
+  [relation source-tuple target-tuple]
+  (has? (or (get-in +compatibility+ [relation source-tuple]) #{})
+        target-tuple))
+
+(defn public-input->basis
+  [input]
+  (or (:basis input)
+      (basis-for (parse-class (:class input)) :expanded)))
+
+(defn target-info
+  [ref]
+  (let [resolved (*resolve* ref)]
+    (when resolved
+      (let [entry @@resolved
+            input (:api/input entry)
+            symname (or (:symname input)
+                        (if (:id entry) (name (:id entry)) nil))]
+        (cond-> {:class (:class input)
+                 :tuple (parse-class (:class input))
+                 :basis (public-input->basis input)}
+          symname (assoc :symname symname))))))
+
+(defn E-owner-pair
+  [owner]
+  (let [[ref key] (if (vector? owner)
+                    owner
+                    [owner nil])
+        ref       (ut/normalise-ref ref)]
+    (when-not (and ref
+                   (or (nil? key)
+                       (keyword? key)))
+      (throw (ex :database
+                 {:owner owner
+                  :expected ":owner target or :owner [target :local-key]"}
+                 :ex/message "Invalid :owner")))
+    [(or key
+         (keyword (string/spear-case (name ref))))
+     ref]))
+
+(defn E-check-input
+  [m]
+  (let [retired (select-keys m [:link :spec/addon])
+        _       (when (seq retired)
+                  (throw (ex :database
+                             {:retired (keys retired)
+                              :input m}
+                             :ex/message "Retired inputs for E")))
+        valid? (fn [allowed v]
+                 (let [preds (filter function? allowed)
+                       lits  (set (remove function? allowed))]
+                   (or (has? lits v)
+                       (some (fn [pred] (pred v)) preds))))
+        errors (reduce-kv (fn [acc k allowed]
+                            (if (has? m k)
+                                  (let [v (get m k)]
+                                (cond
+                                  (= k :addons)
+                                  (let [vs (cond (nil? v) []
+                                                 (coll? v) v
+                                                 :else [v])
+                                        bad (remove (fn [value]
+                                                      (valid? allowed value))
+                                                    vs)]
+                                    (if (seq bad)
+                                      (assoc acc k {:invalid bad :allowed allowed})
+                                      acc))
+
+                                  (= k :owner)
+                                  (try
+                                    (when (not (nil? v))
+                                      (E-owner-pair v))
+                                    acc
+                                    (catch Throwable _
+                                      (assoc acc k {:value v
+                                                    :expected ":owner target or :owner [target :local-key]"})))
+
+                                  (= k :provides)
+                                  (if (and (map? v)
+                                           (keyword? (:key v))
+                                      (or (not (has? v :priority))
+                                               (number? (:priority v))))
+                                    acc
+                                    (assoc acc k {:value v
+                                                  :expected {:key :keyword
+                                                             :priority :optional-number}}))
+
+                                  :else
+                                  (if (valid? allowed v)
+                                    acc
+                                    (assoc acc k {:value v :allowed allowed}))))
+                              acc))
+                          {}
+                          ESpec)]
+    (if (seq errors)
+      (throw (ex :database {:errors errors :input m}
+                 :ex/message "Invalid inputs for E"))
+      m)))
+
+(defn E-known-addon-keys
+  [application]
+  (let [application (or application
+                        (ut/default-application (ns-current)))]
+    (set (keys (get @ut/+addons+ application)))))
+
+(defn E-addon-bool-shorthand
+  [m]
+  (let [addon-keys  (E-known-addon-keys (:application m))
+        [extra out] (reduce-kv (fn [[extra out] k v]
+                                 (if (and (has? addon-keys k)
+                                          (or (true? v)
+                                              (false? v)
+                                              (nil? v)))
+                                   [(cond-> extra
+                                      (true? v) (conj k))
+                                    (dissoc out k)]
+                                   [extra out]))
+                               [[] m]
+                               m)
+        addons      (vec (distinct (concat (or (:addons out) [])
+                                           (sort-by name extra))))]
+    (assoc out :addons addons)))
+
+(defn E-addon-columns-single
+  ([v]
+   (E-addon-columns-single v nil))
+  ([v application]
+   (let [ref-fn (fn [key ref]
+                  {:key key
+                   :field {:type :ref
+                           :required true
+                           :ref {:ns ref}}})
+         get-addon (fn [key]
+                     (let [addons (deref ut/+addons+)
+                           app (or application (ut/default-application))
+                           addon (or (get-in addons [app key])
+                                     (some (fn [[_ values]]
+                                             (get values key))
+                                           (seq addons)))]
+                       (when addon
+                         (assoc addon :key key))))]
+     (cond (vector? v)
+           (let [[key ref priority custom] v]
+             (foundation/merge-nested
+              (ref-fn key ref)
+              {:priority priority}
+              custom))
+
+           (keyword? v)
+           (get-addon v)
+
+           (map? v)
+           (let [addon (get-addon (or (:type v) (:key v)))]
+             (merge addon
+                    (dissoc v :ref)
+                    (if (:ref v)
+                      (ref-fn (:key v) (:ref v)))))
+
+           :else
+           (throw (ex :database {:input v}
+                      :ex/message "Addon Not Valid"))))))
+
+(defn basis-kind-for
+  [m]
+  (if (= (:basis m) (basis-for (parse-class (:class m)) :minimal))
+    :minimal
+    :expanded))
+
+(defn plan-addon-relation
+  [m addon]
+  (let [source-tuple (parse-class (:class m))
+        target       (target-info (-> addon :field :ref :ns))
+        _            (when-not (allowed-target? :addons source-tuple (:tuple target))
+                       (throw (ex :database
+                                  {:class (:class m)
+                                   :target (:class target)
+                                   :addon addon}
+                                  :ex/message "Not a valid addon:")))
+        projection   (project-support-columns :addon
+                                              source-tuple
+                                              (basis-kind-for m)
+                                              (:tuple target))]
+    (into {}
+          (map (fn [[local remote]]
+                 [local {:foreign {(:key addon) {:ns (-> addon :field :ref :ns)
+                                                 :column remote}}}])
+               (seq projection)))))
+
+(defn plan-entity-relation
+  [m]
+  (let [source-tuple (parse-class (:class m))
+        basis-kind   (basis-kind-for m)
+        entity       (:entity m)
+        {:keys [for unique]} entity
+        _    (when-not for
+               (throw (ex :database {:input m}
+                          :ex/message "Need a :for keyword")))
+        [key ref] (if (vector? for)
+                    for
+                    [(keyword (string/spear-case (name (ut/normalise-ref for)))) for])
+        ref         (ut/normalise-ref ref)
+        remote-cols (if (has? #{[1 :entry] [1 :log]} source-tuple)
+                      [:class-table]
+                      [:class-table :class-context])
+        local-cols  (local-support-columns source-tuple basis-kind :entity)
+        _           (when (> (count remote-cols) (count local-cols))
+                      (throw (ex :database
+                                 {:class (:class m)
+                                  :basis (:basis m)
+                                  :entity entity
+                                  :local-cols local-cols
+                                  :remote-cols remote-cols}
+                                 :ex/message "Not enough local support columns for entity relation")))
+        projection  (zipmap local-cols remote-cols)
+        unique      (or unique
+                        (if (not= "log" (name (:class m)))
+                          [(string/snake-case (name key))]))
+        ref-field-base {:type :ref
+                        :required true
+                        :ref {:ns ref}
+                        :sql {:cascade true
+                              :unique unique}}]
+    (merge
+     (into {}
+           (map (fn [[local remote]]
+                  [local {:foreign {key {:ns ref
+                                         :column remote}}}])
+                (seq projection)))
+     {key (cond-> ref-field-base
+            (= (:class m) :2d/log) (assoc :primary "default"))})))
+
+(defn plan-owner-relation
+  [m]
+  (let [source-tuple (parse-class (:class m))
+        basis-kind   (basis-kind-for m)
+        {:keys [owner]} m]
+    (if (not owner)
+      {}
+      (let [[key ref]  (E-owner-pair owner)
+            target     (target-info ref)
+            projection (project-support-columns :owner
+                                                source-tuple
+                                                basis-kind
+                                                (:tuple target))
+            unique     (if (= (:class m) :1d/entry)
+                         [(string/snake-case (name key))])
+            table-base (merge
+                        (into {}
+                              (map (fn [[local remote]]
+                                     [local {:foreign {key {:ns ref
+                                                            :column remote}}}])
+                                   (seq projection)))
+                        {key {:type :ref
+                              :required true
+                              :ref {:ns ref}
+                              :sql (cond-> {:cascade true}
+                                     unique (assoc :unique unique))}})]
+        (cond-> table-base
+          (has? #{:2d/log :2d/entry} (:class m))
+          (foundation/merge-nested
+           {key {:primary "default"}}))))))
+
+(defn coordinate-column
+  [ns-str coord]
+  (case coord
+    :table (ut/type-class ns-str 1)
+    :link (ut/type-class ns-str 2)
+    :context (ut/type-class ns-str 3)
+    :id (ut/type-class-ref {:sql {:unique ["class"]}} 4)))
+
+(defn E-class-columns
+  [{:keys [symname entity ns-str basis]
+    :or {ns-str ut/*ns-str*
+         symname "Global"}
+    :as m}]
+  (let [[depth role] (parse-class (:class m))
+        {:keys [context]
+         :or {context "Global"}} entity
+        basis-map     (into {}
+                           (map (fn [coord]
+                                  [(get +coord->column+ coord)
+                                   (coordinate-column ns-str coord)])
+                                basis))
+        generated-map (case [depth role]
+                        [0 :entry] (cond-> {}
+                                      (has? basis :table)
+                                      (assoc :class-table {:generated symname})
+                                      (has? basis :context)
+                                      (assoc :class-context {:generated context}))
+                        [1 :base]  (cond-> {}
+                                      (has? basis :table)
+                                      (assoc :class-table {:primary "default"})
+                                      (has? basis :context)
+                                      (assoc :class-context {:generated context}))
+                        [1 :entry] (cond-> {}
+                                      (has? basis :table)
+                                      (assoc :class-table {:primary "default"})
+                                      (has? basis :link)
+                                      (assoc :class-link {:generated symname})
+                                      (has? basis :context)
+                                      (assoc :class-context {:generated context}))
+                        [1 :log]   {:class-table {:primary "default"}}
+                        [2 :base]  {:class-table {:primary "default"
+                                                  :sql {:unique ["class"]}}
+                                    :class-context {:primary "default"
+                                                    :sql {:unique ["class"]}}}
+                        [2 :entry] {:class-table {:primary "default"}
+                                    :class-context {:primary "default"}}
+                        [2 :log]   {:class-table {:primary "default"}
+                                    :class-context {:primary "default"}}
+                        {})]
+    (foundation/merge-nested basis-map generated-map)))
+
+(defn E-basis-compatible?
+  [{:keys [entity addons owner]
+    :as m}
+   basis]
+  (let [m (assoc m :basis basis)]
+    (and
+     (or (not entity)
+         (do (plan-entity-relation m)
+             true))
+     (or (not owner)
+         (do (plan-owner-relation m)
+             true))
+             (every? (fn [addon]
+               (if (not= :ref (-> addon :field :type))
+                 true
+                 (do (plan-addon-relation m addon)
+                     true)))
+             (map (fn [addon]
+                    (E-addon-columns-single addon (:application m)))
+                  addons)))))
+
+(defn E-resolve-basis
+  [{:keys [class]
+    :as m}]
+  (let [parsed   (parse-class class)
+        minimal  (basis-for parsed :minimal)
+        expanded (basis-for parsed :expanded)]
+    (if (= minimal expanded)
+      minimal
+      (if (try
+            (E-basis-compatible? m minimal)
+            (catch Throwable _
+              false))
+        minimal
+        expanded))))
+
+(defn E-addon-columns
+  [{:keys [addons]
+    :as m}]
+  (let [addons           (map (fn [addon]
+                                (E-addon-columns-single addon (:application m)))
+                              addons)
+        addon-cols       (reduce (fn [out {:keys [field unique priority key]}]
+                                   (let [is-ref (-> field :type (= :ref))
+                                         unique (or unique
+                                                    (if is-ref
+                                                      [(string/snake-case (name key))]))]
+                                     (assoc out key
+                                            (cond-> field
+                                              :then  (assoc :priority priority)
+                                              unique (assoc-in [:sql :unique] unique)))))
+                                 {}
+                                 addons)
+        addon-class-cols (->> addons
+                              (filter (fn [{:keys [field]}]
+                                        (= :ref (:type field))))
+                              (reduce (fn [out addon]
+                                        (foundation/merge-nested
+                                         out
+                                         (plan-addon-relation m addon)))
+                                      {}))]
+    [addon-cols addon-class-cols]))
+
+(defn E-class-merge
+  [m id-cols track-cols class-cols addon-cols]
+  (let [[depth role] (parse-class (:class m))
+        {:keys [columns basis]} m
+        final-cols    (foundation/merge-nested
+                       (merge id-cols track-cols class-cols addon-cols)
+                       columns)
+        class-uniques (->> final-cols
+                           vals
+                           (keep (fn [{:keys [sql]}]
+                                   (:unique sql)))
+                           (mapcat (fn [value]
+                                     (if (coll? value)
+                                       value
+                                       [value])))
+                           set
+                           vec)
+        col-uniques   (cond
+                        (or (zero? (or depth 0))
+                            (empty? class-uniques))
+                        {}
+
+                        (has? basis :context)
+                        {:class-table {:sql {:unique class-uniques}}
+                         :class-context {:sql {:unique class-uniques}}}
+
+                        :else
+                        {:class-table {:sql {:unique class-uniques}}})]
+    (foundation/merge-nested final-cols col-uniques)))
+
+(defn E-main-track
+  [{:keys [id class track ns-str]
+    :as m}]
+  (let [[_
+         role]    (parse-class class)
+        [id-in
+         track-in] (case role
+                     :log   [:id/v1 :track/log]
+                     :base  [:id/v4 :track/log]
+                     :entry [:id/v4 :track/data]
+                     [:id/none :track/none])
+        [id track] [(or id id-in) (or track track-in)]
+        id         (cond (map? id) id
+                         :else (case id
+                                 :id/v1   (ut/type-id-v1)
+                                 :id/v4   (ut/type-id-v4)
+                                 :id/text (ut/type-id-text ns-str)
+                                 :id/none nil))
+        track-val  (ut/get-tracking track)
+        track-cols (apply hash-map (ut/fill-priority (ut/get-tracking-columns track) 200))
+        id-cols    (if id {:id (assoc id :priority 0)})]
+    [id-cols track-cols track-val]))
+
+(defn E-main
+  [{:keys [entity access]
+    :as m}]
+  (let [[id-cols
+         track-cols
+         track-val]       (E-main-track m)
+        access-val        (ut/get-access access)
+        class-cols        (cond-> (E-class-columns m)
+                            entity (foundation/merge-nested
+                                    (plan-entity-relation m)))
+        [addon-cols
+         addon-class-cols] (E-addon-columns m)
+        final-cols        (E-class-merge m
+                                         id-cols
+                                         track-cols
+                                         (foundation/merge-nested class-cols
+                                                                  addon-class-cols
+                                                                  (plan-owner-relation m))
+                                         addon-cols)]
+    {:api/meta  access-val
+     :api/input (dissoc m :ns-str :application)
+     :public    (if (has? #{:none :access/hidden} access)
+                  false
+                  true)
+     :track     track-val
+     :raw       (->> (seq final-cols)
+                     (sort-by (fn [[_ v]]
+                                [(or (:priority v) 50)
+                                 (or (:priority-index v) 0)]))
+                     vec)}))
+
+(defn E-main-spec
+  [{:keys [provides]}]
+  (if (and provides grammar-spec/*symbol*)
+    (let [{:keys [key priority]} provides]
+      (ut/add-addon key
+                    (ut/type-ref (or (namespace grammar-spec/*symbol*)
+                                     (name (ns-current)))
+                                 (name grammar-spec/*symbol*))
+                    priority))))
+
+(defn normalise-class-types
+  [class-types]
+  (let [class-type-name
+        (fn [value]
+          (cond (string? value) value
+                (or (symbol? value) (keyword? value)) (name value)
+                :else (str value)))]
+    (cond (or (nil? class-types)
+              (false? class-types))
+          #{}
+
+          (or (string? class-types)
+              (symbol? class-types)
+              (keyword? class-types))
+          #{(class-type-name class-types)}
+
+          (or (coll? class-types)
+              (seq? class-types))
+          (if (every? (fn [value]
+                        (or (string? value)
+                            (symbol? value)
+                            (keyword? value)))
+                      class-types)
+            (into #{} (map class-type-name class-types))
+            (throw (ex :database {:class-types class-types}
+                       :ex/message "Invalid class types")))
+
+          :else
+          (throw (ex :database {:class-types class-types}
+                     :ex/message "Invalid class types")))))
+
+(defn E-relation-ref
+  [relation]
+  (let [for (:for relation)]
+    (if (vector? for)
+      (second for)
+      for)))
+
+(defn E-reference-addons
+  ([addons]
+   (E-reference-addons addons nil))
+  ([addons application]
+   (->> addons
+        (map (fn [addon]
+               (E-addon-columns-single addon application)))
+        (filter (fn [addon] (= :ref (-> addon :field :type)))))))
+
+(defn E-auto-class-types
+  [{:keys [class symname basis entity owner addons]
+    :as m}]
+  (let [[depth] (parse-class class)
+        reference-addons (E-reference-addons addons (:application m))
+        relations (concat (keep identity [(E-relation-ref entity)
+                                          (if owner
+                                            (second (E-owner-pair owner)))])
+                          (keep (fn [addon] (-> addon :field :ref :ns))
+                                reference-addons))
+        linkage? (or entity owner (seq reference-addons))
+        own-type (when (and linkage?
+                            (has? #{0 1} depth))
+                   symname)
+        context-type (when (and linkage?
+                                (has? basis :context)
+                                (has? #{[0 :entry] [1 :entry]}
+                                           (parse-class class)))
+                       (or (get-in m [:entity :context]) "Global"))
+        target-types (keep (fn [ref]
+                             (let [{:keys [tuple symname]} (target-info ref)]
+                               (when (and (has? #{0 1} (first tuple))
+                                          symname)
+                                 symname)))
+                           relations)]
+    (normalise-class-types
+     (concat (keep identity [own-type context-type])
+             target-types))))
+
+(defn E-class-types
+  [m]
+  (if (has? m :class-types)
+    (normalise-class-types (:class-types m))
+    (E-auto-class-types m)))
+
+(defn class-types
+  ([]
+   (class-types (ut/default-application (ns-current)) []))
+  ([application]
+   (class-types application []))
+  ([application defaults]
+   (let [modules (deref l/script-modules)]
+     (->> modules
+          vals
+          (filter (fn [module]
+                    (some (fn [value] (= application value))
+                          (get-in module [:static :application]))))
+          (mapcat (comp vals :code))
+          (mapcat (fn [entry] (:api/class-types entry)))
+          (concat defaults)
+          normalise-class-types
+          sort
+          vec))))
+
+(defn E
+  [{:keys [application]
+    :as m}]
+  (let [normalise-fn (fn [m]
+                       (foundation/prewalk (fn [value]
+                                       (if (foundation/pointer? value)
+                                         (ut/normalise-ref value)
+                                         value))
+                                     m))
+        m            (merge {:symname (if grammar-spec/*symbol*
+                                        (name grammar-spec/*symbol*))
+                             :class   :none
+                             :access  :access/auth
+                             :columns []
+                             :ns-str  (or (ut/default-ns-str application)
+                                          ut/*ns-str*
+                                          (throw (ex :database {:ns (ns-current)}
+                                                     :ex/message "No ns-str found.")))}
+                            m)
+        m            (E-addon-bool-shorthand m)
+        m            (assoc m
+                            :addons (normalise-fn (:addons m))
+                            :owner  (normalise-fn (:owner m))
+                            :entity (normalise-fn (:entity m)))
+        _            (E-check-input m)
+        m            (assoc m :basis (E-resolve-basis m))
+        out          (assoc (E-main m)
+                            :api/class-types (E-class-types m))
+        _            (E-main-spec m)]
+    out))

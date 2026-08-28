@@ -140,6 +140,12 @@
 (defn error-with-provenance
   [message data t]
   (let [cause-data (compat/canonicalize-map (ex-data t))
+        cause-payload (dissoc cause-data
+                              :ex/code
+                              :ex/class
+                              :ex/message
+                              :ex/cause)
+        cause (if (map? (ex-data t)) t nil)
         data (compat/canonicalize-map data)
         current (frame data)
         inner-stack (provenance-stack cause-data)
@@ -156,7 +162,7 @@
                            :module
                            :entry
                            :grammar)
-        payload-0 (merge cause-data plain-data merged)
+        payload-0 (merge cause-payload plain-data merged)
         payload-1 (if (seq merged)
                     (assoc payload-0 :lang/provenance merged)
                     payload-0)
@@ -165,14 +171,19 @@
                     payload-1)
         payload-3 (assoc payload-2
                          :lang/wrapped true
-                         :lang/cause-class (ex-class t)
+                         :lang/cause-class (try
+                                             (ex-class t)
+                                             (catch Throwable _ nil))
                          :lang/cause-message (ex-message t))
         payload (if (and cause-data (not wrapped?))
-                  (assoc payload-3 :lang/cause-data cause-data)
-                  payload-3)]
-    (ex :generic payload :ex/message (if (ex-message t)
-               (str message ": " (ex-message t))
-               message) :ex/cause t)))
+                    (assoc payload-3 :lang/cause-data cause-data)
+                    payload-3)
+        output-message (if (ex-message t)
+                         (str message ": " (ex-message t))
+                         message)]
+    (if cause
+      (ex :generic payload :ex/message output-message :ex/cause cause)
+      (ex :generic payload :ex/message output-message))))
 
 (defn throw-with-provenance
   [message data t]

@@ -1,0 +1,21 @@
+(ns xt.db.text.sql-call-test (:use code.test) (:require [lang.core :as l] [postgres.gen.bind-macro :as gen] [xt.lang.common-notify :as notify]))
+
+^{:seedgen/scaffold true} (do (l/script- :postgres {:config {:dbname "test-scratch"} :require [[postgres.sample.scratch-v1 :as scratch]] :runtime :jdbc.client}))
+
+^{:seedgen/root {:dart {:extra [[dart.net.conn-postgres :as dart-postgres]]} :ruby {:extra [[ruby.net.conn-postgres :as ruby-postgres]]} :lua.nginx {:extra [[lua.nginx.conn-postgres :as lua-postgres]]} :js {:extra [[js.net.conn-postgres :as js-postgres]]} :all true :python {:extra [[python.net.conn-postgres :as py-postgres]]}}} (l/script- :js {:require [[xt.lang.spec-base :as xt] [xt.lang.spec-promise :as spec-promise] [xt.lang.common-repl :as repl] [xt.db.text.sql-call :as call] [xt.net.conn-sql :as conn-sql] [js.net.conn-postgres :as js-postgres]] :runtime :basic})
+
+(l/script- :lua.nginx {:config {:program :resty} :require [[xt.lang.spec-base :as xt] [xt.lang.spec-promise :as spec-promise] [xt.lang.common-repl :as repl] [xt.db.text.sql-call :as call] [xt.net.conn-sql :as conn-sql] [lua.nginx.conn-postgres :as lua-postgres]] :runtime :nginx.instance})
+
+(fact:global {:teardown [(l/rt:teardown :postgres) (l/rt:stop)] :setup [(l/rt:restart) (l/rt:setup :postgres)]})
+
+^{:refer xt.db.text.sql-call/decode-return :added "4.0"} (fact "decodes the return value" (!.js (call/decode-return (xt/x:json-encode {:status "ok" :data 1}) nil)) => 1 (!.js (call/decode-return (xt/x:json-encode {:status "error" :data "NOT VALID"}) nil)) => (throws))
+
+^{:refer xt.db.text.sql-call/call-format-input :added "4.0"} (fact "formats the inputs" (!.js (call/call-format-input {:input [{:type "numeric"} {:type "jsonb"}]} [1 ["hello"]])) => ["'1'" "'[\"hello\"]'"])
+
+^{:refer xt.db.text.sql-call/call-format-query :added "4.0"} (fact "formats a query" (!.js (call/call-format-query ((deref !) (gen/bind-function scratch/divf)) [1 2])) => "SELECT \"scratch\".divf('1', '2');")
+
+^{:refer xt.db.text.sql-call/call-raw :added "4.0"} (fact "calls a database function" (notify/wait-on :js (var client (js-postgres/create {:database "test-scratch"})) (-> (conn-sql/connect client {:port 5432 :password "postgres" :host "127.0.0.1" :user "postgres"}) (spec-promise/x:promise-then (fn [client] (return (call/call-raw client {:return "numeric" :input [{:type "numeric" :symbol "x"} {:type "numeric" :symbol "y"}] :id "addf" :schema "scratch" :flags {}} [10 20])))) (spec-promise/x:promise-then (fn [x] (conn-sql/disconnect client) (repl/notify x))) (spec-promise/x:promise-catch (fn [err] (repl/notify (. err message)))))) => 30)
+
+^{:refer xt.db.text.sql-call/call-api :added "4.0"} (fact "results an api style result" (notify/wait-on :js (var client (js-postgres/create {:database "test-scratch"})) (-> (conn-sql/connect client {}) (spec-promise/x:promise-then (fn [client] (return (call/call-api client {:return "numeric" :input [{:type "numeric" :symbol "x"} {:type "numeric" :symbol "y"}] :id "addf" :schema "scratch" :flags {}} [10 20])))) (spec-promise/x:promise-then (fn [x] (conn-sql/disconnect client) (repl/notify (xt/x:json-decode x)))) (spec-promise/x:promise-catch (fn [err] (repl/notify (. err message)))))) => {"data" 30 "status" "ok"})
+
+(comment (s/seedgen-benchadd (quote [xt.db.text.sql-call]) {:lang [:python :lua.nginx] :write true}))

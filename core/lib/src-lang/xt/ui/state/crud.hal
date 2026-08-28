@@ -1,0 +1,9 @@
+(ns xt.ui.state.crud "Schema-driven operational controller specifications." (:require [lang.core :as l]))
+
+(l/script :xtalk {:require [[xt.lang.spec-base :as xt] [xt.ui.state.collection :as collection] [xt.ui.state.form :as form]]})
+
+(defn.xt spec [id models fields columns actions opts] (return {"opts" (or opts {}) "models" (or models {}) "strategy" "page_controller" "fields" (or fields []) "id" id "actions" (or actions []) "columns" (or columns [])}))
+
+(defn.xt create-state [crud-spec values] (return {"mode" "list" "form" (form/create (or values {}) {}) "errors" {} "record" nil "status" "idle" "spec" crud-spec "collection" (collection/create {})}))
+
+(defn.xt set-mode! [state mode record] (xt/x:set-key state "mode" mode) (xt/x:set-key state "record" record) (return state))

@@ -27,7 +27,7 @@
    :foundation-symbols
    '#{+ - * / quot rem mod = not= < <= > >= compare
       identity inc dec constantly comp complement partial juxt
-      zero? pos? neg? even? odd? nil? false? true? boolean? number? long?
+      zero? pos? neg? even? odd? nil? false? true? boolean? number? long? bigint? integer?
       string? keyword? symbol? list? vector? map? set? fn? bytes? promise?
       has? empty? distinct? some? every? any?
       atom deref reset! cas! swap! watch-add watch-remove watch-list
@@ -88,7 +88,7 @@
      - {:arities :variadic :args [:num] :return :num}
      * {:arities :variadic :args [:num] :return :num}
      / {:arities :variadic :args [:num] :return :num}
-     count {:arities #{1} :args [:any] :return :int}
+     count {:arities #{1} :args [:any] :return :long}
      first {:arities #{1} :args [:any] :return :any}
      str {:arities :variadic :args [:any] :return :str}
      name {:arities #{1} :args [:any] :return :str}

@@ -1,0 +1,27 @@
+(ns xt.db.poc.n01-webworker-test (:use code.test) (:require [lang.core :as l] [xt.lang.common-notify :as notify] [xt.lang.spec-base :as xt] [xt.lang.common-repl :as repl] [xt.lang.spec-promise :as promise] [xt.substrate.transport-memory :as transport-memory]))
+
+(l/script- :js {:runtime :basic})
+
+^{:refer xt.substrate.transport-memory/memory-network :added "4.1"}
+(fact "the worker POC uses a local memory network for peer fan-out"
+  (notify/wait-on :js
+    (var network (transport-memory/memory-network
+                  {"hub" ["worker-a" "worker-b"]
+                   "worker-a" ["hub"]
+                   "worker-b" ["hub"]}))
+    (var seen [])
+    (var a (xt/x:get-key network "worker-a"))
+    (var b (xt/x:get-key network "worker-b"))
+    ((xt/x:get-key a "start_fn")
+     (fn [event ctx]
+       (xt/x:arr-push seen [(xt/x:get-key ctx "peer")
+                            (transport-memory/event-text event)])
+       (return true)))
+    ((xt/x:get-key b "start_fn")
+     (fn [event ctx]
+       (xt/x:arr-push seen [(xt/x:get-key ctx "peer")
+                            (transport-memory/event-text event)])
+       (return true)))
+    (-> ((xt/x:get-key (xt/x:get-key network "hub") "write_fn") "ping")
+        (promise/x:promise-then (fn [_] (return seen)))))
+  => [["worker-a" "ping"] ["worker-b" "ping"]])

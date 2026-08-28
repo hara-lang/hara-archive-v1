@@ -1,0 +1,283 @@
+(ns postgres.gen.template-code
+  (:config {:role :internal})
+  (:require [code.project :as project]
+            [std.fs :as fs]
+            [std.fs.path :as path]
+            [std.foundation :as foundation]
+            [std.foundation.string :as string]
+            [postgres.gen.bind-macro :as bind]))
+
+(defn ^{:public true}
+  namespace-url-root
+  "Creates a default API root from a postgres module namespace."
+  [ns]
+  (let [parts (string/split (str ns) ".")
+        last-part (last parts)]
+    (str "api/" (string/replace last-part "_" "-"))))
+
+(defn ^{:public true}
+  route-entry-input
+  "Creates the values used by a generated `def.xt` route entry."
+  [{:keys [src route-sym root]}]
+  (let [resolved (if (map? src) nil (foundation/resolve src))
+        bound (bind/bind-function (if (map? src)
+                                    src
+                                    (if resolved (deref resolved) src)))
+        url (str root "/" (name route-sym))]
+    {'route-sym route-sym
+     'input (:input bound)
+     'return (:return bound)
+     'schema (:schema bound)
+     'id (:id bound)
+     'flags (:flags bound)
+     'url url}))
+
+(defn ^{:public true}
+  emit-route-entry
+  "Emits a single `def.xt` route entry for a postgres function symbol."
+  ([src]
+   (emit-route-entry src nil))
+  ([src root]
+   (let [root (or root (namespace-url-root (symbol (namespace src))))
+         input (route-entry-input
+                {:src src
+                 :route-sym (symbol (name src))
+                 :root root})]
+     (str
+      "(def.xt " (name (:route-sym input)) "\n"
+      "  {:input " (pr-str (:input input)) "\n"
+      "   :return " (pr-str (:return input)) "\n"
+      "   :schema " (pr-str (:schema input)) "\n"
+      "   :id " (pr-str (:id input)) "\n"
+      "   :flags " (pr-str (:flags input)) "\n"
+      "   :url " (pr-str (:url input)) "})"))))
+
+(defn ^{:public true}
+  emit-route-entries
+  "Emits all `def.xt` route entries for a postgres module namespace."
+  ([ns]
+   (emit-route-entries ns nil))
+  ([ns root]
+   (require ns)
+   (let [root (or root (namespace-url-root ns))]
+     (string/join
+      "\n\n"
+      (map (fn [pair]
+             (emit-route-entry (second pair) root))
+           (bind/list-api ns))))))
+
+(defn ^{:public true}
+  descriptor-id
+  [descriptor]
+  (or (:id descriptor)
+      (throw
+       (ex :argument
+           {:descriptor descriptor}
+           :ex/message "Generated descriptor has no :id"))))
+
+(defn ^{:public true}
+  assert-unique-ids
+  [kind entries]
+  (let [grouped (group-by (fn [entry] (descriptor-id (second entry))) entries)
+        duplicates
+        (vec
+         (filter
+          (fn [entry]
+            (> (count (second entry)) 1))
+          (seq grouped)))]
+    (when (not (empty? duplicates))
+      (throw
+       (ex :conflict
+           {:kind kind
+            :duplicates
+            (vec
+             (map
+              (fn [entry]
+                {:id (first entry)
+                 :sources (vec (map (fn [match] (str (first match)))
+                                    (second entry)))})
+              duplicates))}
+           :ex/message (str "Duplicate generated " (name kind) " ids"))))
+    entries))
+
+(defn ^{:public true}
+  route-entries
+  "Binds functions from one or more generated RPC namespaces."
+  ([source-namespaces]
+   (route-entries
+    source-namespaces
+    (fn [entry] (= :defn (:op-key entry)))))
+  ([source-namespaces pred]
+   (let [entries
+         (reduce
+          (fn [output ns-sym]
+            (require ns-sym)
+            (reduce
+             (fn [output pair]
+               (let [sym (second pair)
+                     resolved (foundation/resolve sym)]
+                 (conj output
+                       [sym
+                        (bind/bind-function
+                         (if resolved (deref resolved) sym))])))
+             output
+             (bind/list-api ns-sym pred)))
+          []
+          source-namespaces)
+         entries
+         (vec
+          (sort-by
+           (fn [entry]
+             [(descriptor-id (second entry)) (str (first entry))])
+           entries))]
+     (assert-unique-ids :route entries))))
+
+(defn ^{:public true}
+  view-entries
+  "Binds select and return view entries into dataview descriptors."
+  [source-namespaces]
+  (let [entries
+        (reduce
+         (fn [output ns-sym]
+           (require ns-sym)
+           (reduce
+            (fn [output pair]
+              (let [sym (second pair)
+                    resolved (foundation/resolve sym)
+                    bound (bind/bind-view
+                           (if resolved (deref resolved) sym))
+                    view (:view bound)
+                    entry (if (= "select" (:type view))
+                            :select-entry
+                            :return-entry)]
+                (conj output
+                      [sym
+                       {:id (:id bound)
+                        :table (:table view)
+                        entry {:input (:input bound) :view view}
+                        :select-args []
+                        :return-args []}])))
+            output
+            (concat (bind/list-view ns-sym :select)
+                    (bind/list-view ns-sym :return))))
+         []
+         source-namespaces)
+        entries (vec (distinct entries))
+        entries
+        (vec
+         (sort-by
+          (fn [entry]
+            [(descriptor-id (second entry)) (str (first entry))])
+          entries))]
+    (assert-unique-ids :view entries)))
+
+(defn ^{:public true}
+  emit-module-entry
+  "Emits one unquoted descriptor as a typed `def.xt` form."
+  [api-type entry]
+  (let [sym (first entry)
+        descriptor (second entry)]
+    (str "(def.xt ^{:api/type " (str api-type) "} " (name sym) "\n"
+         (pr-str descriptor)
+         ")")))
+
+(defn ^{:public true}
+  render-module
+  "Renders a monolithic XTalk module from descriptor entries."
+  ([target-ns api-type entries]
+   (render-module target-ns api-type entries {}))
+  ([target-ns api-type entries options]
+   (str
+    (or (:header options) "")
+    "(ns " target-ns "\n"
+    "  (:require [lang.core :as l]))\n\n"
+    "(l/script :xtalk)\n\n"
+    (string/join "\n\n" (map (fn [entry]
+                                  (emit-module-entry api-type entry))
+                                entries))
+    (if (empty? entries) "" "\n"))))
+
+(defn ^{:public true}
+  source-path-for
+  "Resolves a source namespace path from an explicit project or discovery."
+  ([src-ns]
+   (source-path-for src-ns nil))
+  ([src-ns current-project]
+   (let [current-project (or current-project (project/discover "."))
+         source-path (project/namespace-file current-project src-ns)]
+     (or source-path
+         (throw
+          (ex :not-found
+              {:src-ns src-ns}
+              :ex/message "Cannot resolve source namespace path"))))))
+
+(defn ^{:public true}
+  target-path
+  "Resolves the output path for a generated namespace."
+  ([target-ns src-ns]
+   (target-path target-ns src-ns nil))
+  ([target-ns src-ns options]
+   (let [options (or options {})
+         current-project (:project options)
+         src-path (or (:source-path options)
+                      (source-path-for src-ns current-project))
+         source-roots (or (:source-paths options)
+                          (:project/source-paths current-project)
+                          (:source-paths current-project)
+                          (if current-project
+                            []
+                            (:project/source-paths
+                             (project/discover "."))))
+         src-path (project/normalized-path src-path)
+         match
+         (first
+          (filter
+           identity
+           (map
+            (fn [source-root]
+              (let [prefix (str source-root "/")
+                    infix (str "/" source-root "/")]
+                (cond
+                  (string/starts-with? src-path prefix)
+                  {:root source-root :base nil}
+
+                  (string/includes? src-path infix)
+                  (let [index (string/index-of src-path infix)]
+                    {:root source-root
+                     :base (string/slice src-path 0 index)})
+
+                  :else nil)))
+            source-roots)))]
+     (when (nil? match)
+       (throw
+        (ex :argument
+            {:src-ns src-ns :src-path src-path :source-roots source-roots}
+            :ex/message "Cannot resolve source root for namespace")))
+     (let [root (:root match)
+           base (:base match)]
+       (str (if base (str base "/") "")
+            root "/"
+            (project/namespace-stem target-ns)
+            ".hal")))))
+
+(defn ^{:public true}
+  namespace-body
+  "Creates the source body for a generated route namespace."
+  [target-ns src-ns]
+  (str "(ns " target-ns "\n"
+       "  (:require [lang.core :as l]))\n\n"
+       "(l/script :xtalk)\n\n"
+       (emit-route-entries src-ns)
+       "\n"))
+
+(defn ^{:public true}
+  generate-ns
+  "Generates a route namespace file from a postgres module namespace."
+  ([target-ns src-ns]
+   (generate-ns target-ns src-ns nil))
+  ([target-ns src-ns options]
+   (let [path (target-path target-ns src-ns options)
+         body (namespace-body target-ns src-ns)]
+     (fs/create-directory (path/parent path) {:parents? true :exists-ok? true})
+     (fs/write-bytes path (string/encode-utf8 body) {:mode :replace})
+     path)))

@@ -1,6 +1,7 @@
 (ns postgres.core.addon
   (:require [lang.core :as l]
-            [std.foundation :exclude [case name assert]]))
+            [std.foundation :as foundation :exclude [case name assert]]
+            [std.lib.collection :as collection]))
 
 (l/script :postgres
   postgres.core
@@ -8,7 +9,7 @@
 
 (defn- resolved-entry
   [table]
-  (let [resolved (if (symbol? table) (resolve table) nil)
+  (let [resolved (if (symbol? table) (foundation/resolve table) nil)
         value (if resolved (deref resolved) table)]
     (if (map? value)
       value
@@ -21,27 +22,27 @@
       (second value)
       value)))
 
-(defmacro.xt exec
+(defmacro.pg exec
   "Emits an SQL statement unchanged."
   [args]
   args)
 
-(defmacro.xt ARRAY
+(defmacro.pg ARRAY
   "Creates a PostgreSQL ARRAY literal."
   [& args]
   (apply list 'pg:array args))
 
-(defmacro.xt id
+(defmacro.pg id
   "Gets the id field from a JSON object."
   [value & [type]]
   (list (or type :uuid) (list :->> value "id")))
 
-(defmacro.xt name
+(defmacro.pg name
   "Returns an entity's database identifier."
   [table]
   (str (entry-id (resolved-entry table))))
 
-(defmacro.xt full
+(defmacro.pg full
   "Returns an entity's [schema name] coordinate."
   [table]
   (let [entry (resolved-entry table)]
@@ -53,7 +54,7 @@
   (let [entry (resolved-entry table)]
     (str "[\"" (:static/schema entry) "\",\"" (entry-id entry) "\"]")))
 
-(defmacro.xt coord
+(defmacro.pg coord
   "Returns an entity row coordinate."
   [table row-id]
   (let [entry (resolved-entry table)]
@@ -62,43 +63,44 @@
           (str (entry-id entry))
           row-id)))
 
-(defmacro.xt rand-hex
+(defmacro.pg rand-hex
   [n]
   (list 'encode (list 'gen-random-bytes (list '/ n 2)) "hex"))
 
-(defmacro.xt sha1
+(defmacro.pg sha1
   [text]
   (list 'encode (list 'digest (list :bytea text) "sha1") "hex"))
 
-(defmacro.xt client-list
+(defmacro.pg client-list
   []
   [:select '* :from 'pg_stat_activity])
 
-(defmacro.xt time-ms
+(defmacro.pg time-ms
   []
   (list :bigint (list '* 1000 (list 'extract ['epoch :from (list 'now)]))))
 
-(defmacro.xt time-us
+(defmacro.pg time-us
   []
   (list :bigint (list '* 1000000 (list 'extract ['epoch :from (list 'now)]))))
 
-(defmacro.xt throw
+(defmacro.pg throw
   [value]
   (list 'pg:throw value nil))
 
-(defmacro.xt error
+(defmacro.pg error
   [value]
   (list 'pg:throw
         (if (map? value)
-          (merge {:status "error"} value)
-          {:status "error" :value value})
+          (apply collection/ordered-map
+                 (concat [:status "error"] (mapcat identity (seq value))))
+          (collection/ordered-map :status "error" :value value))
         nil))
 
-(defmacro.xt assert
+(defmacro.pg assert
   [check [tag data]]
   (list 'pg:assert check tag data))
 
-(defmacro.xt case
+(defmacro.pg case
   [& args]
   (let [pairs (partition 2 args)
         block (mapcat (fn [pair]
@@ -110,52 +112,52 @@
                       pairs)]
     (list '% (vec (concat [:case] block [:end])))))
 
-(defmacro.xt get-stack-diagnostics
+(defmacro.pg get-stack-diagnostics
   []
   (list 'pg:stack-diagnostics))
 
-(defmacro.xt field-id
+(defmacro.pg field-id
   [value field]
   (list 'coalesce
         (list :->> value (str field "_id"))
         (list :->> (list :-> value field) "id")))
 
-(defmacro.xt map:rel
+(defmacro.pg map:rel
   [f rel & args]
   [(list 'jsonb-agg (apply list f 'o-ret args))
    :from rel :as 'o-ret])
 
-(defmacro.xt map:js-text
+(defmacro.pg map:js-text
   [f arr & args]
   [(list 'coalesce
          (list 'jsonb-agg (apply list f 'o-ret args))
          (list 'jsonb-build-array))
    \\ :from (list 'jsonb-array-elements-text arr) :as 'o-ret])
 
-(defmacro.xt map:js
+(defmacro.pg map:js
   [f arr & args]
   [(list 'coalesce
          (list 'jsonb-agg (apply list f 'o-ret args))
          (list 'jsonb-build-array))
    \\ :from (list 'jsonb-array-elements arr) :as 'o-ret])
 
-(defmacro.xt do:reduce
+(defmacro.pg do:reduce
   [out f type arr]
   (list 'pg:reduce out f type arr))
 
-(defmacro.xt b:select [& args] (vec (concat [:select] args)))
-(defmacro.xt ret [& args] (vec (concat [:select] args)))
-(defmacro.xt b:update [& args] (vec (concat [:update] args)))
-(defmacro.xt b:insert [& args] (vec (concat [:insert] args)))
-(defmacro.xt b:delete [& args] (vec (concat [:delete] args)))
-(defmacro.xt perform [& args] (vec (concat [:perform] args)))
+(defmacro.pg b:select [& args] (vec (concat [:select] args)))
+(defmacro.pg ret [& args] (vec (concat [:select] args)))
+(defmacro.pg b:update [& args] (vec (concat [:update] args)))
+(defmacro.pg b:insert [& args] (vec (concat [:insert] args)))
+(defmacro.pg b:delete [& args] (vec (concat [:delete] args)))
+(defmacro.pg perform [& args] (vec (concat [:perform] args)))
 
-(defmacro.xt random-enum
+(defmacro.pg random-enum
   [enum]
   [:select 'p :from (list 'unnest (list 'enum-range (list '++ nil enum)))
    :as 'p :order-by (list 'random) :limit 1])
 
-(defmacro.xt do:plpgsql
+(defmacro.pg do:plpgsql
   [& forms]
   (apply list 'pg:do-plpgsql forms))
 

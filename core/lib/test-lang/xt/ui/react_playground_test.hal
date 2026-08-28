@@ -1,0 +1,96 @@
+(ns xt.ui.react-playground-test
+  "Local JavaScript tests for the target-neutral UI renderer."
+  (:use code.test)
+  (:require [lang.core :as l]
+            [xt.lang.common-notify :as notify]))
+
+(l/script- :js
+  {:require [[xt.lang.spec-base :as xt]
+             [xt.lang.common-repl :as repl]
+             [xt.lang.spec-promise :as promise]
+             [xt.ui.react-playground-ui :as playground]
+             [xt.ui.core :as ui]
+             [xt.ui.state.core :as state]]
+   :runtime :basic})
+
+(fact:global {:setup [(l/rt:restart)]
+              :teardown [(l/rt:stop)]})
+
+^{:refer xt.ui.react-playground-ui/render-ui-node :added "4.1"}
+(fact "renders a portable UI tree through the supplied registry"
+  (!.js
+    (var registry (playground/react-registry))
+    (var tree (ui/node "ui/column" {"padding" "4px"}
+                       [(ui/node "ui/title" {"value" "Local"} [])
+                        (ui/node "ui/text" {"value" "ready"} [])]))
+    (playground/render-ui-node registry tree))
+  => {"type" "div"
+      "props" {"style" {"display" "flex"
+                           "flexDirection" "column"
+                           "padding" "4px"
+                           "gap" "0px"}}
+      "children" [{"type" "h2" "props" {"value" "Local"} "children" "Local"}
+                   {"type" "span" "props" {"value" "ready"} "children" "ready"}]})
+
+^{:refer xt.ui.react-playground-ui/react-registry :added "4.1"}
+(fact "provides builders for each locally supported component"
+  (!.js
+    (var registry (playground/react-registry))
+    [(xt/x:obj-keys registry)
+     ((xt/x:get-key registry "ui/button") {"label" "Save"} nil)
+     ((xt/x:get-key registry "ui/input") {} nil)])
+  => [["ui/text" "ui/button" "ui/input" "ui/column" "ui/title" "ui/row"]
+      {"type" "button" "props" {"label" "Save"} "children" "Save"}
+      {"type" "input" "props" {} "children" nil}])
+
+^{:refer xt.ui.react-playground-ui/make-controller :added "4.1"}
+(fact "starts with stable headless list state and declared actions"
+  (!.js
+    (var controller (playground/make-controller))
+    [(state/snapshot controller)
+     (xt/x:obj-keys (xt/x:get-key controller "handlers"))
+     (state/revision controller)])
+  => [{"items" ["alpha" "beta"] "draft" ""}
+      ["set_draft" "remove_item" "add_item"]
+      0])
+
+^{:refer xt.ui.react-playground-ui/view :added "4.1"}
+(fact "builds the portable view from state and action handlers"
+  (!.js
+    (var controller (playground/make-controller))
+    (var actions (state/actions-create controller ["set_draft" "add_item" "remove_item"]))
+    (var tree (playground/view (state/snapshot controller) actions))
+    [(xt/x:get-key tree "component")
+     (xt/x:get-path tree ["children" 0 "props" "value"])
+     (xt/x:len (xt/x:get-path tree ["children" 3 "children"]))])
+  => ["ui/column" "xt.ui React Playground" 2])
+
+^{:refer xt.ui.react-playground-ui/App :added "4.1"}
+(fact "creates a root descriptor without a browser or React global"
+  (!.js
+    (var app (playground/App))
+    [(xt/x:get-key app "type")
+     (xt/x:get-path app ["children" 0 "type"])
+     (xt/x:get-path app ["children" 0 "children" 0 "children"])] )
+  => ["div" "div" "xt.ui React Playground"])
+
+^{:refer xt.ui.react-playground-ui/mount! :added "4.1"}
+(fact "returns a mountable descriptor for a host adapter"
+  (!.js
+    (var mounted (playground/mount!))
+    [(xt/x:get-key mounted "type")
+     (xt/x:get-path mounted ["children" 0 "type"])] )
+  => ["div" "div"])
+
+(fact "controller actions update state through the same local JS path"
+  (notify/wait-on :js
+    (var controller (playground/make-controller))
+    (var actions (state/actions-create controller ["set_draft" "add_item"]))
+    (-> ((xt/x:get-key actions "set_draft") "gamma")
+        (promise/x:promise-then
+         (fn [_]
+           (return ((xt/x:get-key actions "add_item") nil))))
+        (promise/x:promise-then
+         (fn [_]
+           (repl/notify (state/snapshot controller))))))
+  => {"items" ["alpha" "beta" "gamma"] "draft" ""})

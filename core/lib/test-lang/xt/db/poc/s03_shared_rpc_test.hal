@@ -1,0 +1,13 @@
+(ns xt.db.poc.s03-shared-rpc-test (:use code.test) (:require [lang.core :as l] [xt.lang.spec-base :as xt] [xt.db.system.impl-memory :as memory]))
+
+(l/script- :js {:runtime :basic})
+
+^{:refer xt.db.system.impl-memory/pull :added "4.1"}
+(fact "the shared-RPC POC reads a seeded record from local memory"
+  (!.js
+   (var schema {"Log" {"id" {"type" "uuid" "primary" true "order" 0}
+                       "message" {"type" "text" "order" 1}}})
+   (var impl (memory/impl-memory schema {"Log" {"position" 0}}))
+   (memory/record-add impl "Log" [{"id" "log-1" "message" "shared"}])
+   (memory/pull impl ["Log" {"id" "log-1"} ["message"]]))
+  => [{"message" "shared"}])

@@ -1,9 +1,10 @@
 fn portable_type_keyword(value: &Value) -> Result<Keyword, String> {
     let builtin = match value {
         Value::Nil => "Nil",
-        Value::Number(_) => "Integer",
+        Value::Number(_) => "Long",
         Value::Float(_) => "Float",
-        Value::BigInteger(_) => "Integer",
+        Value::BigInteger(_) if crate::numeric::is_long_value(value) => "Long",
+        Value::BigInteger(_) => "BigInteger",
         Value::Character(_) => "Character",
         Value::Regex(_) => "RegExp",
         Value::Tagged(value) if is_uuid_tagged(value) => "UUID",

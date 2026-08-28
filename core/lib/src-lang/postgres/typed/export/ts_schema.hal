@@ -1,5 +1,6 @@
 (ns postgres.typed.export.ts-schema
   (:require
+            [std.foundation :refer [nth second seq]]
             [postgres.typed.typed-common :as types]
             [postgres.typed.typed-shape :as shape]
             [postgres.typed.export.json-schema :as json-schema]))
@@ -37,7 +38,7 @@
   ([jsonb-shape]
    (shape->ts-interface jsonb-shape nil))
   ([jsonb-shape interface-name]
-   (let [field-lines (map field->ts (:fields jsonb-shape))]
+   (let [field-lines (map field->ts (seq (:fields jsonb-shape)))]
      (if interface-name
        (str "export interface " interface-name " {\n"
             (str/join "\n" field-lines)

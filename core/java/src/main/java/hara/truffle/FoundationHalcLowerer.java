@@ -529,7 +529,8 @@ final class FoundationHalcLowerer {
 
   private static FrameSlotKind primitiveSlotKind(HalcSchema.Type type) {
     if (type instanceof HalcSchema.Primitive primitive) {
-      if ("int".equals(primitive.name())) return FrameSlotKind.Long;
+      if ("int".equals(primitive.name()) || "long".equals(primitive.name()))
+        return FrameSlotKind.Long;
       if ("bool".equals(primitive.name())) return FrameSlotKind.Boolean;
     }
     return FrameSlotKind.Object;

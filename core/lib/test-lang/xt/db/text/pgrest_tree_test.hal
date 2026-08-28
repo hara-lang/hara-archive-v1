@@ -1,0 +1,15 @@
+(ns xt.db.text.pgrest-tree-test (:require [lang.core :as l] [postgres.gen.bind-macro :as gen] [xt.db.helpers.seed-system-test :as data]) (:use code.test))
+
+^{:seedgen/root {:all true}} (l/script- :js {:require [[xt.db.text.pgrest-tree :as v] [xt.db.helpers.data-main-test :as sample]] :runtime :basic})
+
+(fact:global {:teardown [(l/rt:stop)] :setup [(l/rt:restart)]})
+
+^{:refer xt.db.text.pgrest-tree/pgrest-query-select :added "4.1"} (fact "plans and renders a select request" (!.js (v/pgrest-query-select sample/Schema ((deref !) (gen/bind-view data/currency-all-crypto)) [] {})) => {"method" "GET" "path" "/rest/v1/Currency" "query" "select=id&type=eq.crypto" "table" "Currency" "url" "/rest/v1/Currency?select=id&type=eq.crypto" "type" "query" "filters" [{"type" "crypto"}] "select" "id" "params" ["select=id" "type=eq.crypto"] "headers" {}})
+
+^{:refer xt.db.text.pgrest-tree/pgrest-query-count :added "4.1"} (fact "plans and renders a count request" (!.js (v/pgrest-query-count sample/Schema ((deref !) (gen/bind-view data/currency-all-crypto)) [] {})) => {"method" "GET" "path" "/rest/v1/Currency" "query" "select=count&type=eq.crypto" "table" "Currency" "url" "/rest/v1/Currency?select=count&type=eq.crypto" "type" "query" "filters" [{"type" "crypto"}] "select" "count" "params" ["select=count" "type=eq.crypto"] "headers" {}})
+
+^{:refer xt.db.text.pgrest-tree/pgrest-query-return :added "4.1"} (fact "plans and renders a return request" (!.js (v/pgrest-query-return sample/Schema ((deref !) (gen/bind-view data/currency-info)) "STATS" [] {})) => {"method" "GET" "path" "/rest/v1/Currency" "query" "select=id,description&id=eq.STATS" "table" "Currency" "url" "/rest/v1/Currency?select=id,description&id=eq.STATS" "type" "query" "filters" [{"id" "STATS"}] "select" "id,description" "params" ["select=id,description" "id=eq.STATS"] "headers" {}})
+
+^{:refer xt.db.text.pgrest-tree/pgrest-query-return-bulk :added "4.1"} (fact "plans and renders a bulk return request" (!.js (v/pgrest-query-return-bulk sample/Schema ((deref !) (gen/bind-view data/currency-info)) ["STATS" "USD"] [] {})) => {"method" "GET" "path" "/rest/v1/Currency" "query" "select=id,description&id=in.(STATS,USD)" "table" "Currency" "url" "/rest/v1/Currency?select=id,description&id=in.(STATS,USD)" "type" "query" "filters" [{"id" ["in" [["STATS" "USD"]]]}] "select" "id,description" "params" ["select=id,description" "id=in.(STATS,USD)"] "headers" {}})
+
+^{:refer xt.db.text.pgrest-tree/pgrest-query-combined :added "4.1"} (fact "plans and renders a combined request" (!.js (v/pgrest-query-combined sample/Schema ((deref !) (gen/bind-view data/currency-all-crypto)) [] ((deref !) (gen/bind-view data/currency-info)) [] nil {})) => {"method" "GET" "path" "/rest/v1/Currency" "query" "select=id,description&type=eq.crypto" "table" "Currency" "url" "/rest/v1/Currency?select=id,description&type=eq.crypto" "type" "query" "filters" [{"type" "crypto"}] "select" "id,description" "params" ["select=id,description" "type=eq.crypto"] "headers" {}})

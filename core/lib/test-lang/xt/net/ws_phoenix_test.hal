@@ -1,0 +1,89 @@
+(ns xt.net.ws-phoenix-test (:use code.test) (:require [xt.lang.spec-base :as xt] [xt.lang.common-data :as xtd] [xt.net.ws-phoenix :as phoenix]))
+
+^{:refer xt.net.ws-phoenix/extract-message-data :added "4.1"}
+(fact "extracts text from raw websocket payload wrappers"
+  (!.js [(phoenix/extract-message-data "plain")
+         (phoenix/extract-message-data {"data" "{\"ok\":true}"})
+         (phoenix/extract-message-data {"body" "fallback"})])
+  => ["plain" "{\"ok\":true}" "fallback"])
+
+^{:refer xt.net.ws-phoenix/decode-frame :added "4.1"}
+(fact "decodes websocket payload text into a Phoenix frame"
+  (!.js [(phoenix/decode-frame "{\"event\":\"phx_reply\",\"topic\":\"room:test\"}")
+         (phoenix/decode-frame {"data" "{\"payload\":{\"status\":\"ok\"}}"})])
+  => [{"event" "phx_reply" "topic" "room:test"} {"payload" {"status" "ok"}}])
+
+^{:refer xt.net.ws-phoenix/get-frame-ref :added "4.1"}
+(fact "uses the explicit ref before the join ref"
+  (!.js [(phoenix/get-frame-ref {"ref" "join-1"})
+         (phoenix/get-frame-ref {"join_ref" "join-2"})])
+  => ["join-1" "join-2"])
+
+^{:refer xt.net.ws-phoenix/make-frame :added "4.1"}
+(fact "builds a generic Phoenix frame"
+  (!.js (phoenix/make-frame "room:test" "broadcast" {"hello" true} {"ref" "push-1"}))
+  => {"topic" "room:test" "event" "broadcast" "payload" {"hello" true} "ref" "push-1" "join_ref" "push-1"})
+
+^{:refer xt.net.ws-phoenix/make-frame-join :added "4.1"}
+(fact "builds a join frame from a topic and payload"
+  (!.js (phoenix/make-frame-join {"config" {}}
+                                 {"topic" "room:test" "ref" "join-1"}))
+  => {"topic" "room:test" "event" "phx_join" "payload" {"config" {}}
+      "ref" "join-1" "join_ref" "join-1"})
+
+^{:refer xt.net.ws-phoenix/make-frame-leave :added "4.1"}
+(fact "builds a leave frame from a topic"
+  (!.js (phoenix/make-frame-leave {"topic" "room:test" "ref" "leave-1"}))
+  => {"topic" "room:test" "event" "phx_leave" "payload" {}
+      "ref" "leave-1" "join_ref" "leave-1"})
+
+^{:refer xt.net.ws-phoenix/make-frame-heartbeat :added "4.1"}
+(fact "builds a heartbeat frame on the Phoenix topic"
+  (!.js (phoenix/make-frame-heartbeat {"ref" "hb-1"}))
+  => {"topic" "phoenix" "event" "heartbeat" "payload" {}
+      "ref" "hb-1" "join_ref" "hb-1"})
+
+^{:refer xt.net.ws-phoenix/encode-frame :added "4.1"}
+(fact "normalizes a frame to the Phoenix wire shape"
+  (!.js (phoenix/encode-frame {"payload" {"config" {}}
+                               "topic" "room:test" "ref" "ref-1"
+                               "event" "phx_join"}))
+  => {"join_ref" "ref-1" "ref" "ref-1" "topic" "room:test"
+      "event" "phx_join" "payload" {"config" {}}})
+
+^{:refer xt.net.ws-phoenix/send-frame :added "4.1"}
+(fact "encodes a frame before passing it to the websocket"
+  (!.js
+   (var sent nil)
+   (var client {"::/override"
+                {"send" (fn [_ input] (:= sent input) (return "sent"))}})
+   (var result (phoenix/send-frame client
+                                   (phoenix/make-frame-heartbeat {"ref" "hb-1"})))
+   [result (phoenix/decode-frame sent)])
+  => ["sent" {"topic" "phoenix" "event" "heartbeat" "payload" {}
+               "ref" "hb-1" "join_ref" "hb-1"}])
+
+^{:refer xt.net.ws-phoenix/wrap-phoenix :added "4.1"}
+(fact "dispatches decoded frames by event name"
+  (!.js
+   (var calls [])
+   (var handler (phoenix/wrap-phoenix
+                 {"broadcast" (fn [frame] (xt/x:arr-push calls ["broadcast" frame]))
+                  "phx_reply" (fn [frame] (xt/x:arr-push calls ["reply" frame]))}))
+   (handler "{\"event\":\"phx_reply\",\"topic\":\"room:1\",\"payload\":{\"status\":\"ok\"}}")
+   (handler "{\"event\":\"broadcast\",\"topic\":\"room:1\",\"payload\":{\"msg\":\"hi\"}}")
+   (handler "{\"event\":\"unknown\",\"topic\":\"room:1\",\"payload\":{}}")
+   calls)
+  => [["reply" {"event" "phx_reply" "topic" "room:1" "payload" {"status" "ok"}}]
+      ["broadcast" {"event" "broadcast" "topic" "room:1" "payload" {"msg" "hi"}}]])
+
+^{:refer xt.net.ws-phoenix/start-heartbeat :added "4.1"}
+(fact "delegates heartbeat setup to the websocket protocol"
+  (!.js
+   (var client {"::/override"
+                {"start_heartbeat"
+                 (fn [_ name callback interval]
+                   (return {"name" name "interval" interval
+                            "callback" (xt/x:is-function? callback)}))}})
+   (phoenix/start-heartbeat client))
+  => {"name" "phoenix.default" "interval" 30000 "callback" true})

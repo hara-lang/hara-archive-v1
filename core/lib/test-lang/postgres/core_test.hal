@@ -1,9 +1,12 @@
 (ns postgres.core-test
-  (:require [postgres.core :as pg]
+  (:require [lang.core :as l]
+            [postgres.core :as pg]
             [postgres.core.builtin :as builtin]
             [lang.core.registry :as registry]
             [lang.core.script :as script])
   (:use code.test))
+
+(l/script :postgres postgres.core-test {:macro-only true})
 
 (defn emit [form]
   (script/compile-form :postgres 'postgres.core-test form))
@@ -13,7 +16,7 @@
   => :postgres
 
   (get-in (registry/registry-book :postgres :default nil)
-          [:selection :coordinate :grammar/version])
+          [:selection :coordinate :grammar/release])
   => "alpha")
 
 (fact "preserves the Foundation builtin template contract"
@@ -180,3 +183,6 @@
 (fact "emits enum sampling through enum_range"
   (emit '(pg/random-enum :status))
   => "SELECT p FROM unnest(enum_range((NULL)::STATUS)) AS p ORDER BY random() LIMIT 1")
+
+(let [summary (run {:namespace '[postgres.core-test] :no-report true})]
+  (pr-str (select-keys summary [:status :counts])))

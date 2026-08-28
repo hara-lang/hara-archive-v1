@@ -1,0 +1,21 @@
+(ns xt.db.text.base-util-test (:require [lang.core :as l]) (:use code.test))
+
+^{:seedgen/root {:all true}} (l/script- :js {:require [[xt.db.text.base-util :as ut] [xt.lang.spec-base :as xt] [xt.lang.common-lib :as k]] :runtime :basic})
+
+(fact:global {:teardown [(l/rt:stop)] :setup [(l/rt:restart)]})
+
+^{:refer xt.db.text.base-util/collect-routes :setup [(def +routes+ [{:url "api/ping" :return "text" :input [] :id "ping" :schema "core/util" :flags {}} {:url "api/echo" :return "text" :input [{:type "text" :symbol "input"}] :id "echo" :schema "core/util" :flags {}}]) (def +result+ (contains-in {"api/ping" {"schema" "core/util" "flags" {} "url" "api/ping" "return" "text" "type" "db" "id" "ping"} "api/echo" {"schema" "core/util" "flags" {} "input" [{"symbol" "input" "type" "text"}] "url" "api/echo" "return" "text" "type" "db" "id" "echo"}}))] :added "4.0"} (fact "collect routes" (!.js (ut/collect-routes ((deref !) +routes+) "db")) => +result+)
+
+^{:refer xt.db.text.base-util/collect-routes-object :added "4.1"} (fact "collects routes from an object input" (!.js (ut/collect-routes-object {"one" {"url" "/one" "id" 1} "two" {"url" "/two" "id" 2}})) => {"/one" {"url" "/one" "id" 1} "/two" {"url" "/two" "id" 2}})
+
+^{:refer xt.db.text.base-util/collect-views :setup [(def +views+ [{:return "jsonb" :view {:query ["*/data"] :tag "default" :access {:query nil :roles {} :relation nil :symbol nil} :table "Currency" :type "return" :guards []} :input [{:type "citext" :symbol "i_currency_id"}] :id "currency_default" :schema "core/application-support" :flags {:public true}} {:return "jsonb" :view {:query nil :tag "all" :access {:query nil :roles {} :relation nil :symbol nil} :table "Currency" :type "select" :guards []} :input [] :id "currency_all" :schema "core/application-support" :flags {:public true}} {:return "jsonb" :view {:query {"type" "i_type"} :tag "by_type" :access {:query nil :roles {} :relation nil :symbol nil} :table "Currency" :type "select" :guards []} :input [{:type "text" :symbol "i_type"}] :id "currency_by_type" :schema "core/application-support" :flags {:public true}}])] :added "4.0"} (fact "collect views into views structure" (!.js (ut/collect-views ((deref !) +views+))) => (contains-in {"Currency" {"return" {"default" map?} "select" {"all" map? "by_type" map?}}}))
+
+^{:refer xt.db.text.base-util/merge-views :added "4.0"} (fact "merges multiple views together" (!.js (ut/merge-views [{"Currency" {"select" {"all" {"id" "currency_all"}}}} {"Wallet" {"return" {"default" {"id" "wallet_default"}}}}] {"RegionCountry" {"select" {"all" {"id" "country_all"}}}})) => {"RegionCountry" {"select" {"all" {"id" "country_all"}}} "Currency" {"select" {"all" {"id" "currency_all"}}} "Wallet" {"return" {"default" {"id" "wallet_default"}}}})
+
+^{:refer xt.db.text.base-util/keepf-limit :added "4.0"} (fact "keeps given limit" (!.js (ut/keepf-limit [1 2 3 4 5] xt/x:odd? k/identity 3)) => [1 3 5])
+
+^{:refer xt.db.text.base-util/lu-nested :added "4.0"} (fact "helper for lu-map" (!.js (ut/lu-nested [{:id "1"}] (fn [e] (return (xt/x:get-key e "id"))))) => {"1" {"id" "1"}})
+
+^{:refer xt.db.text.base-util/lu-map :added "4.0"} (fact "constructs a nested lu map of ids" (!.js [(ut/lu-map {:a [{:id "b"}]}) (ut/lu-map {:a [{:sub [{:id "c"} {:id "d"}] :id "b"}]})]) => [{"a" {"b" {"id" "b"}}} {"a" {"b" {"sub" {"c" {"id" "c"} "d" {"id" "d"}} "id" "b"}}}])
+
+(comment (s/run [(quote xt.db.text.base-util)]) (s/seedgen-benchadd (quote [xt.lang.spec]) {:lang [:r] :write true}) (s/seedgen-benchadd (quote [xt.db.text.base-util]) {:lang [:julia :dart] :write true}) (s/seedgen-langadd (quote xt.db.text.base-util) {:lang [:lua :python] :write true}) (s/seedgen-langremove (quote xt.db.text.base-util) {:lang [:lua :python] :write true}))

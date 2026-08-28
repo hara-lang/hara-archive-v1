@@ -1,0 +1,25 @@
+(ns lang.runtime.postgres.db-client-test
+  (:use code.test)
+  (:require [lang.runtime.postgres.db-client :as client]))
+
+^{:refer lang.runtime.postgres.db-client/teardown-module}
+(fact "teardown-module removes a module and is idempotent"
+  (let [runtime (client/rt-create {})
+        module :demo-module]
+    (reset! (:modules runtime) #{module})
+    (client/teardown-module runtime module)
+    (client/teardown-module runtime module)
+    (deref (:modules runtime)))
+  => #{})
+
+^{:refer lang.runtime.postgres.db-client/teardown-pointer}
+(fact "teardown-pointer removes a pointer and is idempotent"
+  (let [runtime (client/rt-create {})
+        pointer :demo-pointer]
+    (client/setup-pointer runtime pointer)
+    (client/teardown-pointer runtime pointer)
+    (client/teardown-pointer runtime pointer)
+    (deref (:pointers runtime)))
+  => #{})
+
+(pr-str (run {:namespace "lang.runtime.postgres.db-client-test"}))

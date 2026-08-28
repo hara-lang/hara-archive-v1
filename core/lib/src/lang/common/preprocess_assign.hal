@@ -131,4 +131,4 @@
    (apply list
           (lang.common.preprocess-assign/ProtectedHead (first form))
           (rest form))
-   (meta form)))
+   (or (meta form) {})))

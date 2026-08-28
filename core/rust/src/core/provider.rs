@@ -876,9 +876,10 @@ impl SocketProvider for UnsupportedSocketProvider {
 pub fn portable_type_name(value: &Value) -> &str {
     match value {
         Value::Nil => "nil",
-        Value::Number(_) => "integer",
+        Value::Number(_) => "long",
         Value::Float(_) => "float",
-        Value::BigInteger(_) => "integer",
+        Value::BigInteger(_) if crate::numeric::is_long_value(value) => "long",
+        Value::BigInteger(_) => "bigint",
         Value::Character(_) => "character",
         Value::Regex(_) => "pattern",
         Value::Tagged(_) => "tagged-literal",

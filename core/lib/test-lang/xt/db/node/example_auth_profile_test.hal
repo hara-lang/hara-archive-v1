@@ -1,0 +1,124 @@
+(ns xt.db.node.example-auth-profile-test
+  (:use code.test)
+  (:require [lang.core :as l]
+            [xt.lang.common-notify :as notify]))
+
+(l/script- :js
+  {:require [[xt.lang.common-repl :as repl]
+             [xt.lang.common-data :as xtd]
+             [xt.lang.spec-base :as xt]
+             [xt.lang.spec-promise :as promise]
+             [xt.db.node.example-auth-profile :as example]
+             [xt.substrate :as substrate]
+             [xt.substrate.page-core :as page-core]]
+   :runtime :basic
+   :test-mode true})
+
+(fact:global {:setup [(l/rt:restart)]
+              :teardown [(l/rt:stop)]})
+
+^{:refer xt.db.node.example-auth-profile/first-arg :added "4.1"}
+(fact "prefers explicit arguments and falls back through event input data"
+  (!.js
+    [(example/first-arg {"event" {"credentials" "event"}
+                         "args" ["args"]
+                         "input" {"data" ["input"]}}
+                        nil "credentials")
+     (example/first-arg {"event" {"credentials" "event"}
+                         "args" ["args"]}
+                        nil "credentials")
+     (example/first-arg {"args" [["single"]]} nil "credentials")
+     (example/first-arg {"input" {"data" ["input"]}} nil "credentials")
+     (example/first-arg {"event" {"data" ["event-data"]}} nil "credentials")
+     (example/first-arg {} "explicit" "credentials")])
+  => ["event" "args" "single" "input" "event-data" "explicit"])
+
+^{:refer xt.db.node.example-auth-profile/session-model :added "4.1"}
+(fact "creates a session model with stable defaults and a handler"
+  (!.js
+    (var model (example/session-model "auth/supabase"))
+    [(xt/x:is-function? (xt/x:get-key model "handler"))
+     (xt/x:get-key model "defaults")
+     (xt/x:get-key model "options")])
+  => [true {"args" []} {}])
+
+^{:refer xt.db.node.example-auth-profile/profile-model :added "4.1"}
+(fact "creates a profile model with stable defaults and a handler"
+  (!.js
+    (var model (example/profile-model "auth/supabase"))
+    [(xt/x:is-function? (xt/x:get-key model "handler"))
+     (xt/x:get-key model "defaults")
+     (xt/x:get-key model "options")])
+  => [true {"args" []} {}])
+
+^{:refer xt.db.node.example-auth-profile/sign-up-model :added "4.1"}
+(fact "creates a sign-up model that owns credential argument extraction"
+  (!.js
+    (var model (example/sign-up-model "auth/supabase"))
+    [(xt/x:is-function? (xt/x:get-key model "handler"))
+     (xt/x:get-key model "defaults")])
+  => [true {"args" []}])
+
+^{:refer xt.db.node.example-auth-profile/login-model :added "4.1"}
+(fact "creates a login model with the same portable model contract"
+  (!.js
+    (var model (example/login-model "auth/supabase"))
+    [(xt/x:is-function? (xt/x:get-key model "handler"))
+     (xt/x:get-key model "defaults")
+     (xt/x:get-key model "options")])
+  => [true {"args" []} {}])
+
+^{:refer xt.db.node.example-auth-profile/logout-model :added "4.1"}
+(fact "creates a logout model with no required input"
+  (!.js
+    (var model (example/logout-model "auth/supabase"))
+    [(xt/x:is-function? (xt/x:get-key model "handler"))
+     (xt/x:get-key model "defaults")])
+  => [true {"args" []}])
+
+^{:refer xt.db.node.example-auth-profile/change-profile-model :added "4.1"}
+(fact "creates a profile-change model with portable defaults"
+  (!.js
+    (var model (example/change-profile-model "auth/supabase"))
+    [(xt/x:is-function? (xt/x:get-key model "handler"))
+     (xt/x:get-key model "defaults")
+     (xt/x:get-key model "options")])
+  => [true {"args" []} {}])
+
+^{:refer xt.db.node.example-auth-profile/auth-profile-models :added "4.1"}
+(fact "returns all six auth/profile models without a live service"
+  (!.js
+    (var models (example/auth-profile-models "auth/supabase"))
+    [(xt/x:obj-keys models)
+     (xt/x:is-function? (xtd/get-in models ["session" "handler"]))
+     (xt/x:is-function? (xtd/get-in models ["change-profile" "handler"]))])
+  => [["logout" "sign-up" "change-profile" "session" "profile" "login"] true true])
+
+^{:refer xt.db.node.example-auth-profile/attach-auth-profile-models :added "4.1"}
+(fact "attaches the auth/profile model group to a local node"
+  (!.js
+    (var node (substrate/node-create {"id" "auth-node"}))
+    (var result (example/attach-auth-profile-models
+                 node "auth/supabase" {"space_id" "room/a" "group_id" "auth"}))
+    (var [_group profile] (page-core/model-ensure node "room/a" "auth" "profile"))
+    [result
+     (xt/x:is-object? profile)
+     (xt/x:get-key (page-core/space-get-page node "room/a") "::")])
+  => [{"space" "room/a"
+       "models" ["session" "profile" "sign-up" "login" "logout" "change-profile"]
+       "status" "attached"
+       "group" "auth"}
+      true
+      "substrate.page"])
+
+^{:refer xt.db.node.example-auth-profile/create-auth-profile-node :added "4.1"}
+(fact "creates a local node with service, handlers and models installed"
+  (!.js
+    (var node (example/create-auth-profile-node
+               {"host" "local" "port" 0 "apikey" "test"}
+               "auth/supabase"
+               {"space_id" "room/a" "group_id" "auth"}))
+    [(xt/x:not-nil? (substrate/get-service node "auth/supabase"))
+     (xt/x:not-nil? (substrate/get-handler node "@xt.supabase/sign-up"))
+     (xt/x:not-nil? (page-core/model-get-output node "room/a" "auth" "session"))])
+  => [true true false])

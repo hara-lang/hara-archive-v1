@@ -1,0 +1,298 @@
+(ns postgres.application.internal
+  (:config {:role :internal})
+  (:require
+            [postgres.typed.typed-common :as typed]
+            [postgres.typed.typed-parse :as tparse]
+            [lang.core.script :as script]))
+
+(def ^{:dynamic true :public true} *applications* (atom {}))
+
+(defn ^{:public true} application-string
+  "Returns the Foundation PostgreSQL application summary."
+  [application]
+  (let [tables (sort-by str (keys (:tables application)))]
+    (str "#pg.app [" (count tables) "]\n"
+         (str/join " " (map str tables))
+         "\n")))
+
+(defn ^{:public true} app-list-entries
+  "Returns the table identifiers in application."
+  [application]
+  (let [entries (keys (:tables application))]
+    (if (empty? entries) nil entries)))
+
+(defn ^{:public true} app-get-entry
+  "Returns a table entry from an application's schema tree."
+  [application id]
+  (get-in application [:schema :tree (name id)]))
+
+(defn ^{:public true} app-get-deps
+  "Returns the referenced PostgreSQL module names for a table."
+  [application id]
+  (reduce
+   (fn [output pair]
+     (let [attributes (second pair)
+           dependency (get-in attributes [:ref :ns])]
+       (if dependency
+         (conj output (symbol (name dependency)))
+         output)))
+   #{}
+   (partition 2 (get-in application [:tables id]))))
+
+(defn application-member?
+  [configured expected]
+  (cond (or (vector? configured) (list? configured) (set? configured))
+        (reduce (fn [found value]
+                  (or found (= value expected)))
+                false
+                configured)
+        :else (= configured expected)))
+
+(defn ^{:public true} app-modules
+  "Returns registered PostgreSQL modules assigned to application-name."
+  [application-name]
+  (vec
+   (filter
+    (fn [module]
+      (application-member?
+       (or (:application module)
+           (get-in module [:static :application]))
+       application-name))
+    (vals (deref script/+modules+)))))
+
+(defn link-attributes
+  [attributes links]
+  (let [reference (:ref attributes)
+        reference-key (:key reference)
+        reference-module
+        (or (:ns reference)
+            (if reference-key
+              (let [value (namespace reference-key)]
+                (if value (symbol value) nil))
+              nil))
+        link (if reference-module (get links reference-module) nil)]
+    (if link
+      (assoc-in attributes
+                [:ref :link]
+                (select-keys link [:id :module :lang :section]))
+      attributes)))
+
+(defn table-schema
+  [columns links]
+  (let [pairs (if (map? columns)
+                (vec columns)
+                (partition 2 columns))]
+    (loop [remaining pairs position 0 output {}]
+      (if (empty? remaining)
+        output
+        (let [pair (first remaining)
+              column (first pair)
+              attributes (second pair)]
+          (recur (rest remaining)
+                 (inc position)
+                 (assoc output column
+                        [(link-attributes attributes links) position])))))))
+
+(defn schema-from-tables
+  [tables links]
+  {:tree
+   (reduce-kv
+    (fn [tree table columns]
+      (assoc tree (name table) (table-schema columns links)))
+    {}
+    tables)})
+
+(defn ^{:public true} app-create-raw
+  "Creates an application schema from portable table and link maps."
+  ([tables links] (app-create-raw tables links nil))
+  ([tables links typed-info]
+   (let [ordered (sort-by str (keys tables))
+         application
+         {:tables tables
+          :schema (schema-from-tables tables links)
+          :pointers links
+          :lu (zipmap (map (fn [table]
+                             (keyword (str table)))
+                           ordered)
+                      (range (count ordered)))}]
+     (if typed-info
+       (assoc application :typed typed-info)
+       application))))
+
+(defn definition-name
+  [form]
+  (if (and (list? form) (symbol? (first form)))
+    (name (first form))
+    nil))
+
+(defn module-analysis
+  [module]
+  (let [namespace-name (str (:id module))
+        database-schema
+        (or (first (get-in module [:static :all :schema]))
+            (first (get-in module [:static :seed :schema]))
+            (:schema module))]
+    (reduce
+     (fn [output entry]
+       (let [form (or (:form-input entry) (:form entry))
+             operation (definition-name form)]
+         (cond (or (= operation "deftype")
+                   (= operation "deftype.pg"))
+               (update output :tables conj
+                       (tparse/parse-deftype form namespace-name database-schema))
+
+               (or (= operation "defenum")
+                   (= operation "defenum.pg"))
+               (update output :enums conj
+                       (tparse/parse-defenum form namespace-name database-schema))
+
+               (or (= operation "defn")
+                   (= operation "defn.pg"))
+               (update output :functions conj
+                       (assoc-in
+                        (tparse/parse-defn form namespace-name database-schema)
+                        [:body-meta :aliases]
+                        (:link module)))
+
+               :else output)))
+     {:tables [] :enums [] :functions []}
+     (vals (:code module)))))
+
+(defn ^{:public true} module-typed
+  "Analyzes registered PostgreSQL modules and returns merged typed data."
+  [modules]
+  (apply typed/merge-typed
+         (map (fn [module]
+                (typed/analysis->typed
+                 (assoc (module-analysis module) :tables [])))
+              modules)))
+
+(defn ^{:public true} app-create-typed
+  "Creates the merged typed representation for tables and modules."
+  [tables modules]
+  (typed/merge-typed
+   (typed/analysis->typed (tparse/analyze-tables tables))
+   (module-typed modules)))
+
+(defn entry-table-pairs
+  [entry]
+  (let [seed (:static/schema-seed entry)
+        vector-seed (:vec seed)
+        tree-seed (:tree seed)
+        form (or (:form-input entry) (:form entry))
+        raw-columns (if (and (list? form)
+                             (= 'deftype (:op entry))
+                             (> (count form) 2)
+                             (vector? (nth form 2)))
+                      (nth form 2)
+                      nil)]
+    (cond vector-seed (partition 2 vector-seed)
+          tree-seed (vec tree-seed)
+          (map? seed) (vec seed)
+          raw-columns [[(:id entry) raw-columns]]
+          :else [])))
+
+(defn ^{:public true} app-create
+  "Creates the portable PostgreSQL application for application-name."
+  ([application-name] (app-create application-name nil))
+  ([application-name public-only]
+   (let [modules (app-modules application-name)
+         entries
+         (vec
+          (mapcat
+           (fn [module]
+             (filter
+              (fn [entry]
+                (and (= 'deftype (:op entry))
+                     (if public-only (:static/public entry) true)))
+              (vals (:code module))))
+           modules))
+         links
+         (reduce (fn [output entry]
+                   (assoc output
+                          (symbol (name (:id entry)))
+                          (select-keys entry [:id :module :section :lang])))
+                 {}
+                 entries)
+         tables
+         (reduce
+          (fn [output entry]
+            (reduce
+             (fn [table-output pair]
+               (let [table (first pair)
+                     columns (second pair)
+                     table-symbol (symbol (name table))
+                     table-vector (if (map? columns)
+                                    (vec
+                                     (reduce-kv
+                                      (fn [output key attributes]
+                                        (conj (conj output key) attributes))
+                                      []
+                                      columns))
+                                    columns)]
+                 (assoc table-output table-symbol table-vector)))
+             output
+             (entry-table-pairs entry)))
+          {}
+          entries)]
+     (app-create-raw tables links))))
+
+(defn ^{:public true} app-list [] (keys @*applications*))
+
+(defn ^{:public true} app
+  ([] @*applications*)
+  ([name] (get @*applications* name)))
+
+(defn ^{:public true} app-clear [name]
+  (swap! *applications* dissoc name)
+  (get @*applications* name))
+
+(defn ^{:public true} app-rebuild
+  "Rebuilds an application while preserving its registered tables and links."
+  [name]
+  (get
+   (swap! *applications*
+          (fn [applications]
+            (assoc applications name
+                   (let [current (get applications name)]
+                     (if current
+                       (app-create-raw
+                        (:tables current)
+                        (:pointers current)
+                        (app-create-typed (:tables current)
+                                          (app-modules name)))
+                       (app-create name))))))
+   name))
+
+(defn ^{:public true} app-rebuild-tables
+  "Recreates an application from its currently registered modules."
+  [name]
+  (get (swap! *applications* assoc name (app-create name)) name))
+
+(defn ^{:public true} app-schema [name]
+  (:schema (get @*applications* name)))
+
+(defn ^{:public true} app-typed [name]
+  (or (:typed (get @*applications* name))
+      (let [current (get @*applications* name)]
+        (if current
+          (let [typed-info (app-create-typed (:tables current)
+                                             (app-modules name))]
+            (get-in (swap! *applications*
+                           assoc-in [name :typed] typed-info)
+                    [name :typed]))
+          nil))))
+
+(defn ^{:public true} register-app
+  "Registers an application payload for portable runtime consumers."
+  [name application]
+  (swap! *applications* assoc name application)
+  application)
+
+(defn ^{:public true} app-reset
+  "Restores the application registry to its empty baseline."
+  []
+  (reset! *applications* {})
+  {})
+
+(def __tahto_load__ true)

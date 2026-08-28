@@ -6,8 +6,7 @@
             [lang.common.book :as book]
             [lang.common.book-meta :as book-meta]
             [lang.common.emit :as emit]
-            [lang.common.grammar :as grammar]
-            [std.lib.collection :as collection]))
+            [lang.common.grammar :as grammar]))
 
 (def +dialect-sql+
   {:bool-literal {true "TRUE" false "FALSE"}
@@ -74,7 +73,7 @@
         :block {:script {:start "" :end ""}}
         :token {:string {:custom common/sql-string}
                 :symbol {:replace {\- "_" \? "p_"}}}}
-       (collection/merge-nested (emit/default-grammar))))
+       (merge-nested (emit/default-grammar))))
 
 (defn build-grammar
   "Creates a grammar for a SQL dialect."

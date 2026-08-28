@@ -187,6 +187,16 @@ fn rejects_noncanonical_maps_and_sets() {
 }
 
 #[test]
+fn rejects_noncanonical_big_integer_text() {
+    let valid = frame(sized(BIG_INTEGER, b"9223372036854775808"));
+    FrameView::parse(&valid).unwrap();
+
+    for text in [b"9223372036854775807".as_slice(), b"009223372036854775808", b"+9223372036854775808", b"-0", b"not-an-integer"] {
+        assert!(FrameView::parse(&frame(sized(BIG_INTEGER, text))).is_err());
+    }
+}
+
+#[test]
 fn compose_record_splices_borrowed_values_without_reencoding() {
     let raw = map(vec![(
         sized(STRING, b"string-key"),

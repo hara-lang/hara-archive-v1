@@ -36,7 +36,7 @@
 (defn- primitive-type?
   [type]
   (member? type
-           [:any :nil :bool :boolean :num :number :int :integer
+           [:any :nil :bool :boolean :num :number :int :long :bigint :integer
             :str :string :keyword :symbol :list :vector :map :set :bytes]))
 
 (defn ^{:schema [:fn [:str] :bool]}
@@ -233,6 +233,8 @@
           (= name :bool) :boolean
           (= name :num) :number
           (= name :int) :integer
+          (= name :long) :integer
+          (= name :bigint) :bigint
           (= name :str) :string
           :else name))
 

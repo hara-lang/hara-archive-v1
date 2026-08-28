@@ -153,9 +153,13 @@ impl Program {
                 && arity
                     .fixed
                     .iter()
-                    .all(|value| matches!(value, SchemaType::Primitive(name) if name == "int"))
+                    .all(|value| {
+                        matches!(value, SchemaType::Primitive(name) if name == "int" || name == "long")
+                    })
                 && arity.rest.as_deref().is_none_or(
-                    |value| matches!(value, SchemaType::Primitive(name) if name == "int"),
+                    |value| {
+                        matches!(value, SchemaType::Primitive(name) if name == "int" || name == "long")
+                    },
                 )
         })
     }

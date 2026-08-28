@@ -519,8 +519,13 @@ fn write_metadata_value(out: &mut Writer, value: &MetadataValue) -> Result<(), S
             out.u64(v.to_bits());
         }
         BigInteger(v) => {
-            out.byte(4);
-            out.string(&v.to_string())?;
+            if let Some(value) = v.to_i64() {
+                out.byte(2);
+                out.i64(value);
+            } else {
+                out.byte(4);
+                out.string(&v.to_string())?;
+            }
         }
         Character(v) => {
             out.byte(6);

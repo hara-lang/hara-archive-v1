@@ -1,5 +1,6 @@
 (ns postgres.typed.typed-jsonb
   (:require
+            [std.foundation :refer [drop nth second]]
             [postgres.typed.typed-common :as types]))
 
 (defn symbol->field-key

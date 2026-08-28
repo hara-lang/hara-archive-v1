@@ -1,0 +1,135 @@
+(ns xt.net.addon-supabase-test (:use code.test) (:require [xt.net.addon-supabase :as addon] [xt.lang.spec-base :as xt]))
+
+^{:refer xt.net.addon-supabase/wrap-supabase-auth :added "4.1"}
+(fact "adds default and request credentials to the request headers"
+  (!.js
+   (var handler (addon/wrap-supabase-auth (fn [_ input] (return input))))
+   (handler {"defaults" {"apikey" "key-1" "token" "token-1"}}
+            {"path" "/test" "headers" {"X-Test" "yes"}}))
+  => {"path" "/test"
+      "headers" {"X-Test" "yes"
+                 "Accept" "application/json"
+                 "Content-Type" "application/json"
+                 "Authorization" "Bearer token-1"
+                 "apikey" "key-1"}})
+
+^{:refer xt.net.addon-supabase/middleware-supabase :added "4.1"}
+(fact "returns the input middleware chain"
+  (!.js (var chain (addon/middleware-supabase))
+        [(xt/x:len chain) (xt/x:is-function? (xt/x:first chain))])
+  => [3 true])
+
+^{:refer xt.net.addon-supabase/cmd-rpc-call :added "4.1"}
+(fact "builds an RPC request"
+  (!.js (addon/cmd-rpc-call "ping" {"value" 1} {"headers" {"X" "1"}}))
+  => {"body" "{\"value\":1}" "path" "/rest/v1/rpc/ping" "method" "POST" "headers" {"X" "1"}})
+
+^{:refer xt.net.addon-supabase/cmd-query-table :added "4.1"}
+(fact "builds a table query request"
+  (!.js (addon/cmd-query-table "Log" "select=id" {"headers" {"Accept-Profile" "scratch"}}))
+  => {"path" "/rest/v1/Log?select=id" "method" "GET" "headers" {"Accept-Profile" "scratch"}})
+
+^{:refer xt.net.addon-supabase/cmd-health :added "4.1"}
+(fact "builds the health request"
+  (!.js (addon/cmd-health {"headers" {"X" "1"}}))
+  => {"path" "/auth/v1/health" "method" "GET" "headers" {"X" "1"}})
+
+^{:refer xt.net.addon-supabase/cmd-signup :added "4.1"}
+(fact "builds the signup request"
+  (!.js (addon/cmd-signup {"email" "a@example.com" "password" "secret"} {}))
+  => {"body" "{\"email\":\"a@example.com\",\"password\":\"secret\"}" "path" "/auth/v1/signup" "method" "POST"})
+
+^{:refer xt.net.addon-supabase/cmd-admin-create-user :added "4.1"}
+(fact "builds the admin create-user request"
+  (!.js (addon/cmd-admin-create-user {"email" "a@example.com" "email_confirm" true} {}))
+  => {"body" "{\"email\":\"a@example.com\",\"email_confirm\":true}" "path" "/auth/v1/admin/users" "method" "POST"})
+
+^{:refer xt.net.addon-supabase/cmd-admin-delete-user :added "4.1"}
+(fact "builds the admin delete-user request"
+  (!.js (addon/cmd-admin-delete-user "user-1" {}))
+  => {"path" "/auth/v1/admin/users/user-1" "method" "DELETE"})
+
+^{:refer xt.net.addon-supabase/cmd-admin-generate-link :added "4.1"}
+(fact "builds the admin generate-link request"
+  (!.js (addon/cmd-admin-generate-link {"type" "magiclink"} {}))
+  => {"body" "{\"type\":\"magiclink\"}" "path" "/auth/v1/admin/generate_link" "method" "POST"})
+
+^{:refer xt.net.addon-supabase/cmd-admin-get-user :added "4.1"}
+(fact "builds the admin get-user request"
+  (!.js (addon/cmd-admin-get-user "user-1" {}))
+  => {"path" "/auth/v1/admin/users/user-1" "method" "GET"})
+
+^{:refer xt.net.addon-supabase/cmd-admin-list-users :added "4.1"}
+(fact "builds the admin list-users request"
+  (!.js (addon/cmd-admin-list-users {}))
+  => {"path" "/auth/v1/admin/users" "method" "GET"})
+
+^{:refer xt.net.addon-supabase/cmd-admin-update-user :added "4.1"}
+(fact "builds the admin update-user request"
+  (!.js (addon/cmd-admin-update-user "user-1" {"body" "{}"}))
+  => {"path" "/auth/v1/admin/users/user-1" "method" "PUT" "body" "{}"})
+
+^{:refer xt.net.addon-supabase/cmd-authorize :added "4.1"}
+(fact "builds the OAuth authorize request"
+  (!.js (addon/cmd-authorize {"redirect_to" "http://localhost/callback"} {}))
+  => {"path" "/auth/v1/authorize?redirect_to=http://localhost/callback" "method" "GET"})
+
+^{:refer xt.net.addon-supabase/cmd-callback :added "4.1"}
+(fact "builds the OAuth callback request"
+  (!.js (addon/cmd-callback {}))
+  => {"path" "/auth/v1/callback" "method" "GET"})
+
+^{:refer xt.net.addon-supabase/cmd-invite :added "4.1"}
+(fact "builds the invite request"
+  (!.js (addon/cmd-invite {"email" "a@example.com"} {}))
+  => {"body" "{\"email\":\"a@example.com\"}" "path" "/auth/v1/invite" "method" "POST"})
+
+^{:refer xt.net.addon-supabase/cmd-logout :added "4.1"}
+(fact "builds the logout request"
+  (!.js (addon/cmd-logout {}))
+  => {"path" "/auth/v1/logout" "method" "POST"})
+
+^{:refer xt.net.addon-supabase/cmd-otp :added "4.1"}
+(fact "builds the OTP request"
+  (!.js (addon/cmd-otp {"email" "a@example.com"} {}))
+  => {"body" "{\"email\":\"a@example.com\"}" "path" "/auth/v1/otp" "method" "POST"})
+
+^{:refer xt.net.addon-supabase/cmd-recovery :added "4.1"}
+(fact "builds the recovery request"
+  (!.js (addon/cmd-recovery {"email" "a@example.com"} {}))
+  => {"body" "{\"email\":\"a@example.com\"}" "path" "/auth/v1/recover" "method" "POST"})
+
+^{:refer xt.net.addon-supabase/cmd-settings :added "4.1"}
+(fact "builds the settings request"
+  (!.js (addon/cmd-settings {}))
+  => {"path" "/auth/v1/settings" "method" "GET"})
+
+^{:refer xt.net.addon-supabase/cmd-token-password :added "4.1"}
+(fact "builds the password-token request"
+  (!.js (addon/cmd-token-password {"email" "a@example.com" "password" "secret"} {}))
+  => {"body" "{\"email\":\"a@example.com\",\"password\":\"secret\"}" "path" "/auth/v1/token?grant_type=password" "method" "POST"})
+
+^{:refer xt.net.addon-supabase/cmd-token-refresh :added "4.1"}
+(fact "builds the refresh-token request"
+  (!.js (addon/cmd-token-refresh {"refresh_token" "refresh-1"} {}))
+  => {"body" "{\"refresh_token\":\"refresh-1\"}" "path" "/auth/v1/token?grant_type=refresh_token" "method" "POST"})
+
+^{:refer xt.net.addon-supabase/cmd-user-get :added "4.1"}
+(fact "builds the current-user request"
+  (!.js (addon/cmd-user-get {}))
+  => {"path" "/auth/v1/user" "method" "GET"})
+
+^{:refer xt.net.addon-supabase/cmd-user-put :added "4.1"}
+(fact "builds the current-user update request"
+  (!.js (addon/cmd-user-put {"data" {"note" "updated"}} {}))
+  => {"body" "{\"data\":{\"note\":\"updated\"}}" "path" "/auth/v1/user" "method" "PUT"})
+
+^{:refer xt.net.addon-supabase/cmd-verify-get :added "4.1"}
+(fact "builds the GET verification request"
+  (!.js (addon/cmd-verify-get {"type" "email"} {}))
+  => {"path" "/auth/v1/verify?type=email" "method" "GET"})
+
+^{:refer xt.net.addon-supabase/cmd-verify-post :added "4.1"}
+(fact "builds the POST verification request"
+  (!.js (addon/cmd-verify-post {"type" "email" "token" "abc"} {}))
+  => {"body" "{\"type\":\"email\",\"token\":\"abc\"}" "path" "/auth/v1/verify" "method" "POST"})

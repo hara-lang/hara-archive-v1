@@ -14,7 +14,7 @@
                       :sync/tables ['UserAccount 'UserProfile]} nil))
 
 (fact "normalizes xtalk contract input"
-  (server-api/xtalk-contract-input
+  (postgres.typed.export.server-api/xtalk-contract-input
    {:contract-sym 'create-user-contract
     :wrapper-sym 'create-user-sync
     :fn-def +manual-sync-fn+
@@ -26,7 +26,7 @@
       'handler-sym 'create-user-sync})
 
 (fact "creates API target entries"
-  (select-keys (server-api/target-entry +shape-fn+ :xtalk-contracts)
+  (select-keys (postgres.typed.export.server-api/target-entry +shape-fn+ :xtalk-contracts)
                [:target :emitted-sym :fn-def])
   => {:target :xtalk-contracts
       :emitted-sym 'create-user-contract
@@ -34,14 +34,17 @@
 
 (fact "renders xtalk contracts when sync is enabled"
   (str/includes?
-   (server-api/emit-target +manual-sync-fn+ :xtalk-contracts)
+   (postgres.typed.export.server-api/emit-target +manual-sync-fn+ :xtalk-contracts)
    "create-user-manual-contract")
   => true)
 
 (fact "renders configured API targets"
-  (keys (server-api/emit-targets +manual-sync-fn+)) => '(:xtalk-contracts)
+  (keys (postgres.typed.export.server-api/emit-targets +manual-sync-fn+)) => '(:xtalk-contracts)
   (string? (:xtalk-contracts
-            (server-api/emit-targets +manual-sync-fn+ [:xtalk-contracts]))) => true)
+            (postgres.typed.export.server-api/emit-targets +manual-sync-fn+ [:xtalk-contracts]))) => true)
 
 (fact "lists supported API targets"
-  (server-api/list-targets) => '(:xtalk-contracts))
+  (postgres.typed.export.server-api/list-targets) => '(:xtalk-contracts))
+
+(let [summary (run {:namespace '[postgres.typed.export.server-api-test] :no-report true})]
+  (pr-str (select-keys summary [:status :counts])))

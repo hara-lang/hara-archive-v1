@@ -75,3 +75,6 @@
 
 (fact "lists supported DB targets"
   (server-db/list-targets) => '(:supabase-db))
+
+(let [summary (run {:namespace '[postgres.typed.export.server-db-test] :no-report true})]
+  (pr-str (select-keys summary [:status :counts])))

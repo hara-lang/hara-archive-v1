@@ -3,8 +3,7 @@
             [lang.common.emit :as emit]
             [lang.common.grammar :as grammar]
             [lang.model.v1.spec-lua.lua-native :as native]
-            [lang.model.v1.spec-xtalk.fn-lua :as xtalk-ops]
-            [std.lib.collection :as collection]))
+            [lang.model.v1.spec-xtalk.fn-lua :as xtalk-ops]))
 
 (def +language+ :lua)
 (def +tag+ :lua)
@@ -22,7 +21,7 @@
 
 (def +template+
   (-> (emit/default-grammar)
-      (collection/merge-nested
+      (merge-nested
        {:allow {:assign #{:symbol :quote}}
         :default {:comment {:prefix "--"}
                   :index {:offset 1 :end-inclusive true :wrap-object true}

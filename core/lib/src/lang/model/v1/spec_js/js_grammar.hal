@@ -3,8 +3,7 @@
             [lang.common.emit :as emit]
             [lang.common.grammar :as grammar]
             [lang.model.v1.spec-js.js-native :as native]
-            [lang.model.v1.spec-xtalk.fn-js :as xtalk-ops]
-            [std.lib.collection :as collection]))
+            [lang.model.v1.spec-xtalk.fn-js :as xtalk-ops]))
 
 (def +language+ :js)
 (def +tag+ :js)
@@ -22,7 +21,7 @@
 
 (def +template+
   (-> (emit/default-grammar)
-      (collection/merge-nested
+      (merge-nested
        {:banned #{:keyword}
         :allow {:assign #{:symbol :vector :set :map}}
         :default {:comment {:prefix "//"}

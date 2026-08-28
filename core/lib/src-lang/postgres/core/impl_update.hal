@@ -1,6 +1,6 @@
 (ns postgres.core.impl-update
   (:config {:blank true})
-  (:require [std.foundation :refer [ex seq]]
+  (:require [std.foundation :refer [= apply assoc concat conj count deref ex filter first get has? into keys list map map? merge nil? not not= nth reduce second seq sort-by symbol? vec vector? with-meta]]
             [postgres.core.impl-base :as base]
             [lang.common.util :as util]))
 
@@ -72,8 +72,11 @@
         json (base/t-wrap-json returned as json-output (:into params) nil)]
     (with-meta (base/t-wrap-into json (:into params) {}) {:op/type :update})))
 
-(defn t-update [spec params]
-  (t-update-raw (base/prep-table spec false {}) params))
+(defn t-update
+  ([spec params]
+   (t-update spec params nil))
+  ([spec params caller-ns]
+   (t-update-raw (base/prep-table spec false {:caller-ns caller-ns}) params)))
 
 (defn t-modify-assign [prepared params target]
   (let [entry (first prepared)
@@ -97,7 +100,10 @@
   (with-meta (t-modify-assign prepared params (:into params))
              {:assign/fn 'postgres.core.impl-update/t-modify-assign}))
 
-(defn t-modify [spec params]
-  (t-modify-raw (base/prep-table spec false {}) params))
+(defn t-modify
+  ([spec params]
+   (t-modify spec params nil))
+  ([spec params caller-ns]
+   (t-modify-raw (base/prep-table spec false {:caller-ns caller-ns}) params)))
 
 (def __tahto_load__ true)

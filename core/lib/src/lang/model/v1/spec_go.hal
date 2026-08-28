@@ -9,8 +9,7 @@
             [lang.common.grammar :as grammar]
             [lang.common.util :as ut]
             [lang.model.v1.spec-xtalk]
-            [lang.model.v1.spec-xtalk.fn-go :as fn-go]
-            [std.lib.collection :as collection]))
+            [lang.model.v1.spec-xtalk.fn-go :as fn-go]))
 
 (defn go-typesystem
   "Handles generic Go types."
@@ -124,7 +123,7 @@
 
 (def +template+
   (-> (emit/default-grammar)
-      (collection/merge-nested
+      (merge-nested
        {:banned #{:set :regex}
         :highlight (set [(quote return) (quote break)
                          (quote continue) (quote fallthrough)])

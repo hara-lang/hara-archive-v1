@@ -1,0 +1,37 @@
+(ns xt.db.text.base-scope-test (:require [lang.core :as l]) (:use code.test))
+
+^{:seedgen/root {:all true}} (l/script- :js {:require [[xt.lang.spec-base :as xt] [xt.lang.common-data :as xtd] [xt.db.text.base-scope :as scope] [xt.db.helpers.data-main-test :as sample] [xt.db.text.sql-util :as ut]] :runtime :basic})
+
+(fact:global {:teardown [(l/rt:stop)] :setup [(l/rt:restart)]})
+
+^{:refer xt.db.text.base-scope/get-data-columns.more :adopt true :added "4.0"} (fact "classifies the link" (!.js (xtd/arr-map (scope/get-data-columns sample/Schema "UserAccount" ["*/info" "password_updated"]) (fn:> [e] (. e ["ident"])))) => ["id" "nickname" "password_updated" "is_super" "is_suspended" "is_official"] (!.js (xtd/arr-map (scope/get-data-columns sample/Schema "RegionState" ["*/info" "country_id"]) (fn:> [e] (. e ["ident"])))) => ["id" "country"])
+
+^{:refer xt.db.text.base-scope/get-tree.more :adopt true :setup [(def +profile+ ["UserProfile" {"where" [{"id" "zcaudate"}] "data" ["id" "account_id" "first_name" "last_name" "city" "state_id" "country_id" "about" "language"] "custom" [] "links" []}]) (def +account+ ["UserAccount" {"where" [{"id" "zcaudate"}] "data" ["id" "nickname" "password_updated" "is_super" "is_suspended" "is_official"] "custom" [] "links" [["profile" "reverse" ["UserProfile" {"where" [{"account" ["eq" ["UserAccount.id"]]}] "data" ["id" "account_id" "first_name" "last_name" "city" "state_id" "country_id" "about" "language"] "custom" [] "links" []}]]]}])] :added "4.0"} (fact "MORE CHECKS" (!.js (scope/get-tree sample/Schema "UserProfile" {:id "zcaudate"} ["*/default"] {})) => +profile+ (!.js (scope/get-tree sample/Schema "UserAccount" {:id "zcaudate"} ["*/data" ["profile" [{:name "hello"}] ["*/default"]]] {})) => +account+)
+
+^{:refer xt.db.text.base-scope/get-link-standard.more :adopt true :added "4.0"} (fact "classifies the link" (!.js (xtd/arr-map (scope/get-link-columns sample/Schema "UserAccount" [["profile" {:id "1"} {:id "2"} {:id "3"} ["first_name" "last_name"]]]) (fn [out] (var [e cols] out) (return [(. e ["ident"]) cols])))) => [["profile" [{"id" "1"} {"id" "2"} {"id" "3"} ["first_name" "last_name"]]]])
+
+^{:refer xt.db.text.base-scope/merge-queries :added "4.0"} (fact "merges query with clause" (!.js [(scope/merge-queries [] []) (scope/merge-queries [{:a 1}] [{:a 2}]) (scope/merge-queries [{:a 1}] [{:b 2}]) (scope/merge-queries [{:a 1}] [{:b 2} {:c 3}]) (scope/merge-queries [{:a 1} {:c 1}] [{:b 2} {:c 3}])]) => [[] [{"a" 2}] [{"a" 1 "b" 2}] [{"a" 1 "b" 2} {"a" 1 "c" 3}] [{"a" 1 "b" 2} {"a" 1 "c" 3} {"b" 2 "c" 1} {"c" 3}]])
+
+^{:refer xt.db.text.base-scope/filter-scope :added "4.0"} (fact "filter scopes from keys" (!.js [(scope/filter-scope ["-/data" "id"]) (scope/filter-scope ["-/data" "-/key"]) (scope/filter-scope ["*/data" "-/key"]) (scope/filter-scope ["*/everything"])]) => [{"-/data" true} {"-/data" true "-/key" true} {"-/data" true "-/info" true "-/key" true "-/id" true} {"-/info" true "-/detail" true "-/key" true "-/id" true "-/system" true "-/ref" true "-/data" true "-/hidden" true}])
+
+^{:refer xt.db.text.base-scope/filter-plain-key :added "4.0"} (fact "converts _id tags to standard keys" (!.js [(scope/filter-plain-key "hello") (scope/filter-plain-key "hello_id")]) => ["hello" "hello"])
+
+^{:refer xt.db.text.base-scope/filter-plain :added "4.0"} (fact "filter ids keys from scope keys" (!.js (scope/filter-plain ["-/data" "id"])) => {"id" true})
+
+^{:refer xt.db.text.base-scope/get-data-columns :added "4.0"} (fact "get columns for given keys" (!.js (xtd/arr-map (scope/get-data-columns sample/Schema "UserAccount" ["*/data"]) (fn:> [e] (. e ["ident"])))) => ["id" "nickname" "password_updated" "is_super" "is_suspended" "is_official"] (!.js (xtd/arr-map (scope/get-data-columns sample/Schema "UserProfile" ["*/standard"]) (fn:> [e] (. e ["ident"])))) => ["id" "account" "first_name" "last_name" "city" "state" "country" "about" "language" "detail"])
+
+^{:refer xt.db.text.base-scope/get-link-standard :added "4.0"} (fact "classifies the link" (!.js (scope/get-link-standard ["hello" ["hello"]])) => ["hello" [{} ["hello"]]])
+
+^{:refer xt.db.text.base-scope/get-query-tables :added "4.0"} (fact "get columns for given query" (!.js (scope/get-query-tables sample/Schema "UserAccount" {:profile {}} {})) => {"UserAccount" true "UserProfile" true})
+
+^{:refer xt.db.text.base-scope/get-link-columns :added "4.0"} (fact "get columns for given keys" (!.js (xtd/arr-map (scope/get-link-columns sample/Schema "UserAccount" [["profile" ["first_name" "last_name"]]]) (fn [out] (var [e cols] out) (return [(. e ["ident"]) cols])))) => [["profile" [{} ["first_name" "last_name"]]]])
+
+^{:refer xt.db.text.base-scope/get-linked-tables-loop :added "4.1"} (fact "accumulates linked tables into an existing map" (!.js (scope/get-linked-tables-loop sample/Schema "UserAccount" [["profile"] ["wallets" [["entries" [["asset"]]]]]] {"Seed" true})) => {"UserAccount" true "Asset" true "Seed" true "WalletAsset" true "Wallet" true "UserProfile" true})
+
+^{:refer xt.db.text.base-scope/get-linked-tables :added "4.0"} (fact "calculated linked tables given query" (!.js (scope/get-linked-tables sample/Schema "UserAccount" [["profile"] ["wallets" [["entries" [["asset"]]]]]])) => {"UserAccount" true "Asset" true "WalletAsset" true "Wallet" true "UserProfile" true})
+
+^{:refer xt.db.text.base-scope/as-where-input :added "4.0"} (fact "when empty, returns an empty array" (!.js [(scope/as-where-input []) (scope/as-where-input [{:id "zcaudate"} {:id "z1"}]) (scope/as-where-input {:id "zcaudate"})]) => [[] [{"id" "zcaudate"} {"id" "z1"}] [{"id" "zcaudate"}]])
+
+^{:refer xt.db.text.base-scope/get-tree :setup [(def +account+ ["UserAccount" {"where" [{"id" "zcaudate"} {"id" "z1"} {"id" "z3"}] "data" [] "custom" [] "links" [["wallets" "reverse" ["Wallet" {"where" [{"owner" ["eq" ["UserAccount.id"]] "id" "W1"} {"owner" ["eq" ["UserAccount.id"]] "id" "W2"} {"owner" ["eq" ["UserAccount.id"]] "id" "W3"}] "data" [] "custom" [] "links" [["entries" "reverse" ["WalletAsset" {"where" [{"wallet" ["eq" ["Wallet.id"]] "id" "E1"} {"wallet" ["eq" ["Wallet.id"]] "id" "E2"} {"wallet" ["eq" ["Wallet.id"]] "id" "E3"}] "data" ["id"] "custom" [] "links" []}]]]}]]]}]) (def +account-lua+ ["UserAccount" {"where" [{"id" "zcaudate"} {"id" "z1"} {"id" "z3"}] "data" {} "custom" {} "links" [["wallets" "reverse" ["Wallet" {"where" [{"owner" ["eq" ["UserAccount.id"]] "id" "W1"} {"owner" ["eq" ["UserAccount.id"]] "id" "W2"} {"owner" ["eq" ["UserAccount.id"]] "id" "W3"}] "data" {} "custom" {} "links" [["entries" "reverse" ["WalletAsset" {"where" [{"wallet" ["eq" ["Wallet.id"]] "id" "E1"} {"wallet" ["eq" ["Wallet.id"]] "id" "E2"} {"wallet" ["eq" ["Wallet.id"]] "id" "E3"}] "data" ["id"] "custom" {} "links" {}}]]]}]]]}])] :added "4.0"} (fact "calculated linked tree given query" (!.js (scope/get-tree sample/Schema "UserAccount" [{:id "zcaudate"} {:id "z1"} {:id "z3"}] [["wallets" {:id "W1"} {:id "W2"} {:id "W3"} [["entries" {:id "E1"} {:id "E2"} {:id "E3"}]]]] {})) => +account+)
+
+(comment (s/run [(quote xt.db.text.base-scope)]) (s/pedantic [(quote xt.db.text.base)]) (s/seedgen-benchadd (quote [xt.lang.spec]) {:lang [:r] :write true}) (s/seedgen-benchadd (quote [xt.db.text.base-scope]) {:lang [:julia :dart] :write true}) (s/seedgen-langadd (quote xt.db.text.base-scope) {:lang [:lua :python] :write true}) (s/seedgen-langremove (quote xt.db.text.base-scope) {:lang [:lua :python] :write true}))

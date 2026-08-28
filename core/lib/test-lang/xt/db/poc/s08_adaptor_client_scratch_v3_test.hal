@@ -1,0 +1,14 @@
+(ns xt.db.poc.s08-adaptor-client-scratch-v3-test (:use code.test) (:require [lang.core :as l] [xt.lang.spec-base :as xt] [xt.db.text.pgrest-graph :as pgrest]))
+
+(l/script- :js {:runtime :basic})
+
+^{:refer xt.db.text.pgrest-graph/select :added "4.1"}
+(fact "the scratch-v3 adaptor POC keeps nested query compilation local"
+  (!.js
+   (var schema {"Wallet" {"id" {"type" "uuid" "primary" true "order" 0}
+                          "slug" {"type" "text" "order" 1}}})
+   (var request (pgrest/select schema ["Wallet" {"data" ["slug"]}] {}))
+   [(xt/x:get-key request "method")
+    (xt/x:get-key request "path")
+    (xt/x:is-string? (xt/x:get-key request "query"))])
+  => ["GET" "/rest/v1/Wallet" true])

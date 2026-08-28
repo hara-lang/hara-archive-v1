@@ -135,8 +135,12 @@
     (catch Throwable error
       (if (:staging/form (ex-data error))
         (throw error)
-        (throw (ex :host {:staging/form form} :ex/message (str "Staging form failed: " (pr-str form) ": "
-                            (or (ex-message error) (str error))) :ex/cause error))))))
+        (let [message (str "Staging form failed: " (pr-str form) ": "
+                          (or (ex-message error) (str error)))
+              data {:staging/form form}]
+          (if (map? (ex-data error))
+            (throw (ex :host data :ex/message message :ex/cause error))
+            (throw (ex :host data :ex/message message))))))))
 
 (defn to-staging [input grammar modules options]
   (let [deps (atom #{}) deps-fragment (atom #{}) deps-native (atom {})

@@ -1,6 +1,6 @@
 (ns postgres.core.impl-base
   (:config {:blank true})
-  (:require [std.foundation :as foundation :refer [ex reduce-kv seq]]
+  (:require [std.foundation :as foundation :refer [= apply assoc conj concat count deref ex filter first get get-in has? into keys keyword keyword? list list? map map? merge meta name namespace nil? not nth number? partition reduce reduce-kv rest second seq set? sort-by str string? symbol symbol? vec vector? with-meta]]
             [lang.common.preprocess-base :as preprocess]
             [lang.common.util :as util]
             [lang.model.v1.spec-postgres.deftype.common :as table]
@@ -53,12 +53,17 @@
   [value options]
   (cond (map? value) [nil value]
         (symbol? value)
-        (let [resolved (foundation/resolve value)
+        (let [caller-ns (:caller-ns options)
+              qualified (if (and caller-ns (nil? (namespace value)))
+                          (symbol (str caller-ns) (name value))
+                          value)
+              resolved (foundation/resolve qualified)
               entry (or (when resolved (deref resolved))
                         (portable-entry value))]
           (if (map? entry)
             [nil entry]
-            (throw (ex :database {:input value :options options} :ex/message "No entry found"))))
+            (throw (ex :database {:input value :resolved qualified :options options}
+                       :ex/message "No entry found"))))
         :else (throw (ex :database {:input value :options options} :ex/message "No entry found"))))
 
 (defn prep-table

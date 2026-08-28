@@ -27,7 +27,8 @@
   (cond
     (nil? value) (result :nil)
     (boolean? value) (result :bool)
-    (long? value) (result :int)
+    (long? value) (result :long)
+    (bigint? value) (result :bigint)
     (number? value) (result :num)
     (string? value) (result :str)
     (keyword? value) (result :keyword)

@@ -1,0 +1,179 @@
+name: Integer representation benchmark
+
+on:
+  pull_request:
+    branches: [main, testing]
+    paths:
+      - '.github/workflows/integer-representation-benchmark.yml'
+      - 'core/java/src/main/java/hara/truffle/HaraRuntimeBenchmark.java'
+      - 'core/rust/src/bin/hara-bytecode-benchmark.rs'
+      - 'core/rust/web/integer-representation-benchmark.spec.js'
+      - 'core/rust/web/playwright.config.js'
+  push:
+    branches: [main, testing]
+    paths:
+      - '.github/workflows/integer-representation-benchmark.yml'
+      - 'core/java/src/main/java/hara/truffle/HaraRuntimeBenchmark.java'
+      - 'core/rust/src/bin/hara-bytecode-benchmark.rs'
+      - 'core/rust/web/integer-representation-benchmark.spec.js'
+      - 'core/rust/web/playwright.config.js'
+  schedule:
+    - cron: '17 4 * * 0'
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: Benchmark profile
+        type: choice
+        options: [smoke, standard]
+        default: smoke
+
+permissions:
+  contents: read
+
+concurrency:
+  group: integer-representation-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'schedule' }}
+
+jobs:
+  native:
+    name: JVM and Rust evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      HARA_BENCHMARK_ROOT: ${{ github.workspace }}/hara-benchmarks
+      HARA_CORE_ROOT: ${{ github.workspace }}/core
+    steps:
+      - name: Check out Hara
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Check out the benchmark corpus
+        uses: actions/checkout@v4
+        with:
+          repository: hara-lang/hara-benchmarks
+          ref: main
+          path: hara-benchmarks
+          fetch-depth: 1
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+          cache-dependency-path: core/java/pom.xml
+
+      - name: Select benchmark profile
+        id: profile
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "schedule" ]]; then
+            value=standard
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            value="${{ inputs.profile }}"
+          else
+            value=smoke
+          fi
+          echo "value=$value" >> "$GITHUB_OUTPUT"
+
+      - name: Run JVM and Rust benchmark corpus
+        working-directory: hara-benchmarks
+        env:
+          HARA_BENCHMARK_ROOT: ${{ github.workspace }}/hara-benchmarks
+          HARA_CORE_ROOT: ${{ github.workspace }}/core
+        shell: bash
+        run: >-
+          python3 runtime/hara/runtime/run.py
+          --profile "${{ steps.profile.outputs.value }}"
+          --corpus "$HARA_BENCHMARK_ROOT/runtime/hara/runtime/integer-representation-workloads.json"
+          --runtime hara-jvm-vm
+          --runtime hara-jvm-full
+          --runtime hara-rust-vm
+          --runtime hara-rust-full
+          --output target/integer-representation-native.json
+
+      - name: Upload JVM and Rust evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: integer-representation-native-${{ steps.profile.outputs.value }}
+          path: |
+            core/target/integer-representation-native.json
+            core/target/integer-representation-native.md
+          if-no-files-found: error
+
+  browser:
+    name: Chromium evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      HARA_BENCH_PROFILE: ${{ github.event_name == 'schedule' && 'standard' || github.event_name == 'workflow_dispatch' && inputs.profile || 'smoke' }}
+      HARA_INTEGER_BENCHMARK_CORPUS_URL: /rust/assets/integer-representation-workloads.json
+    steps:
+      - name: Check out Hara
+        uses: actions/checkout@v4
+
+      - name: Check out the benchmark corpus
+        uses: actions/checkout@v4
+        with:
+          repository: hara-lang/hara-benchmarks
+          ref: main
+          path: hara-benchmarks
+          fetch-depth: 1
+
+      - name: Copy the canonical corpus into the static browser root
+        shell: bash
+        run: cp hara-benchmarks/runtime/hara/runtime/integer-representation-workloads.json core/rust/assets/integer-representation-workloads.json
+
+      - name: Set up Rust and the Wasm target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install the matching wasm-bindgen CLI
+        shell: bash
+        run: |
+          version="$(
+            cargo metadata --locked \
+              --manifest-path core/rust/Cargo.toml \
+              --format-version 1 \
+            | python3 -c '
+          import json, sys
+          metadata = json.load(sys.stdin)
+          versions = sorted({package["version"] for package in metadata["packages"] if package["name"] == "wasm-bindgen"})
+          if len(versions) != 1:
+              raise SystemExit(f"expected one wasm-bindgen version, got {versions}")
+          print(versions[0])
+          '
+          )"
+          cargo install wasm-bindgen-cli --version "$version" --locked
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: core/rust/web/package-lock.json
+
+      - name: Install browser dependencies
+        working-directory: core/rust/web
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Build the full browser runtime
+        run: ./scripts/runtime/build-hara-browser full
+
+      - name: Run the integer representation browser benchmark
+        working-directory: core/rust/web
+        run: npx playwright test integer-representation-benchmark.spec.js --reporter=line
+
+      - name: Upload browser evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: integer-representation-browser-${{ env.HARA_BENCH_PROFILE }}
+          path: core/target/integer-representation-browser.json
+          if-no-files-found: error

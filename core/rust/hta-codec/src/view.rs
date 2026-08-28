@@ -359,8 +359,11 @@ fn scan_value(bytes: &[u8], start: usize, depth: usize) -> Result<usize, String>
         }
         STRING | KEYWORD | SYMBOL | NAMESPACE | BIG_INTEGER | REGEX => {
             let (data_start, end) = sized_range(bytes, cursor)?;
-            str::from_utf8(&bytes[data_start..end])
+            let text = str::from_utf8(&bytes[data_start..end])
                 .map_err(|_| "hta/value-malformed: invalid UTF-8".to_string())?;
+            if tag == BIG_INTEGER {
+                super::validate_canonical_big_integer(text)?;
+            }
             Ok(end)
         }
         BYTES => sized_range(bytes, cursor).map(|(_, end)| end),

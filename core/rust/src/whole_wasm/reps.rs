@@ -124,7 +124,7 @@ pub(super) fn declared_result_rep(program: &Program, function_id: FunctionId) ->
 
 fn schema_rep(schema: &SchemaType) -> Rep {
     match schema {
-        SchemaType::Primitive(name) if name == "int" => Rep::I64,
+        SchemaType::Primitive(name) if name == "int" || name == "long" => Rep::I64,
         SchemaType::Primitive(name) if name == "bool" => Rep::Bool,
         SchemaType::Primitive(name) if name == "nil" => Rep::Nil,
         _ => Rep::TruthyHandle,

@@ -1,0 +1,12 @@
+(ns xt.db.poc.n03-webworker-custom-test (:use code.test) (:require [lang.core :as l] [xt.lang.spec-base :as xt] [xt.substrate :as substrate] [xt.substrate.page-proxy :as page-proxy]))
+
+(l/script- :js {:runtime :basic})
+
+^{:refer xt.substrate.page-proxy/install :added "4.1"}
+(fact "the custom worker POC installs a complete local proxy surface"
+  (!.js
+   (var node (substrate/node-create {"id" "worker-client"}))
+   (page-proxy/install node)
+   {"handlers" (xt/x:len (substrate/list-handlers node))
+    "triggers" (xt/x:len (substrate/list-triggers node))})
+  => {"handlers" 17 "triggers" 2})

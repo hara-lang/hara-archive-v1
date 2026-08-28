@@ -1,6 +1,6 @@
 (ns postgres.core.graph-query
   (:config {:blank true})
-  (:require [std.foundation :refer [ex reduce-kv]]
+  (:require [std.foundation :refer [= assoc conj count empty? first get get-in has? keys keyword keyword? list map map? merge name nil? not not= nth reduce reduce-kv second set? symbol? vec vector?]]
             [lang.common.util :as util]
             [postgres.core.graph-base :as graph]
             [postgres.core.impl-base :as base]
@@ -141,13 +141,16 @@
                                            nested-query options))]
     (main/t-select-raw prepared (assoc params :where where :returning returning))))
 
-(defn query-fn [spec params]
-  (let [prepared (base/prep-table spec true {})
-        entry (first prepared)
-        options (nth prepared 2)
-        prepared (if (:schema entry)
-                   [entry (second prepared) (assoc options :schema (:schema entry))]
-                   prepared)]
-    (query-raw-fn prepared params)))
+(defn query-fn
+  ([spec params]
+   (query-fn spec params nil))
+  ([spec params caller-ns]
+   (let [prepared (base/prep-table spec true {:caller-ns caller-ns})
+         entry (first prepared)
+         options (nth prepared 2)
+         prepared (if (:schema entry)
+                    [entry (second prepared) (assoc options :schema (:schema entry))]
+                    prepared)]
+     (query-raw-fn prepared params))))
 
 (def __tahto_load__ true)

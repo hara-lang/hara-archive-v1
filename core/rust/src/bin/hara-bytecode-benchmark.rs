@@ -33,6 +33,9 @@
 //!                       execute it against the module namespace.
 //! - `whole-wasm`      — compile HBC0 to an HNW0 whole-function Wasm module
 //!                       once, then call the generated entry through Wasmtime.
+//! - `whole-wasm-value` — the dynamic-value whole-Wasm boundary, retaining
+//!                       arbitrary integer and boolean results instead of
+//!                       requiring the initial scalar i64 ABI.
 //!
 //! Every call checks the result against EXPECTED (the correctness
 //! checksum); a mismatch aborts the run. Output is one JSON line with
@@ -72,6 +75,7 @@ fn main() {
         "runtime-registry-execute" => "hara-rust-bytecode-runtime-registry-execute",
         "halc-execute" => "hara-rust-bytecode-halc-execute",
         "whole-wasm" => "hara-rust-whole-wasm",
+        "whole-wasm-value" => "hara-rust-whole-wasm-value",
         other => fail(id, &format!("unknown mode: {other}")),
     };
     let runtime_name = args
@@ -100,22 +104,51 @@ fn main() {
         "halc-execute" => Some(compile_halc(&mut runtime, id, &source)),
         _ => None,
     };
+    let artifact_bytes = program.as_ref().and_then(|program| {
+        hara_wasm::vm::encode_program(program)
+            .ok()
+            .map(|artifact| artifact.len())
+    });
     #[cfg(feature = "whole-wasm")]
-    let mut native = if mode == "whole-wasm" {
-        let program = runtime
+    let mut artifact_bytes = artifact_bytes;
+    #[cfg(feature = "whole-wasm")]
+    let mut native_entry = None;
+    #[cfg(not(feature = "whole-wasm"))]
+    let native_entry: Option<bool> = None;
+    #[cfg(feature = "whole-wasm")]
+    let mut whole_unsupported: Option<String> = None;
+    #[cfg(not(feature = "whole-wasm"))]
+    let whole_unsupported: Option<String> = None;
+    #[cfg(feature = "whole-wasm")]
+    let mut native = if matches!(mode.as_str(), "whole-wasm" | "whole-wasm-value") {
+        let mut program = (*runtime
             .compile_bytecode(&source)
-            .unwrap_or_else(|error| fail(id, &error));
+            .unwrap_or_else(|error| fail(id, &error)))
+        .clone();
+        if mode == "whole-wasm-value" {
+            declare_dynamic_entry(&mut program);
+        }
         let artifact = hara_wasm::whole_wasm::compile_artifact(&program)
             .unwrap_or_else(|error| fail(id, &error));
-        Some(
-            hara_wasm::whole_wasm::NativeModule::load(&artifact)
-                .unwrap_or_else(|error| fail(id, &error)),
-        )
+        artifact_bytes = Some(artifact.len());
+        let decoded = hara_wasm::whole_wasm::decode_artifact(&artifact)
+            .unwrap_or_else(|error| fail(id, &error));
+        native_entry = decoded
+            .capabilities
+            .get(usize::from(program.entry))
+            .copied();
+        if mode == "whole-wasm-value" && native_entry != Some(true) {
+            whole_unsupported = Some("whole-Wasm entry is not native for dynamic values".into());
+            None
+        } else {
+            Some(
+                hara_wasm::whole_wasm::NativeModule::load(&artifact)
+                    .unwrap_or_else(|error| fail(id, &error)),
+            )
+        }
     } else {
         None
     };
-    #[cfg(not(feature = "whole-wasm"))]
-    let mut native: Option<()> = None;
     let prepare_ns = match mode.as_str() {
         "execute-only"
         | "execute-feature-enabled"
@@ -127,9 +160,22 @@ fn main() {
         | "runtime-execute"
         | "runtime-registry-execute"
         | "halc-execute"
-        | "whole-wasm" => Some(prepare_started.elapsed().as_nanos()),
+        | "whole-wasm"
+        | "whole-wasm-value" => Some(prepare_started.elapsed().as_nanos()),
         _ => None,
     };
+    if let Some(reason) = whole_unsupported {
+        println!(
+            "{{\"runtime\":\"{}\",\"workload\":\"{}\",\"prepare_ns\":{},\"artifact_bytes\":{},\"native_entry\":{},\"status\":\"unsupported\",\"reason\":\"{}\"}}",
+            json(runtime_name),
+            json(id),
+            prepare_ns.map_or_else(|| "null".to_string(), |value| value.to_string()),
+            artifact_bytes.map_or_else(|| "null".to_string(), |value| value.to_string()),
+            native_entry.map_or_else(|| "null".to_string(), |value| value.to_string()),
+            json(&reason),
+        );
+        return;
+    }
     let mut call = || {
         let value = match mode.as_str() {
             "existing" => runtime.eval_native(&source),
@@ -160,8 +206,16 @@ fn main() {
                 .expect("native module")
                 .call_entry_i64()
                 .map(|value| value.to_string()),
+            #[cfg(feature = "whole-wasm")]
+            "whole-wasm-value" => native
+                .as_mut()
+                .expect("native module")
+                .call_entry_value()
+                .map(|value| value.display()),
             #[cfg(not(feature = "whole-wasm"))]
-            "whole-wasm" => fail(id, "whole-wasm mode requires the whole-wasm feature"),
+            "whole-wasm" | "whole-wasm-value" => {
+                fail(id, "whole-wasm mode requires the whole-wasm feature")
+            }
             _ => unreachable!(),
         };
         value.unwrap_or_else(|error| fail(id, &error))
@@ -209,13 +263,34 @@ fn main() {
     #[cfg(not(feature = "tracing-jit"))]
     let telemetry = String::new();
     println!(
-        "{{\"runtime\":\"{}\",\"workload\":\"{}\",\"prepare_ns\":{},\"first_ns\":{},\"samples_ns\":[{}]{} }}",
+        "{{\"runtime\":\"{}\",\"workload\":\"{}\",\"prepare_ns\":{},\"first_ns\":{},\"samples_ns\":[{}],\"artifact_bytes\":{},\"native_entry\":{}{} }}",
         json(runtime_name),
         json(id),
         prepare_ns.map_or_else(|| "null".to_string(), |value| value.to_string()),
         first_ns,
         samples,
+        artifact_bytes.map_or_else(|| "null".to_string(), |value| value.to_string()),
+        native_entry.map_or_else(|| "null".to_string(), |value| value.to_string()),
         telemetry,
+    );
+}
+
+#[cfg(feature = "whole-wasm")]
+fn declare_dynamic_entry(program: &mut hara_wasm::vm::Program) {
+    use hara_wasm::kernel::{FunctionSchema, SchemaType};
+
+    const NAMESPACE: &str = "hara.integer-representation-benchmark";
+    let name = format!("{NAMESPACE}/entry");
+    let index = usize::from(program.entry);
+    program.namespace = Some(NAMESPACE.into());
+    program.functions[index].name = Some(name.clone());
+    program.function_types.insert(
+        name,
+        SchemaType::Function(vec![FunctionSchema {
+            fixed: Vec::new(),
+            rest: None,
+            output: Box::new(SchemaType::Primitive("any".into())),
+        }]),
     );
 }
 

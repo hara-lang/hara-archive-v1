@@ -149,6 +149,20 @@
        ["lua" "-e" "local loader=loadstring or load; assert(loader(io.read('*a'), '@<hara>'))"]
        :process-stdin]])
 
+(fact "default runtime teardown removes module and pointer members"
+  (let [instance (runtime/rt-create :js :default)
+        module :demo-module
+        pointer :demo-pointer]
+    (IContextLifeCycle/setup-module instance module)
+    (IContextLifeCycle/setup-pointer instance pointer)
+    (IContextLifeCycle/teardown-module instance module)
+    (IContextLifeCycle/teardown-pointer instance pointer)
+    (IContextLifeCycle/teardown-module instance module)
+    (IContextLifeCycle/teardown-pointer instance pointer)
+    [(deref (:modules instance))
+     (deref (:pointers instance))])
+  => [#{} #{}])
+
 (fact "basic runtime has explicit bootstrap transport and lifecycle"
   [(get-in created-basic [:process :transport])
    (get-in created-basic [:process :persistent])

@@ -26,7 +26,7 @@
   #{:any :nil
     :bool :boolean
     :num :number
-    :int :integer
+    :int :long :bigint :integer
     :str :string
     :keyword :symbol
     :list :vector :map :set :bytes :fn})

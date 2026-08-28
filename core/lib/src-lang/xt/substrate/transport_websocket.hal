@@ -1,0 +1,45 @@
+(ns xt.substrate.transport-websocket (:require [lang.core :as l]))
+
+(l/script :xtalk {:require [[xt.substrate :as main] [xt.substrate.transport-memory :as json-transport] [xt.lang.spec-base :as xt] [xt.lang.spec-promise :as promise] [xt.net.ws-native :as ws]]})
+
+(def ^{:schema [:fn [:xt/any] :xt/any]} event-text nil)
+
+(def ^{:schema [:fn [] :xt/any]} WebSocketCreateFn nil)
+
+(def ^{:schema [:fn [:xt/str] :xt/any]} WebSocketConnectFn nil)
+
+(def ^{:schema [:fn [:xt/any] [:xt/maybe :xt/str]]} websocket-url nil)
+
+(def ^{:schema [:fn [:xt/any] [:xt/dict :xt/str :xt/any]]} websocket-source nil)
+
+(def ^{:schema [:fn [:xt/any] main/NodeTransport]} websocket-endpoint nil)
+
+(defn.xt socket-open? [socket] (var ready-state (. socket ["readyState"])) (if (xt/x:nil? ready-state) (return true) (return (== ready-state 1))))
+
+(defn.xt add-socket-listener [socket event handler] (cond (xt/x:is-function? (. socket ["addEventListener"])) (return (. socket (addEventListener event handler false))) (xt/x:is-function? (. socket ["on"])) (return (. socket (on event handler))) :else (do (xt/x:set-key socket (xt/x:cat "on" event) handler) (return socket))))
+
+(defn.xt remove-socket-listener [socket event handler] (cond (xt/x:is-function? (. socket ["removeEventListener"])) (return (. socket (removeEventListener event handler false))) (xt/x:is-function? (. socket ["off"])) (return (. socket (off event handler))) (xt/x:is-function? (. socket ["removeListener"])) (return (. socket (removeListener event handler))) :else (do (xt/x:set-key socket (xt/x:cat "on" event) nil) (return socket))))
+
+(defn.xt event-text "normalizes websocket message events into text payloads" {:added "4.1"} [event] (return (:? (and (xt/x:is-object? event) (xt/x:has-key? event "data")) (. event ["data"]) (:? (and (xt/x:is-object? event) (xt/x:has-key? event "text")) (. event ["text"]) event))))
+
+(defn.xt websocket-url "gets the websocket url for a source" {:added "4.1"} [source] (if (xt/x:is-string? source) (return source) (return (. source ["url"]))))
+
+(defn.xt mark-open [state socket _event] (xt/x:set-key state "status" "open") (return socket))
+
+(defn.xt mark-error [state event] (xt/x:set-key state "status" "error") (xt/x:set-key state "error" event) (return event))
+
+(defn.xt mark-close [state event] (when (not (== (. state ["status"]) "open")) (xt/x:set-key state "status" "error") (xt/x:set-key state "error" (:? (xt/x:nil? event) "websocket closed before open" event))) (return event))
+
+(defn.xt await-open [state] (var #{status} state) (cond (== status "open") (return (promise/x:promise-run (. state ["socket"]))) (== status "error") (return (promise/x:promise (fn [] (xt/x:throw (. state ["error"]))))) :else (return (promise/x:promise-then (promise/x:with-delay 10 (fn [] (return nil))) (fn [_] (return (-/await-open state)))))))
+
+(defn.xt connect-socket [socket-source] (var #{connect-fn} socket-source) (if (xt/x:is-function? connect-fn) (return (connect-fn (-/websocket-url socket-source))) (do (var ctor (or (. socket-source ["WebSocket"]) WebSocket)) (when (not (xt/x:is-function? ctor)) (xt/x:err "websocket source missing connect implementation")) (when (xt/x:nil? (-/websocket-url socket-source)) (xt/x:err "websocket source missing url")) (return (xt/x:construct ctor [(-/websocket-url socket-source)])))))
+
+(defn.xt resolve-socket [socket-source] (cond (xt/x:is-string? socket-source) (return (-/connect-socket {"url" socket-source})) (xt/x:is-object? socket-source) (do (var #{create-fn} socket-source) (cond (xt/x:is-function? create-fn) (return (create-fn)) (or (xt/x:has-key? socket-source "url") (xt/x:has-key? socket-source "connect_fn") (xt/x:has-key? socket-source "WebSocket")) (return (-/connect-socket socket-source)) :else (return socket-source))) :else (return socket-source)))
+
+(defn.xt websocket-native? "checks whether a socket source is already a ws-native client" {:added "4.1"} [socket] (return (and (xt/x:is-object? socket) (xt/x:not-nil? (. socket ["::"])))))
+
+(defn.xt ensure-promise "wraps sync values in a native promise while passing promises through" {:added "4.1"} [value] (if (promise/x:promise-native? value) (return value) (return (promise/x:promise-run value))))
+
+(defn.xt websocket-source "creates a websocket-backed text endpoint source" {:added "4.1"} [socket-source] (var current-socket nil) (var current-native nil) (var current-message-callback nil) (var current-open-callback nil) (var current-error-callback nil) (var current-close-callback nil) (var send-fn (fn [text] (when (xt/x:nil? current-socket) (xt/x:err "websocket endpoint not started")) (if (xt/x:not-nil? current-native) (return (ws/send current-native text)) (return (. current-socket (send text)))))) (var start-fn (fn [listener] (return (promise/x:promise-then (-/ensure-promise (-/resolve-socket socket-source)) (fn [socket] (:= current-socket socket) (:= current-native (:? (-/websocket-native? socket) socket nil)) (:= current-message-callback (fn [event] (return (listener event nil)))) (if (xt/x:not-nil? current-native) (do (ws/add-listeners current-native {"message" current-message-callback}) (if (-/socket-open? current-socket) (return current-socket) (do (var state {"error" "websocket failed to open" "status" "opening" "socket" current-socket}) (:= current-open-callback (fn [_event] (return (-/mark-open state current-socket _event)))) (:= current-error-callback (fn [event] (return (-/mark-error state event)))) (:= current-close-callback (fn [event] (return (-/mark-close state event)))) (ws/add-listeners current-native {"error" current-error-callback "open" current-open-callback "close" current-close-callback}) (return (promise/x:promise-then (-/await-open state) (fn [_] (return current-socket))))))) (do (-/add-socket-listener current-socket "message" current-message-callback) (if (-/socket-open? current-socket) (return current-socket) (do (var state {"error" "websocket failed to open" "status" "opening" "socket" current-socket}) (:= current-open-callback (fn [_event] (return (-/mark-open state current-socket _event)))) (:= current-error-callback (fn [event] (return (-/mark-error state event)))) (:= current-close-callback (fn [event] (return (-/mark-close state event)))) (-/add-socket-listener current-socket "open" current-open-callback) (-/add-socket-listener current-socket "error" current-error-callback) (-/add-socket-listener current-socket "close" current-close-callback) (return (promise/x:promise-then (-/await-open state) (fn [_] (return current-socket))))))))))))) (var stop-fn (fn [_] (when (and (xt/x:not-nil? current-socket) (xt/x:not-nil? current-message-callback)) (if (xt/x:not-nil? current-native) (ws/add-listeners current-native {"message" nil}) (-/remove-socket-listener current-socket "message" current-message-callback))) (when (and (xt/x:not-nil? current-socket) (xt/x:not-nil? current-open-callback)) (if (xt/x:not-nil? current-native) (ws/add-listeners current-native {"open" nil}) (-/remove-socket-listener current-socket "open" current-open-callback))) (when (and (xt/x:not-nil? current-socket) (xt/x:not-nil? current-error-callback)) (if (xt/x:not-nil? current-native) (ws/add-listeners current-native {"error" nil}) (-/remove-socket-listener current-socket "error" current-error-callback))) (when (and (xt/x:not-nil? current-socket) (xt/x:not-nil? current-close-callback)) (if (xt/x:not-nil? current-native) (ws/add-listeners current-native {"close" nil}) (-/remove-socket-listener current-socket "close" current-close-callback))) (if (xt/x:not-nil? current-native) (ws/disconnect current-native) (when (and (xt/x:not-nil? current-socket) (xt/x:is-function? (. current-socket ["close"]))) (. current-socket (close)))) (:= current-socket nil) (:= current-native nil) (:= current-message-callback nil) (:= current-open-callback nil) (:= current-error-callback nil) (:= current-close-callback nil) (return true))) (return {"write_fn" send-fn "start_fn" start-fn "meta" {"kind" "websocket"} "stop_fn" stop-fn}))
+
+(defn.xt websocket-endpoint "adapts a websocket-like source into a JSON node transport" {:added "4.1"} [socket-source] (var endpoint (json-transport/text-endpoint (-/websocket-source socket-source))) (xt/x:set-key endpoint "meta" {"encoding" "json" "kind" "websocket"}) (return endpoint))

@@ -1,0 +1,55 @@
+(ns postgres.application-test
+  (:require [postgres.application :as subject]
+            [lang.runtime.postgres.base.application :as legacy])
+  (:use code.test))
+
+^{:refer postgres.application/*applications*}
+(fact "publishes one registry atom through both application facades"
+  (let [original (subject/app)
+        result
+        (try
+          [(= subject/*applications* legacy/*applications*)
+           (subject/app-reset)
+           (subject/register-app "canonical-app" {:tables {}})
+           (= (subject/app "canonical-app")
+              (legacy/app "canonical-app"))]
+          (finally
+            (reset! subject/*applications* original)))]
+    result)
+  => [true {} {:tables {}} true])
+
+^{:refer postgres.application/application-string}
+(fact "forwards application inspection through the canonical facade"
+  (subject/application-string {:tables {}})
+  => "#pg.app [0]\n\n")
+
+^{:refer postgres.application/register-app}
+(fact "forwards application registration and lookup"
+  (let [original (subject/app)
+        application {:schema {:tree {"User" {}}}}
+        result
+        (try
+          [(subject/register-app "canonical-app" application)
+           (subject/app "canonical-app")]
+          (finally
+            (reset! subject/*applications* original)))]
+    result)
+  => [{:schema {:tree {"User" {}}}}
+      {:schema {:tree {"User" {}}}}])
+
+^{:refer postgres.application/app-reset}
+(fact "resets the canonical registry idempotently"
+  (let [original (subject/app)
+        result
+        (try
+          (subject/register-app "canonical-app" {:tables {}})
+          [(subject/app-reset)
+           (subject/app-reset)
+           (subject/app-list)
+           (legacy/app "canonical-app")]
+          (finally
+            (reset! subject/*applications* original)))]
+    result)
+  => [{} {} [] nil])
+
+(pr-str (run '[postgres.application-test]))

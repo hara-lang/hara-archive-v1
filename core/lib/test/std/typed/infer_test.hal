@@ -23,4 +23,12 @@
           [:refinements :vector/backend])
   => :compact)
 
+^{:refer 'std.typed.infer/literal-result
+  :id 'integer-width-literal-inference}
+(fact "infers long, bigint, and float literals distinctly"
+  [(get-in (infer/literal-result 42) [:schema :name])
+   (get-in (infer/literal-result 9223372036854775808) [:schema :name])
+   (get-in (infer/literal-result 42.0) [:schema :name])]
+  => [:long :bigint :num])
+
 (pr-str (run '[std.typed.infer-test]))

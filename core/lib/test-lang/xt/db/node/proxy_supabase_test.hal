@@ -1,0 +1,98 @@
+(ns xt.db.node.proxy-supabase-test
+  (:use code.test)
+  (:require [lang.core :as l]
+            [xt.lang.common-notify :as notify]))
+
+(l/script- :js
+  {:require [[xt.lang.common-data :as xtd]
+             [xt.lang.common-repl :as repl]
+             [xt.lang.spec-base :as xt]
+             [xt.lang.spec-promise :as promise]
+             [xt.db.node.kernel-supabase :as kernel-supabase]
+             [xt.db.node.proxy-supabase :as proxy-supabase]
+             [xt.db.node.proxy-util :as proxy-util]
+             [xt.substrate :as substrate]
+             [xt.substrate.page-proxy :as page-proxy]
+             [xt.substrate.transport-memory :as transport-memory]]
+   :runtime :basic})
+
+(fact:global {:setup [(l/rt:restart)]
+              :teardown [(l/rt:stop)]})
+
+^{:refer xt.db.node.proxy-supabase/init-proxy-handlers :added "4.1"}
+(fact "registers the complete Supabase proxy action surface"
+  (!.js
+    (var node (substrate/node-create {"id" "proxy-client"}))
+    (proxy-supabase/init-proxy-handlers node)
+    (var handlers (substrate/list-handlers node))
+    [(xt/x:has-key? handlers "@xt.supabase/sign-up")
+     (xt/x:has-key? handlers "@xt.supabase/attach-model")
+     (xt/x:len handlers)])
+  => [true true 28])
+
+^{:refer xt.db.node.proxy-supabase/attach-forward-handler :added "4.1"}
+(fact "forwards an attach request over a deterministic memory transport"
+  (notify/wait-on :js
+    (var server (substrate/node-create {"id" "server"}))
+    (var client (substrate/node-create {"id" "client"}))
+    (kernel-supabase/init-handlers server)
+    (page-proxy/install server)
+    (proxy-supabase/init-proxy-handlers client)
+    (var wire (transport-memory/memory-pair {"left_id" "client"
+                                             "right_id" "server"}))
+    (-> (promise/x:promise-all
+         [(substrate/attach-transport
+           client "server" (transport-memory/text-endpoint
+                             (xt/x:get-key wire "left")))
+          (substrate/attach-transport
+           server "client" (transport-memory/text-endpoint
+                             (xt/x:get-key wire "right")))])
+        (promise/x:promise-then
+         (fn [_]
+           (proxy-util/set-default-transport client "server")
+           (return
+            (substrate/request
+             client nil
+             "@xt.supabase/attach-model"
+             ["auth/supabase"
+              {"space_id" "room/a" "group_id" "demo"}
+              (fn [_] (return {}))
+              {"pipeline" {}
+               "handler" (fn [_] (return {"value" "ok"}))
+               "defaults" {"output" {} "args" []}
+               "options" {}}]
+             {}))))
+        (promise/x:promise-then
+         (fn [result]
+           (repl/notify
+            [(xt/x:get-key result "status")
+             (xt/x:get-key result "model")
+             (xt/x:get-key result "group")])))))
+  => ["attached" "" "demo"])
+
+(fact "proxy utility handlers forward a local session query over memory"
+  (notify/wait-on :js
+    (var server (substrate/node-create {"id" "server"}))
+    (var client (substrate/node-create {"id" "client"}))
+    (kernel-supabase/init-handlers server)
+    (substrate/set-service server "auth/supabase"
+                           {"state" {"session" {"access_token" "abc"}}})
+    (proxy-supabase/init-proxy-handlers client)
+    (var wire (transport-memory/memory-pair {"left_id" "client"
+                                             "right_id" "server"}))
+    (-> (promise/x:promise-all
+         [(substrate/attach-transport
+           client "server" (transport-memory/text-endpoint
+                             (xt/x:get-key wire "left")))
+          (substrate/attach-transport
+           server "client" (transport-memory/text-endpoint
+                             (xt/x:get-key wire "right")))])
+        (promise/x:promise-then
+         (fn [_]
+           (proxy-util/set-default-transport client "server")
+           (return
+            (substrate/request client nil "@xt.supabase/current-session"
+                               ["auth/supabase"] {}))))
+        (promise/x:promise-then
+         (fn [session] (repl/notify session)))))
+  => {"access_token" "abc"})

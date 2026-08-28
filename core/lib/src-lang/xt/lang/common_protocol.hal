@@ -13,9 +13,9 @@
               separator? (or (= ch \-) (= ch \space))
               hump? (and (> index 0) (not separator?) (not= ch lower-ch))]
           (recur (inc index)
-                 (str output
+                      (str output
                       (if (or separator? hump?) "_" "")
-                      (if separator? "" (str/to-string lower-ch)))))))))
+                      (if separator? "" (str lower-ch)))))))))
 
 (defn- mapv
   [f values]

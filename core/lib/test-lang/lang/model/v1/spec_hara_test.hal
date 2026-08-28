@@ -106,4 +106,9 @@
        :rewrite/staging
        :emit]])
 
+^{:refer lang.model.v1.spec-hara/emit :added "4.1"}
+(fact "lowers the portable integer predicate to the integer union predicate"
+  (read-string (hara/emit '(x:is-integer? value)))
+  => '(integer? value))
+
 (pr-str (run {:namespace "lang.model.v1.spec-hara-test"}))

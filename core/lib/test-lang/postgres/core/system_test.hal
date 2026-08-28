@@ -1,7 +1,10 @@
 (ns postgres.core.system-test
-  (:require [postgres.core.system :as sys]
+  (:require [lang.core :as l]
+            [postgres.core.system :as sys]
             [lang.core.script :as script])
   (:use code.test))
+
+(l/script :postgres postgres.core.system-test {:macro-only true})
 
 (defn emit [form]
   (script/compile-form :postgres 'postgres.core.system-test form))
@@ -13,3 +16,6 @@
 (fact "emits generated PostgreSQL system functions"
   (emit '(sys/jit-available)) => "pg_jit_available()"
   (emit '(sys/database-size "app")) => "pg_database_size('app')")
+
+(let [summary (run {:namespace '[postgres.core.system-test] :no-report true})]
+  (pr-str (select-keys summary [:status :counts])))

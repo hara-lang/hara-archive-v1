@@ -1,6 +1,7 @@
 (ns postgres.core.supabase
   (:require [lang.core :as l]
-            [lang.core.script :as script]))
+            [lang.core.script :as script]
+            [std.foundation :as foundation]))
 
 (l/script :postgres {:macro-only true})
 
@@ -12,23 +13,23 @@
    \\ :end \;
    \\ :$$ :language "plpgsql" \;])
 
-(defmacro.xt create-role [role]
+(defmacro.pg create-role [role]
   (vec (drop-last (block-do-suppress [:create-role role \;]))))
 
-(defmacro.xt alter-role-bypassrls [role]
+(defmacro.pg alter-role-bypassrls [role]
   (vec (drop-last (block-do-suppress [:alter-role role :bypassrls \;]))))
 
-(defmacro.xt auth-uid [] '(auth.uid))
-(defmacro.xt auth-email [] '(auth.email))
-(defmacro.xt auth-role [] '(auth.role))
-(defmacro.xt auth-jwt [] '(auth.jwt))
+(defmacro.pg auth-uid [] '(auth.uid))
+(defmacro.pg auth-email [] '(auth.email))
+(defmacro.pg auth-role [] '(auth.role))
+(defmacro.pg auth-jwt [] '(auth.jwt))
 
-(defmacro.xt is-supabase []
+(defmacro.pg is-supabase []
   (list 'exists
         [:select 1 :from 'information_schema.schemata
          :where {:schema-name "auth"}]))
 
-(defmacro.xt raise [message detail & options]
+(defmacro.pg raise [message detail & options]
   (let [options (or (first options) {})
         http-status (:http-status options)
         http-headers (:http-headers options)
@@ -47,34 +48,34 @@
           http-headers (list 'do headers-form raise-form)
           :else (list 'do raise-form))))
 
-(defmacro.xt show-roles []
+(defmacro.pg show-roles []
   [:select (list 'quote '[rolname rolsuper rolbypassrls rolcanlogin])
    :from 'pg_roles
    :where 'rolname :in (list 'quote '("authenticated" "service_role" "anon"))])
 
-(defmacro.xt grant-usage
+(defmacro.pg grant-usage
   [schema & roles]
   [:grant-usage-on-schema schema
    :to (or (first roles) (list 'quote '[anon authenticated service_role]))])
 
-(defmacro.xt grant-tables
+(defmacro.pg grant-tables
   [schema & roles]
   [:grant-all-on-all-tables-in-schema schema
    :to (or (first roles) (list 'quote '[anon authenticated service_role]))])
 
-(defmacro.xt grant-privileges
+(defmacro.pg grant-privileges
   [schema & roles]
   [:alter-default-privileges-for-role 'postgres
    :in-schema schema
    :grant-all-on-tables-to
    (or (first roles) (list 'quote '[anon authenticated service_role]))])
 
-(defmacro.xt revoke-execute-privileges-from-public [schema]
+(defmacro.pg revoke-execute-privileges-from-public [schema]
   [:alter-default-privileges-for-role 'postgres
    :in-schema schema
    :revoke-execute-on-functions-from-public])
 
-(defmacro.xt grant-public [schema]
+(defmacro.pg grant-public [schema]
   (list 'do
         [:grant-usage-on-schema schema
          :to (list 'quote '[anon authenticated service_role])]
@@ -85,7 +86,7 @@
          :grant-all-on-tables-to
          (list 'quote '[anon authenticated service_role])]))
 
-(defmacro.xt grant-all [schemas & options]
+(defmacro.pg grant-all [schemas & options]
   (let [roles (or (first options) '[anon authenticated service_role])
         access (or (second options) {})
         usage (if (has? access :usage) (:usage access) true)
@@ -115,7 +116,7 @@
     (or (map? form) (vector? form) (string? form) (number? form)
         (boolean? form) (nil? form)) form
     (symbol? form)
-    (let [resolved (resolve form)]
+    (let [resolved (foundation/resolve form)]
       (if resolved (deref resolved) form))
     :else form))
 
@@ -125,7 +126,7 @@
       (with-meta payload (assoc (or (meta payload) {}) :js true))
       payload)))
 
-(defmacro.xt realtime-send
+(defmacro.pg realtime-send
   ([topic event payload]
    (list 'postgres.core.supabase/realtime-send topic event payload false))
   ([topic event payload private?]
@@ -133,9 +134,9 @@
          (normalize-realtime-payload payload)
          event topic (if private? true false))))
 
-(defmacro.xt realtime-topic [] (list 'realtime.topic))
+(defmacro.pg realtime-topic [] (list 'realtime.topic))
 
-(defmacro.xt realtime-send-request
+(defmacro.pg realtime-send-request
   ([topic request]
    (list 'postgres.core.supabase/realtime-send-request topic request false))
   ([topic request private?]

@@ -163,6 +163,7 @@ pub fn schema_shorthand(schema: &SchemaType) -> Form {
 
 pub fn normalize_schema(schema: &Form) -> Result<SchemaType, String> {
     match schema {
+        Form::Keyword(name) if name == "integer" => Ok(integer_schema()),
         Form::Keyword(name) => Ok(SchemaType::Primitive(name.clone())),
         Form::List(reference)
             if reference.len() == 2
@@ -413,6 +414,7 @@ fn normalize_longhand(entries: &[(Form, Form)]) -> Result<SchemaType, String> {
         "primitive" => {
             let value = longhand_value(entries, "name").or_else(|| children.first());
             match value {
+                Some(Form::Keyword(name)) if name == "integer" => Ok(integer_schema()),
                 Some(Form::Keyword(name)) => Ok(SchemaType::Primitive(name.clone())),
                 _ => Err("primitive schema requires one keyword name".into()),
             }
@@ -679,14 +681,17 @@ fn infer_expression(form: &Form, environment: &mut HashMap<String, SchemaType>) 
     match super::super::core::form_without_metadata(form) {
         Form::Nil => SchemaType::Primitive("nil".into()),
         Form::Bool(_) => SchemaType::Primitive("bool".into()),
-        Form::Number(_) => SchemaType::Primitive("int".into()),
+        Form::Number(_) => SchemaType::Primitive("long".into()),
         Form::Float(_) => SchemaType::Primitive("float".into()),
-        Form::BigInteger(_) => SchemaType::Primitive("int".into()),
+        Form::BigInteger(_) => SchemaType::Primitive("bigint".into()),
         Form::Character(_) => SchemaType::Primitive("char".into()),
         Form::Regex(_) => SchemaType::Primitive("regex".into()),
         Form::String(_) => SchemaType::Primitive("str".into()),
         Form::Keyword(_) => SchemaType::Primitive("keyword".into()),
-        Form::Symbol(name) => environment.get(name).cloned().unwrap_or_else(unknown_type),
+        Form::Symbol(name) => environment
+            .get(name)
+            .map(inference_type)
+            .unwrap_or_else(unknown_type),
         Form::Vector(values) => SchemaType::Vector(Box::new(join_types(
             values
                 .iter()
@@ -757,15 +762,20 @@ fn infer_list(items: &[Form], environment: &mut HashMap<String, SchemaType>) -> 
                     .map(|value| infer_expression(value, environment)),
             );
             match operands {
-                SchemaType::Primitive(name) if matches!(name.as_str(), "int" | "float") => {
+                SchemaType::Primitive(name)
+                    if matches!(name.as_str(), "int" | "long" | "bigint" | "float") =>
+                {
                     SchemaType::Primitive(name)
+                }
+                SchemaType::Union(members) if members.iter().all(is_long_alias) => {
+                    SchemaType::Primitive("long".into())
                 }
                 _ => SchemaType::Primitive("number".into()),
             }
         }
         "/" => SchemaType::Primitive("number".into()),
         "=" | "<" | "<=" | ">" | ">=" | "instance?" => SchemaType::Primitive("bool".into()),
-        "count" => SchemaType::Primitive("int".into()),
+        "count" => SchemaType::Primitive("long".into()),
         "vector" => SchemaType::Vector(Box::new(join_types(
             items[1..]
                 .iter()
@@ -792,6 +802,17 @@ fn join_types(types: impl IntoIterator<Item = SchemaType>) -> SchemaType {
         1 => members.pop().unwrap(),
         _ => SchemaType::Union(members),
     }
+}
+
+fn inference_type(schema: &SchemaType) -> SchemaType {
+    match schema {
+        SchemaType::Primitive(name) if name == "int" => SchemaType::Primitive("long".into()),
+        _ => schema.clone(),
+    }
+}
+
+fn is_long_alias(schema: &SchemaType) -> bool {
+    matches!(schema, SchemaType::Primitive(name) if name == "int" || name == "long")
 }
 
 fn normalize_map_field(argument: &Form) -> Result<SchemaField, String> {
@@ -823,6 +844,8 @@ fn supports_properties(head: &str) -> bool {
             | "list"
             | "bytes"
             | "int"
+            | "long"
+            | "bigint"
             | "integer"
             | "num"
             | "number"
@@ -848,6 +871,7 @@ fn normalize_composite(items: &[Form]) -> Result<SchemaType, String> {
     };
     let normalized = match head.as_str() {
         "or" => normalize_union_forms(arguments),
+        "integer" if arguments.is_empty() => Ok(integer_schema()),
         "maybe" => {
             require_count(head, arguments, 1)?;
             let mut members = Vec::new();
@@ -909,6 +933,13 @@ fn normalize_composite(items: &[Form]) -> Result<SchemaType, String> {
         },
         None => normalized,
     })
+}
+
+fn integer_schema() -> SchemaType {
+    SchemaType::Union(vec![
+        SchemaType::Primitive("long".into()),
+        SchemaType::Primitive("bigint".into()),
+    ])
 }
 
 fn normalize_function(items: &[Form]) -> Result<FunctionSchema, String> {
@@ -987,6 +1018,19 @@ mod tests {
     }
 
     #[test]
+    fn integer_schema_is_the_long_or_big_integer_union() {
+        let expected = SchemaType::Union(vec![
+            SchemaType::Primitive("long".into()),
+            SchemaType::Primitive("bigint".into()),
+        ]);
+        assert_eq!(normalize_schema(&parse(":integer").unwrap()).unwrap(), expected);
+        assert_eq!(
+            normalize_schema(&parse("[:integer]").unwrap()).unwrap(),
+            expected
+        );
+    }
+
+    #[test]
     fn struct_schema_is_a_first_class_normal_form() {
         let schema = normalize_schema(
             &parse(
@@ -1055,7 +1099,7 @@ mod tests {
             inferred.get("demo/choose"),
             Some(SchemaType::Function(arities))
                 if arities[0].fixed == vec![SchemaType::Primitive("int".into())]
-                    && *arities[0].output == SchemaType::Primitive("int".into())
+                    && *arities[0].output == SchemaType::Primitive("long".into())
         ));
         assert!(matches!(
             inferred.get("demo/labels"),

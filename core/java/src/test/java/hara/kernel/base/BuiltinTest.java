@@ -5,6 +5,7 @@ import hara.kernel.builtin.BuiltinCheck;
 import hara.lang.data.Atom;
 import hara.kernel.builtin.BuiltinBasic;
 import hara.kernel.builtin.BuiltinCheck;
+import java.math.BigInteger;
 import org.junit.Test;
 
 import static org.junit.Assert.*;
@@ -42,6 +43,8 @@ public class BuiltinTest {
   public void testCheckNumericTypes() {
     assertTrue(BuiltinCheck.isLong(10));
     assertTrue(BuiltinCheck.isLong(10L));
+    assertTrue(BuiltinCheck.isLong(BigInteger.valueOf(10)));
+    assertFalse(BuiltinCheck.isLong(BigInteger.ONE.shiftLeft(63)));
     assertFalse(BuiltinCheck.isLong(10.0));
     assertTrue(BuiltinCheck.isDouble(10.0f));
     assertTrue(BuiltinCheck.isDouble(10.0));

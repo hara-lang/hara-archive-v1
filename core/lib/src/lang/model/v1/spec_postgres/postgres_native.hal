@@ -116,7 +116,15 @@
                      (if (keyword? entry-value)
                        (pg-string (str entry-value))
                        (emit/*emit-fn* entry-value grammar context))]))
-                entries))
+                (if (map? entries)
+                  (sort-by
+                   (fn [entry]
+                     (let [key (first entry)]
+                       (cond (= :status key) 0
+                             (= :tag key) 1
+                             :else 2)))
+                   (seq entries))
+                  (seq entries))))
        ")"))
 
 (defn pg-throw
@@ -134,7 +142,7 @@
                                    (filter (fn [entry]
                                              (and (not= :status (first entry))
                                                   (not= :tag (first entry))))
-                                           data)))
+                                           (seq data))))
                          [[:status "error"] [:tag tag] [:data data]])
         detail-output (pg-map-entries detail-entries grammar context)]
     (str "IF NOT (" (emit/*emit-fn* check grammar context) ") THEN\n"
@@ -269,12 +277,12 @@
   [value grammar context]
   (str/join
    ","
-   (map (fn [entry]
+        (map (fn [entry]
           (let [key (first entry)
                 raw (if (string? key) key (name key))]
             (str "\"" (str/replace raw "-" "_") "\" = "
                  (emit/*emit-fn* (second entry) grammar context))))
-        value)))
+        (seq value))))
 
 (def +condition-operators+
   {:eq "=" :not-eq "<>" :neq "<>"
@@ -309,7 +317,7 @@
   [value grammar context]
   (str/join
    " AND "
-   (map (fn [entry] (pg-condition-entry entry grammar context)) value)))
+   (map (fn [entry] (pg-condition-entry entry grammar context)) (seq value))))
 
 (defn pg-section-item
   ([value grammar context]
@@ -633,7 +641,8 @@
     :and {:raw "AND" :wrap true}
     :seteq {:raw ":=" :value true :emit pg-assignment}
     :ret {:emit pg-return}
-    :let-bind {:macro #'pg-let-transform :emit :macro}
+    :let-bind {:lower pg-let-transform
+               :macro #'pg-let-transform :emit :macro}
     :defn {:format pg-defn-format
              :hydrate pg-hydrate
              :emit pg-defn

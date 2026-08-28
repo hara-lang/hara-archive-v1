@@ -1,12 +1,12 @@
 package hara.truffle;
 
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
+import hara.lang.base.NumUtils;
 import hara.lang.data.Keyword;
 import hara.lang.data.Symbol;
 import hara.lang.protocol.ILinearType;
 import hara.lang.protocol.IMapType;
 import hara.lang.protocol.ISetType;
-import java.math.BigInteger;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -234,8 +234,9 @@ public final class EvaluationJournal {
   private static String type(Object value) {
     if (value == null) return "nil";
     if (value instanceof Boolean) return "boolean";
-    if (value instanceof BigInteger) return "integer";
-    if (value instanceof Byte || value instanceof Short || value instanceof Integer || value instanceof Long) return "integer";
+    Object raw = HaraBox.unwrap(value);
+    if (NumUtils.isLongValue(raw)) return "long";
+    if (NumUtils.isBigIntegerValue(raw)) return "bigint";
     if (value instanceof Float || value instanceof Double) return "float";
     if (value instanceof hara.lang.data.HaraCharacter || value instanceof Character)
       return "character";

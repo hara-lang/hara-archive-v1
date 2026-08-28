@@ -507,13 +507,10 @@ fn encode_bridge_result(
             .insert(value)
             .map(Handle::to_abi)
             .map_err(host_error),
-        RESULT_I64 => match value {
-            Value::Number(value) => Ok(value),
-            value => crate::numeric::to_i64_exact(&value).map_err(|_| {
+        RESULT_I64 => crate::numeric::to_i64_integer(&value).map_err(|_| {
                 caller.data_mut().error_code = ERROR_INTEGER_OVERFLOW;
                 host_error("integer overflow".into())
             }),
-        },
         RESULT_BOOL => match value {
             Value::Bool(value) => Ok(i64::from(value)),
             _ => Err(host_error(
@@ -571,18 +568,10 @@ fn define_persistent_imports(linker: &mut Linker<HostState>) -> Result<(), Strin
             |mut caller: wasmtime::Caller<'_, HostState>, handle: i64| {
                 let value = caller.data().handles.get(Handle::from_abi(handle));
                 match value {
-                    Ok(Value::Number(value)) => Ok(value),
-                    Ok(Value::BigInteger(value)) => {
-                        let value = Value::BigInteger(value);
-                        match crate::numeric::to_i64_exact(&value) {
-                            Ok(value) => Ok(value),
-                            Err(_) => {
-                                caller.data_mut().error_code = ERROR_INTEGER_OVERFLOW;
-                                Err(host_error("integer overflow".into()))
-                            }
-                        }
-                    }
-                    Ok(_) => Err(host_error("whole-Wasm value is not an integer".into())),
+                    Ok(value) => crate::numeric::to_i64_integer(&value).map_err(|_| {
+                        caller.data_mut().error_code = ERROR_INTEGER_OVERFLOW;
+                        host_error("integer overflow".into())
+                    }),
                     Err(error) => Err(host_error(error)),
                 }
             },

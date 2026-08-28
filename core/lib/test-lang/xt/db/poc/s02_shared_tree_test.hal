@@ -1,0 +1,14 @@
+(ns xt.db.poc.s02-shared-tree-test (:use code.test) (:require [lang.core :as l] [xt.lang.spec-base :as xt] [xt.db.text.pgrest-graph :as pgrest]))
+
+(l/script- :js {:runtime :basic})
+
+^{:refer xt.db.text.pgrest-graph/select :added "4.1"}
+(fact "the shared-tree POC compiles a portable PostgREST tree"
+  (!.js
+   (var schema {"Log" {"id" {"type" "uuid" "primary" true "order" 0}
+                       "message" {"type" "text" "order" 1}}})
+   (var request (pgrest/select schema ["Log"] {}))
+   {"method" (xt/x:get-key request "method")
+    "path" (xt/x:get-key request "path")
+    "query" (xt/x:get-key request "query")})
+  => {"method" "GET" "path" "/rest/v1/Log" "query" "select=*"})

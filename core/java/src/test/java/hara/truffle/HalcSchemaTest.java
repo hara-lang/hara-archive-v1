@@ -40,6 +40,15 @@ public class HalcSchemaTest {
   }
 
   @Test
+  public void normalizesIntegerAsTheLongOrBigIntegerUnion() {
+    HalcSchema.Type expected =
+        new HalcSchema.Union(
+            List.of(new HalcSchema.Primitive("long"), new HalcSchema.Primitive("bigint")));
+    assertEquals(expected, HalcSchema.normalize(HaraLanguage.readAll(":integer", "schema.hal")[0]));
+    assertEquals(expected, HalcSchema.normalize(HaraLanguage.readAll("[:integer]", "schema.hal")[0]));
+  }
+
+  @Test
   public void normalizesNamedDeclarationFieldsIntoOneMutableStructSchema() {
     Object fieldForm = HaraLanguage.readAll("[position :int]", "schema.hal")[0];
     HalcSchema.NamedField field = HalcSchema.normalizeNamedField(fieldForm);
@@ -82,7 +91,7 @@ public class HalcSchemaTest {
     HalcSchema.Function choose =
         ((HalcSchema.FunctionType) inferred.get("demo/choose")).arities().get(0);
     assertEquals(List.of(new HalcSchema.Primitive("int")), choose.fixed());
-    assertEquals(new HalcSchema.Primitive("int"), choose.output());
+    assertEquals(new HalcSchema.Primitive("long"), choose.output());
     HalcSchema.Function labels =
         ((HalcSchema.FunctionType) inferred.get("demo/labels")).arities().get(0);
     assertTrue(labels.output() instanceof HalcSchema.MapType);

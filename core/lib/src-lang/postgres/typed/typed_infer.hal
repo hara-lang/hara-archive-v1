@@ -1,5 +1,6 @@
 (ns postgres.typed.typed-infer
-  (:require [postgres.typed.typed-common :as types]
+  (:require [std.foundation :refer [drop nth second]]
+            [postgres.typed.typed-common :as types]
             [postgres.typed.typed-jsonb :as typed-jsonb]
             [postgres.typed.typed-resolve :as typed-resolve]
             [postgres.typed.typed-shape :as shape]))

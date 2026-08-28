@@ -21,6 +21,36 @@ impl CanonicalInteger {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum IntegerKind {
+    Long,
+    BigInteger,
+}
+
+/// Classifies an integer by its canonical language width.
+///
+/// In-range BigInts are classified as Long so that callers remain correct if
+/// a low-level ingress path has not yet compacted the value. Floating-point
+/// values are deliberately excluded even when they are exact integers.
+pub(crate) fn integer_kind(value: &Value) -> Option<IntegerKind> {
+    match value {
+        Value::Number(_) => Some(IntegerKind::Long),
+        Value::BigInteger(value) => value
+            .to_i64()
+            .map(|_| IntegerKind::Long)
+            .or(Some(IntegerKind::BigInteger)),
+        _ => None,
+    }
+}
+
+pub(crate) fn is_long_value(value: &Value) -> bool {
+    integer_kind(value) == Some(IntegerKind::Long)
+}
+
+pub(crate) fn is_big_integer_value(value: &Value) -> bool {
+    integer_kind(value) == Some(IntegerKind::BigInteger)
+}
+
 pub(crate) fn parse_integer_digits(
     digits: &str,
     radix: u32,
@@ -361,6 +391,17 @@ pub(crate) fn to_i64_exact(value: &Value) -> Result<i64, String> {
         .ok_or_else(|| "integer is outside signed 64-bit range".to_string())
 }
 
+/// Converts a language integer to i64 without accepting an exact float.
+pub(crate) fn to_i64_integer(value: &Value) -> Result<i64, String> {
+    match value {
+        Value::Number(value) => Ok(*value),
+        Value::BigInteger(value) => value
+            .to_i64()
+            .ok_or_else(|| "integer is outside signed 64-bit range".to_string()),
+        _ => Err("expected a signed 64-bit integer".into()),
+    }
+}
+
 pub(crate) fn to_i64_truncating(value: &Value) -> Result<i64, String> {
     let integer = match value {
         Value::Number(value) => return Ok(*value),
@@ -399,7 +440,10 @@ pub(crate) fn to_f64_explicit(value: &Value) -> Result<f64, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{numeric_compare, parse_integer_digits, CanonicalInteger};
+    use super::{
+        integer_kind, is_big_integer_value, is_long_value, numeric_compare, parse_integer_digits,
+        CanonicalInteger, IntegerKind,
+    };
     use crate::core::Value;
     use crate::lang::hash::JavaHash;
     use crate::lang::protocol::HashType;
@@ -415,6 +459,22 @@ mod tests {
                 BigInt::parse_bytes(b"9223372036854775808", 10).unwrap()
             ))
         );
+    }
+
+    #[test]
+    fn classifies_only_canonical_integer_widths() {
+        let long = Value::Number(42);
+        let fitting_big = Value::BigInteger(BigInt::from(42));
+        let big = Value::BigInteger(BigInt::from(1_u8) << 63);
+        let float = Value::Float(42.0);
+
+        assert_eq!(integer_kind(&long), Some(IntegerKind::Long));
+        assert_eq!(integer_kind(&fitting_big), Some(IntegerKind::Long));
+        assert_eq!(integer_kind(&big), Some(IntegerKind::BigInteger));
+        assert_eq!(integer_kind(&float), None);
+        assert!(is_long_value(&fitting_big));
+        assert!(is_big_integer_value(&big));
+        assert!(!is_long_value(&float));
     }
 
     #[test]

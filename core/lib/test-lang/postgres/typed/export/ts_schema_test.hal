@@ -4,17 +4,17 @@
   (:use code.test))
 
 (fact "converts fields to TypeScript declarations"
-  (ts/field->ts [:id {:type :uuid :nullable? false}]) => "  id: string;"
-  (ts/field->ts [:name {:type :text :nullable? true}]) => "  name?: string;"
-  (ts/field->ts ["two words" {:type :boolean}]) => "  \"two words\": boolean;")
+  (postgres.typed.export.ts-schema/field->ts [:id {:type :uuid :nullable? false}]) => "  id: string;"
+  (postgres.typed.export.ts-schema/field->ts [:name {:type :text :nullable? true}]) => "  name?: string;"
+  (postgres.typed.export.ts-schema/field->ts ["two words" {:type :boolean}]) => "  \"two words\": boolean;")
 
 (fact "converts scalar, reference, array, enum, and nested types"
-  (ts/type->ts {:type :integer}) => "number"
-  (ts/type->ts {:type :jsonb}) => "Record<string, any>"
-  (ts/type->ts {:is-ref? true}) => "string"
-  (ts/type->ts {:type :array :items {:type :text}}) => "string[]"
-  (ts/type->ts {:type :enum :enum-ref {:ns 'Status}}) => "Status"
-  (ts/type->ts {:type :jsonb
+  (postgres.typed.export.ts-schema/type->ts {:type :integer}) => "number"
+  (postgres.typed.export.ts-schema/type->ts {:type :jsonb}) => "Record<string, any>"
+  (postgres.typed.export.ts-schema/type->ts {:is-ref? true}) => "string"
+  (postgres.typed.export.ts-schema/type->ts {:type :array :items {:type :text}}) => "string[]"
+  (postgres.typed.export.ts-schema/type->ts {:type :enum :enum-ref {:ns 'Status}}) => "Status"
+  (postgres.typed.export.ts-schema/type->ts {:type :jsonb
                 :shape (types/make-jsonb-shape {:id {:type :uuid}})})
   => "{ id: string; }")
 
@@ -22,7 +22,7 @@
   (let [nested (types/make-jsonb-shape {"UserProfile" {:type :array
                                                         :items {:type :jsonb}}})
         value (types/make-jsonb-shape {"db/sync" {:type :jsonb :shape nested}})
-        result (ts/shape->ts-interface value "IUserEvent")]
+        result (postgres.typed.export.ts-schema/shape->ts-interface value "IUserEvent")]
     [(str/includes? result "\"db/sync\"")
      (str/includes? result "UserProfile")
      (str/includes? result "db_sync")])
@@ -34,7 +34,10 @@
                         (types/make-table-def "demo" "User" [] :id))
   (types/register-type 'demo/Status
                         (types/make-enum-def "demo" "Status" [:active :disabled] nil))
-  (let [result (ts/generate-ts-schema)]
+  (let [result (postgres.typed.export.ts-schema/generate-ts-schema)]
     [(str/includes? result "export interface User")
      (str/includes? result "export type Status")])
   => [true true])
+
+(let [summary (run {:namespace '[postgres.typed.export.ts-schema-test] :no-report true})]
+  (pr-str (select-keys summary [:status :counts])))

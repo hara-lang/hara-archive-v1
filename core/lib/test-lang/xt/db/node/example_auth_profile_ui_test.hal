@@ -1,0 +1,113 @@
+(ns xt.db.node.example-auth-profile-ui-test
+  (:use code.test)
+  (:require [lang.core :as l]
+            [xt.lang.common-notify :as notify]))
+
+(l/script- :js
+  {:require [[xt.lang.spec-base :as xt]
+             [xt.lang.common-repl :as repl]
+             [xt.lang.spec-promise :as promise]
+             [xt.substrate :as substrate]
+             [xt.db.node.example-auth-profile-ui :as ui]
+             [xt.db.node.example-auth-profile :as example]]
+   :runtime :basic})
+
+(fact:global {:setup [(l/rt:restart)]
+              :teardown [(l/rt:stop)]})
+
+^{:refer xt.db.node.example-auth-profile-ui/error-message :added "4.1"}
+(fact "normalizes plain and structured errors to text"
+  (!.js
+    [(ui/error-message "plain")
+     (ui/error-message {"message" "bad"})])
+  => ["plain" "[object Object]"])
+
+^{:refer xt.db.node.example-auth-profile-ui/field-style :added "4.1"}
+(fact "returns the shared field style"
+  (!.js (ui/field-style))
+  => {"color" "#374151" "gap" "6px" "fontWeight" 600 "display" "flex"
+      "flexDirection" "column" "fontSize" "13px"})
+
+^{:refer xt.db.node.example-auth-profile-ui/input-style :added "4.1"}
+(fact "returns the shared input style"
+  (!.js (ui/input-style))
+  => {"borderRadius" "8px" "padding" "10px 12px"
+      "border" "1px solid #d1d5db" "fontWeight" 400 "outline" "none"
+      "fontSize" "14px"})
+
+^{:refer xt.db.node.example-auth-profile-ui/button-style :added "4.1"}
+(fact "switches button colors by primary state"
+  (!.js
+    [(ui/button-style true) (ui/button-style false)])
+  => [{"borderRadius" "8px" "color" "#ffffff" "padding" "9px 13px"
+       "border" "1px solid" "background" "#111827" "fontWeight" 600
+       "borderColor" "#111827" "fontSize" "13px" "cursor" "pointer"}
+      {"borderRadius" "8px" "color" "#111827" "padding" "9px 13px"
+       "border" "1px solid" "background" "#ffffff" "fontWeight" 600
+       "borderColor" "#d1d5db" "fontSize" "13px" "cursor" "pointer"}])
+
+^{:refer xt.db.node.example-auth-profile-ui/AuthProfileApp :added "4.1"}
+(fact "builds a browser-independent auth app descriptor"
+  (!.js
+    (ui/AuthProfileApp {"space_id" "space/a"
+                        "group_id" "auth"
+                        "email" "ada@example.com"}))
+  => {"type" "auth-profile"
+      "title" "Supabase auth profile"
+      "description" "Authentication and profile state are owned by xt.substrate."
+      "space_id" "space/a"
+      "group_id" "auth"
+      "initial_email" "ada@example.com"
+      "styles" map?})
+
+^{:refer xt.db.node.example-auth-profile-ui/render-playground :added "4.1"}
+(fact "returns a local mount descriptor instead of touching window"
+  (!.js
+    (var result (ui/render-playground {"id" "node"} {"space_id" "space/a"}))
+    [(xt/x:get-key result "title")
+     (xt/x:get-key result "view_id")
+     (xt/x:get-path result ["stage" "type"])
+     (xt/x:get-path result ["node" "id"])])
+  => ["Supabase auth profile" "example/auth-profile" "auth-profile" "node"])
+
+^{:refer xt.db.node.example-auth-profile-ui/render-substrate-view-playground :added "4.1"}
+(fact "returns the shared target-neutral substrate view"
+  (!.js
+    (var result (ui/render-substrate-view-playground {"id" "node"} {}))
+    [(xt/x:get-key result "title")
+     (xt/x:get-key result "view_id")
+     (xt/x:get-path result ["stage" "component"])
+     (xt/x:get-path result ["node" "id"])])
+  => ["Substrate auth profile" "example/auth-profile" "ui/column" "node"])
+
+^{:refer xt.db.node.example-auth-profile-ui/refresh-auth-state :added "4.1"}
+(fact "rejects a refresh when the requested page model is absent"
+  (notify/wait-on :js
+    (-> (ui/refresh-auth-state (substrate/node-create {}) "space/a" "auth"
+                               (fn [_] nil) (fn [_] nil))
+        (promise/x:promise-then (fn [_] (repl/notify false)))
+        (promise/x:promise-catch (fn [_] (repl/notify true)))))
+  => true)
+
+^{:refer xt.db.node.example-auth-profile-ui/run-action :added "4.1"}
+(fact "clears busy state and reports a local model failure"
+  (notify/wait-on :js
+    (var busy nil)
+    (var error nil)
+    (-> (ui/run-action (substrate/node-create {}) "space/a" "auth" "login" {}
+                       (fn [value] (:= busy value))
+                       (fn [value] (:= error value))
+                       (fn [_] nil)
+                       (fn [_] nil))
+        (promise/x:promise-then (fn [_] (repl/notify false)))
+        (promise/x:promise-catch (fn [_] (repl/notify [busy (xt/x:not-nil? error)])))))
+  => [nil true])
+
+^{:refer xt.db.node.example-auth-profile-ui/mount-playground :added "4.1"}
+(fact "creates and installs the example node through the local descriptor path"
+  (!.js
+    (var mounted (ui/mount-playground {} {"space_id" "space/a" "group_id" "auth"}))
+    [(xt/x:get-key mounted "title")
+     (xt/x:get-path mounted ["stage" "type"])
+     (xt/x:not-nil? (xt/x:get-path mounted ["node" "services" "auth/supabase"]))])
+  => ["Supabase auth profile" "auth-profile" true])

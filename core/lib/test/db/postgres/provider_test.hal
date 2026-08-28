@@ -1,12 +1,21 @@
 (ns db.postgres.provider-test
   (:use code.test)
-  (:require [db.postgres.native :as native]
-            [db.postgres.wasm :as wasm]))
+  (:require [db.postgres.connection :as connection]
+            [db.postgres.native :as native]
+            [db.protocol :as protocol]))
+
+(def postgres-connection
+  (connection/PostgresConnection
+   7 :postgresql :postgres :native ["sql"] nil nil))
 
 (fact "PostgreSQL backend namespaces make provider selection explicit"
   [(native/provider-options {:host "database"})
-   (wasm/provider-options {:storage :memory})]
+   (protocol/db-provider postgres-connection)
+   (connection/provider-descriptor postgres-connection)]
   => [{:host "database" :provider :postgres}
-      {:storage :memory :provider :pglite}])
+      :postgres
+      {:provider/id :postgres
+       :provider/engine :postgresql
+       :provider/capabilities ["sql"]}])
 
 (pr-str (run '[db.postgres.provider-test]))

@@ -1,0 +1,73 @@
+(ns xt.substrate.transport-websocket-test (:use code.test) (:require [lang.core :as l] [xt.lang.common-notify :as notify]))
+
+(l/script- :js {:require [[xt.lang.spec-base :as xt] [xt.substrate.base-frame :as frame] [xt.substrate.base-json :as node-json] [xt.lang.common-repl :as repl] [xt.lang.spec-promise :as promise] [xt.substrate.transport-websocket :as ws-transport]] :runtime :basic})
+
+(fact:global {:teardown [(l/rt:stop)] :setup [(l/rt:restart)]})
+
+^{:refer xt.substrate.transport-websocket/event-text :added "4.1"}
+(fact "unwraps websocket message events and passes raw payloads through" (!.js [(ws-transport/event-text {"data" "ping"}) (ws-transport/event-text {"text" "pong"}) (ws-transport/event-text "echo")]) => ["ping" "pong" "echo"])
+
+^{:refer xt.substrate.transport-websocket/websocket-endpoint :added "4.1"}
+(fact "adapts websocket-like sockets to the JSON node transport contract" (notify/wait-on :js (var handlers {}) (var removed []) (var sent []) (var closed []) (var received []) (var socket {"send" (fn [text] (xt/x:arr-push sent text) (return true)) "removeEventListener" (fn [event handler capture] (xt/x:arr-push removed event) (return true)) "addEventListener" (fn [event handler capture] (xt/x:set-key handlers event handler) (return true)) "readyState" 1 "close" (fn [] (xt/x:arr-push closed true) (return true))}) (var endpoint (ws-transport/websocket-endpoint socket)) (-> ((. endpoint ["start_fn"]) (fn [frame ctx] (xt/x:arr-push received frame) (return true))) (promise/x:promise-then (fn [_] ((. endpoint ["send_fn"]) (frame/request-frame "room/a" "demo/echo" ["ping"] {"id" "req-1"})) ((xt/x:get-key handlers "message") {"data" (node-json/encode-frame (frame/response-ok-frame "req-1" "room/a" {"pong" true} nil))}) (return ((. endpoint ["stop_fn"]) nil)))) (promise/x:promise-then (fn [_] (repl/notify {"removed" removed "received" (xt/x:first received) "closed" (xt/x:len closed) "sent" (node-json/decode-frame (xt/x:first sent))}))))) => (contains-in {"removed" ["message"] "received" {"space" "room/a" "data" {"pong" true} "reply_to" "req-1" "status" "ok" "kind" "response"} "closed" 1 "sent" {"space" "room/a" "kind" "request" "action" "demo/echo" "id" "req-1" "args" ["ping"]}}))
+
+^{:refer xt.substrate.transport-websocket/socket-open? :added "4.1"}
+(fact "treats readyState 1 and missing readyState as open" (!.js [(ws-transport/socket-open? {"readyState" 1}) (ws-transport/socket-open? {"readyState" 0}) (ws-transport/socket-open? {})]) => [true false true])
+
+^{:refer xt.substrate.transport-websocket/add-socket-listener :added "4.1"}
+(fact "adds listeners through DOM, EventEmitter, or on* fallback APIs" (!.js (var calls []) (var handler (fn [event] event)) (var socket-a {"addEventListener" (fn [event cb capture] (xt/x:arr-push calls ["dom" event capture]))}) (var socket-b {"on" (fn [event cb] (xt/x:arr-push calls ["emitter" event (xt/x:is-function? cb)]))}) (var socket-c {}) (ws-transport/add-socket-listener socket-a "message" handler) (ws-transport/add-socket-listener socket-b "open" handler) (ws-transport/add-socket-listener socket-c "close" handler) [calls (xt/x:is-function? (. socket-c ["onclose"]))]) => [[["dom" "message" false] ["emitter" "open" true]] true])
+
+^{:refer xt.substrate.transport-websocket/remove-socket-listener :added "4.1"}
+(fact "removes listeners through DOM, EventEmitter, removeListener, or on* fallback APIs" (!.js (var calls []) (var handler (fn [event] event)) (var socket-a {"removeEventListener" (fn [event cb capture] (xt/x:arr-push calls ["dom" event capture]))}) (var socket-b {"off" (fn [event cb] (xt/x:arr-push calls ["off" event (xt/x:is-function? cb)]))}) (var socket-c {"removeListener" (fn [event cb] (xt/x:arr-push calls ["removeListener" event (xt/x:is-function? cb)]))}) (var socket-d {"onmessage" handler}) (ws-transport/remove-socket-listener socket-a "message" handler) (ws-transport/remove-socket-listener socket-b "open" handler) (ws-transport/remove-socket-listener socket-c "close" handler) (ws-transport/remove-socket-listener socket-d "message" handler) [calls (. socket-d ["onmessage"])]) => [[["dom" "message" false] ["off" "open" true] ["removeListener" "close" true]] nil])
+
+^{:refer xt.substrate.transport-websocket/await-open :added "4.1"}
+(fact "waits for socket open and rejects opening errors" (notify/wait-on :js (var state {"error" nil "status" "opening" "socket" {"id" "socket-1"}}) (setTimeout (fn [] (xt/x:set-key state "status" "open")) 20) (promise/x:promise-then (ws-transport/await-open state) (fn [socket] (return (promise/x:promise-catch (ws-transport/await-open {"error" "denied" "status" "error"}) (fn [err] (repl/notify {"error" err "socket" socket}))))))) => {"error" "denied" "socket" {"id" "socket-1"}})
+
+^{:refer xt.substrate.transport-websocket/connect-socket :added "4.1"}
+(fact "connects through explicit connect_fn or a supplied WebSocket constructor" (!.js [(ws-transport/connect-socket {"url" "ws://demo.test/a" "connect_fn" (fn [url] (return {"url" url "kind" "connect"}))}) (ws-transport/connect-socket {"WebSocket" (fn [url] (return {"url" url "kind" "ctor"})) "url" "ws://demo.test/b"})]) => [{"url" "ws://demo.test/a" "kind" "connect"} {"url" "ws://demo.test/b" "kind" "ctor"}])
+
+^{:refer xt.substrate.transport-websocket/resolve-socket :added "4.1"}
+(fact "resolves create_fn, url-backed, and raw socket sources" (!.js [(ws-transport/resolve-socket {"create_fn" (fn [] (return {"kind" "create"}))}) (ws-transport/resolve-socket {"url" "ws://demo.test/c" "connect_fn" (fn [url] (return {"url" url "kind" "connect"}))}) (ws-transport/resolve-socket {"kind" "raw"})]) => [{"kind" "create"} {"url" "ws://demo.test/c" "kind" "connect"} {"kind" "raw"}])
+
+^{:refer xt.substrate.transport-websocket/websocket-url :added "4.1"}
+(fact "returns websocket urls from strings or source maps" (!.js [(ws-transport/websocket-url "ws://demo.test/a") (ws-transport/websocket-url {"url" "ws://demo.test/b"}) (ws-transport/websocket-url {"kind" "raw"})]) => ["ws://demo.test/a" "ws://demo.test/b" nil])
+
+^{:refer xt.substrate.transport-websocket/websocket-source :added "4.1"}
+(fact "creates a text transport source around a websocket-like socket" (notify/wait-on :js (var sent []) (var listeners {}) (var removed []) (var closed []) (var received []) (var source (ws-transport/websocket-source {"create_fn" (fn [] (return {"send" (fn [text] (xt/x:arr-push sent text)) "removeEventListener" (fn [event handler capture] (xt/x:arr-push removed event)) "addEventListener" (fn [event handler capture] (xt/x:set-key listeners event handler)) "readyState" 1 "close" (fn [] (xt/x:arr-push closed true))}))})) (promise/x:promise-then ((. source ["start_fn"]) (fn [event ctx] (xt/x:arr-push received (ws-transport/event-text event)))) (fn [_] ((. source ["write_fn"]) "ping") ((xt/x:get-key listeners "message") {"data" "pong"}) ((. source ["stop_fn"]) nil) (repl/notify {"removed" removed "received" received "closed" (xt/x:len closed) "sent" sent})))) => {"removed" ["message"] "received" ["pong"] "closed" 1 "sent" ["ping"]})
+
+^{:refer xt.substrate.transport-websocket/websocket-native? :added "4.1"}
+(fact "detects ws-native client sockets by a non-nil :: key" (!.js [(ws-transport/websocket-native? "ws://demo.test/a") (ws-transport/websocket-native? {"url" "ws://demo.test/a"}) (ws-transport/websocket-native? {"::" nil}) (ws-transport/websocket-native? {"::" "ws-native"})]) => [false false false true])
+
+^{:refer xt.substrate.transport-websocket/ensure-promise :added "4.1"}
+(fact "wraps sync values in a native promise and passes native promises through" (notify/wait-on :js (var input-promise (promise/x:promise-run 42)) (promise/x:promise-then (ws-transport/ensure-promise "hello") (fn [sync-result] (promise/x:promise-then (ws-transport/ensure-promise input-promise) (fn [promise-result] (repl/notify {"same" (== (ws-transport/ensure-promise input-promise) input-promise) "native" (promise/x:promise-native? (ws-transport/ensure-promise "hello")) "promise" promise-result "sync" sync-result})))))) => {"same" true "native" true "promise" 42 "sync" "hello"})
+
+^{:refer xt.substrate.transport-websocket/mark-open :added "4.1"}
+(fact "marks an opening socket as open and keeps its socket value"
+  (!.js
+    (var state {"status" "opening"})
+    (var socket {"id" "socket-1"})
+    [(ws-transport/mark-open state socket nil)
+     (xt/x:get-key state "status")])
+  => [{"id" "socket-1"} "open"])
+
+^{:refer xt.substrate.transport-websocket/mark-error :added "4.1"}
+(fact "records an opening error and returns the original event"
+  (!.js
+    (var state {"status" "opening"})
+    (var event {"message" "denied"})
+    [(ws-transport/mark-error state event)
+     (xt/x:get-key state "status")
+     (xt/x:get-key state "error")])
+  => [{"message" "denied"} "error" {"message" "denied"}])
+
+^{:refer xt.substrate.transport-websocket/mark-close :added "4.1"}
+(fact "turns a pre-open close into a useful error while preserving an open close"
+  (!.js
+    (var opening {"status" "opening"})
+    (var open {"status" "open"})
+    (ws-transport/mark-close opening nil)
+    (ws-transport/mark-close open {"code" 1000})
+    [(xt/x:get-key opening "status")
+     (xt/x:get-key opening "error")
+     (xt/x:get-key open "status")
+     (xt/x:get-key open "error")])
+  => ["error" "websocket closed before open" "open" nil])

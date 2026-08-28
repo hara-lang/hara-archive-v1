@@ -1,0 +1,15 @@
+(ns xt.db.poc.s07-adaptor-client-test (:use code.test) (:require [lang.core :as l] [xt.lang.spec-base :as xt] [xt.lang.common-data :as xtd] [xt.substrate :as substrate] [xt.substrate.page-core :as page-core] [xt.substrate.page-proxy :as page-proxy] [xt.event.base-model :as model]))
+
+(l/script- :js {:runtime :basic})
+
+^{:refer xt.substrate.page-proxy/model-serialize :added "4.1"}
+(fact "the adaptor-client POC serializes a local page model for transport"
+  (!.js
+   (var node (substrate/node-create {"id" "client"}))
+   (var created (page-core/create-model node "room/a" "demo" "main"
+                                        {"handler" (fn [_] (return {"ok" true}))
+                                         "defaults" {"args" [1 2]}}))
+   (var page-model (xt/x:get-idx created 1))
+   (model/init-model page-model)
+   (page-proxy/model-serialize page-model))
+  => (contains-in {"input" {"current" {"data" [1 2]}}}))

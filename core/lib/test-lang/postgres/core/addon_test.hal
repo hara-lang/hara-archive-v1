@@ -1,0 +1,189 @@
+(ns postgres.core.addon-test
+  (:require [lang.core :as l]
+            [postgres.core.addon :as addon]
+            [lang.core.script :as script])
+  (:use code.test))
+
+(l/script :postgres postgres.core.addon-test {:macro-only true})
+
+(defn emit [form]
+  (script/compile-form :postgres 'postgres.core.addon-test form))
+
+^{:refer postgres.core.addon/exec}
+(fact "emits an SQL statement unchanged"
+  (emit '(addon/exec [:select 1]))
+  => "SELECT 1")
+
+^{:refer postgres.core.addon/ARRAY}
+(fact "creates an ARRAY literal"
+  (emit '(addon/ARRAY 1 2 3 4))
+  => "ARRAY[1,2,3,4]")
+
+^{:refer postgres.core.addon/id}
+(fact "gets the id field of an object"
+  (emit '(addon/id {:id "40"}))
+  => "(jsonb_build_object('id','40') ->> 'id')::UUID")
+
+^{:refer postgres.core.addon/name}
+(fact "gets an entity name"
+  (addon/name {:id 'Task :static/schema "scratch"})
+  => "Task")
+
+^{:refer postgres.core.addon/full}
+(fact "gets an entity coordinate"
+  (addon/full {:id 'Task :static/schema "scratch"})
+  => ["scratch" "Task"])
+
+^{:refer postgres.core.addon/full-str}
+(fact "serializes an entity coordinate"
+  (addon/full-str {:id 'Task :static/schema "scratch"})
+  => "[\"scratch\",\"Task\"]")
+
+^{:refer postgres.core.addon/coord}
+(fact "gets a row coordinate"
+  (emit '(addon/coord {:id Task :static/schema "scratch"} "id"))
+  => "jsonb_build_array('scratch','Task','id')")
+
+^{:refer postgres.core.addon/rand-hex}
+(fact "emits random hex generation"
+  (emit '(addon/rand-hex 10))
+  => "encode(gen_random_bytes(10 / 2),'hex')")
+
+^{:refer postgres.core.addon/sha1}
+(fact "emits SHA-1 generation"
+  (emit '(addon/sha1 "hello"))
+  => "encode(digest(('hello')::BYTEA,'sha1'),'hex')")
+
+^{:refer postgres.core.addon/client-list}
+(fact "selects PostgreSQL clients"
+  (emit '(addon/client-list))
+  => "SELECT * FROM pg_stat_activity")
+
+^{:refer postgres.core.addon/time-ms}
+(fact "emits milliseconds since epoch"
+  (emit '(addon/time-ms))
+  => "(1000 * extract(epoch FROM now()))::BIGINT")
+
+^{:refer postgres.core.addon/time-us}
+(fact "emits microseconds since epoch"
+  (emit '(addon/time-us))
+  => "(1000000 * extract(epoch FROM now()))::BIGINT")
+
+^{:refer postgres.core.addon/throw}
+(fact "raises a JSON exception"
+  (emit '(addon/throw {:a 1}))
+  => "RAISE EXCEPTION USING DETAIL = (jsonb_build_object('a',1))::TEXT, MESSAGE = 'nil'")
+
+^{:refer postgres.core.addon/error}
+(fact "raises a JSON error with a stable status field"
+  (emit '(addon/error [1 2 3 4]))
+  => "RAISE EXCEPTION USING DETAIL = (jsonb_build_object('status','error','value',jsonb_build_array(1,2,3,4)))::TEXT, MESSAGE = 'nil'")
+
+^{:refer postgres.core.addon/assert}
+(fact "raises a structured assertion"
+  (emit '(addon/assert (= value 3) [:invalid {:expected 3}]))
+  => "IF NOT (value = 3) THEN
+  RAISE EXCEPTION USING DETAIL = (jsonb_build_object('status','error','tag',':invalid','expected',3))::TEXT, MESSAGE = ':invalid';
+END IF")
+
+^{:refer postgres.core.addon/case}
+(fact "emits a CASE expression"
+  (emit '(addon/case 1 2 3 4))
+  => "CASE WHEN 1 THEN 2
+WHEN 3 THEN 4
+END")
+
+^{:refer postgres.core.addon/get-stack-diagnostics}
+(fact "emits stacked diagnostics"
+  (emit '(addon/get-stack-diagnostics))
+  => "GET STACKED DIAGNOSTICS
+  e_code := RETURNED_SQLSTATE,
+  e_msg := MESSAGE_TEXT,
+  e_detail := PG_EXCEPTION_DETAIL,
+  e_hint := PG_EXCEPTION_HINT,
+  e_context := PG_EXCEPTION_CONTEXT")
+
+^{:refer postgres.core.addon/field-id}
+(fact "gets a linked field id"
+  (emit '(addon/field-id m :field))
+  => "coalesce(m ->> ':field_id',(m -> :field) ->> 'id')")
+
+^{:refer postgres.core.addon/map:rel}
+(fact "maps over a relation"
+  (emit '(addon/map:rel f rel))
+  => "jsonb_agg(f(o_ret)) FROM rel AS o_ret")
+
+^{:refer postgres.core.addon/map:js-text}
+(fact "maps over JSON text elements"
+  (emit '(addon/map:js-text f arr))
+  => "coalesce(jsonb_agg(f(o_ret)),jsonb_build_array())
+FROM jsonb_array_elements_text(arr) AS o_ret")
+
+^{:refer postgres.core.addon/map:js}
+(fact "maps over JSON elements"
+  (emit '(addon/map:js f arr))
+  => "coalesce(jsonb_agg(f(o_ret)),jsonb_build_array())
+FROM jsonb_array_elements(arr) AS o_ret")
+
+^{:refer postgres.core.addon/do:reduce}
+(fact "reduces an array in PL/pgSQL"
+  (emit '(addon/do:reduce out f :type arr))
+  => "DECLARE e TYPE;
+BEGIN
+  FOREACH e IN ARRAY arr LOOP
+    out := f(out,e);
+  END LOOP;
+  RETURN out;
+END")
+
+^{:refer postgres.core.addon/b:select}
+(fact "emits a SELECT block"
+  (emit '(addon/b:select 1))
+  => "SELECT 1")
+
+^{:refer postgres.core.addon/ret}
+(fact "emits a return SELECT block"
+  (emit '(addon/ret 1))
+  => "SELECT 1")
+
+^{:refer postgres.core.addon/b:update}
+(fact "emits an UPDATE block"
+  (emit '(addon/b:update t {:a 1}))
+  => "UPDATE t \"a\" = 1")
+
+^{:refer postgres.core.addon/b:insert}
+(fact "emits an INSERT block"
+  (emit '(addon/b:insert t {:a 1}))
+  => "INSERT t \"a\" = 1")
+
+^{:refer postgres.core.addon/b:delete}
+(fact "emits a DELETE block"
+  (emit '(addon/b:delete t))
+  => "DELETE t")
+
+^{:refer postgres.core.addon/perform}
+(fact "emits a PERFORM block"
+  (emit '(addon/perform 1))
+  => "PERFORM 1")
+
+^{:refer postgres.core.addon/random-enum}
+(fact "samples from an enum"
+  (emit '(addon/random-enum :status))
+  => "SELECT p FROM unnest(enum_range((NULL)::STATUS)) AS p ORDER BY random() LIMIT 1")
+
+^{:refer postgres.core.addon/do:plpgsql}
+(fact "emits a PL/pgSQL DO block"
+  (emit '(addon/do:plpgsql (addon/perform (refresh-cache))))
+  => "DO $$
+BEGIN
+  PERFORM refresh_cache();
+END
+$$ LANGUAGE plpgsql")
+
+^{:refer postgres.core.addon/__tahto_load__}
+(fact "marks the addon namespace as loaded"
+  addon/__tahto_load__
+  => true)
+
+(let [summary (run {:namespace '[postgres.core.addon-test] :no-report true})]
+  (pr-str (select-keys summary [:status :counts])))

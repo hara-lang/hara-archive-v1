@@ -1,4 +1,3 @@
-^{:seedgen/skip true}
 (ns xt.lang.common-module-test
   (:use code.test)
   (:require [xt.lang.common-module :refer :all]))
@@ -63,5 +62,5 @@
   (:id *saved-module*)
   => 'xt.lang.common-module
 
-  (alter-var-root #'*saved-module* (fn [_] nil))
+  (set! *saved-module* nil)
   => nil)

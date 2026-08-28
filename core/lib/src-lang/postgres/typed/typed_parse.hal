@@ -1,6 +1,5 @@
 (ns postgres.typed.typed-parse
-  (:config {:blank true})
-  (:require [std.foundation :as foundation :refer [boolean seq?]]
+  (:require [std.foundation :as foundation :refer [assoc assoc-in boolean coll? concat conj count drop empty? filter first get get-in has? keyword? list? map map? merge meta name namespace nth partition reduce rest second seq? set? string? symbol? update update-in vec vector?]]
             [postgres.typed.typed-infer :as typed-infer]
             [postgres.typed.typed-common :as types]))
 
@@ -242,8 +241,8 @@
    {:enums []
     :functions []
     :tables (vec (map (fn [entry]
-                        (parse-runtime-table (first entry) (second entry) dbschema))
-                      tables-map))}))
+                      (parse-runtime-table (first entry) (second entry) dbschema))
+                      (seq tables-map)))}))
 
 (defn- namespace-name [forms]
   (reduce (fn [found form]

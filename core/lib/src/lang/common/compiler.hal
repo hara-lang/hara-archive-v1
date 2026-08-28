@@ -267,8 +267,8 @@
 (defn- normalize-dependencies
   [dependencies]
   (cond (nil? dependencies) +empty-dependencies+
-        (set? dependencies) (assoc +empty-dependencies+ :code dependencies)
         (map? dependencies) (merge +empty-dependencies+ dependencies)
+        (set? dependencies) (assoc +empty-dependencies+ :code dependencies)
         :else (throw (ex :argument {:dependencies dependencies} :ex/message "Invalid staged dependencies"))))
 
 (defn- stage-result

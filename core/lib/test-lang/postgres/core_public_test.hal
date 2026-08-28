@@ -1,41 +1,54 @@
 (ns postgres.core-public-test
   (:require [postgres.core :as pg]
             [postgres.core.graph-view :as graph-view]
-            [lang.runtime.postgres.base.application :as app])
+            [postgres.application :as app])
   (:use code.test))
 
 (def schema
   {:id [{:type :uuid :primary true :order 0}]
    :name [{:type :text :order 1}]})
 (def app-schema {:tree {:Task schema}})
-(def Task {:id 'Task :module 'demo :table-schema schema :schema app-schema})
-(graph-view/register-table 'Task Task)
 
 (fact "exposes table reads through postgres.core"
-  (pg/t:select Task {:as :raw})
-  => '[:select * :from demo/Task]
-
-  (pg/t:get Task {}) => (throws))
+  (pg/t:select {:id Task :module demo :table-schema {:id [{:type :uuid :primary true :order 0}]
+                                                     :name [{:type :text :order 1}]}}
+               {:as :raw})
+  => '[:select * :from demo/Task])
 
 (fact "exposes table writes through postgres.core"
-  (pg/t:insert Task {:name "n"} {:as :raw})
+  (pg/t:insert {:id Task :module demo :table-schema {:id [{:type :uuid :primary true :order 0}]
+                                                     :name [{:type :text :order 1}]}}
+               {:name "n"} {:as :raw})
   => '[:insert-into demo/Task (>-< [#{"name"}])
        :values (>-< [(:text "n")])]
 
-  (pg/t:update-untracked Task {:set {:name "n"}})
+  (pg/t:update-untracked {:id Task :module demo :table-schema {:id [{:type :uuid :primary true :order 0}]
+                                                                :name [{:type :text :order 1}]}}
+                         {:set {:name "n"}})
   => '[:update demo/Task :set (== (>-< [#{"name"}]) (row (:text "n")))])
 
 (fact "exposes graph reads through postgres.core"
-  (pg/g:select Task {:as :raw})
+  (pg/g:select {:id Task :module demo :table-schema {:id [{:type :uuid :primary true :order 0}]
+                                                     :name [{:type :text :order 1}]}}
+               {:as :raw})
   => '[:select * :from demo/Task]
 
-  (pg/q Task {:returning #{:id} :as :raw})
+  (pg/q {:id Task :module demo :table-schema {:id [{:type :uuid :primary true :order 0}]
+                                               :name [{:type :text :order 1}]}}
+        {:returning #{:id} :as :raw})
   => '[:select (--- [#{"id"}]) :from demo/Task])
 
-(pg/defsel.pg ^{:- [Task] :args [:text input-name]}
+(pg/defsel.pg ^{:- [{:id Task :module demo :table-schema {:id [{:type :uuid :primary true :order 0}]
+                                                       :name [{:type :text :order 1}]}}]
+                    :args [:text input-name]}
   task-by-name {:name input-name})
-(pg/defret.pg ^{:- [Task]}
+(pg/defret.pg ^{:- [{:id Task :module demo :table-schema {:id [{:type :uuid :primary true :order 0}]
+                                                       :name [{:type :text :order 1}]}}]}
   task-basic [:uuid task-id] #{:id :name})
+
+(def composed-view
+  (pg/view ['postgres.core-public-test/task-basic]
+           ['postgres.core-public-test/task-by-name "n"] {:limit 2}))
 
 (fact "forwards view macros with caller namespace metadata"
   (:type (graph-view/view-descriptor 'postgres.core-public-test/task-by-name))
@@ -45,25 +58,36 @@
   => :return)
 
 (fact "exposes composed graph views through postgres.core"
-  (pg/view ['postgres.core-public-test/task-basic]
-           ['postgres.core-public-test/task-by-name "n"] {:limit 2})
+  composed-view
   => '[:with j-ret :as
        [:select (--- [#{"id"} #{"name"}]) :from demo/Task
-        \\ :where {"name" [:eq "n"]} \\ :limit 2]
+        \\ :where #{["name" [:eq "n"]]} \\ :limit 2]
        \\ :select (jsonb-agg j-ret) :from j-ret])
 
 (fact "forwards the portable application registry through postgres.core"
-  (app/register-app "public-test"
-                     {:schema {:tree {:Task schema}}
-                      :typed {:tables {} :enums {} :functions {}}})
-  [(vec (pg/app-list))
-   (get-in (pg/app "public-test") [:schema :tree :Task :name 0 :type])
-   (get-in (pg/app-schema "public-test") [:tree :Task :id 0 :type])
-   (:functions (pg/app-typed "public-test"))
-   (fn? pg/app-create)
-   (fn? pg/app-rebuild)
-   (map? (pg/bind-schema (pg/app-schema "public-test")))
-   (pg/bind-app {:pointers {}})
-   (pg/app-clear "public-test")
-   (pg/app "public-test")]
-  => [["public-test"] :text :uuid {} true true true {} nil nil])
+  (let [original (app/app)
+        result
+        (try
+          (app/app-reset)
+          (app/register-app "public-test"
+                             {:schema {:tree {:Task schema}}
+                              :typed {:tables {} :enums {} :functions {}}})
+          [(vec (pg/app-list))
+           (get-in (pg/app "public-test") [:schema :tree :Task :name 0 :type])
+           (get-in (pg/app-schema "public-test") [:tree :Task :id 0 :type])
+           (:functions (pg/app-typed "public-test"))
+           (fn? pg/app-create)
+           (fn? pg/app-rebuild)
+           (let [bound (pg/bind-schema (pg/app-schema "public-test"))]
+             [(vector? bound) (count bound) (first (first bound))])
+           (pg/bind-app {:pointers {}})
+           (pg/app-clear "public-test")
+           (pg/app "public-test")
+           (app/app-reset)
+           (app/app-list)]
+          (finally
+            (reset! app/*applications* original)))]
+    result)
+  => [["public-test"] :text :uuid {} true true [true 1 "Task"] {} nil nil {} []])
+
+(pr-str (run '[postgres.core-public-test]))

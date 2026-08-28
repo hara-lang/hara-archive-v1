@@ -17,6 +17,7 @@ import hara.lang.base.Iter;
 import hara.lang.base.Reduced;
 import hara.lang.base.Eq;
 import hara.lang.base.G;
+import hara.lang.base.NumUtils;
 import hara.lang.base.primitive.Num;
 import hara.lang.base.iter.CloseableIterator;
 import hara.lang.data.Symbol;
@@ -3497,8 +3498,8 @@ public final class HaraContext {
 
     String type;
     if (raw == null || raw == HaraNull.SINGLETON) type = "Nil";
-    else if (raw instanceof HaraBigInteger || raw instanceof java.math.BigInteger) type = "Integer";
-    else if (raw instanceof Byte || raw instanceof Short || raw instanceof Integer || raw instanceof Long) type = "Integer";
+    else if (NumUtils.isLongValue(raw)) type = "Long";
+    else if (NumUtils.isBigIntegerValue(raw)) type = "BigInteger";
     else if (raw instanceof Float || raw instanceof Double) type = "Float";
     else if (raw instanceof HaraCharacter || raw instanceof Character) type = "Character";
     else if (raw instanceof java.util.UUID) type = "UUID";

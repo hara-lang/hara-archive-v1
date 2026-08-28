@@ -527,3 +527,6 @@
     (string? output) => true
     (str/includes? output "\"function\"") => true
     (str/includes? output "\"insert-entry\"") => true))
+
+(let [summary (run {:namespace '[postgres.typed.typed-analyze-test] :no-report true})]
+  (pr-str (select-keys summary [:status :counts])))

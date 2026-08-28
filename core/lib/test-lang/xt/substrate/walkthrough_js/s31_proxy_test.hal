@@ -1,0 +1,16 @@
+(ns xt.substrate.walkthrough-js.s31-proxy-test (:use code.test) (:require [lang.core :as l] [tahto.runtime.chromedriver :as chromedriver] [xt.lang.common-notify :as notify]))
+
+(defn- ci? [] (boolean (System/getenv "CI")))
+
+(fact:global {:skip (ci?)})
+
+(l/script- :js {:require [[xt.lang.spec-base :as xt] [xt.lang.common-data :as xtd] [xt.lang.common-repl :as repl] [xt.lang.spec-promise :as promise] [xt.event.base-model :as event-model] [xt.substrate :as substrate] [xt.substrate.page-core :as base-page] [xt.substrate.transport-browser :as browser-transport] [xt.substrate.page-proxy :as page-proxy]] :runtime :chromedriver.instance})
+
+(def ^{:private true} +sharedworker-script+ (l/emit-script (quote (do (:= (. globalThis ["onconnect"]) (fn [e] (var port (. e ["ports"] [0])) (. port (start)) (var node (xt.substrate/node-create {"spaces" {"room/a" {"state" {}}} "id" "page-proxy-shared-server"})) (xt.substrate.page-proxy/install node) (xt.substrate.page-core/group-add node "room/a" "demo" {"main" {"handler" (fn [ctx] (var data (xt.lang.common-data/get-in ctx ["input" "data"])) (return {"value" (xt.lang.spec-base/x:first data)})) "defaults" {"output" {} "process" (fn [x] (return x)) "init" (fn [] (return nil)) "args" ["hello"]} "trigger" true "options" {}}}) (xt.substrate.transport-browser/boot-self node {"ready" {"signal" "ready" "transport" "browser" "worker" "page-proxy-shared"} "target" port "transport_id" "host"}) (return node))))) {:layout :full :lang :js}))
+
+(defn- ci? [] (boolean (System/getenv "CI")))
+
+(fact:global {:teardown [(l/rt:stop)] :skip (ci?) :setup [(l/rt:restart) (chromedriver/goto (str "http://127.0.0.1:" (:http-port (l/default-notify)) "/") 4000)]})
+
+^{:refer xt.substrate.page-proxy/group-open-proxy :added "4.1"}
+(fact "page-proxy can list, open, and read a remote group over a SharedWorker" (notify/wait-on [:js 5000] (var client (substrate/node-create {"spaces" {"room/a" {"state" {}}} "id" "page-proxy-browser-client"})) (page-proxy/install client) (var transport-id nil) (-> (browser-transport/connect-sharedworker client {"transport_id" "worker" "source" (browser-transport/sharedworker-source ((deref !) +sharedworker-script+) {})}) (promise/x:promise-then (fn [conn] (:= transport-id (. conn ["transport_id"])) (return (page-proxy/group-list-proxy client "room/a" {"transport_id" transport-id})))) (promise/x:promise-then (fn [groups] (return (page-proxy/group-open-proxy client "room/a" "demo" {"transport_id" transport-id})))) (promise/x:promise-then (fn [group] (var model (xtd/get-in group ["models" "main"])) (repl/notify {"output" (event-model/get-current model nil) "model_type" (xt/x:get-key model "::") "has_group" (xt/x:not-nil? group)}) (browser-transport/disconnect conn))) (promise/x:promise-catch (fn [err] (repl/notify {"message" (xt/x:ex-message err) "error" err}))))) => (contains-in {"output" {"value" "hello"} "model_type" "event.model" "has_group" true}))

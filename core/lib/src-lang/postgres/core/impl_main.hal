@@ -1,5 +1,6 @@
 (ns postgres.core.impl-main
-  (:require [postgres.core.impl-base :as base]
+  (:require [std.foundation :refer [= conj count deref filter first get has? keys list list? map? merge nil? not not= nth reduce second set? vec vector?]]
+            [postgres.core.impl-base :as base]
             [lang.common.util :as util]))
 
 (defn- collection-value? [value]
@@ -46,8 +47,11 @@
         json (base/t-wrap-json extended as json-output (:into params) (:field params))]
     (with-meta (base/t-wrap-into json (:into params) {}) {:op/type :select})))
 
-(defn t-select [spec params]
-  (t-select-raw (base/prep-table spec false {}) params))
+(defn t-select
+  ([spec params]
+   (t-select spec params nil))
+  ([spec params caller-ns]
+   (t-select-raw (base/prep-table spec false {:caller-ns caller-ns}) params)))
 
 (defn t-id-raw [prepared params]
   (with-meta
@@ -56,8 +60,11 @@
                         (merge {:single true :as :raw :returning #{:id}} params)))
     {:op/type :id}))
 
-(defn t-id [spec params]
-  (t-id-raw (base/prep-table spec false {}) params))
+(defn t-id
+  ([spec params]
+   (t-id spec params nil))
+  ([spec params caller-ns]
+   (t-id-raw (base/prep-table spec false {:caller-ns caller-ns}) params)))
 
 (defn t-count-raw [prepared params]
   (with-meta
@@ -65,8 +72,11 @@
           (t-select-raw prepared (merge {:as :raw :returning '(count *)} params)))
     {:op/type :count}))
 
-(defn t-count [spec params]
-  (t-count-raw (base/prep-table spec false {}) params))
+(defn t-count
+  ([spec params]
+   (t-count spec params nil))
+  ([spec params caller-ns]
+   (t-count-raw (base/prep-table spec false {:caller-ns caller-ns}) params)))
 
 (defn t-exists-raw [prepared params]
   (with-meta (list 'pg:scalar
@@ -76,8 +86,11 @@
                                                        params)))])
              {:op/type :exists}))
 
-(defn t-exists [spec params]
-  (t-exists-raw (base/prep-table spec false {}) params))
+(defn t-exists
+  ([spec params]
+   (t-exists spec params nil))
+  ([spec params caller-ns]
+   (t-exists-raw (base/prep-table spec false {:caller-ns caller-ns}) params)))
 
 (defn t-delete-raw [prepared params]
   (let [entry (first prepared)
@@ -97,8 +110,11 @@
         json (base/t-wrap-json returned as json-output (:into params) nil)]
     (with-meta (base/t-wrap-into json (:into params) {}) {:op/type :delete})))
 
-(defn t-delete [spec params]
-  (t-delete-raw (base/prep-table spec false {}) params))
+(defn t-delete
+  ([spec params]
+   (t-delete spec params nil))
+  ([spec params caller-ns]
+   (t-delete-raw (base/prep-table spec false {:caller-ns caller-ns}) params)))
 
 (defn t-fields-raw [prepared params]
   (let [table-schema (second prepared)
@@ -116,7 +132,10 @@
               []
               (keys table-schema)))))
 
-(defn t-fields [spec params]
-  (t-fields-raw (base/prep-table spec false {}) params))
+(defn t-fields
+  ([spec params]
+   (t-fields spec params nil))
+  ([spec params caller-ns]
+   (t-fields-raw (base/prep-table spec false {:caller-ns caller-ns}) params)))
 
 (def __tahto_load__ true)

@@ -1,0 +1,63 @@
+(ns xt.db.helpers.seed-system-test (:require [postgres.core :as pg :refer [defsel.pg defret.pg]] [lang.core :as l] [std.foundation :as f]))
+
+(l/script :postgres {:require [[postgres.core :as pg]] :static {:seed ["scratch-sample-db"] :application ["test-db-helpers"] :all {:schema ["scratch-sample-db"]}}})
+
+(defenum.pg EnumCurrencyType [:digital :fiat :crypto])
+
+(deftype.pg ^{:public true} Currency [:id {:web {:example "AUD"} :type :citext :primary true} :type {:web {:example "fiat"} :type :enum :scope :-/info :required true :enum {:ns -/EnumCurrencyType}} :symbol {:web {:example "$"} :type :text :scope :-/info} :native {:web {:example "$AU"} :type :text :scope :-/info} :decimal {:web {:example 2} :type :long} :name {:web {:example "Australian Dollar"} :type :text :scope :-/info} :plural {:web {:example "Australian Dollars"} :type :text} :description {:web {:example "Currency for Australia"} :type :text}])
+
+(deftype.pg ^{:public true} RegionCountry [:id {:web {:example "AU"} :type :citext :primary true} :ref {:type :integer} :name {:web {:example "Australia"} :type :text :scope :-/info :required true} :name-native {:web {:example "Australia"} :type :text} :iso {:web {:example "AUS"} :type :citext :scope :-/info} :iso-numeric {:web {:example "23"} :type :text :scope :-/info} :iso-tld {:web {:example ".au"} :type :text :scope :-/info} :iso-phone {:web {:example "61"} :type :text :scope :-/info} :capital {:web {:example "Canberra"} :type :text :scope :-/info} :flag {:web {:example "U+1F1E6 U+1F1FC"} :type :text :scope :-/info} :region {:web {:example "Oceania"} :type :text :scope :-/info} :subregion {:web {:example "Australia and New Zealand"} :type :text :scope :-/info} :latitude {:type :text :scope :-/info} :longitude {:type :text :scope :-/info} :translations {:type :jsonb} :timezones {:type :jsonb} :currencies {:type :jsonb}])
+
+(deftype.pg ^{:public true} RegionState [:id {:web {:example "3903"} :type :text :primary true} :ref {:type :integer} :name {:web {:example "Victoria"} :type :text :required true} :code {:web {:example "VIC"} :type :text :required true} :country {:web {:example "AU"} :type :ref :ref {:ns -/RegionCountry}} :latitude {:type :text} :longitude {:type :text}])
+
+(deftype.pg ^{:public true} RegionCity [:id {:web {:example "6235"} :type :text :primary true} :ref {:type :integer} :name {:web {:example "Melbourne"} :type :text :required true} :latitude {:web {:example "-37.81400000"} :type :text :required true} :longitude {:web {:example "144.96332000"} :type :text :required true} :state {:web {:example "3903"} :type :ref :ref {:ns -/RegionState}} :country {:web {:example "AU"} :type :ref :ref {:ns -/RegionCountry}}])
+
+(defret.pg ^{:scope #{:public} :api/view true :- [-/RegionCountry]} region-country-with-access [:citext i-city-id] #{:*/data})
+
+(defret.pg ^{:scope #{:public} :api/view true :- [-/RegionCity]} region-city-with-access [:citext i-country-id] #{:*/data})
+
+(defsel.pg ^{:scope #{:public} :api/view true :- [-/Currency]} currency-all)
+
+(defsel.pg ^{:scope #{:public} :api/view true :- [-/Currency]} currency-all-fiat {:type "fiat"})
+
+(defsel.pg ^{:scope #{:public} :api/view true :- [-/Currency]} currency-all-crypto {:type "crypto"})
+
+(defsel.pg ^{:scope #{:public} :args [:text i-type] :api/view true :- [-/Currency]} currency-by-type {:type (++ i-type xt.db.helpers.seed-system-test/EnumCurrencyType)})
+
+(defsel.pg ^{:scope #{:public} :args [:citext i-iso] :api/view true :- [-/Currency]} currency-by-country {:id [:in [:select (jsonb-object-keys #{"currencies"}) :from -/RegionCountry :where {:id i-iso} :as :raw]]})
+
+(defret.pg ^{:scope #{:public} :api/view true :- [-/Currency]} currency-default [:citext i-currency-id] #{:*/data})
+
+(defret.pg ^{:scope #{:public} :api/view true :- [-/Currency]} currency-info [:citext i-currency-id] #{:id :description})
+
+(defsel.pg ^{:scope #{:public} :args [:text i-name] :api/view true :- [-/RegionCountry]} region-country-by-name {:name [:ilike (|| "%" i-name "%")]})
+
+(defsel.pg ^{:scope #{:public} :api/view true :- [-/RegionCountry]} region-country-all)
+
+(defret.pg ^{:scope #{:public} :api/view true :- [-/RegionCountry]} region-country-default [:citext i-country-id] #{:*/data})
+
+(defret.pg ^{:scope #{:public} :api/view true :- [-/RegionCountry]} region-country-info [:citext i-country-id] #{:*/info})
+
+(defsel.pg ^{:scope #{:public} :args [:citext i-country-id] :api/view true :- [-/RegionState]} region-state-by-country {:country i-country-id})
+
+(defret.pg ^{:scope #{:public} :api/view true :- [-/RegionState]} region-state-default [:citext i-state-id] #{:*/data country-id})
+
+(defret.pg ^{:scope #{:public} :api/view true :- [-/RegionState]} region-state-info [:citext i-state-id] #{:*/info})
+
+(defsel.pg ^{:scope #{:public} :args [:citext i-country-id] :api/view true :- [-/RegionCity]} region-city-by-country {:country i-country-id})
+
+(defsel.pg ^{:scope #{:public} :args [:citext i-state-id] :api/view true :- [-/RegionCity]} region-city-by-state {:state i-state-id})
+
+(defret.pg ^{:scope #{:public} :api/view true :- [-/RegionCity]} region-city-default [:citext i-city-id] #{:*/data state-id country-id})
+
+(defret.pg ^{:scope #{:public} :api/view true :- [-/RegionCity]} region-city-info [:citext i-city-id] #{:*/info})
+
+(defconst.pg CurrencyUSD [-/Currency] {:type "fiat" :symbol "USD" :name "US Dollar" :decimal 2 :id "USD" :description "Default Current for the United States of America" :plural "US Dollars"})
+
+(defconst.pg CurrencySTATS [-/Currency] {:symbol "\u0394" :name "Stat Coin" :decimal 0 :id "STATS" :description "Default Currency for Statstrade" :plural "Stat coins" :type "digital" :native "\u0394"})
+
+(defconst.pg CurrencyXLM [-/Currency] {:type "crypto" :symbol "XLM" :name "Stellar Coin" :decimal -1 :id "XLM" :description "Default Currency for the Stellar Blockchain" :plural "Stellar coins"})
+
+(defconst.pg CurrencyXLMTest [-/Currency] {:type "crypto" :symbol "XLM.T" :name "Stellar TestNet Coin" :decimal -1 :id "XLM.T" :description "Default Currency for the Stellar TestNet Blockchain" :plural "Stellar TestNet coins"})
+
+(comment (:static/view (deref currency-all)) {:query nil :tag "all" :scope #{:public} :key :Currency :args [] :table lua.nginx.view.common-data-test/Currency :guards nil :type :select :access nil} (:static/view (deref currency-by-country)) (:static/view (deref currency-default)) (def +route-entries+ (mapv (fn [[db-sym source-sym]] [(symbol (str "lua-route-" (name source-sym))) db-sym]) +db-entries+)) (f/template-entries [bind-route] +route-entries+))

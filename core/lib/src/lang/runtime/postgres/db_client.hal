@@ -2,7 +2,8 @@
   (:require [db.postgres :as postgres]
             [db.postgres.connection :as connection]
             [lang.core.compile :as compile :lazy true]
-            [lang.protocol.runtime :as context-eval]))
+            [lang.protocol.runtime :as context-eval]
+            [std.foundation :as foundation]))
 
 (defstruct RuntimePostgresDbClient
   [id lang runtime options connection host port container startup shutdown state modules pointers profile timeout])
@@ -92,7 +93,7 @@
 
 (defn teardown-module
   [runtime module]
-  (swap! (:modules runtime) disj module)
+  (swap! (:modules runtime) dissoc module)
   runtime)
 
 (defn setup-pointer
@@ -102,7 +103,7 @@
 
 (defn teardown-pointer
   [runtime pointer]
-  (swap! (:pointers runtime) disj pointer)
+  (swap! (:pointers runtime) dissoc pointer)
   runtime)
 
 (extend-type RuntimePostgresDbClient context-eval/IContextEval
@@ -150,7 +151,7 @@
     (teardown-pointer runtime pointer)))
 
 (def +init+
-  (if-let [install-var (resolve 'lang.core.runtime/install-type)]
+  (if-let [install-var (foundation/resolve 'lang.core.runtime/install-type)]
     ((deref install-var)
      :postgres :db.client
      {:type :lang/rt.postgres.db-client

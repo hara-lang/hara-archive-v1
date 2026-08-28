@@ -683,7 +683,9 @@ fn value_snapshot(value: &Value, display_chars: usize) -> EvalValueSnapshot {
 
 fn value_kind(value: &Value) -> &'static str {
     match value {
-        Value::Number(_) | Value::BigInteger(_) => "integer",
+        Value::Number(_) => "long",
+        Value::BigInteger(_) if crate::numeric::is_long_value(value) => "long",
+        Value::BigInteger(_) => "bigint",
         Value::Float(_) => "float",
         Value::Character(_) => "character",
         Value::Bool(_) => "boolean",

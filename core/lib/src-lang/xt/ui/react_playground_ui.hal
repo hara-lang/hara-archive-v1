@@ -1,0 +1,166 @@
+(ns xt.ui.react-playground-ui
+  "Deterministic JavaScript renderer for the XT UI playground.
+
+   The Foundation version mounted React through a browser playground.  The
+   portable contract is the renderer IR, so this implementation keeps the
+   same registry and controller flow while returning plain descriptors.  A
+   browser adapter can turn those descriptors into React elements without
+   making the XT namespace depend on a browser, React or a live server."
+  (:require [lang.core :as l]))
+
+(l/script :js
+  {:require [[xt.lang.spec-base :as xt]
+             [xt.ui.core :as ui]
+             [xt.ui.state.core :as state]]})
+
+(defn.js ^{:public true} render-ui-node
+  "Recursively turns a UiNode into target-neutral React-shaped IR."
+  [registry node]
+  (when (== null node) (return null))
+  (when (xt/x:is-string? node) (return node))
+  (when (xt/x:is-number? node) (return (String node)))
+  (when (xt/x:is-array? node)
+    (return (. node (map (fn [child]
+                           (return (-/render-ui-node registry child)))))))
+  (var component-id (xt/x:get-key node "component"))
+  (var props (or (xt/x:get-key node "props") {}))
+  (var children (xt/x:get-key node "children"))
+  (var renderer (xt/x:get-key registry component-id))
+  (when (xt/x:nil? renderer) (return nil))
+  (return (renderer props
+                    (if (xt/x:nil? children)
+                      nil
+                      (. children
+                         (map (fn [child]
+                                (return (-/render-ui-node registry child)))))))))
+
+(defn.js ^{:public true} react-registry
+  "Returns the local renderer registry as serializable element builders."
+  []
+  (return
+   {"ui/text" (fn [props _children]
+                (return {"type" "span"
+                         "props" props
+                         "children" (or (xt/x:get-key props "value") "")}))
+    "ui/button" (fn [props _children]
+                  (return {"type" "button"
+                           "props" props
+                           "children" (or (xt/x:get-key props "label") "Button")}))
+    "ui/input" (fn [props _children]
+                 (return {"type" "input"
+                          "props" props
+                          "children" nil}))
+    "ui/column" (fn [props children]
+                  (return {"type" "div"
+                           "props" (xt/x:obj-assign
+                                     {"style" {"display" "flex"
+                                                "flexDirection" "column"
+                                                "padding" (or (xt/x:get-key props "padding") "0px")
+                                                "gap" (or (xt/x:get-key props "gap") "0px")}}
+                                     props)
+                           "children" children}))
+    "ui/title" (fn [props _children]
+                 (return {"type" "h2"
+                          "props" props
+                          "children" (or (xt/x:get-key props "value") "")}))
+    "ui/row" (fn [props children]
+               (return {"type" "div"
+                        "props" (xt/x:obj-assign
+                                  {"style" {"display" "flex"
+                                             "flexDirection" "row"
+                                             "gap" (or (xt/x:get-key props "gap") "0px")
+                                             "alignItems" (or (xt/x:get-key props "alignItems") "stretch")}}
+                                  props)
+                        "children" children}))}))
+
+(defn.js ^{:public true} make-controller
+  "Creates a headless controller with mock list state and actions."
+  []
+  (return
+   (state/controller-create
+    {"items" ["alpha" "beta"] "draft" ""}
+    {"set_draft" (fn [controller value _deps]
+                   (return
+                    (state/update-state!
+                     controller
+                     (fn [current]
+                       (return (xt/x:obj-assign current {"draft" value}))))))
+     "remove_item" (fn [controller idx _deps]
+                     (return
+                      (state/update-state!
+                       controller
+                       (fn [current]
+                         (var items (or (xt/x:get-key current "items") []))
+                         (return
+                          (xt/x:obj-assign
+                           current
+                           {"items" (. items
+                                        (filter (fn [_item i]
+                                                  (return (not= i idx)))))}))))))
+     "add_item" (fn [controller _payload _deps]
+                  (return
+                   (state/update-state!
+                    controller
+                    (fn [current]
+                      (var draft (or (xt/x:get-key current "draft") ""))
+                      (var text (. draft (trim)))
+                      (when (== "" text) (return current))
+                      (var items (or (xt/x:get-key current "items") []))
+                      (return
+                       (xt/x:obj-assign
+                        (xt/x:obj-assign current {"draft" ""})
+                        {"items" (. items (concat [text]))}))))))}
+    {}
+    {}
+    {})))
+
+(defn.js ^{:public true} view
+  "Builds the portable view tree from controller state and actions."
+  [current actions]
+  (var draft (or (xt/x:get-key current "draft") ""))
+  (var items (or (xt/x:get-key current "items") []))
+  (return
+   (ui/node "ui/column" {"padding" "24px" "gap" "12px"}
+            [(ui/node "ui/title" {"value" "xt.ui React Playground"} [])
+             (ui/node "ui/input"
+                      {"on_change" (xt/x:get-key actions "set_draft")
+                       "value" draft
+                       "placeholder" "New item..."}
+                      [])
+             (ui/node "ui/button"
+                      {"on_press" (xt/x:get-key actions "add_item")
+                       "label" "Add"}
+                      [])
+             (ui/node "ui/column"
+                      {"gap" "8px"}
+                      (. items
+                         (map (fn [item i]
+                                (return
+                                 (ui/node "ui/row"
+                                          {"gap" "8px"
+                                           "alignItems" "center"
+                                           "key" i}
+                                          [(ui/node "ui/text" {"value" item} [])
+                                           (ui/node "ui/button"
+                                                    {"on_press" (fn []
+                                                                  (return
+                                                                   ((xt/x:get-key actions "remove_item") i)))
+                                                     "label" "Remove"}
+                                                    [])]))))))]))
+  )
+
+(defn.js ^{:public true} App
+  "Returns the deterministic root element for the headless UI app."
+  []
+  (var controller (-/make-controller))
+  (state/open! controller)
+  (var actions (state/actions-create controller ["set_draft" "add_item" "remove_item"]))
+  (return {"type" "div"
+           "props" {"style" {"fontFamily" "system-ui, sans-serif"}}
+           "children" [(-/render-ui-node (-/react-registry)
+                                           (-/view (state/snapshot controller) actions))]}))
+
+(defn.js ^{:public true} mount!
+  "Returns the app descriptor for a host-specific React mount adapter."
+  []
+  (return (-/App)))

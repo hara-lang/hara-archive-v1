@@ -1,4 +1,5 @@
-(ns postgres.typed.typed-common)
+(ns postgres.typed.typed-common
+  (:require [std.foundation :refer [nth second]]))
 
 (def +type-formats+
   {:uuid      {:openapi {:type "string" :format "uuid"}
@@ -67,7 +68,7 @@
           (recur (inc index)
                  (str output
                       (if (or separator? hump?) "_" "")
-                      (if separator? "" (str/to-string lower-ch)))))))))
+                      (if separator? "" (str lower-ch)))))))))
 
 (defn normalize-key
   "Converts a string or structured key to a snake_case string."
@@ -84,21 +85,21 @@
 (defn- ts-first-char?
   [ch]
   (str/includes? "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_$"
-                 (str/to-string ch)))
+                 (str ch)))
 
 (defn- ts-rest-char?
   [ch]
   (str/includes? "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_$"
-                 (str/to-string ch)))
+                 (str ch)))
 
 (defn- ts-identifier?
   [value]
   (and (> (str/length value) 0)
-       (ts-first-char? (str/to-string (str/char-at value 0)))
+       (ts-first-char? (str (str/char-at value 0)))
        (loop [index 1]
          (if (= index (str/length value))
            true
-           (if (ts-rest-char? (str/to-string (str/char-at value index)))
+           (if (ts-rest-char? (str (str/char-at value index)))
              (recur (inc index))
              false)))))
 

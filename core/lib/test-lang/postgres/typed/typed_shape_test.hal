@@ -79,3 +79,6 @@
   => {:fields {:id {:type :uuid}}
       :source-table :User
       :confidence :high})
+
+(let [summary (run {:namespace '[postgres.typed.typed-shape-test] :no-report true})]
+  (pr-str (select-keys summary [:status :counts])))

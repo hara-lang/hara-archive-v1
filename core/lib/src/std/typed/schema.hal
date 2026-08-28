@@ -187,6 +187,7 @@
        (= kind :primitive)
        (and (has? schema :name)
             (keyword? (:name schema))
+            (not= :integer (:name schema))
             (properties-normal? schema))
 
        (= kind :reference)
@@ -277,12 +278,20 @@
           children (get schema :children [])]
       (cond
         (= kind :primitive)
-        (assoc-properties
-         (normalize
-          (if (has? schema :name)
-            (:name schema)
-            (first children)))
-         (or (:properties schema) {}))
+        (let [normalized
+              (normalize
+               (if (has? schema :name)
+                 (:name schema)
+                 (first children)))
+              properties (or (:properties schema) {})]
+          (if (= :union (:kind normalized))
+            (if (empty? properties)
+              normalized
+              {:kind :union
+               :types (vec (map (fn [member]
+                                  (assoc-properties member properties))
+                                (:types normalized)))})
+            (assoc-properties normalized properties)))
 
         (= kind :reference)
         {:kind :reference
@@ -396,7 +405,9 @@
   (normalize-normalized schema))
 
 (defmethod normalize :primitive [schema]
-  {:kind :primitive :name schema})
+  (if (= schema :integer)
+    (normalize-union [:long :bigint])
+    {:kind :primitive :name schema}))
 
 (defn- registry-reference-name
   [target]
@@ -489,7 +500,23 @@
 (defmethod normalize :list [schema] (normalize-primitive-properties schema))
 (defmethod normalize :bytes [schema] (normalize-primitive-properties schema))
 (defmethod normalize :int [schema] (normalize-primitive-properties schema))
-(defmethod normalize :integer [schema] (normalize-primitive-properties schema))
+(defmethod normalize :long [schema] (normalize-primitive-properties schema))
+(defmethod normalize :bigint [schema] (normalize-primitive-properties schema))
+(defmethod normalize :integer [schema]
+  (if (= 1 (count schema))
+    (normalize-union [:long :bigint])
+    (if (and (= 2 (count schema)) (map? (second schema)))
+      (let [properties
+            (normalize-properties
+             :integer
+             (second schema)
+             #{:min-count :max-count :pattern :qualified :distinct})]
+        {:kind :union
+         :types [(assoc-properties {:kind :primitive :name :long} properties)
+                 (assoc-properties {:kind :primitive :name :bigint} properties)]})
+      (throw
+       (ex :dependency {:schema schema}
+           :ex/message "integer schema properties require one property map")))))
 (defmethod normalize :num [schema] (normalize-primitive-properties schema))
 (defmethod normalize :number [schema] (normalize-primitive-properties schema))
 (defmethod normalize :any [schema] (normalize-primitive-properties schema))
@@ -792,7 +819,9 @@
     (= name :num) (number? value)
     (= name :number) (number? value)
     (= name :int) (long? value)
-    (= name :integer) (long? value)
+    (= name :long) (long? value)
+    (= name :bigint) (bigint? value)
+    (= name :integer) (integer? value)
     (= name :str) (string? value)
     (= name :string) (string? value)
     (= name :keyword) (keyword? value)

@@ -1,0 +1,31 @@
+(ns xt.net.ws-phoenix-integration-test (:use code.test) (:require [xt.lang.spec-base :as xt] [xt.net.ws-phoenix :as phoenix]))
+
+^{:refer xt.net.ws-phoenix/send-frame :added "4.1"}
+(fact "sends a join frame through a deterministic websocket endpoint"
+  (!.js
+   (var sent [])
+   (var client {"::/override"
+                {"send" (fn [_ input] (xt/x:arr-push sent input) (return true))}})
+   (phoenix/send-frame client
+                       (phoenix/make-frame-join
+                        {"config" {"broadcast" {"ack" false "self" false}}}
+                        {"topic" "room:join" "ref" "join-1"}))
+   (phoenix/decode-frame (xt/x:first sent)))
+  => {"topic" "room:join" "event" "phx_join"
+      "payload" {"config" {"broadcast" {"ack" false "self" false}}}
+      "ref" "join-1" "join_ref" "join-1"})
+
+^{:refer xt.net.ws-phoenix/send-frame :added "4.1"}
+(fact "sends leave and heartbeat frames without an external realtime server"
+  (!.js
+   (var sent [])
+   (var client {"::/override"
+                {"send" (fn [_ input] (xt/x:arr-push sent input) (return true))}})
+   (phoenix/send-frame client (phoenix/make-frame-leave {"topic" "room:leave" "ref" "leave-1"}))
+   (phoenix/send-frame client (phoenix/make-frame-heartbeat {"ref" "heartbeat-1"}))
+   [(phoenix/decode-frame (xt/x:get-idx sent 0))
+    (phoenix/decode-frame (xt/x:get-idx sent 1))])
+  => [{"topic" "room:leave" "event" "phx_leave" "payload" {}
+       "ref" "leave-1" "join_ref" "leave-1"}
+      {"topic" "phoenix" "event" "heartbeat" "payload" {}
+       "ref" "heartbeat-1" "join_ref" "heartbeat-1"}])

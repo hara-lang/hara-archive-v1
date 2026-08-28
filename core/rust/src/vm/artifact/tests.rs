@@ -88,3 +88,30 @@ fn corruption_is_rejected_before_decode() {
         "bytecode artifact checksum mismatch"
     );
 }
+
+#[test]
+fn metadata_integer_widths_are_canonicalized() {
+    let mut program = compile_source("(+ 1 2)").unwrap();
+    program.var_metadata = vec![Metadata::new(vec![
+        (
+            MetadataValue::Keyword(Keyword::from("small")),
+            MetadataValue::BigInteger(BigInt::from(42)),
+        ),
+        (
+            MetadataValue::Keyword(Keyword::from("large")),
+            MetadataValue::BigInteger(BigInt::from(1_u8) << 63),
+        ),
+    ])];
+
+    let encoded = encode_program(&program).unwrap();
+    let decoded = decode_program(&encoded).unwrap();
+    assert_eq!(
+        decoded.var_metadata[0].get_keyword("small"),
+        Some(&MetadataValue::Number(42))
+    );
+    assert_eq!(
+        decoded.var_metadata[0].get_keyword("large"),
+        Some(&MetadataValue::BigInteger(BigInt::from(1_u8) << 63))
+    );
+    assert_eq!(encode_program(&decoded).unwrap(), encoded);
+}

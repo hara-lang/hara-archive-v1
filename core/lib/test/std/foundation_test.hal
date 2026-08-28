@@ -438,6 +438,22 @@
    :test (fn [] (std.foundation/meta (with-meta [1] {:tag :sample})))
    :expected {:tag :sample}}])
 
+^{:refer std.foundation/bigint?}
+(Test/run
+ [{:name "recognizes integers outside signed 64-bit range"
+   :test (fn [] [(bigint? 9223372036854775808)
+                 (bigint? 1)
+                 (bigint? 1.0)])
+   :expected [true false false]}])
+
+^{:refer std.foundation/integer?}
+(Test/run
+ [{:name "accepts long and big integer representations only"
+   :test (fn [] [(integer? 1)
+                 (integer? 9223372036854775808)
+                 (integer? 1.0)])
+   :expected [true true false]}])
+
 ^{:refer std.foundation/with-meta}
 (Test/run
  [{:name "attaches metadata through IObjType"

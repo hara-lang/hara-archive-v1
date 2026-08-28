@@ -1,6 +1,7 @@
 package hara.truffle;
 
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
+import hara.lang.base.NumUtils;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 
@@ -13,12 +14,7 @@ final class HaraNumericConversions {
   }
 
   static boolean fitsLong(Object input) {
-    try {
-      toLong(input);
-      return true;
-    } catch (HaraException error) {
-      return false;
-    }
+    return NumUtils.isLongValue(numericValue(input));
   }
 
   @TruffleBoundary

@@ -225,6 +225,11 @@
                      :fragment #{}
                      :native {}}})
 
+^{:refer lang.common.compiler/normalize-dependencies}
+(fact "compiler keeps dependency buckets flat after staging"
+  (:dependencies compiled-v1)
+  => {:code #{} :fragment #{} :native {}})
+
 (fact "compiler exposes ordered rewrite and analysis stages"
   [(get-in compiled-v2 [:stages :normalized])
    (get-in compiled-v2 [:stages :staged])

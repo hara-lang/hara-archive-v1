@@ -25,6 +25,22 @@
       true
       false])
 
+^{:refer 'std.typed.schema/normalize
+  :id 'integer-width-union}
+(fact "normalizes integer to the long and bigint alternatives"
+  (schema/normalize :integer)
+  => {:kind :union
+      :types [{:kind :primitive :name :long}
+              {:kind :primitive :name :bigint}]})
+
+^{:refer 'std.typed.schema/valid?
+  :id 'integer-width-validation}
+(fact "validates both integer widths and rejects exact floats"
+  [(schema/valid? :integer 42)
+   (schema/valid? :integer 9223372036854775808)
+   (schema/valid? :integer 42.0)]
+  => [true true false])
+
 ^{:refer 'std.typed.schema/project-arities
   :id 'variadic-and-multi-arity-annotations}
 (fact "normalizes variadic and multi-arity function annotations"

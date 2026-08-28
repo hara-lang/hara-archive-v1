@@ -1,0 +1,31 @@
+(ns xt.db.poc.n00-basic-test (:use code.test) (:require [lang.core :as l] [xt.lang.common-notify :as notify] [xt.lang.common-repl :as repl] [xt.lang.spec-base :as xt] [xt.lang.spec-promise :as promise] [xt.substrate :as event-node] [xt.substrate.transport-memory :as transport-memory]))
+
+(l/script- :js {:runtime :basic})
+
+^{:refer xt.substrate/request :added "4.1"}
+(fact "the basic POC request crosses a local memory transport"
+  (notify/wait-on :js
+    (var server (event-node/node-create
+                 {"id" "server"
+                  "handlers"
+                  {"demo/echo"
+                   {"fn" (fn [space args request server-node]
+                           (return {"server" (xt/x:get-key server-node "id")
+                                    "space" (xt/x:get-key space "id")
+                                    "action" (xt/x:get-key request "action")
+                                    "args" args}))}}}))
+    (var client (event-node/node-create {"id" "client"}))
+    (var wire (transport-memory/memory-pair {"left_id" "client" "right_id" "server"}))
+    (-> (promise/x:promise-all
+         [(event-node/attach-transport
+           client "server"
+           (transport-memory/text-endpoint (xt/x:get-key wire "left")))
+          (event-node/attach-transport
+           server "client"
+           (transport-memory/text-endpoint (xt/x:get-key wire "right")))])
+        (promise/x:promise-then
+         (fn [_]
+           (return (event-node/request client "room/a" "demo/echo" ["ping"] nil))))
+        (promise/x:promise-then
+         (fn [out] (return out)))))
+  => {"server" "server" "space" "room/a" "action" "demo/echo" "args" ["ping"]})

@@ -1,0 +1,88 @@
+(ns xt.db.system.impl-supabase-session-test (:use code.test) (:require [lang.core :as l] [xt.lang.common-notify :as notify] [xt.lang.spec-base :as xt] [xt.lang.common-data :as xtd] [xt.lang.spec-promise :as promise] [xt.db.system.impl-supabase-session :as session]))
+
+(l/script- :js {:runtime :basic})
+
+(defn.js source [client]
+  (return {"client" (or client {})
+           "opts" {}
+           "state" {"session" nil "auto_refresh" {"current" nil}}}))
+
+(defn.js refresh-client []
+  (return {"::/override"
+           {"request_http"
+            (fn [_ input]
+              (return {"status" 200 "body"
+                       {"access_token" "access-new" "refresh_token" "refresh-new"}
+                       "request" input}))}}))
+
+^{:refer xt.db.system.impl-supabase-session/get-session :added "4.1"}
+(fact "reads the session from implementation state"
+  (!.js
+   (var impl (-/source nil))
+   (session/set-session impl {"email" "test@example.com"})
+   (session/get-session impl))
+  => {"email" "test@example.com"})
+
+^{:refer xt.db.system.impl-supabase-session/set-session :added "4.1"}
+(fact "stores and returns the active session"
+  (!.js
+   (var impl (-/source nil))
+   {"stored" (xtd/get-in impl ["state" "session"])
+    "returned" (session/set-session impl {"refresh_token" "refresh-1"})
+    "after" (session/get-session impl)})
+  => {"stored" nil "returned" {"refresh_token" "refresh-1"}
+      "after" {"refresh_token" "refresh-1"}})
+
+^{:refer xt.db.system.impl-supabase-session/refresh-session :added "4.1"}
+(fact "returns nil when no refresh token is present"
+  (notify/wait-on :js
+    (-> (session/refresh-session (-/source nil))
+        (promise/x:promise-then (fn [out] (return out)))))
+  => nil)
+
+^{:refer xt.db.system.impl-supabase-session/refresh-session :added "4.1"}
+(fact "replaces the session from the refresh response"
+  (notify/wait-on :js
+    (var impl (-/source (-/refresh-client)))
+    (session/set-session impl {"refresh_token" "refresh-old"})
+    (-> (session/refresh-session impl)
+        (promise/x:promise-then (fn [_] (return (session/get-session impl))))))
+  => {"access_token" "access-new" "refresh_token" "refresh-new"})
+
+^{:refer xt.db.system.impl-supabase-session/auto-refresh-interval :added "4.1"}
+(fact "derives a delay from configuration or expiry"
+  (!.js
+   (var impl (-/source nil))
+   (session/set-session impl {"expires_in" 120})
+   (var configured (-/source nil))
+   (xtd/set-in configured ["opts" "auto_refresh_interval"] 10000)
+   [(session/auto-refresh-interval impl)
+    (session/auto-refresh-interval configured)])
+  => [60000 10000])
+
+^{:refer xt.db.system.impl-supabase-session/auto-refresh-fn :added "4.1"}
+(fact "does not refresh when the generation id is stale"
+  (!.js
+   (var impl (-/source nil))
+   (xtd/set-in impl ["state" "auto_refresh" "current"] "current")
+   (session/auto-refresh-fn impl 100 "stale"))
+  => "current")
+
+^{:refer xt.db.system.impl-supabase-session/auto-refresh-stop :added "4.1"}
+(fact "clears and returns the current refresh generation"
+  (!.js
+   (var impl (-/source nil))
+   (xtd/set-in impl ["state" "auto_refresh" "current"] "refresh-1")
+   [(session/auto-refresh-stop impl)
+    (xtd/get-in impl ["state" "auto_refresh" "current"])] )
+  => ["refresh-1" nil])
+
+^{:refer xt.db.system.impl-supabase-session/auto-refresh-start :added "4.1"}
+(fact "starts one refresh generation and is idempotent"
+  (!.js
+   (var impl (-/source nil))
+   (var first (session/auto-refresh-start impl))
+   (var second (session/auto-refresh-start impl))
+    [(xt/x:not-nil? first) (== first second)
+    (xt/x:not-nil? (xtd/get-in impl ["state" "auto_refresh" "current"]))])
+  => [true true true])

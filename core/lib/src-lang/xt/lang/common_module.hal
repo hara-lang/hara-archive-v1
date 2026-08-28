@@ -92,5 +92,5 @@
   "saves module to `module/*saved-module*` var"
   {:added "4.0"}
   [& [module-id]]
-  (alter-var-root #'*saved-module* (fn [_] (current-module module-id)))
+  (set! *saved-module* (current-module module-id))
   (str (get *saved-module* :id)))

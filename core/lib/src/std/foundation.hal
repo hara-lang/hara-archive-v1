@@ -64,7 +64,7 @@
      (std.native.Obj/get value key not-found)
      (ILookup/lookup value key not-found))))
 
-(defn ^{:inline true :schema [:fn [:any] :int]}
+(defn ^{:inline true :schema [:fn [:any] :long]}
   count
   "Returns the number of values through ICount."
   [value]
@@ -130,7 +130,7 @@
 (defn ^{:inline true :schema [:fn [:any] :set]}
   set "Converts value to a persistent set." [value] (Base/set value))
 
-(defn ^{:inline true :schema [:fn [:any] :int]}
+(defn ^{:inline true :schema [:fn [:any] :long]}
   hash "Returns the stable hash of value." [value] (Base/hash value))
 
 (defn ^{:inline true
@@ -193,13 +193,13 @@
 ;; Runtime clocks and opaque values
 ;; ---------------------------------------------------------------------------
 
-(defn ^{:inline true :schema [:fn [] :int]}
+(defn ^{:inline true :schema [:fn [] :long]}
   time-ms
   "Returns Unix wall-clock milliseconds; the value may jump when the system clock is corrected."
   []
   (OS/time-ms))
 
-(defn ^{:inline true :schema [:fn [] :int]}
+(defn ^{:inline true :schema [:fn [] :long]}
   time-ns
   "Returns a runtime-local monotonic nanosecond counter for elapsed-time differences."
   []
@@ -314,7 +314,7 @@
 (defn ^{:schema [:fn [:any] :bool]}
   boolean "Coerces value to true or false using Hara truthiness." [value] (if value true false))
 
-(defn ^{:schema [:fn [:any :any] :int]}
+(defn ^{:schema [:fn [:any :any] :long]}
   compare
   "Compares two mutually orderable Hara values using their portable order."
   [left right]
@@ -425,8 +425,20 @@
 (defn ^{:inline true :schema [:fn [:any] :bool]}
   number? "Returns true when value is numeric." [value] (Base/number? value))
 
-(defn ^{:inline true :schema [:fn [:any] :bool]}
+(defn ^{:inline true :public true :schema [:fn [:any] :bool]}
   long? "Returns true when value is a signed 64-bit integer." [value] (Base/long? value))
+
+(defn ^{:inline true :public true :schema [:fn [:any] :bool]}
+  bigint?
+  "Returns true when value is an arbitrary-precision integer outside signed 64-bit range."
+  [value]
+  (= (type value) :std.native.BigInteger))
+
+(defn ^{:inline true :public true :schema [:fn [:any] :bool]}
+  integer?
+  "Returns true when value is an integer of either supported representation."
+  [value]
+  (or (long? value) (bigint? value)))
 
 (defn ^{:schema [:fn [:any] :bool]}
   double? "Returns true when value is an IEEE-754 double." [value] (= (type value) :std.native.Float))
@@ -1558,7 +1570,7 @@
   PI
   3.141592653589793)
 
-(defn ^{:inline true :schema [:fn [:num] :int]}
+(defn ^{:inline true :schema [:fn [:num] :long]}
   long
   "Converts a numeric value to a signed 64-bit integer by truncating toward zero."
   [value]
@@ -1570,7 +1582,7 @@
   [value]
   (Num/double value))
 
-(defn ^{:inline true :schema [:fn [:str] [:maybe :int]]}
+(defn ^{:inline true :schema [:fn [:str] [:maybe :long]]}
   parse-long
   "Parses a signed 64-bit integer string, returning nil when invalid."
   [value]

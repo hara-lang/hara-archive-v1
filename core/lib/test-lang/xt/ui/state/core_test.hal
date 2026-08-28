@@ -1,0 +1,124 @@
+(ns xt.ui.state.core-test (:use code.test) (:require [lang.core :as l] [xt.lang.common-notify :as notify]))
+
+^{:seedgen/root {:all true}} (l/script- :js {:require [[xt.lang.spec-base :as xt] [xt.lang.spec-promise :as promise] [xt.lang.common-repl :as repl] [xt.ui.state.core :as page]] :runtime :basic})
+
+^{:refer xt.ui.state.core/controller-create :added "4.1"} (fact "runs state transitions without a UI runtime" (notify/wait-on :js (var controller (page/controller-create {"data" {"count" 0} "status" "idle"} {"increment" (fn [self payload _deps] (var state (page/snapshot self)) (return (page/set-state! self {"data" {"count" (+ (xt/x:get-path state ["data" "count"]) (or payload 1))} "status" "ready"})))} {} {})) (var seen []) (page/subscribe! controller "test" (fn [state revision] (xt/x:arr-push seen [(xt/x:get-path state ["data" "count"]) revision]))) (-> ((xt/x:get-key (page/actions-create controller ["increment"]) "increment") 2) (promise/x:promise-then (fn [_] (repl/notify [(page/snapshot controller) seen]))))) => [{"data" {"count" 2} "status" "ready"} [[2 1]]])
+
+^{:refer xt.ui.state.core/open! :added "4.1"} (fact "owns lifecycle separately from view rendering" (notify/wait-on :js (var events []) (var controller (page/controller-create {} {} {"open" (fn [_controller _deps] (xt/x:arr-push events "open")) "close" (fn [_controller _deps] (xt/x:arr-push events "close"))} {})) (-> (page/open! controller) (promise/x:promise-then (fn [_] (return (page/close! controller)))) (promise/x:promise-then (fn [_] (repl/notify events))))) => ["open" "close"])
+
+^{:refer xt.ui.state.core/snapshot :added "4.1"}
+(fact "returns the current state object"
+  (!.js
+    (var controller (page/controller-create {"count" 2} {} {} {}))
+    (page/snapshot controller))
+  => {"count" 2})
+
+^{:refer xt.ui.state.core/revision :added "4.1"}
+(fact "starts revisions at zero and exposes increments"
+  (!.js
+    (var controller (page/controller-create {} {} {} {}))
+    (page/set-state! controller {"count" 1})
+    (page/revision controller))
+  => 1)
+
+^{:refer xt.ui.state.core/notify! :added "4.1"}
+(fact "notifies every subscribed listener with state and revision"
+  (!.js
+    (var captured [])
+    (var controller (page/controller-create {"count" 0} {} {} {}))
+    (page/subscribe! controller "listener"
+                     (fn [state revision]
+                       (xt/x:arr-push captured [state revision])))
+    (page/set-state! controller {"count" 1})
+    (page/notify! controller)
+    captured)
+  => [[{"count" 1} 1] [{"count" 1} 1]])
+
+^{:refer xt.ui.state.core/set-state! :added "4.1"}
+(fact "replaces state and returns the replacement"
+  (!.js
+    (var controller (page/controller-create {"old" true} {} {} {}))
+    (var result (page/set-state! controller {"new" true}))
+    [result (page/snapshot controller) (page/revision controller)])
+  => [{"new" true} {"new" true} 1])
+
+^{:refer xt.ui.state.core/update-state! :added "4.1"}
+(fact "derives the next state from the previous snapshot"
+  (!.js
+    (var controller (page/controller-create {"count" 2} {} {} {}))
+    (page/update-state! controller
+                        (fn [state]
+                          (return {"count" (+ (xt/x:get-key state "count") 3)})))
+    [(page/snapshot controller) (page/revision controller)])
+  => [{"count" 5} 1])
+
+^{:refer xt.ui.state.core/subscribe! :added "4.1"}
+(fact "registers listeners by stable id"
+  (!.js
+    (var controller (page/controller-create {} {} {} {}))
+    (page/subscribe! controller "one" (fn [_ _] nil))
+    (xt/x:obj-keys (xt/x:get-key controller "listeners")))
+  => ["one"])
+
+^{:refer xt.ui.state.core/unsubscribe! :added "4.1"}
+(fact "removes a listener and reports success"
+  (!.js
+    (var controller (page/controller-create {} {} {} {}))
+    (page/subscribe! controller "one" (fn [_ _] nil))
+    [(page/unsubscribe! controller "one")
+     (xt/x:obj-keys (xt/x:get-key controller "listeners"))])
+  => [true []])
+
+^{:refer xt.ui.state.core/dispatch! :added "4.1"}
+(fact "dispatches handlers and reports unavailable actions"
+  (notify/wait-on :js
+    (var controller
+         (page/controller-create
+          {}
+          {"echo" (fn [_ payload _deps]
+                    (return {"payload" payload}))}
+          {}
+          {}))
+    (-> (page/dispatch! controller "echo" "hello")
+        (promise/x:promise-then
+         (fn [echo]
+           (return
+            (promise/x:promise-then
+             (page/dispatch! controller "missing" nil)
+             (fn [missing]
+               (repl/notify [echo missing]))))))))
+  => [{"payload" "hello"} {"status" "unavailable" "action" "missing"}])
+
+^{:refer xt.ui.state.core/actions-create :added "4.1"}
+(fact "creates callable action wrappers for selected ids"
+  (notify/wait-on :js
+    (var controller
+         (page/controller-create
+          {"count" 0}
+          {"inc" (fn [controller payload _deps]
+                   (return (page/set-state! controller {"count" payload})))}
+          {}
+          {}))
+    (var actions (page/actions-create controller ["inc"]))
+    (-> ((xt/x:get-key actions "inc") 7)
+        (promise/x:promise-then
+         (fn [_]
+           (repl/notify [(xt/x:obj-keys actions)
+                         (page/snapshot controller)])))))
+  => [["inc"] {"count" 7}])
+
+^{:refer xt.ui.state.core/close! :added "4.1"}
+(fact "closes idempotently and clears listeners"
+  (notify/wait-on :js
+    (var controller (page/controller-create {} {} {} {}))
+    (page/subscribe! controller "listener" (fn [_ _] nil))
+    (-> (page/open! controller)
+        (promise/x:promise-then (fn [_] (return (page/close! controller))))
+        (promise/x:promise-then (fn [_] (return (page/close! controller))))
+        (promise/x:promise-then
+         (fn [second-close]
+           (repl/notify
+            [(xt/x:get-key controller "opened")
+             (xt/x:obj-keys (xt/x:get-key controller "listeners"))
+             second-close])))))
+  => [false [] true])

@@ -1,0 +1,136 @@
+(ns xt.db.node.example-auth-profile-ui
+  "Local JavaScript facade for the auth/profile example.
+
+   Browser React and playground servers are adapters, not part of the XT
+   contract.  This namespace therefore exposes the same action/style surface
+   as target-neutral descriptors so the complete flow can run in a basic JS
+   runtime and a browser can mount the returned descriptor when available."
+  (:require [lang.core :as l]))
+
+(l/script :js
+  {:require [[xt.lang.spec-base :as xt]
+             [xt.lang.common-data :as xtd]
+             [xt.lang.spec-promise :as promise]
+             [xt.substrate.page-core :as page-core]
+             [xt.substrate.view :as view]
+             [xt.db.node.example-auth-profile :as example]
+             [xt.db.node.example-auth-profile-view :as shared-view]]})
+
+(defn.js ^{:public true} error-message
+  "Returns a readable message for an async auth failure."
+  [err]
+  (return (or (xt/x:ex-message err) (xt/x:to-string err))))
+
+(defn.js ^{:public true} refresh-auth-state
+  "Refreshes session/profile models and invokes the supplied setters."
+  [node space-id group-id setSession setProfile]
+  (return
+   (-> (page-core/model-refresh node space-id group-id "session" {} nil)
+       (promise/x:promise-then
+        (fn [_]
+          (var curr-session
+               (page-core/model-get-output node space-id group-id "session"))
+          (setSession curr-session)
+          (if (xt/x:not-nil? curr-session)
+            (return
+             (-> (page-core/model-refresh node space-id group-id "profile" {} nil)
+                 (promise/x:promise-then
+                  (fn [_]
+                    (var profile-output
+                         (page-core/model-get-output node space-id group-id "profile"))
+                    (setProfile (xtd/get-in profile-output ["user"]))
+                    (return profile-output)))))
+            (do (setProfile nil) (return nil)))))))
+  )
+
+(defn.js ^{:public true} run-action
+  "Runs a page-model action and refreshes the visible auth state."
+  [node space-id group-id model-id event setBusy setError setSession setProfile]
+  (setBusy model-id)
+  (setError nil)
+  (return
+   (-> (shared-view/run-model node space-id group-id model-id (or event {}))
+       (promise/x:promise-then
+        (fn [_]
+          (return (-/refresh-auth-state node space-id group-id setSession setProfile))))
+       (promise/x:promise-then
+        (fn [out] (setBusy nil) (return out)))
+       (promise/x:promise-catch
+        (fn [err]
+          (setBusy nil)
+          (setError (-/error-message err))
+          (return nil))))))
+
+(defn.js ^{:public true} field-style
+  []
+  (return {"color" "#374151"
+           "gap" "6px"
+           "fontWeight" 600
+           "display" "flex"
+           "flexDirection" "column"
+           "fontSize" "13px"}))
+
+(defn.js ^{:public true} input-style
+  []
+  (return {"borderRadius" "8px"
+           "padding" "10px 12px"
+           "border" "1px solid #d1d5db"
+           "fontWeight" 400
+           "outline" "none"
+           "fontSize" "14px"}))
+
+(defn.js ^{:public true} button-style
+  [primary]
+  (return {"borderRadius" "8px"
+           "color" (:? primary "#ffffff" "#111827")
+           "padding" "9px 13px"
+           "border" "1px solid"
+           "background" (:? primary "#111827" "#ffffff")
+           "fontWeight" 600
+           "borderColor" (:? primary "#111827" "#d1d5db")
+           "fontSize" "13px"
+           "cursor" "pointer"}))
+
+(defn.js ^{:public true} AuthProfileApp
+  "Returns a target-neutral auth/profile app descriptor."
+  [opts]
+  (:= opts (or opts {}))
+  (return {"type" "auth-profile"
+           "title" "Supabase auth profile"
+           "description" "Authentication and profile state are owned by xt.substrate."
+           "space_id" (or (xt/x:get-key opts "space_id") example/DEFAULT_SPACE_ID)
+           "group_id" (or (xt/x:get-key opts "group_id") example/DEFAULT_GROUP_ID)
+           "initial_email" (xt/x:get-key opts "email")
+           "styles" {"field" (-/field-style)
+                     "input" (-/input-style)
+                     "primary_button" (-/button-style true)
+                     "secondary_button" (-/button-style false)}}))
+
+(defn.js ^{:public true} render-playground
+  "Builds the local playground descriptor without a browser global."
+  [node opts]
+  (:= opts (or opts {}))
+  (return {"title" "Supabase auth profile"
+           "view_id" shared-view/VIEW_ID
+           "node" node
+           "stage" (-/AuthProfileApp opts)}))
+
+(defn.js ^{:public true} render-substrate-view-playground
+  "Builds a descriptor for mounting the shared substrate view."
+  [node opts]
+  (:= opts (or opts {}))
+  (return {"title" "Substrate auth profile"
+           "view_id" shared-view/VIEW_ID
+           "node" node
+           "stage" (shared-view/render opts)}))
+
+(defn.js ^{:public true} mount-playground
+  "Creates the example node and returns its local mount descriptor."
+  [client-defaults opts]
+  (:= opts (or opts {}))
+  (var service-id (or (xt/x:get-key opts "service_id") example/DEFAULT_SERVICE_ID))
+  (var page-args {"space_id" (or (xt/x:get-key opts "space_id") example/DEFAULT_SPACE_ID)
+                  "group_id" (or (xt/x:get-key opts "group_id") example/DEFAULT_GROUP_ID)})
+  (var node (example/create-auth-profile-node client-defaults service-id page-args))
+  (shared-view/install node opts)
+  (return (-/render-playground node opts)))

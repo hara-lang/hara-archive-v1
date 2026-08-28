@@ -19,6 +19,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.file.Files;
@@ -121,6 +122,43 @@ public class HbcCodecTest {
             base.functions(),
             base.entry());
     assertThrows(HbcFormatException.class, () -> HbcCodec.encode(program));
+  }
+
+  @Test
+  public void canonicalizesMetadataIntegerWidths() {
+    HbcProgram base = arithmeticProgram();
+    HbcProgram program =
+        new HbcProgram(
+            base.constants(),
+            List.of(
+                List.of(
+                    new HbcProgram.MetadataEntry(
+                        new HbcProgram.MetadataValue(
+                            HbcProgram.MetadataValue.Kind.KEYWORD,
+                            hara.lang.data.Keyword.create("small")),
+                        new HbcProgram.MetadataValue(
+                            HbcProgram.MetadataValue.Kind.BIG_INTEGER, BigInteger.valueOf(42))),
+                    new HbcProgram.MetadataEntry(
+                        new HbcProgram.MetadataValue(
+                            HbcProgram.MetadataValue.Kind.KEYWORD,
+                            hara.lang.data.Keyword.create("large")),
+                        new HbcProgram.MetadataValue(
+                            HbcProgram.MetadataValue.Kind.BIG_INTEGER,
+                            BigInteger.ONE.shiftLeft(63))))),
+            base.functions(),
+            base.entry());
+
+    HbcProgram decoded = HbcCodec.decode(HbcCodec.encode(program));
+    assertEquals(
+        HbcProgram.MetadataValue.Kind.NUMBER,
+        decoded.varMetadata().get(0).get(0).value().kind());
+    assertEquals(42L, decoded.varMetadata().get(0).get(0).value().value());
+    assertEquals(
+        HbcProgram.MetadataValue.Kind.BIG_INTEGER,
+        decoded.varMetadata().get(0).get(1).value().kind());
+    assertEquals(
+        BigInteger.ONE.shiftLeft(63), decoded.varMetadata().get(0).get(1).value().value());
+    assertArrayEquals(HbcCodec.encode(program), HbcCodec.encode(decoded));
   }
 
   @Test

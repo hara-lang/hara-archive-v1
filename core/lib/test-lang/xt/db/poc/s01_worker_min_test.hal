@@ -1,0 +1,18 @@
+(ns xt.db.poc.s01-worker-min-test (:use code.test) (:require [lang.core :as l] [xt.lang.spec-base :as xt] [xt.substrate :as substrate] [xt.substrate.transport-memory :as transport-memory] [xt.lang.spec-promise :as promise] [xt.lang.common-notify :as notify]))
+
+(l/script- :js {:runtime :basic})
+
+^{:refer xt.substrate.transport-memory/text-endpoint :added "4.1"}
+(fact "the worker-min POC uses text endpoints with an in-memory peer"
+  (notify/wait-on :js
+    (var wire (transport-memory/memory-pair {"left_id" "client" "right_id" "worker"}))
+    (var received [])
+    (var endpoint (transport-memory/text-endpoint (xt/x:get-key wire "right")))
+    ((xt/x:get-key endpoint "start_fn")
+     (fn [frame _ctx] (xt/x:arr-push received frame) (return true)))
+    (-> ((xt/x:get-key (xt/x:get-key wire "left") "write_fn") "worker-ping")
+        (promise/x:promise-then
+         (fn [_] (return {"received" (xt/x:first received)
+                          "client" (xt/x:get-key wire "left")
+                          "worker" (xt/x:get-key wire "right")})))))
+  => (contains-in {"received" "worker-ping"}))

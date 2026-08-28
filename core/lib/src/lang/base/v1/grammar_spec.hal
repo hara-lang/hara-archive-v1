@@ -1,6 +1,7 @@
 (ns lang.base.v1.grammar-spec
   (:require [lang.common.grammar :as grammar]
-            [lang.common.grammar-api :as grammar-api]))
+            [lang.common.grammar-api :as grammar-api]
+            [std.foundation :as foundation]))
 
 (def +version+ 1)
 
@@ -15,7 +16,7 @@
   (reduce (fn [record field]
             (let [reference (get record field)]
               (if (and (symbol? reference) (namespace reference))
-                (let [resolved (resolve reference)]
+                (let [resolved (foundation/resolve reference)]
                   (if resolved
                     (assoc record field resolved)
                     (throw (ex :dependency {:field field :reference reference}

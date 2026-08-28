@@ -1,6 +1,7 @@
 package hara.truffle;
 
 import hara.lang.base.G;
+import hara.lang.base.NumUtils;
 import hara.lang.data.Keyword;
 import hara.lang.data.Symbol;
 import hara.lang.protocol.ILinearType;
@@ -203,7 +204,10 @@ public final class HalcSchema {
   }
 
   public static Type normalize(Object schema) {
-    if (schema instanceof Keyword keyword) return new Primitive(keywordName(keyword));
+    if (schema instanceof Keyword keyword) {
+      String name = keywordName(keyword);
+      return "integer".equals(name) ? integerType() : new Primitive(name);
+    }
     if (schema instanceof hara.lang.protocol.IMapType<?, ?> map) {
       @SuppressWarnings("unchecked")
       hara.lang.protocol.IMapType<Object, Object> valuesMap =
@@ -284,6 +288,10 @@ public final class HalcSchema {
         yield new FunctionType(arities);
       }
       case "enum" -> new EnumType(arguments);
+      case "integer" -> {
+        if (!arguments.isEmpty()) yield new Extension(headName, arguments);
+        yield integerType();
+      }
       default -> arguments.isEmpty()
           ? new Primitive(headName)
           : new Extension(headName, arguments);
@@ -300,6 +308,8 @@ public final class HalcSchema {
             "list",
             "bytes",
             "int",
+            "long",
+            "bigint",
             "integer",
             "num",
             "number",
@@ -548,7 +558,10 @@ public final class HalcSchema {
         if (!(name instanceof Keyword keyword)) {
           throw invalid("primitive schema requires one keyword name");
         }
-        yield new Primitive(keywordName(keyword));
+        String normalizedName = keywordName(keyword);
+        yield "integer".equals(normalizedName)
+            ? integerType()
+            : new Primitive(normalizedName);
       }
       case "reference" -> {
         Object name = longhandValue(schema, "name");
@@ -728,9 +741,10 @@ public final class HalcSchema {
     if (form == null) return new Primitive("nil");
     if (form instanceof Boolean) return new Primitive("bool");
     if (form instanceof Byte || form instanceof Short || form instanceof Integer || form instanceof Long)
-      return new Primitive("int");
+      return new Primitive("long");
     if (form instanceof Float || form instanceof Double) return new Primitive("float");
-    if (form instanceof java.math.BigInteger) return new Primitive("int");
+    if (form instanceof java.math.BigInteger integer)
+      return NumUtils.isLongValue(integer) ? new Primitive("long") : new Primitive("bigint");
     if (form instanceof hara.lang.data.HaraCharacter || form instanceof Character)
       return new Primitive("char");
     if (form instanceof java.util.regex.Pattern) return new Primitive("regex");
@@ -798,18 +812,29 @@ public final class HalcSchema {
           pushJoined(operands, inferExpression(list.nth(index), environment));
         Type joined = join(operands);
         if (joined instanceof Primitive primitive
-            && List.of("int", "float").contains(primitive.name())) return joined;
+            && List.of("int", "long", "bigint", "float").contains(primitive.name())) return joined;
+        if (joined instanceof Union union && union.types().stream().allMatch(HalcSchema::isLongAlias))
+          return new Primitive("long");
         return new Primitive("number");
       }
       case "/": return new Primitive("number");
       case "=", "<", "<=", ">", ">=", "instance?": return new Primitive("bool");
-      case "count": return new Primitive("int");
+      case "count": return new Primitive("long");
       default: return unknown();
     }
   }
 
   private static Unknown unknown() {
     return new Unknown(Symbol.create("?"));
+  }
+
+  private static Type integerType() {
+    return new Union(List.of(new Primitive("long"), new Primitive("bigint")));
+  }
+
+  private static boolean isLongAlias(Type type) {
+    return type instanceof Primitive primitive
+        && ("int".equals(primitive.name()) || "long".equals(primitive.name()));
   }
 
   private static Type join(List<Type> members) {

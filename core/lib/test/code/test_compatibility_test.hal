@@ -22,9 +22,15 @@
   (do
     (runtime/set-global 'code.test-compatibility-test {:timeout 20})
     (runtime/add-link 'code.test-compatibility-test 'code.shared)
-    [(runtime/get-global 'code.test-compatibility-test :timeout)
-     (runtime/list-links 'code.test-compatibility-test)])
-  => [20 #{'code.shared}])
+    (let [before
+          [(runtime/get-global 'code.test-compatibility-test :timeout)
+           (runtime/list-links 'code.test-compatibility-test)]
+          after
+          (runtime/remove-link 'code.test-compatibility-test 'code.shared)]
+      (runtime/clear-links 'code.test-compatibility-test)
+      (runtime/set-global 'code.test-compatibility-test nil)
+      [before after]))
+  => [[20 #{'code.shared}] #{}])
 
 (fact "Foundation Fact values are callable and identifiable"
   (let [value

@@ -130,13 +130,8 @@ impl WholeWasmHost {
 
     #[wasm_bindgen(js_name = unboxI64)]
     pub fn unbox_i64(&self, handle: i64) -> Result<i64, JsValue> {
-        match self.get(handle)? {
-            Value::Number(value) => Ok(value),
-            Value::BigInteger(_) => Err(js_error(
-                "whole-Wasm integer overflow: value is outside signed 64-bit range".into(),
-            )),
-            _ => Err(js_error("whole-Wasm value is not an integer".into())),
-        }
+        let value = self.get(handle)?;
+        crate::numeric::to_i64_integer(&value).map_err(|error| js_error(error))
     }
 
     #[wasm_bindgen(js_name = boxBigInt)]
@@ -201,7 +196,7 @@ impl WholeWasmHost {
         bridge::validate_result_mode(mode).map_err(js_error)?;
         match mode {
             RESULT_HANDLE => self.insert(value),
-            RESULT_I64 => crate::numeric::to_i64_exact(&value)
+            RESULT_I64 => crate::numeric::to_i64_integer(&value)
                 .map_err(|_| js_error("whole-Wasm integer overflow".into())),
             RESULT_BOOL => match value {
                 Value::Bool(value) => Ok(i64::from(value)),

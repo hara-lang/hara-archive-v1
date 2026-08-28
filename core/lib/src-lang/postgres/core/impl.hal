@@ -1,7 +1,7 @@
 (ns postgres.core.impl
   (:config {:blank true})
   (:require [lang.core :as l]
-            [std.foundation :refer [ex resolve]]
+            [std.foundation :refer [IDeref IComponent ex list merge nil? resolve with-meta]]
             [postgres.core.impl-main :as main]
             [postgres.core.impl-insert :as insert]
             [postgres.core.impl-update :as update]))
@@ -10,45 +10,54 @@
   postgres.core
   {:macro-only true})
 
-(defmacro.xt t:select [spec params] (main/t-select spec (or params {})))
+(defmacro.pg t:select [spec params]
+  (main/t-select spec (or params {}) (:ns &env)))
 
 (defn- require-where [params]
   (when (nil? (:where params))
     (throw (ex :database params :ex/message "No WHERE clause")))
   params)
 
-(defmacro.xt t:get-field [spec params]
+(defmacro.pg t:get-field [spec params]
   (with-meta (list 'pg:scalar
                    (main/t-select spec (merge {:single true :as :raw}
-                                              (require-where (or params {})))))
+                                              (require-where (or params {})))
+                                              (:ns &env)))
              {:op/type :get}))
 
-(defmacro.xt t:get [spec params]
+(defmacro.pg t:get [spec params]
   (with-meta (list 'pg:scalar
                    (main/t-select spec (merge {:single true}
-                                              (require-where (or params {})))))
+                                              (require-where (or params {})))
+                                              (:ns &env)))
              {:op/type :get}))
 
-(defmacro.xt t:id [spec params]
-  (main/t-id spec (require-where (or params {}))))
+(defmacro.pg t:id [spec params]
+  (main/t-id spec (require-where (or params {})) (:ns &env)))
 
-(defmacro.xt t:count [spec params] (main/t-count spec (or params {})))
-(defmacro.xt t:exists [spec params] (main/t-exists spec (or params {})))
-(defmacro.xt t:delete [spec params] (main/t-delete spec (or params {})))
-(defmacro.xt t:insert
-  ([spec data] (insert/t-insert spec data {}))
-  ([spec data params] (insert/t-insert spec data (or params {}))))
-(defmacro.xt t:insert-untracked
-  ([spec data] (insert/t-insert spec data {:track :ignore}))
+(defmacro.pg t:count [spec params]
+  (main/t-count spec (or params {}) (:ns &env)))
+(defmacro.pg t:exists [spec params]
+  (main/t-exists spec (or params {}) (:ns &env)))
+(defmacro.pg t:delete [spec params]
+  (main/t-delete spec (or params {}) (:ns &env)))
+(defmacro.pg t:insert
+  ([spec data] (insert/t-insert spec data {} (:ns &env)))
+  ([spec data params] (insert/t-insert spec data (or params {}) (:ns &env))))
+(defmacro.pg t:insert-untracked
+  ([spec data] (insert/t-insert spec data {:track :ignore} (:ns &env)))
   ([spec data params]
-   (insert/t-insert spec data (merge {:track :ignore} (or params {})))))
-(defmacro.xt t:upsert
-  ([spec data] (insert/t-upsert spec data {}))
-  ([spec data params] (insert/t-upsert spec data (or params {}))))
-(defmacro.xt t:update [spec params] (update/t-update spec (or params {})))
-(defmacro.xt t:update-untracked [spec params]
-  (update/t-update spec (merge {:track :ignore :as :raw} (or params {}))))
-(defmacro.xt t:modify [spec params] (update/t-modify spec (or params {})))
-(defmacro.xt t:fields [spec params] (main/t-fields spec (or params {})))
+   (insert/t-insert spec data (merge {:track :ignore} (or params {})) (:ns &env))))
+(defmacro.pg t:upsert
+  ([spec data] (insert/t-upsert spec data {} (:ns &env)))
+  ([spec data params] (insert/t-upsert spec data (or params {}) (:ns &env))))
+(defmacro.pg t:update [spec params]
+  (update/t-update spec (or params {}) (:ns &env)))
+(defmacro.pg t:update-untracked [spec params]
+  (update/t-update spec (merge {:track :ignore :as :raw} (or params {})) (:ns &env)))
+(defmacro.pg t:modify [spec params]
+  (update/t-modify spec (or params {}) (:ns &env)))
+(defmacro.pg t:fields [spec params]
+  (main/t-fields spec (or params {}) (:ns &env)))
 
 (def __tahto_load__ true)
