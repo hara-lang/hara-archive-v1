@@ -70,6 +70,8 @@ impl Runtime {
             providers: core::ProviderRegistry::new(),
             package_catalog: core::PackageCatalog::default(),
             resources: HashMap::new(),
+            #[cfg(not(target_arch = "wasm32"))]
+            source_paths: HashMap::new(),
             resource_overrides: HashSet::new(),
             #[cfg(feature = "bytecode-vm")]
             bytecode_resources: HashMap::new(),
@@ -361,6 +363,16 @@ impl Runtime {
                             || self.namespace_registry.load_state(target)
                                 == Some(kernel::NamespaceLoadState::Loaded)
                             || self.has_bytecode_resource(target)
+                            || {
+                                #[cfg(not(target_arch = "wasm32"))]
+                                {
+                                    self.source_paths.contains_key(target)
+                                }
+                                #[cfg(target_arch = "wasm32")]
+                                {
+                                    false
+                                }
+                            }
                         {
                             continue;
                         }
@@ -480,6 +492,16 @@ impl Runtime {
                             if self.namespace_registry.find(target).is_some()
                                 || self.namespace_registry.load_state(target).is_some()
                                 || self.resources.contains_key(target)
+                                || {
+                                    #[cfg(not(target_arch = "wasm32"))]
+                                    {
+                                        self.source_paths.contains_key(target)
+                                    }
+                                    #[cfg(target_arch = "wasm32")]
+                                    {
+                                        false
+                                    }
+                                }
                                 || self.wasm_extensions.contains_key(target)
                             {
                                 return true;
@@ -1156,13 +1178,18 @@ impl Runtime {
                 .load_bytecode_resource(&name)
                 .map_err(|error| JsValue::from_str(&error));
         }
-        let source = self
-            .resources
-            .get(&name)
-            .cloned()
-            .ok_or_else(|| JsValue::from_str("module/not-found"))?;
-        self.eval_text(&source)
-            .map_err(|error| JsValue::from_str(&error))
+        if let Some(source) = self.resources.get(&name).cloned() {
+            return self
+                .eval_text(&source)
+                .map_err(|error| JsValue::from_str(&error));
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        if self.source_paths.contains_key(&name) {
+            self.load_namespace_from_provider(&name)
+                .map_err(|error| JsValue::from_str(&error))?;
+            return Ok(":loaded".into());
+        }
+        Err(JsValue::from_str("module/not-found"))
     }
 
     /// Loads a resource once; subsequent requires return the current loaded marker.
@@ -1203,6 +1230,14 @@ impl Runtime {
             self.loaded_resources.insert(name.clone());
             self.refresh_loaded_resource_visibility();
             return Ok(result);
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        if self.source_paths.contains_key(&name) {
+            self.load_namespace_from_provider(&name)
+                .map_err(|error| JsValue::from_str(&error))?;
+            self.loaded_resources.insert(name.clone());
+            self.refresh_loaded_resource_visibility();
+            return Ok(":loaded".into());
         }
         if self.extensions.contains(&name) {
             let result = self.require_extension(&name)?;
@@ -1402,6 +1437,132 @@ impl Runtime {
     #[cfg(any(not(target_arch = "wasm32"), target_os = "wasi"))]
     pub fn eval_native_traced(&mut self, source: &str) -> Result<String, String> {
         self.eval_text_mode(source, true)
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl Runtime {
+    /// Replaces the native project source catalog used by namespace loading.
+    /// Only paths are retained; source bodies are read at the require
+    /// boundary. Existing in-memory resources and bytecode remain higher
+    /// priority than the mounted paths.
+    pub fn register_source_catalog(&mut self, catalog: &crate::project::SourceCatalog) {
+        self.product_cache.borrow_mut().clear();
+        let mounted = catalog
+            .entries()
+            .iter()
+            .map(|(name, path)| (name.clone(), path.clone()))
+            .collect();
+        let previous = std::mem::replace(&mut self.source_paths, mounted);
+        let removed = previous
+            .keys()
+            .filter(|name| !self.source_paths.contains_key(*name))
+            .cloned()
+            .collect::<Vec<_>>();
+        for name in removed {
+            if self.resources.contains_key(&name) || self.has_bytecode_resource(&name) {
+                continue;
+            }
+            self.loaded_resources.remove(&name);
+            self.namespace_registry.remove(&name);
+        }
+        for name in self.source_paths.keys().cloned().collect::<Vec<_>>() {
+            if self.resources.contains_key(&name) || self.has_bytecode_resource(&name) {
+                continue;
+            }
+            self.loaded_resources.remove(&name);
+            self.namespace_registry
+                .set_load_state(&name, kernel::NamespaceLoadState::Unloaded);
+        }
+    }
+
+    /// Detaches every mounted native project source path and removes its
+    /// source-only namespace state. Materialized source namespaces are
+    /// intentionally discarded at this explicit teardown boundary.
+    pub fn clear_source_catalog(&mut self) {
+        let names = self.source_paths.keys().cloned().collect::<Vec<_>>();
+        self.source_paths.clear();
+        for name in names {
+            if self.resources.contains_key(&name) || self.has_bytecode_resource(&name) {
+                continue;
+            }
+            self.loaded_resources.remove(&name);
+            self.namespace_registry.remove(&name);
+        }
+    }
+
+    /// Loads the language-level Foundation from the mounted source catalog.
+    /// This is intentionally an interpreter bootstrap: the resulting macros,
+    /// aliases, and protocol wiring form the compiler environment for later
+    /// direct-native namespace loads.
+    pub fn bootstrap_source_foundation(&mut self) -> Result<(), String> {
+        self.configure_execution_backend("interpreter")?;
+        self.load_namespace_from_provider("std.foundation")?;
+        self.loaded_resources.insert("std.foundation".into());
+        for &name in EAGER_HAL_RESOURCES {
+            self.load_namespace_from_provider(name)?;
+            self.loaded_resources.insert(name.into());
+        }
+        self.use_namespace("std.foundation");
+        core::apply_global_aliases(&self.namespace_registry, "user");
+        self.use_namespace("user");
+        Ok(())
+    }
+
+    fn load_namespace_from_provider(&mut self, name: &str) -> Result<(), String> {
+        let namespace_source = self.namespace_source();
+        let file = self.providers.file();
+        let socket = self.providers.socket();
+        let process = self.providers.process();
+        let kernel = self.providers.kernel();
+        let promise = self.providers.promise();
+        let package_catalog = &self.package_catalog;
+        let protocols = &self.protocols;
+        let namespace_registry = &self.namespace_registry;
+        let environment = self.execution.environment_mut();
+        let macros = self.macros.clone();
+        let test_runner = self.test_runner.clone();
+        let result = core::with_test_runner(&test_runner, || {
+            core::with_capability_providers(file, socket, process, kernel, || {
+                core::with_package_catalog(package_catalog, || {
+                    core::with_promise_provider(promise, || {
+                        core::with_macros(macros, || {
+                            core::with_namespace_source(namespace_source, || {
+                                core::with_protocols(protocols, || {
+                                    core::with_namespace_registry(namespace_registry, || {
+                                        let mut require = || {
+                                            core::require_namespace(
+                                                namespace_registry,
+                                                environment,
+                                                name,
+                                            )
+                                        };
+                                        #[cfg(all(
+                                            feature = "direct-native",
+                                            not(target_arch = "wasm32")
+                                        ))]
+                                        if self.execution_backend == "direct-native" {
+                                            return core::with_direct_native_namespace_loader(
+                                                Self::direct_native_namespace_loader(
+                                                    self.direct_native.clone(),
+                                                    self.direct_native_multimethods.clone(),
+                                                ),
+                                                require,
+                                            );
+                                        }
+                                        require()
+                                    })
+                                })
+                            })
+                        })
+                    })
+                })
+            })
+        });
+        result?;
+        self.save_namespace();
+        self.refresh_qualified_bindings();
+        Ok(())
     }
 }
 

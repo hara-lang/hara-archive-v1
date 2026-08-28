@@ -9,7 +9,6 @@ use hara_wasm::Runtime;
 use std::fs;
 use std::io::{self, BufRead};
 use std::net::TcpStream;
-use std::path::PathBuf;
 
 #[cfg(feature = "halc-encoder")]
 pub(crate) fn compile_halc(args: &[String]) -> Result<(), String> {
@@ -54,28 +53,50 @@ pub(crate) fn compile_halc(args: &[String]) -> Result<(), String> {
     fs::write(output_path, artifact).map_err(|error| format!("cannot write {output_path}: {error}"))
 }
 
-fn project_for(options: &Options, args: &[String]) -> Result<project::Project, String> {
-    let path = args
-        .first()
-        .map(PathBuf::from)
-        .or_else(|| options.project.clone())
-        .unwrap_or_else(|| PathBuf::from("."));
-    project::discover(&path)
+pub(crate) fn source_catalog_for_options(
+    options: &Options,
+) -> Result<Option<project::SourceCatalog>, String> {
+    let mut projects = Vec::new();
+    for path in [options.lite_project.as_deref(), options.project.as_deref()]
+        .into_iter()
+        .flatten()
+    {
+        let selected = project::discover(path)?;
+        if projects
+            .iter()
+            .any(|current: &project::Project| current.manifest_path == selected.manifest_path)
+        {
+            continue;
+        }
+        projects.push(selected);
+    }
+    if projects.is_empty() {
+        return Ok(None);
+    }
+    let references = projects.iter().collect::<Vec<_>>();
+    project::source_catalogs(&references).map(Some)
 }
 
 fn eval_runtime(options: &Options) -> Result<Runtime, String> {
-    let mut runtime = Runtime::new();
+    let source_catalog = source_catalog_for_options(options)?;
+    let mut runtime = if options.lite_mode {
+        let source_catalog = source_catalog
+            .as_ref()
+            .ok_or_else(|| "hara-lite requires a bundled or explicit project.edn".to_owned())?;
+        let mut runtime = Runtime::core();
+        runtime.register_source_catalog(source_catalog);
+        runtime.bootstrap_source_foundation()?;
+        runtime
+    } else {
+        let mut runtime = Runtime::new();
+        if let Some(source_catalog) = source_catalog.as_ref() {
+            runtime.register_source_catalog(source_catalog);
+        }
+        runtime
+    };
     runtime
         .set_execution_backend(options.backend.runtime_name())
         .map_err(|_| backend_error(options.backend))?;
-    if let Some(path) = options.lite_project.as_deref() {
-        let project = project::discover(path)?;
-        project::register_sources(&project, &mut runtime)?;
-    }
-    if options.project.is_some() {
-        let project = project_for(options, &[])?;
-        project::register_sources(&project, &mut runtime)?;
-    }
     if let Some(root) = options.root.as_ref().or(options.project.as_ref()) {
         runtime.install_native_file_provider(root.to_string_lossy().as_ref());
     }
@@ -133,22 +154,36 @@ pub(crate) fn run_headless(options: &Options) -> Result<(), String> {
     if options.offline {
         return Err("--offline cannot be used with headless".into());
     }
-    let broker = RuntimeBroker::start_with_backend(
-        options.root.clone().or_else(|| options.project.clone()),
-        options.native_sockets,
-        options.allow_process,
-        options.allow_postgres,
-        options.backend.runtime_name(),
-    )?;
-    for path in [options.lite_project.as_deref(), options.project.as_deref()]
-        .into_iter()
-        .flatten()
-    {
-        let selected = project::discover(path)?;
-        for (namespace, source) in project::source_resources(&selected)? {
-            broker.register_resource(&namespace, &source)?;
-        }
-    }
+    let root = options.root.clone().or_else(|| options.project.clone());
+    let broker = if options.lite_mode {
+        let source_catalog = source_catalog_for_options(options)?
+            .ok_or_else(|| "hara-lite requires a bundled or explicit project.edn".to_owned())?;
+        RuntimeBroker::start_with_source_catalog(
+            root,
+            options.native_sockets,
+            options.allow_process,
+            options.allow_postgres,
+            options.backend.runtime_name(),
+            source_catalog,
+        )?
+    } else if let Some(source_catalog) = source_catalog_for_options(options)? {
+        RuntimeBroker::start_with_backend_and_source_catalog(
+            root,
+            options.native_sockets,
+            options.allow_process,
+            options.allow_postgres,
+            options.backend.runtime_name(),
+            source_catalog,
+        )?
+    } else {
+        RuntimeBroker::start_with_backend(
+            root,
+            options.native_sockets,
+            options.allow_process,
+            options.allow_postgres,
+            options.backend.runtime_name(),
+        )?
+    };
     let server = RespServer::start(&options.host, options.port, broker)?;
     println!("HARA RESP {} · session ROOT", server.endpoint());
     loop {

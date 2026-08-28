@@ -515,6 +515,8 @@ impl Runtime {
 
     fn namespace_source(&self) -> Rc<dyn Fn(&str) -> Option<core::NamespaceResource>> {
         let resources = self.resources.clone();
+        #[cfg(not(target_arch = "wasm32"))]
+        let source_paths = self.source_paths.clone();
         #[cfg(feature = "bytecode-vm")]
         let bytecode_resources = self.bytecode_resources.clone();
         Rc::new(move |name: &str| {
@@ -529,6 +531,19 @@ impl Runtime {
                 .get(name)
                 .cloned()
                 .map(core::NamespaceResource::Source)
+                .or_else(|| {
+                    #[cfg(not(target_arch = "wasm32"))]
+                    {
+                        source_paths
+                            .get(name)
+                            .cloned()
+                            .map(core::NamespaceResource::SourcePath)
+                    }
+                    #[cfg(target_arch = "wasm32")]
+                    {
+                        None
+                    }
+                })
         })
     }
 

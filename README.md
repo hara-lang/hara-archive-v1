@@ -317,9 +317,20 @@ make install-rust-lite
 hara-lite eval '(+ 19 23)'
 ```
 
+The lite build uses only the direct-native runtime feature set; it does not
+enable the browser and full-runtime default features.
+
 The installed binary finds its portable Hara project under
 `~/.local/share/hara-lite`. Set `HARA_LITE_PROJECT` only when you intentionally
 want to use another copy.
+
+`hara-lite` reads that project's `project.edn` and indexes the declared
+namespaces under its native `:project/source-paths`. The `.hal` files remain
+ordinary files in the installed `lib/` tree; their source bodies are read and
+evaluated when a namespace is required. Lite does not need a prebuilt
+whole-library bytecode bundle. With `--project PATH`, the selected project and
+its verified installed Hara dependencies are added to the same source catalog,
+so normal project `require` forms work from the source tree.
 
 ### Truffle on the JVM
 

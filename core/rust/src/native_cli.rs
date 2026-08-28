@@ -37,6 +37,7 @@ const RUNTIME_BROKER_STACK_SIZE: usize = if cfg!(debug_assertions) {
 enum RuntimeBootstrap {
     Full,
     Core,
+    Source,
 }
 
 enum Request {
@@ -202,6 +203,49 @@ impl RuntimeBroker {
         )
     }
 
+    /// Starts a full Foundation-backed broker with project namespaces loaded
+    /// lazily from a native source catalog.
+    pub fn start_with_backend_and_source_catalog(
+        root: Option<PathBuf>,
+        native_sockets: bool,
+        allow_process: bool,
+        allow_postgres: bool,
+        execution_backend: &str,
+        source_catalog: crate::project::SourceCatalog,
+    ) -> Result<Self, String> {
+        Self::start_with_bootstrap_and_backend_and_catalog(
+            root,
+            native_sockets,
+            allow_process,
+            allow_postgres,
+            RuntimeBootstrap::Full,
+            execution_backend,
+            Some(source_catalog),
+        )
+    }
+
+    /// Starts a broker whose language libraries are resolved from a native
+    /// project source catalog. Foundation is bootstrapped from source before
+    /// the requested ordinary backend is enabled.
+    pub fn start_with_source_catalog(
+        root: Option<PathBuf>,
+        native_sockets: bool,
+        allow_process: bool,
+        allow_postgres: bool,
+        execution_backend: &str,
+        source_catalog: crate::project::SourceCatalog,
+    ) -> Result<Self, String> {
+        Self::start_with_bootstrap_and_backend_and_catalog(
+            root,
+            native_sockets,
+            allow_process,
+            allow_postgres,
+            RuntimeBootstrap::Source,
+            execution_backend,
+            Some(source_catalog),
+        )
+    }
+
     fn start_with_bootstrap(
         root: Option<PathBuf>,
         native_sockets: bool,
@@ -227,6 +271,26 @@ impl RuntimeBroker {
         bootstrap: RuntimeBootstrap,
         execution_backend: &str,
     ) -> Result<Self, String> {
+        Self::start_with_bootstrap_and_backend_and_catalog(
+            root,
+            native_sockets,
+            allow_process,
+            allow_postgres,
+            bootstrap,
+            execution_backend,
+            None,
+        )
+    }
+
+    fn start_with_bootstrap_and_backend_and_catalog(
+        root: Option<PathBuf>,
+        native_sockets: bool,
+        allow_process: bool,
+        allow_postgres: bool,
+        bootstrap: RuntimeBootstrap,
+        execution_backend: &str,
+        source_catalog: Option<crate::project::SourceCatalog>,
+    ) -> Result<Self, String> {
         crate::validate_execution_backend(execution_backend)?;
         let execution_backend = execution_backend.to_owned();
         let (sender, receiver) = mpsc::channel();
@@ -242,6 +306,7 @@ impl RuntimeBroker {
                     allow_postgres,
                     bootstrap,
                     execution_backend,
+                    source_catalog,
                 )
             })
             .map_err(|error| format!("runtime broker failed: {error}"))?;
@@ -474,11 +539,20 @@ fn runtime(
     allow_postgres: bool,
     bootstrap: RuntimeBootstrap,
     execution_backend: &str,
+    source_catalog: Option<&crate::project::SourceCatalog>,
 ) -> Runtime {
     let mut runtime = match bootstrap {
         RuntimeBootstrap::Full => Runtime::new(),
-        RuntimeBootstrap::Core => Runtime::core(),
+        RuntimeBootstrap::Core | RuntimeBootstrap::Source => Runtime::core(),
     };
+    if let Some(source_catalog) = source_catalog {
+        runtime.register_source_catalog(source_catalog);
+    }
+    if matches!(bootstrap, RuntimeBootstrap::Source) {
+        runtime
+            .bootstrap_source_foundation()
+            .expect("source Foundation bootstrap must be valid");
+    }
     runtime
         .configure_execution_backend(execution_backend)
         .expect("validated execution backend must configure");
@@ -507,9 +581,11 @@ fn run(
     allow_postgres: bool,
     bootstrap: RuntimeBootstrap,
     execution_backend: String,
+    source_catalog: Option<crate::project::SourceCatalog>,
 ) {
     let runtime_root = root.clone();
     let runtime_backend = execution_backend.clone();
+    let runtime_catalog = source_catalog;
     let runtime_factory: Rc<dyn Fn() -> Runtime> = Rc::new(move || {
         runtime(
             runtime_root.as_ref(),
@@ -518,6 +594,7 @@ fn run(
             allow_postgres,
             bootstrap,
             &runtime_backend,
+            runtime_catalog.as_ref(),
         )
     });
     let root_runtime = runtime_factory();

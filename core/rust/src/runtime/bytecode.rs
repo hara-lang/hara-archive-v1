@@ -510,45 +510,13 @@ fn load_direct_native_namespace(
     resource: core::NamespaceResource,
     environment: &mut HashMap<String, core::Value>,
 ) -> Result<(), String> {
-    let program = match resource {
-        core::NamespaceResource::Source(source) => {
-            let forms = kernel::read_forms(&source).map_err(|error| error.to_string())?;
-            let mut body_offset = 0;
-            if forms.first().is_some_and(|form| {
-                matches!(
-                    core::form_without_metadata(&form.form),
-                    kernel::Form::List(items)
-                        if matches!(items.first(), Some(kernel::Form::Symbol(operator)) if operator == "ns" || operator == "ns+")
-                )
-            }) {
-                let namespace_value = core::form_to_value(&forms[0].form)?;
-                core::eval_bytecode_management_in(&namespace_value, environment)
-                    .map_err(|error| format!("{name}: namespace declaration: {error}"))?;
-                body_offset = forms[0].span.end.offset;
-            }
-            let config = vm::source_namespace_config(&forms)
-                .map_err(|error| format!("{name}: namespace configuration: {error}"))?;
-            let registry = core::namespace_registry()?;
-            registry.set_current(name);
-            let body = source
-                .get(body_offset..)
-                .ok_or_else(|| format!("{name}: namespace form offset is invalid"))?;
-            let allow_unbound_globals = vm::source_uses_dynamic_evaluation(body).unwrap_or(false);
-            let compile = || {
-                if allow_unbound_globals {
-                    vm::compile_source_with_config_allow_unbound_globals(
-                        body,
-                        &registry,
-                        config,
-                    )
-                } else {
-                    vm::compile_source_with_config(body, &registry, config)
-                }
-            };
-            let mut program = core::without_direct_native_execution(compile)
-                .map_err(|error| format!("{name}: direct-native compilation: {error}"))?;
-            program.namespace = Some(name.to_owned());
-            Rc::new(program)
+    let program = match &resource {
+        core::NamespaceResource::Source(_) => {
+            compile_direct_native_source_namespace(name, &resource, environment)?
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        core::NamespaceResource::SourcePath(_) => {
+            compile_direct_native_source_namespace(name, &resource, environment)?
         }
         core::NamespaceResource::Bytecode {
             namespace_form,
@@ -574,4 +542,46 @@ fn load_direct_native_namespace(
         .execute_blocking_with_multimethods(program, multimethods.clone())
         .map(|_| ())
         .map_err(|error| format!("{name}: direct-native execution: {error}"))
+}
+
+#[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+fn compile_direct_native_source_namespace(
+    name: &str,
+    resource: &core::NamespaceResource,
+    environment: &mut HashMap<String, core::Value>,
+) -> Result<Rc<vm::Program>, String> {
+    let source = core::read_source_resource(resource, name)?;
+    let forms = kernel::read_forms(&source).map_err(|error| error.to_string())?;
+    let mut body_offset = 0;
+    if forms.first().is_some_and(|form| {
+        matches!(
+            core::form_without_metadata(&form.form),
+            kernel::Form::List(items)
+                if matches!(items.first(), Some(kernel::Form::Symbol(operator)) if operator == "ns" || operator == "ns+")
+        )
+    }) {
+        let namespace_value = core::form_to_value(&forms[0].form)?;
+        core::eval_bytecode_management_in(&namespace_value, environment)
+            .map_err(|error| format!("{name}: namespace declaration: {error}"))?;
+        body_offset = forms[0].span.end.offset;
+    }
+    let config = vm::source_namespace_config(&forms)
+        .map_err(|error| format!("{name}: namespace configuration: {error}"))?;
+    let registry = core::namespace_registry()?;
+    registry.set_current(name);
+    let body = source
+        .get(body_offset..)
+        .ok_or_else(|| format!("{name}: namespace form offset is invalid"))?;
+    let allow_unbound_globals = vm::source_uses_dynamic_evaluation(body).unwrap_or(false);
+    let compile = || {
+        if allow_unbound_globals {
+            vm::compile_source_with_config_allow_unbound_globals(body, &registry, config)
+        } else {
+            vm::compile_source_with_config(body, &registry, config)
+        }
+    };
+    let mut program = core::without_direct_native_execution(compile)
+        .map_err(|error| format!("{name}: direct-native compilation: {error}"))?;
+    program.namespace = Some(name.to_owned());
+    Ok(Rc::new(program))
 }

@@ -112,7 +112,8 @@ fn run(options: Options) -> Result<i32, String> {
             &options,
         ),
     );
-    project::register_sources(&project, &mut runtime)?;
+    let source_catalog = project::source_catalog(&project)?;
+    runtime.register_source_catalog(&source_catalog);
     if options.allow_file {
         runtime.install_native_file_provider(project.root.to_string_lossy().as_ref());
     }

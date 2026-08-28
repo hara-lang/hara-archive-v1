@@ -36,11 +36,12 @@ jobs:
         targets: ${{ matrix.target }}
     - name: Build and smoke-test hara-lite
       run: |
-        cargo build --release --manifest-path core/rust/Cargo.toml --target ${{ matrix.target }} --features native-jit --bin hara-lite
+        cargo build --release --manifest-path core/rust/Cargo.toml --target ${{ matrix.target }} --no-default-features --features direct-native --bin hara-lite
         BIN=core/rust/target/${{ matrix.target }}/release/hara-lite
         VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' core/rust/Cargo.toml | head -n 1)
         [ "$("$BIN" --version)" = "hara lite $VERSION" ]
         [ "$("$BIN" --project core eval '(+ 19 23)')" = "42" ]
+        [ "$("$BIN" --project core eval '(do (require [std.lib.collection :as collection]) (collection/ordered-map? {}))')" = "false" ]
         OUTPUT=$("$BIN" --project core eval '(let [run (IWorkHost/work-submit (std.native.Work/default-host) (fn [work input options id] input) 42 {:id "release-lite-work"})] (deref (IWorkRun/work-result run)))')
         [ "$OUTPUT" = "42" ]
     - name: Package hara-lite

@@ -22,6 +22,48 @@ fn eval_source_form(
     with_exception_site(site, || eval(&form, env))
 }
 
+fn load_source_namespace(
+    name: &str,
+    source: &str,
+    registry: &NamespaceRegistry<Value>,
+    env: &mut HashMap<String, Value>,
+) -> Result<(), String> {
+    let forms = crate::kernel::read_forms(source).map_err(|error| error.to_string())?;
+    let mut start = 0;
+    if forms
+        .first()
+        .is_some_and(|form| top_level_namespace_form(&form.form))
+    {
+        eval_source_form(name, &forms[0], env)
+            .map_err(|error| format!("{name}: top-level form 1: {error}"))?;
+        start = 1;
+    }
+    let declarations = forms[start..]
+        .iter()
+        .filter_map(|form| top_level_definition_name(&form.form))
+        .map(|name| Form::Symbol(name.to_owned()))
+        .collect::<Vec<_>>();
+    if !declarations.is_empty() {
+        let declaration = Form::List(
+            std::iter::once(Form::Symbol("declare".into()))
+                .chain(declarations)
+                .collect(),
+        );
+        eval(&declaration, env)
+            .map_err(|error| format!("{name}: top-level predeclaration: {error}"))?;
+    }
+    for (index, form) in forms.into_iter().enumerate().skip(start) {
+        eval_source_form(name, &form, env)
+            .map_err(|error| format!("{name}: top-level form {}: {error}", index + 1))?;
+    }
+    if registry.find(name).is_none() {
+        return Err(format!(
+            "Namespace source did not define expected namespace: {name}"
+        ));
+    }
+    Ok(())
+}
+
 fn ensure_namespace(
     registry: &NamespaceRegistry<Value>,
     env: &mut HashMap<String, Value>,
@@ -105,56 +147,36 @@ fn ensure_namespace(
         #[cfg(not(all(feature = "direct-native", not(target_arch = "wasm32"))))]
         let loaded_directly = false;
         if !loaded_directly {
-            match resource {
-            NamespaceResource::Source(source) => {
-                let forms = crate::kernel::read_forms(&source)
-                    .map_err(|error| error.to_string())?;
-                let mut start = 0;
-                if forms
-                    .first()
-                    .is_some_and(|form| top_level_namespace_form(&form.form))
+            let source = match &resource {
+                NamespaceResource::Source(source) => Some(source.clone()),
+                #[cfg(not(target_arch = "wasm32"))]
+                NamespaceResource::SourcePath(_) => {
+                    Some(crate::core::read_source_resource(&resource, name)?)
+                }
+                #[cfg(feature = "bytecode-vm")]
+                NamespaceResource::Bytecode { .. } => None,
+            };
+            if let Some(source) = source {
+                load_source_namespace(name, &source, registry, env)?;
+            } else {
+                #[cfg(feature = "bytecode-vm")]
+                if let NamespaceResource::Bytecode {
+                    namespace_form,
+                    artifact,
+                } = resource
                 {
-                    eval_source_form(name, &forms[0], env)
-                        .map_err(|error| format!("{name}: top-level form 1: {error}"))?;
-                    start = 1;
+                    let forms = crate::kernel::read_forms(&namespace_form)
+                        .map_err(|error| error.to_string())?;
+                    for (index, form) in forms.into_iter().enumerate() {
+                        eval_source_form(name, &form, env).map_err(|error| {
+                            format!("{name}: namespace form {}: {error}", index + 1)
+                        })?;
+                    }
+                    let program = Rc::new(crate::vm::decode_program(&artifact)?);
+                    registry.set_current(name);
+                    crate::vm::execute_program_with_globals(program, registry)
+                        .map_err(|error| error.to_string())?;
                 }
-                let declarations = forms[start..]
-                    .iter()
-                    .filter_map(|form| top_level_definition_name(&form.form))
-                    .map(|name| Form::Symbol(name.to_owned()))
-                    .collect::<Vec<_>>();
-                if !declarations.is_empty() {
-                    let declaration = Form::List(
-                        std::iter::once(Form::Symbol("declare".into()))
-                            .chain(declarations)
-                            .collect(),
-                    );
-                    eval(&declaration, env)
-                        .map_err(|error| format!("{name}: top-level predeclaration: {error}"))?;
-                }
-                for (index, form) in forms.into_iter().enumerate().skip(start) {
-                    eval_source_form(name, &form, env).map_err(|error| {
-                        format!("{name}: top-level form {}: {error}", index + 1)
-                    })?;
-                }
-            }
-            #[cfg(feature = "bytecode-vm")]
-            NamespaceResource::Bytecode {
-                namespace_form,
-                artifact,
-            } => {
-                let forms = crate::kernel::read_forms(&namespace_form)
-                    .map_err(|error| error.to_string())?;
-                for (index, form) in forms.into_iter().enumerate() {
-                    eval_source_form(name, &form, env).map_err(|error| {
-                        format!("{name}: namespace form {}: {error}", index + 1)
-                    })?;
-                }
-                let program = Rc::new(crate::vm::decode_program(&artifact)?);
-                registry.set_current(name);
-                crate::vm::execute_program_with_globals(program, registry)
-                    .map_err(|error| error.to_string())?;
-            }
             }
         }
         if registry.find(name).is_none() {
@@ -214,7 +236,7 @@ fn ensure_foundation_namespace_for_symbol(
 }
 
 fn top_level_namespace_form(form: &Form) -> bool {
-    matches!(form, Form::List(values)
+    matches!(form_without_metadata(form), Form::List(values)
         if matches!(values.first(), Some(Form::Symbol(head)) if head == "ns" || head == "ns+"))
 }
 

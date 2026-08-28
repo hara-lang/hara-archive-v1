@@ -306,13 +306,8 @@ fn test_run_source(namespace: &str) -> String {
 
 fn register_project_sources(root: &Path, kernel: &mut SessionKernel) -> Result<(), String> {
     let current_project = project::read(root)?;
-    for path in project::files_in(&current_project.root, &current_project.source_paths)? {
-        let source = fs::read_to_string(&path)
-            .map_err(|error| format!("cannot read {}: {error}", path.display()))?;
-        let namespace = declared_namespace(&source)
-            .ok_or_else(|| format!("{} does not declare an ns or ns+ namespace", path.display()))?;
-        kernel.register_resource(&namespace, &source);
-    }
+    let catalog = project::source_catalog(&current_project)?;
+    kernel.register_source_catalog(&catalog);
     Ok(())
 }
 
@@ -737,6 +732,44 @@ mod tests {
         assert_eq!(summary.checks, 1);
         assert_eq!(summary.passed_checks, 1);
         assert_eq!(summary.failed_checks, 0);
+    }
+
+    #[test]
+    fn loads_project_namespaces_from_source_paths() {
+        let root = repository_root();
+        let suffix = std::process::id();
+        let source = root.join(format!("lib/src/hara/test_source_{suffix}.hal"));
+        fs::create_dir_all(source.parent().unwrap()).unwrap();
+        fs::write(
+            &source,
+            format!("(ns hara.test-source-{suffix}) (defn answer [] 40)"),
+        )
+        .unwrap();
+        let test = std::env::temp_dir().join(format!("hara-source-backed-test-{suffix}.hal"));
+        fs::write(
+            &test,
+            format!(
+                "(ns hara.source-backed-test-{suffix}\n  (:use code.test)\n  (:require [hara.test-source-{suffix} :as helper]))\n\n(fact \"requires a project source file\"\n  (helper/answer) => 40)\n\n(run {{:namespace \"hara.source-backed-test-{suffix}\"}})\n"
+            ),
+        )
+        .unwrap();
+
+        let mut backends = vec![TestBackend::Interpreter];
+        #[cfg(feature = "direct-native")]
+        backends.push(TestBackend::Native);
+        let mut results = Vec::new();
+        for backend in backends {
+            results.push((backend, run_file_with_backend(root, &test, backend)));
+        }
+        fs::remove_file(&test).unwrap();
+        fs::remove_file(&source).unwrap();
+        for (backend, result) in results {
+            let summary = result.unwrap();
+            assert!(summary.passed, "{}: {summary:?}", backend.runtime_name());
+            assert_eq!(summary.facts, 1);
+            assert_eq!(summary.checks, 1);
+            assert_eq!(summary.passed_checks, 1);
+        }
     }
 
     #[test]
