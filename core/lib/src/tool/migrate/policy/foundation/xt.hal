@@ -3,8 +3,9 @@
   (:require [std.block :as block]
             [std.fs :as fs]
             [std.fs.path :as path]
+            [std.foundation :refer [postwalk]]
             [std.foundation.string :as str]
-            [tool.migrate.common.clojure :as clj]
+            [std.lib.collection :refer [sorted-map]]
             [tool.migrate.common.git :as git]
             [tool.migrate.common.write :as write]
             [tool.migrate.policy.foundation.audit :as audit]
@@ -48,10 +49,17 @@
 (defn foundation-root
   [hara-root options]
   (or (:foundation/root options)
-      (let [workspace-root (os/getenv "HARA_WORKSPACE_ROOT")]
+      (let [workspace-root (get (std.foundation/env-snapshot)
+                                "HARA_WORKSPACE_ROOT")]
         (if workspace-root
           (path/join workspace-root "reference/foundation-base")
           (path/join hara-root "../../reference/foundation-base")))))
+
+(defn foundation-git-dir
+  "Returns the authoritative Foundation Git directory, including a bare store."
+  [foundation-root-value options]
+  (or (:foundation/git-dir options)
+      (path/join foundation-root-value ".git")))
 
 (defn prefix-path?
   [prefix value]
@@ -196,40 +204,33 @@
         (second remaining)
         (recur (vec (drop 2 remaining)))))))
 
-(defn remove-defspec-refer
-  [values]
-  (if (vector? values)
-    (vec
-     (remove (fn [value]
-               (and (symbol? value)
-                    (= "defspec.xt" (name value))))
-             values))
-    values))
+(defn legacy-defspec-form?
+  "Returns true when one parsed form contains the retired defspec.xt macro."
+  [form]
+  (let [found (atom false)]
+    (postwalk
+     (fn [value]
+       (if (and (symbol? value) (= 'defspec.xt value))
+         (do
+           (reset! found true)
+           value)
+         value))
+     form)
+    (deref found)))
 
 (defn route-require-spec
   [spec]
-  (if (vector? spec)
-    (let [namespace (route-symbol (first spec))]
-      (loop [remaining (vec (rest spec))
-             output [namespace]
-             removed-refer? false]
-        (if (empty? remaining)
-          (if (and removed-refer? (= 1 (count output)))
-            nil
-            (vec output))
-          (let [key (first remaining)
-                value (second remaining)]
-            (if (= key :refer)
-              (let [refer (remove-defspec-refer (route-form value))]
-                (recur (vec (drop 2 remaining))
-                       (if (and (vector? refer) (empty? refer))
-                         output
-                         (conj (conj output key) refer))
-                       (and (vector? refer) (empty? refer))))
-              (recur (vec (drop 2 remaining))
-                     (conj (conj output key) (route-form value))
-                     removed-refer?))))))
-    (route-symbol spec)))
+  (if (legacy-defspec-form? spec)
+    (throw
+     (ex :tool.migrate/unsupported-legacy-form
+         {:legacy/form :defspec.xt
+          :legacy/source-form (pr-str spec)}
+         :ex/message "Foundation XT defspec.xt is no longer supported"))
+    (if (vector? spec)
+      (vec
+       (concat [(route-symbol (first spec))]
+               (map route-form (rest spec))))
+      (route-symbol spec))))
 
 (defn route-ns-clause
   [clause]
@@ -304,27 +305,11 @@
                      (conj without-config merged)
                      without-config))))))
 
-(defn defspec-form?
-  [form]
-  (and (list? form)
-       (= 'defspec.xt (first form))
-       (<= 3 (count form))))
-
-(defn route-defspec
-  "Turns Foundation's schema-only declaration into a Hara schema Var."
-  [form]
-  (let [symbol (second form)
-        schema (route-form (nth form 2))
-        metadata (assoc (or (meta symbol) {}) :schema schema)
-        symbol (with-meta (route-form symbol) metadata)]
-    (list 'def symbol nil)))
-
 (defn route-top-form
   [form first?]
-  (let [routed (cond
-                 first? (route-namespace-form form)
-                 (defspec-form? form) (route-defspec form)
-                 :else (route-form form))]
+  (let [routed (if first?
+                 (route-namespace-form form)
+                 (route-form form))]
     (preserve-meta routed form)))
 
 (defn normalize-reader-sugar
@@ -374,12 +359,50 @@
       (vec (rest root))
       [root])))
 
+(defn legacy-defspec-forms
+  "Returns every top-level form that uses the retired defspec.xt macro."
+  [forms]
+  (vec (filter legacy-defspec-form? forms)))
+
+(defn legacy-evidence-forms
+  "Parses source only when its retired-token prefilter requires structural review."
+  [source]
+  (if (str/includes? source "defspec.xt")
+    (source-forms source)
+    []))
+
+(defn assert-supported-forms
+  "Rejects retired Foundation XT schema declarations before any transformation."
+  [forms]
+  (let [legacy-form (first (legacy-defspec-forms forms))]
+    (if legacy-form
+      (throw
+       (ex :tool.migrate/unsupported-legacy-form
+           {:legacy/form :defspec.xt
+            :legacy/source-form (pr-str legacy-form)}
+           :ex/message "Foundation XT defspec.xt is no longer supported"))
+      forms)))
+
+(defn namespace-from-forms
+  [forms]
+  (let [namespace-form (first forms)]
+    (if (and (list? namespace-form) (= 'ns (first namespace-form)))
+      (str (second namespace-form))
+      nil)))
+
+(defn target-defspec-count
+  "Counts the retired token in current Hara target evidence without reparsing it."
+  [source]
+  (if (nil? source)
+    0
+    (- (count (str/split source "defspec.xt")) 1)))
+
 (defn transformed-source
   "Returns canonical Hara output and its namespace from one parsed corpus blob."
   ([source]
    (transformed-source source nil))
   ([source namespace-override]
-   (let [forms (source-forms source)
+   (let [forms (assert-supported-forms (source-forms source))
         routed (vec
                 (map-indexed
                  (fn [index form]
@@ -415,7 +438,7 @@
   [error]
   (try
     (ex-message error)
-    (catch Throwable ignored
+    (catch ignored
       "Hara could not render the migration error")))
 
 (defn source-sha256
@@ -425,6 +448,20 @@
 (defn canonical-path
   [value]
   (str/replace (File/resolve value "") "\\" "/"))
+
+(defn canonical-ledger-value
+  "Recursively replaces unordered ledger maps with EDN-print-stable sorted maps."
+  [value]
+  (cond (map? value)
+        (reduce (fn [output entry]
+                  (assoc output
+                         (first entry)
+                         (canonical-ledger-value (second entry))))
+                (sorted-map)
+                value)
+        (vector? value)
+        (vec (map canonical-ledger-value value))
+        :else value))
 
 (defn read-target
   [value]
@@ -475,17 +512,11 @@
 (defn xt-unit
   [runner revision hara-root file-path options]
   (let [source (file-source runner revision file-path)
+        forms (legacy-evidence-forms source)
+        legacy-forms (legacy-defspec-forms forms)
         target-relative (target-path file-path)
         target-absolute (path/join hara-root target-relative)
         target (read-target target-absolute)
-        transformed-data (transformed-source source
-                                             (namespace-for-path file-path))
-        transformed (:output transformed-data)
-        output (if (and target (not (:replace-existing? options)))
-                 target
-                 transformed)
-        summary {:namespace (:namespace transformed-data)
-                 :source-namespace (:source/namespace transformed-data)}
         target-root-value (target-root hara-root file-path)]
     {:id file-path
      :kind (if (xt-test-path? file-path) :test :source)
@@ -493,15 +524,18 @@
      :source/root (:foundation/root options)
      :source/text source
      :source/sha256 (source-sha256 source)
+     :source/namespace (namespace-from-forms forms)
+     :source/legacy-defspec-count (count legacy-forms)
      :target/path target-absolute
      :target/root target-root-value
      :target/text target
+     :target/sha256 (if target (source-sha256 target) nil)
+     :target/namespace nil
+     :target/legacy-defspec-count
+     (target-defspec-count target)
      :target/relative-path target-relative
-     :translation/recipe {:id :foundation-xt/canonical
-                          :output output}
-     :translation/options {:rules []}
-     :source/namespace (:source-namespace summary)
-     :target/namespace (:namespace summary)
+     :migration/status (if (empty? legacy-forms) :retained :unsupported)
+     :migration/reason (if (empty? legacy-forms) nil :defspec.xt)
      :replace-existing? (:replace-existing? options)}))
 
 (defn failed-unit
@@ -525,7 +559,7 @@
      (map (fn [file-path]
             (try
               (xt-unit runner revision hara-root file-path options)
-              (catch Throwable error
+              (catch error
                 (failed-unit hara-root file-path options error))))
           all-paths))))
 
@@ -552,14 +586,35 @@
        :result result
        :namespace nil
        :kind (:kind unit)})
-    (let [translated (clj/migration-result unit {:translation/trusted? true})
-          result (if (:namespace translated)
-                   translated
-                   (assoc translated :namespace (:source/namespace unit)))]
+    (let [unsupported? (= :unsupported (:migration/status unit))
+          diagnostics
+          (if unsupported?
+            [{:type :tool.migrate/unsupported-legacy-form
+              :level :warning
+              :safety :manual
+              :path (:id unit)
+              :source/path (:source/path unit)
+              :target/path (:target/path unit)
+              :legacy/form (:migration/reason unit)
+              :occurrences (:source/legacy-defspec-count unit)
+              :message "Foundation XT defspec.xt is explicitly unsupported"}]
+            [])
+          result {:path (:target/path unit)
+                  :source/path (:source/path unit)
+                  :target/path (:target/path unit)
+                  :source/sha256 (:source/sha256 unit)
+                  :changed false
+                  :create false
+                  :namespace (:target/namespace unit)
+                  :diagnostics diagnostics
+                  :provenance {:source/path (:source/path unit)
+                               :target/path (:target/path unit)
+                               :source/sha256 (:source/sha256 unit)
+                               :migration/status (:migration/status unit)}}]
       {:item/id (:id unit)
        :unit unit
        :record {:item/id (:id unit)
-                :status :return
+                :status (:migration/status unit)
                 :data result}
        :result result
        :namespace (:namespace result)
@@ -573,9 +628,10 @@
   ([hara-root options]
    (let [profile-value (or (:profile options) +xt-profile+)
          foundation-root-value (foundation-root hara-root options)
+         foundation-git-dir-value (foundation-git-dir foundation-root-value options)
          runner (or (:git/runner options)
                     (audit/git-runner
-                     (path/join foundation-root-value ".git")))
+                     foundation-git-dir-value))
          _ (profile/assert-profile profile-value)
          snapshot (git/snapshot runner profile-value)
          units (xt-units runner (:foundation/revision profile-value)
@@ -605,6 +661,14 @@
                          :changed/count (count (filter (fn [result]
                                                          (:changed result))
                                                        results))
+                         :retained/count (count (filter (fn [item]
+                                                          (= :retained
+                                                             (get-in item [:record :status])))
+                                                        items))
+                         :unsupported/count (count (filter (fn [item]
+                                                             (= :unsupported
+                                                                (get-in item [:record :status])))
+                                                           items))
                          :error/count (count (filter (fn [item]
                                                        (= :error
                                                           (get-in item [:record :status])))
@@ -641,21 +705,41 @@
          units (:units plan)
          validation (validate-plan plan)]
      {:document/type :tool-migrate/foundation-xt-parity
-      :document/version 1
+      :document/version 2
       :profile/id (:profile/id +xt-profile+)
       :foundation (:foundation plan)
       :counts (:summary plan)
       :validation (select-keys validation [:valid? :errors])
+      :read-only {:target/authority :current
+                  :write-intents (count (:write-intents plan))}
       :sources (vec (map (fn [unit]
                            (select-keys unit [:id :kind :source/path :target/path
-                                              :source/namespace :target/namespace]))
+                                              :source/namespace :target/namespace
+                                              :source/legacy-defspec-count
+                                              :target/sha256
+                                              :target/legacy-defspec-count
+                                              :migration/status :migration/reason]))
                          units))
+      :unsupported
+      (vec (map (fn [unit]
+                  (select-keys unit [:id :kind :source/path :target/path
+                                     :migration/reason
+                                     :source/legacy-defspec-count]))
+                (filter (fn [unit]
+                          (= :unsupported (:migration/status unit)))
+                        units)))
+      :target/evidence
+      {:legacy-defspec-count
+       (reduce (fn [total unit]
+                 (+ total (:target/legacy-defspec-count unit)))
+               0
+               units)}
       :missing-targets
-      (vec (keep (fn [item]
-                   (if (:create (:result item))
-                     (:target/path (:unit item))
+      (vec (keep (fn [unit]
+                   (if (nil? (:target/text unit))
+                     (:target/path unit)
                      nil))
-                 (:items plan)))})))
+                 units))})))
 
 ^{:public true}
 (defn write-inventory
@@ -669,7 +753,7 @@
                                    (assoc options :plan plan)
                                    options))
          target (path/join hara-root "spec/tool-migrate/foundation-f55f-xt.edn")]
-     (write-atomic target (pr-str inventory))
+     (write-atomic target (pr-str (canonical-ledger-value inventory)))
      {:path target
       :counts (:counts inventory)
       :valid? (get-in inventory [:validation :valid?])})))

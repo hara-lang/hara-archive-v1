@@ -36,8 +36,6 @@ code.test.compile
 code.test.manage
 code.test.result
 code.test.work
-lang.seedgen
-lang.seedgen.cli
 std.block
 std.block.base
 std.block.check
