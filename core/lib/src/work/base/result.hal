@@ -22,7 +22,7 @@
     value))
 
 (defn normalise-error
-  "Returns an Exception for host and evaluator failures while preserving Exceptions."
+  "Returns an Exception for host and evaluator failures while preserving structured Exceptions."
   ([error]
    (normalise-error error {}))
   ([error context]
