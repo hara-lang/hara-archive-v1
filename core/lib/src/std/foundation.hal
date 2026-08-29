@@ -214,9 +214,9 @@
 
 (defn ^{:schema [:fn [:any] :bool]}
   stream?
-  "Returns true when value is a native stream."
+  "Returns true when value satisfies the stream capability."
   [value]
-  (Base/instance? Stream value))
+  (satisfies? IStream value))
 
 (defn ^{:inline true :schema [:fn [:map] :any]}
   pointer "Creates a context pointer from descriptor." [descriptor] (Base/pointer descriptor))
