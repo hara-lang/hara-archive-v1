@@ -1,0 +1,76 @@
+(ns lang.runtime.basic.impl.process-hara
+  (:config {:role :internal})
+  (:require [lang.core.runtime :as runtime]
+            [lang.runtime.basic.type-common :as common]
+            [lang.runtime.basic.type-hara :as hara-basic]
+            [lang.runtime.basic.impl.source-hara :as source]))
+
+(def +program-options+
+  {:default {:basic :hara}
+   :env {:hara
+         {:exec "hara"
+          :extension "hal"
+          :flags {:basic ["--allow-net" "eval"]}}}})
+
+(def +xtalk-program-init+
+  (common/put-program-options :xtalk +program-options+))
+
+(def +hara-program-init+
+  (common/put-program-options :hara +program-options+))
+
+(def +xtalk-basic-config+
+  (common/set-context-options
+   [:xtalk :basic :default]
+   {:main {}
+    :emit {}
+    :json :full
+    :timeout 2000
+    :transport :process-socket
+    :bootstrap source/transport-source
+    :profile {:input []
+              :source []
+              :response [[:lang/node-response 1]]}}))
+
+(def +hara-basic-config+
+  (common/set-context-options
+   [:hara :basic :default]
+   {:main {}
+    :emit {}
+    :json :full
+    :timeout 2000
+    :transport :process-socket
+    :bootstrap source/transport-source
+    :profile {:input []
+              :source []
+              :response [[:lang/node-response 1]]}}))
+
+(def +xtalk-basic+
+  (runtime/install-type
+   :xtalk :basic
+   {:type :lang/rt.hara-basic
+    :config {:target :hara
+             :transport :process-socket}
+    :instance {:create hara-basic/rt-hara-basic:create
+               :start hara-basic/start-hara-basic
+               :stop hara-basic/stop-hara-basic
+               :raw-eval hara-basic/raw-eval-hara-basic}}))
+
+(def +hara-basic+
+  (runtime/install-type
+   :hara :basic
+   {:type :lang/rt.hara-basic
+    :config {:target :hara
+             :transport :process-socket}
+    :instance {:create hara-basic/rt-hara-basic:create
+               :start hara-basic/start-hara-basic
+               :stop hara-basic/stop-hara-basic
+               :raw-eval hara-basic/raw-eval-hara-basic}}))
+
+(def +init+
+  {:lang :xtalk
+   :target :hara
+   :transport :process-socket
+   :program {:xtalk +xtalk-program-init+
+             :hara +hara-program-init+}
+   :xtalk-basic +xtalk-basic+
+   :hara-basic +hara-basic+})

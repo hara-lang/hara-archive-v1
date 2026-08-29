@@ -1,13 +1,14 @@
 (ns lang.core.registry
   (:require [lang.common.registry :as grammar-registry]
-            [lang.model.v1.spec-xtalk :as spec-xtalk]
-            [lang.model.v1.spec-hara :as spec-hara]
-            [lang.model.v1.spec-js :as spec-js]
-            [lang.model.v1.spec-python :as spec-python]
-            [lang.model.v1.spec-lua :as spec-lua]
-            [lang.model.v1.spec-postgres :as spec-postgres]
-            [lang.model.v1.spec-glsl :as spec-glsl]
-            [lang.model.v1.spec-c :as spec-c]))
+            [lang.model.v1.spec-xtalk :as spec-xtalk :lazy true]
+            [lang.model.v1.spec-hara :as spec-hara :lazy true]
+            [lang.model.v1.spec-js :as spec-js :lazy true]
+            [lang.model.v1.spec-python :as spec-python :lazy true]
+            [lang.model.v1.spec-lua :as spec-lua :lazy true]
+            [lang.model.v1.spec-postgres :as spec-postgres :lazy true]
+            [lang.model.v1.spec-glsl :as spec-glsl :lazy true]
+            [lang.model.v1.spec-c :as spec-c :lazy true]
+            [std.foundation :as foundation]))
 
 ;; Foundation-compatible runtime registry. Runtime implementations are loaded
 ;; lazily from the exact [language runtime] coordinate.
@@ -24,10 +25,14 @@
          {:namespace 'lang.runtime.basic.impl.process-lua}
          [:lua :basic]
          {:namespace 'lang.runtime.basic.impl.process-lua}
+         [:xtalk :host]
+         {:namespace 'lang.runtime.basic.impl.process-xtalk}
+         [:hara :host]
+         {:namespace 'lang.runtime.basic.impl.process-xtalk}
          [:xtalk :basic]
-         {:namespace 'lang.runtime.basic.impl.process-xtalk}
+         {:namespace 'lang.runtime.basic.impl.process-hara}
          [:hara :basic]
-         {:namespace 'lang.runtime.basic.impl.process-xtalk}
+         {:namespace 'lang.runtime.basic.impl.process-hara}
          [:postgres :db.client]
          {:namespace 'lang.runtime.postgres.db-client}}))
 
@@ -93,14 +98,14 @@
 ;; materialized grammar selection; this catalog owns the independently
 ;; versioned source-backed grammar definitions from which selections are
 ;; resolved. Direct-book targets remain available through +book-registry+.
-(def +grammar-registry+
-  (atom
-   (spec-c/install
-    (spec-glsl/install
-     (spec-postgres/install
-      (spec-hara/install
-       (spec-xtalk/install
-        (grammar-registry/registry))))))))
+(def +grammar-loaders+
+  {:xtalk (fn [catalog] (spec-xtalk/install catalog))
+   :hara (fn [catalog] (spec-hara/install catalog))
+   :postgres (fn [catalog] (spec-postgres/install catalog))
+   :glsl (fn [catalog] (spec-glsl/install catalog))
+   :c (fn [catalog] (spec-c/install catalog))})
+
+(def +grammar-registry+ (atom (grammar-registry/registry)))
 
 (defn- atom-value [reference]
   (deref (identity reference)))
@@ -122,6 +127,11 @@
   [language runtime]
   (get-in (atom-value +registry+) [[language runtime] :namespace]))
 
+(defn registry-namespace-loaded?
+  "Returns true only when a registry-owned namespace has finished loading."
+  [namespace-symbol]
+  (= :loaded (:namespace/state (foundation/ns-info namespace-symbol))))
+
 (defn registry-runtime
   "Loads a registered runtime implementation and returns its namespace."
   [language runtime]
@@ -131,7 +141,7 @@
             _ (eval (list 'require (list 'quote namespace-symbol)))
             init-symbol (symbol (name namespace-symbol) "+init+")
             init-var (resolve init-symbol)]
-        (if (and (ns-loaded? namespace-symbol) init-var)
+        (if (and (registry-namespace-loaded? namespace-symbol) init-var)
           namespace-symbol
           (throw
            (ex :dependency {:lang language
@@ -145,16 +155,34 @@
   []
   (vec (keys (atom-value +book-registry+))))
 
+(defn registry-grammar-load
+  "Loads one grammar and its declared parent sources on first use."
+  [grammar-id]
+  (let [loader (get +grammar-loaders+ grammar-id)
+        current (atom-value +grammar-registry+)]
+    (if (or (nil? loader)
+            (not (empty? (grammar-registry/versions current grammar-id))))
+      current
+      (swap! +grammar-registry+ loader))))
+
 (defn registry-grammar-list
   "Lists installed grammar sources, optionally filtered by source fields."
   ([]
    (registry-grammar-list {}))
   ([query]
-   (grammar-registry/list (atom-value +grammar-registry+) query)))
+   (let [query (or query {})]
+     (if (nil? (:source/id query))
+       (reduce (fn [_ grammar-id]
+                 (registry-grammar-load grammar-id))
+               nil
+               (keys +grammar-loaders+))
+       (registry-grammar-load (:source/id query)))
+     (grammar-registry/list (atom-value +grammar-registry+) query))))
 
 (defn registry-grammar-versions
   "Lists all installed versions of a grammar identity."
   [grammar-id]
+  (registry-grammar-load grammar-id)
   (grammar-registry/versions (atom-value +grammar-registry+) grammar-id))
 
 (defn registry-grammar
@@ -162,6 +190,7 @@
   ([grammar-id version]
    (registry-grammar grammar-id version []))
   ([grammar-id version facets]
+   (registry-grammar-load grammar-id)
    (grammar-registry/resolve
     (atom-value +grammar-registry+)
     {:grammar/id grammar-id
@@ -336,7 +365,7 @@
        nil
        (let [value (load)
              actual-version (get value :version)]
-         (if (not (ns-loaded? ns))
+         (if (not (registry-namespace-loaded? ns))
            (throw
             (ex :dependency {:language language
                       :key key

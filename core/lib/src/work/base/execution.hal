@@ -73,13 +73,15 @@
          (fn [_]
            value)))))
    (fn [error]
-     (result/then
-      (frame/emit runtime frame :work/node-failed
-                   {:operation operation
-                    :node/id (:id spec)
-                    :error (str error)})
-      (fn [_]
-        (throw error))))))
+     (let [error (result/normalise-error error)]
+       (result/then
+        (frame/emit runtime frame :work/node-failed
+                     {:operation operation
+                      :node/id (:id spec)
+                      :error (str error)
+                      :error/record (result/error-record error)})
+        (fn [_]
+          (throw error)))))))
 
 (defn execute-node
   [runtime frame work input]

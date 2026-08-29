@@ -1,0 +1,66 @@
+(ns lang.runtime.basic.impl.process-hara-test
+  (:use code.test)
+  (:require [lang.runtime.basic.impl.process-hara :as subject]
+            [lang.runtime.basic.type-common :as common]))
+
+^{:refer lang.runtime.basic.impl.process-hara/+program-options+ :added "4.1"}
+(fact "declares Hara as the executable child program"
+  [(get-in subject/+program-options+ [:default :basic])
+   (get-in subject/+program-options+ [:env :hara :exec])
+   (get-in subject/+program-options+ [:env :hara :flags :basic])]
+  => [:hara "hara" ["--allow-net" "eval"]])
+
+^{:refer lang.runtime.basic.impl.process-hara/+xtalk-program-init+ :added "4.1"}
+(fact "installs the child program under the XTalk language"
+  [(get-in subject/+xtalk-program-init+ [:default :basic])
+   (get-in (common/get-program-options :xtalk) [:default :basic])]
+  => [:hara :hara])
+
+^{:refer lang.runtime.basic.impl.process-hara/+hara-program-init+ :added "4.1"}
+(fact "installs the child program under the explicit Hara language"
+  [(get-in subject/+hara-program-init+ [:default :basic])
+   (get-in (common/get-program-options :hara) [:default :basic])]
+  => [:hara :hara])
+
+^{:refer lang.runtime.basic.impl.process-hara/+xtalk-basic-config+ :added "4.1"}
+(fact "configures XTalk basic for JSON socket evaluation"
+  [(:json subject/+xtalk-basic-config+)
+   (:timeout subject/+xtalk-basic-config+)
+   (:transport subject/+xtalk-basic-config+)]
+  => [:full 2000 :process-socket])
+
+^{:refer lang.runtime.basic.impl.process-hara/+hara-basic-config+ :added "4.1"}
+(fact "configures Hara basic for JSON socket evaluation"
+  [(:json subject/+hara-basic-config+)
+   (:timeout subject/+hara-basic-config+)
+   (:transport subject/+hara-basic-config+)]
+  => [:full 2000 :process-socket])
+
+^{:refer lang.runtime.basic.impl.process-hara/+xtalk-basic+ :added "4.1"}
+(fact "installs the canonical XTalk child-process runtime"
+  [(:lang subject/+xtalk-basic+)
+   (:runtime subject/+xtalk-basic+)
+   (:type subject/+xtalk-basic+)
+   (get-in subject/+xtalk-basic+ [:config :transport])]
+  => [:xtalk :basic :lang/rt.hara-basic :process-socket])
+
+^{:refer lang.runtime.basic.impl.process-hara/+hara-basic+ :added "4.1"}
+(fact "installs the explicit Hara child-process alias"
+  [(:lang subject/+hara-basic+)
+   (:runtime subject/+hara-basic+)
+   (:type subject/+hara-basic+)
+   (get-in subject/+hara-basic+ [:config :transport])]
+  => [:hara :basic :lang/rt.hara-basic :process-socket])
+
+^{:refer lang.runtime.basic.impl.process-hara/+init+ :added "4.1"}
+(fact "publishes both Hara child-process coordinates"
+  [(:lang subject/+init+)
+   (:target subject/+init+)
+   (:transport subject/+init+)
+   (boolean (get-in subject/+init+ [:program :xtalk]))
+   (boolean (get-in subject/+init+ [:program :hara]))
+   (boolean (:xtalk-basic subject/+init+))
+   (boolean (:hara-basic subject/+init+))]
+  => [:xtalk :hara :process-socket true true true true])
+
+(run {:namespace "lang.runtime.basic.impl.process-hara-test"})

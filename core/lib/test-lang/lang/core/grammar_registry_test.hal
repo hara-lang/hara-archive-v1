@@ -1,7 +1,45 @@
 (ns lang.core.grammar-registry-test
   (:use code.test)
   (:require [lang.common.book :as book]
-            [lang.core.registry :as registry]))
+            [lang.core.registry :as registry]
+            [std.foundation :as foundation]))
+
+^{:refer lang.core.registry/registry-namespace-loaded?}
+(fact "requiring the registry does not load model specifications"
+  (mapv (fn [namespace-symbol]
+          (registry/registry-namespace-loaded? namespace-symbol))
+        [(quote lang.model.v1.spec-xtalk)
+         (quote lang.model.v1.spec-hara)
+         (quote lang.model.v1.spec-postgres)
+         (quote lang.model.v1.spec-glsl)
+         (quote lang.model.v1.spec-c)
+         (quote lang.model.v1.spec-js)
+         (quote lang.model.v1.spec-python)
+         (quote lang.model.v1.spec-lua)])
+  => [false false false false false false false false])
+
+^{:refer lang.core.registry/registry-grammar-list}
+(fact "an exact grammar query loads only that grammar and its parent"
+  (let [sources (registry/registry-grammar-list {:source/id :c
+                                                  :source/kind :grammar})
+        states (mapv (fn [namespace-symbol]
+                       (:namespace/state (foundation/ns-info namespace-symbol)))
+                     [(quote lang.model.v1.spec-xtalk)
+                      (quote lang.model.v1.spec-hara)
+                      (quote lang.model.v1.spec-postgres)
+                      (quote lang.model.v1.spec-glsl)
+                      (quote lang.model.v1.spec-c)])]
+    [(mapv (fn [source] (:source/id source)) sources)
+     states])
+  => [[:c] [:loaded :unloaded :unloaded :unloaded :loaded]])
+
+^{:refer lang.core.registry/registry-grammar-load}
+(fact "grammar loading is idempotent"
+  (let [first-catalog (registry/registry-grammar-load :c)
+        second-catalog (registry/registry-grammar-load :c)]
+    [(= first-catalog second-catalog)
+     (registry/registry-grammar-versions :c)])
+  => [true [1]])
 
 (fact "grammar resolution is independent and exactly versioned"
   (let [selection (registry/registry-grammar :c 1)]

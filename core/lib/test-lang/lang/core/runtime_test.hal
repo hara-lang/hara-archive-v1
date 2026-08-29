@@ -21,6 +21,8 @@
 (def python-verify (runtime/rt-create :python :verify))
 (def lua-verify (runtime/rt-create :lua :verify))
 (def js-basic (runtime/rt-create :js :basic))
+(def xtalk-host (runtime/rt-create :xtalk :host))
+(def hara-host (runtime/rt-create :hara :host))
 (def created-basic js-basic)
 
 ;; Exercise coexistence and configurable defaults without claiming a real V2
@@ -67,7 +69,7 @@
       1
       1])
 
-(fact "target process modules install oneshot, verify, and basic runtime types"
+(fact "target process modules install oneshot, verify, basic, and Hara host runtime types"
   [(runtime/runtime-installed? :js :oneshot)
    (runtime/runtime-installed? :js :verify)
    (runtime/runtime-installed? :js :basic)
@@ -76,8 +78,26 @@
    (runtime/runtime-installed? :python :basic)
    (runtime/runtime-installed? :lua :oneshot)
    (runtime/runtime-installed? :lua :verify)
-   (runtime/runtime-installed? :lua :basic)]
-  => [true true true true true true true true true])
+   (runtime/runtime-installed? :lua :basic)
+   (runtime/runtime-installed? :xtalk :host)
+   (runtime/runtime-installed? :hara :host)
+   (runtime/runtime-installed? :xtalk :basic)
+   (runtime/runtime-installed? :hara :basic)]
+  => [true true true true true true true true true true true true true])
+
+(fact "Hara host and basic coordinates expose distinct transport contracts"
+  [[(:lang xtalk-host) (:runtime xtalk-host) (get xtalk-host :transport)
+    (get-in (runtime/runtime-spec :xtalk :host) [:config :transport])]
+   [(:lang hara-host) (:runtime hara-host) (get hara-host :transport)
+    (get-in (runtime/runtime-spec :hara :host) [:config :transport])]
+   [(registry/registry-runtime-ns :xtalk :basic)
+    (get-in (runtime/runtime-spec :xtalk :basic) [:config :transport])]
+   [(registry/registry-runtime-ns :hara :basic)
+    (get-in (runtime/runtime-spec :hara :basic) [:config :transport])]]
+  => [[:xtalk :host nil :in-process]
+      [:hara :host nil :in-process]
+      ['lang.runtime.basic.impl.process-hara :process-socket]
+      ['lang.runtime.basic.impl.process-hara :process-socket]])
 
 (fact "book registry preserves Foundation language and grammar tags"
   [[(:lang js-book)

@@ -198,6 +198,26 @@ fn direct_native_keeps_unbound_reads_catchable_at_runtime() {
 }
 
 #[test]
+fn direct_native_preserves_exception_source_spans_without_marker_symbols() {
+    let mut runtime = Runtime::core();
+    enable_native(&mut runtime);
+    assert_eq!(
+        runtime
+            .eval_direct_native(
+                r#"(try
+  (throw
+    (ex :host {:value 1} :ex/message "boom"))
+  (catch error
+    (let [provenance (ex-provenance error)]
+      [(:ex/created-at provenance)
+       (:ex/throws provenance)])))"#,
+            )
+            .unwrap(),
+        "[{:resource nil :column 5 :namespace \"user\" :line 3} [{:resource nil :column 3 :namespace \"user\" :line 2}]]"
+    );
+}
+
+#[test]
 fn async_direct_native_functions_preserve_the_promise_return_shape() {
     let mut runtime = Runtime::core();
     enable_native(&mut runtime);

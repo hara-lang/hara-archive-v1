@@ -377,7 +377,7 @@
                    (fn [produced-input produced-context]
                      (let [attempt (swap! direct-second-count inc)]
                        (if (= attempt 1)
-                         (throw (ex-info "interrupt produced child" {}))
+                         (throw (ex :generic {} :ex/message "interrupt produced child"))
                          (+ produced-input 100)))))]))))
           generated-source-count (atom 0)
           generated-first-count (atom 0)
@@ -401,7 +401,7 @@
                    (fn [produced-input produced-context]
                      (let [attempt (swap! generated-second-count inc)]
                        (if (= attempt 1)
-                         (throw (ex-info "interrupt produced child" {}))
+                         (throw (ex :generic {} :ex/message "interrupt produced child"))
                          (+ produced-input 100)))))]))))
           rebuilt (eval (lowering/form generated-definition))
           direct-backend (work/memory-backend)
@@ -492,7 +492,7 @@
            {:id :managed-failure :version 1}
            (work/step :body
              (fn [input context]
-               (throw (ex-info "body failed" {:input input}))))
+               (throw (ex :generic {:input input} :ex/message "body failed"))))
            (work/step :cleanup
              (fn [outcome context]
                {:cleanup? true
@@ -534,14 +534,14 @@
            {:id :direct-retry :retry {:maximum 2}}
            (fn [input context]
              (if (= 1 (swap! direct-retries inc))
-               (throw (ex-info "retry" {:work/error :temporary}))
+               (throw (ex :generic {:work/error :temporary} :ex/message "retry"))
                (+ input 1))))
           generated-retry
           (work/step
            {:id :generated-retry :retry {:maximum 2}}
            (fn [input context]
              (if (= 1 (swap! generated-retries inc))
-               (throw (ex-info "retry" {:work/error :temporary}))
+               (throw (ex :generic {:work/error :temporary} :ex/message "retry"))
                (+ input 1))))
           promise-work
           (work/step
@@ -628,5 +628,3 @@
     (finally
       (lowering/reset-closures)))
   => [:work/bind-depth-exceeded :work/bind-depth-exceeded])
-
-(pr-str (run '[work.compile.hara-test]))

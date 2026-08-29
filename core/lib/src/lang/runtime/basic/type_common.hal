@@ -9,7 +9,7 @@
   (deref (identity reference)))
 
 (def +valid-contexts+
-  #{:oneshot :basic :interactive :websocket :remote-port :remote-ws :verify})
+  #{:oneshot :basic :host :interactive :websocket :remote-port :remote-ws :verify})
 
 (defn get-context-options
   ([] (atom-value *context-options*))

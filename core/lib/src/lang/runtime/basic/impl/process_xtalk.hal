@@ -2,9 +2,9 @@
   (:require [lang.core.runtime :as runtime]
             [lang.runtime.basic.type-hara :as hara-basic]))
 
-(def +xtalk-basic+
+(def +xtalk-host+
   (runtime/install-type
-   :xtalk :basic
+   :xtalk :host
    {:type :lang/rt.hara-basic
     :config {:target :hara
              :transport :in-process}
@@ -13,9 +13,9 @@
                :stop hara-basic/stop-hara-basic
                :raw-eval hara-basic/raw-eval-hara-basic}}))
 
-(def +hara-basic+
+(def +hara-host+
   (runtime/install-type
-   :hara :basic
+   :hara :host
    {:type :lang/rt.hara-basic
     :config {:target :hara
              :transport :in-process}
@@ -27,5 +27,5 @@
 (def +init+
   {:lang :xtalk
    :target :hara
-   :xtalk-basic +xtalk-basic+
-   :hara-basic +hara-basic+})
+   :xtalk-host +xtalk-host+
+   :hara-host +hara-host+})

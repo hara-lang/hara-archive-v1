@@ -258,9 +258,9 @@ impl Runtime {
         self.compile_bytecode_with_policy(source, true)
     }
 
-    fn compile_form_for_direct_native(
+    fn compile_spanned_form_for_direct_native(
         &self,
-        form: &Form,
+        form: &kernel::SpannedForm,
     ) -> Result<std::rc::Rc<vm::Program>, String> {
         let namespace = self.current_namespace();
         let config = self
@@ -269,7 +269,7 @@ impl Runtime {
             .cloned()
             .unwrap_or_else(kernel::GeneratedNamespaceConfig::defaults);
         core::with_macros(self.macros.clone(), || {
-            vm::compile_form_with_config_allow_unbound_globals(
+            vm::compile_spanned_form_with_config_allow_unbound_globals(
                 form.clone(),
                 &self.namespace_registry,
                 config,
@@ -537,7 +537,7 @@ impl Runtime {
                     if matches!(items.first(), Some(Form::Symbol(operator)) if operator == "ns")
             )
         }) {
-            self.eval_forms(vec![namespace_form.clone()], false)?;
+            self.eval_forms(vec![synthetic_spanned_form(namespace_form.clone())], false)?;
         } else {
             self.use_namespace(&module.namespace);
         }

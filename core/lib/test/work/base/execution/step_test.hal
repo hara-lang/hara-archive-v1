@@ -1,0 +1,26 @@
+(ns work.base.execution.step-test
+  (:use code.test)
+  (:require [work.base.execution.ephemeral :as ephemeral]
+            [work.base.execution.step :as subject]))
+
+^{:refer work.base.execution.step/step-attempt-failed}
+(fact "normalises a terminal raw step failure before rethrowing it"
+  (let [runtime (assoc (ephemeral/execution-runtime)
+                       :work/policy {:work/mode :portable})
+        frame {:run/id "run-1"
+               :work/root :root
+               :node/path [:step]
+               :item/id nil}
+        failure
+        (try
+          (subject/step-attempt-failed
+           runtime frame {:id :step} nil 1 1 "raw step failure")
+          :not-rejected
+          (catch error
+            [(ex? error)
+             (:ex/code (ex-data error))
+             (:error (ex-data error))]))]
+    failure)
+  => [true :hara/host "raw step failure"])
+
+(pr-str (run {:namespace "work.base.execution.step-test"}))

@@ -56,7 +56,16 @@ pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, Stri
             Symbol::parse(tag),
             literal_value(value)?,
         )))),
-        Form::Metadata(_, value) => eval(value, env),
+        Form::Metadata(metadata, value) => {
+            if let Some((line, column)) = exception_location_from_metadata(metadata) {
+                with_exception_site(
+                    exception_site_at(line, column).expect("exception site always exists"),
+                    || eval(value, env),
+                )
+            } else {
+                eval(value, env)
+            }
+        }
         Form::List(fs)
             if fs.len() == 2 && matches!(&fs[0], Form::Symbol(name) if name == "syntax-quote") =>
         {
@@ -365,19 +374,6 @@ pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, Stri
                     cell.reset_value(value.clone());
                     Ok(value)
                 }
-                Form::Symbol(n) if n == "__throw-at" => {
-                    let [_, Form::Number(line), Form::Number(column), value] = fs.as_slice() else {
-                        return Err("internal throw location marker is malformed".into());
-                    };
-                    let value = eval(value, env)?;
-                    if !matches!(value, Value::ExceptionInfo(_)) {
-                        return Err("throw expects an Exception value created by ex".into());
-                    }
-                    Err(thrown_error_at(
-                        value,
-                        exception_site_at(*line as usize, *column as usize),
-                    ))
-                }
                 Form::Symbol(n) if n == "throw" => {
                     if fs.len() != 2 {
                         return Err("throw expects one value".into());
@@ -387,21 +383,6 @@ pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, Stri
                         return Err("throw expects an Exception value created by ex".into());
                     }
                     Err(thrown_error(value))
-                }
-                Form::Symbol(n) if n == "__ex-at" => {
-                    let [_, Form::Number(line), Form::Number(column), rest @ ..] = fs.as_slice()
-                    else {
-                        return Err("internal exception location marker is malformed".into());
-                    };
-                    if rest.is_empty() {
-                        return Err("internal exception location marker is malformed".into());
-                    }
-                    let expression = Form::List(rest.to_vec());
-                    with_exception_site(
-                        exception_site_at(*line as usize, *column as usize)
-                            .expect("exception site always exists"),
-                        || eval(&expression, env),
-                    )
                 }
                 Form::Symbol(n) if n == "try" => {
                     if fs.len() < 2 {
@@ -981,7 +962,8 @@ pub fn eval(form: &Form, env: &mut HashMap<String, Value>) -> Result<Value, Stri
                         && binding_value(env, n)
                             .is_some_and(|value| matches!(value, Value::Function(_))) =>
                 {
-                    let function = binding_value(env, n).expect("namespace function binding was checked");
+                    let function =
+                        binding_value(env, n).expect("namespace function binding was checked");
                     let arguments = fs[1..]
                         .iter()
                         .map(|form| eval(form, env))

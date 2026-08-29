@@ -7,7 +7,7 @@
  :target
  {:verify-source "lib/src/lang/runtime/basic/type_verify.hal"
   :verify-source-sha "98adc5dc942d37e0a01d406ebedd0f9fe0875c61"
-  :host-runtime "lib/src/hara/runtime.hal"
+  :host-runtime "lib/src/lang/runtime/basic/type_hara.hal"
   :runtime-smoke "lib/integration/hara/runtime_smoke.hal"}
 
  :adaptations
@@ -30,7 +30,11 @@
   :postgres :ported}
 
  :runtime-matrix
- {:js {:oneshot :executable
+ {:xtalk {:host :in-process
+          :basic :executable}
+  :hara {:host :in-process
+         :basic :executable}
+  :js {:oneshot :executable
        :verify :executable
        :basic :executable}
   :python {:oneshot :executable

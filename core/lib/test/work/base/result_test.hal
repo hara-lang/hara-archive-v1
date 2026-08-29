@@ -1,0 +1,58 @@
+(ns work.base.result-test
+  (:use code.test)
+  (:require [work.base.result :as subject]))
+
+^{:refer work.base.result/normalise-error}
+(fact "wraps raw host failures while preserving structured exceptions"
+  (let [raw (subject/normalise-error "host failure")
+        structured (ex :io {:path "state.edn"} :ex/message "missing")
+        preserved (subject/normalise-error structured)]
+    [(ex? raw)
+     (:ex/code (ex-data raw))
+     (:error (ex-data raw))
+     (= structured preserved)])
+  => [true :hara/host "host failure" true])
+
+^{:refer work.base.result/error-record}
+(fact "records the complete structured cause chain as durable data"
+  (let [cause (ex :io {:path "state.edn"} :ex/message "missing")
+        error (ex :host
+                  {:operation :load
+                   :ex/cause cause}
+                  :ex/message "failed")
+        record (subject/error-record error)]
+    [(:error/code record)
+     (:operation (:error/data record))
+     (:error/code (:error/cause record))
+     (:path (:error/data (:error/cause record)))])
+  => [:hara/host :load :hara/io "state.edn"])
+
+^{:refer work.base.result/exception-from-record}
+(fact "rebuilds the structured cause chain from a durable record"
+  (let [record {:error/code :hara/host
+                :error/data {:operation :load}
+                :error/message "failed"
+                :error/cause {:error/code :hara/io
+                              :error/data {:path "state.edn"}
+                              :error/message "missing"
+                              :error/cause nil}}
+        rebuilt (subject/exception-from-record record)]
+    [(ex-message rebuilt)
+     (:operation (ex-data rebuilt))
+     (ex-message (ex-cause rebuilt))
+     (:path (ex-data (ex-cause rebuilt)))])
+  => ["failed" :load "missing" "state.edn"])
+
+^{:refer work.base.result/attempt}
+(fact "passes only structured exceptions to failure handlers"
+  (let [handled
+        (subject/attempt
+         (fn [] (throw (ex :state {:phase :run} :ex/message "failed")))
+         (fn [error]
+           [(ex? error)
+            (:ex/code (ex-data error))
+            (:phase (ex-data error))]))]
+    handled)
+  => [true :hara/state :run])
+
+(pr-str (run {:namespace "work.base.result-test"}))

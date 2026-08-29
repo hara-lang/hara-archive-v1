@@ -63,75 +63,103 @@ pub(crate) fn exception_site_at(line: usize, column: usize) -> Option<ExceptionS
     ))
 }
 
-pub fn exception_located_form(node: &crate::kernel::SpannedForm) -> Form {
+const SOURCE_LOCATION_KEY: &str = "hara/source-location";
+
+fn source_location_metadata(line: usize, column: usize) -> Form {
+    Form::Map(vec![(
+        Form::Keyword(SOURCE_LOCATION_KEY.into()),
+        Form::Map(vec![
+            (Form::Keyword("line".into()), Form::Number(line as i64)),
+            (Form::Keyword("column".into()), Form::Number(column as i64)),
+        ]),
+    )])
+}
+
+/// Carries parser locations through the evaluator's plain `Form` function
+/// bodies without inventing callable marker symbols. Direct-native callers
+/// compile the original `SpannedForm` instead; this adapter is only used at
+/// evaluator boundaries where a function body must survive as a `Form`.
+pub(crate) fn attach_exception_sites(node: &crate::kernel::SpannedForm) -> Form {
     let rebuilt = match &node.form {
         Form::List(values)
-            if values.first().is_some_and(|value| {
-                matches!(value, Form::Symbol(name) if name == "quote" || name == "'")
-            }) =>
+            if values.first().is_some_and(
+                |value| matches!(value, Form::Symbol(name) if name == "quote" || name == "'"),
+            ) =>
         {
             Form::List(values.clone())
         }
         Form::List(values) if node.children.len() == values.len() => {
-            Form::List(node.children.iter().map(exception_located_form).collect())
+            Form::List(node.children.iter().map(attach_exception_sites).collect())
         }
         Form::List(values) if node.children.len() + 1 == values.len() => {
             let mut rebuilt = vec![values[0].clone()];
-            rebuilt.extend(node.children.iter().map(exception_located_form));
+            rebuilt.extend(node.children.iter().map(attach_exception_sites));
             Form::List(rebuilt)
         }
         Form::Vector(values) if node.children.len() == values.len() => {
-            Form::Vector(node.children.iter().map(exception_located_form).collect())
+            Form::Vector(node.children.iter().map(attach_exception_sites).collect())
         }
         Form::Set(values) if node.children.len() == values.len() => {
-            Form::Set(node.children.iter().map(exception_located_form).collect())
+            Form::Set(node.children.iter().map(attach_exception_sites).collect())
         }
         Form::Map(values) if node.children.len() == values.len() * 2 => Form::Map(
             node.children
                 .chunks_exact(2)
                 .map(|pair| {
                     (
-                        exception_located_form(&pair[0]),
-                        exception_located_form(&pair[1]),
+                        attach_exception_sites(&pair[0]),
+                        attach_exception_sites(&pair[1]),
                     )
                 })
                 .collect(),
         ),
         Form::Tagged(tag, _) if node.children.len() == 1 => Form::Tagged(
             tag.clone(),
-            Box::new(exception_located_form(&node.children[0])),
+            Box::new(attach_exception_sites(&node.children[0])),
         ),
         Form::Metadata(metadata, _) if node.children.len() == 1 => Form::Metadata(
             metadata.clone(),
-            Box::new(exception_located_form(&node.children[0])),
+            Box::new(attach_exception_sites(&node.children[0])),
         ),
         form => form.clone(),
     };
-    let Form::List(mut values) = rebuilt else {
+    let Form::List(values) = form_without_metadata(&rebuilt) else {
         return rebuilt;
     };
     let Some(Form::Symbol(operator)) = values.first() else {
-        return Form::List(values);
+        return rebuilt;
     };
-    if !matches!(
-        operator.as_str(),
-        "throw" | "ex" | "ex-info" | "std.foundation/ex" | "std.foundation/ex-info"
-    ) {
-        return Form::List(values);
+    if !matches!(operator.as_str(), "throw" | "ex" | "std.foundation/ex") {
+        return rebuilt;
     }
-    let original_operator = values[0].clone();
-    let marker = if operator == "throw" {
-        "__throw-at"
-    } else {
-        "__ex-at"
+    Form::Metadata(
+        Box::new(source_location_metadata(
+            node.span.start.line,
+            node.span.start.column,
+        )),
+        Box::new(rebuilt),
+    )
+}
+
+pub(crate) fn exception_location_from_metadata(metadata: &Form) -> Option<(usize, usize)> {
+    let Form::Map(entries) = form_without_metadata(metadata) else {
+        return None;
     };
-    values[0] = Form::Symbol(marker.into());
-    values.insert(1, Form::Number(node.span.start.line as i64));
-    values.insert(2, Form::Number(node.span.start.column as i64));
-    if marker == "__ex-at" {
-        values.insert(3, original_operator);
-    }
-    Form::List(values)
+    let location = entries.iter().find_map(|(key, value)| {
+        matches!(key, Form::Keyword(name) if name == SOURCE_LOCATION_KEY).then_some(value)
+    })?;
+    let Form::Map(entries) = form_without_metadata(location) else {
+        return None;
+    };
+    let number = |name: &str| {
+        entries.iter().find_map(|(key, value)| {
+            matches!(key, Form::Keyword(candidate) if candidate == name).then(|| match value {
+                Form::Number(value) if *value >= 0 => Some(*value as usize),
+                _ => None,
+            })?
+        })
+    };
+    Some((number("line")?, number("column")?))
 }
 
 pub(crate) fn with_evaluation_interrupt<R>(

@@ -1,0 +1,93 @@
+(ns lang.runtime.basic.transport-node-test
+  (:use code.test)
+  (:require [lang.runtime.basic.transport-node :as subject]))
+
+^{:refer lang.runtime.basic.transport-node/transport-source :added "4.1"}
+(fact "delegates bootstrap source to the language process configuration"
+  (let [node (subject/create :js ["node"]
+                             {:bootstrap (fn [port]
+                                           (str "language-bootstrap:" port))}
+                             2000)]
+    (subject/transport-source node 45678))
+  => "language-bootstrap:45678")
+
+^{:refer lang.runtime.basic.transport-node/create :added "4.1"}
+(fact "creates a transport with a clean initial state"
+  (let [node (subject/create :hara ["hara" "eval"] {} 2000)]
+    [(get node :lang)
+     (get node :exec)
+     (subject/state node)
+     (subject/started? node)])
+  => [:hara ["hara" "eval"] {:status :created :relay nil} false])
+
+^{:refer lang.runtime.basic.transport-node/state :added "4.1"}
+(fact "reads the transport lifecycle snapshot"
+  (let [node (subject/create :hara ["hara"] {} 2000)]
+    (get (subject/state node) :status))
+  => :created)
+
+^{:refer lang.runtime.basic.transport-node/started? :added "4.1"}
+(fact "recognizes only the started transport state"
+  (let [node (subject/create :hara ["hara"] {} 2000)]
+    [(subject/started? node)
+     (get (subject/state (subject/stop node)) :status)
+     (subject/started? node)])
+  => [false :stopped false])
+
+^{:refer lang.runtime.basic.transport-node/start :added "4.1"}
+(fact "keeps an already-started transport idempotent"
+  (let [node (subject/create :hara ["hara"] {} 2000)]
+    (reset! (get node :state) {:status :started :marker :preserved})
+    (subject/start node)
+    (subject/state node))
+  => {:status :started :marker :preserved})
+
+^{:refer lang.runtime.basic.transport-node/stop :added "4.1"}
+(fact "stops an unstarted transport idempotently and clears handles"
+  (let [node (subject/create :hara ["hara"] {} 2000)]
+    (subject/stop node)
+    (subject/stop node)
+    (subject/state node))
+  => {:status :stopped})
+
+^{:refer lang.runtime.basic.transport-node/exchange :added "4.1"}
+(fact "rejects exchange attempts before the process is started"
+  (let [node (subject/create :hara ["hara"] {} 2000)]
+    (try
+      (subject/exchange node "(+ 1 2)" {})
+      nil
+      (catch Throwable error
+         [(ex-message error)
+         (get-in (ex-data error) [:state :status])])))
+  => ["Process transport is not started" :created])
+
+^{:refer lang.runtime.basic.transport-node/response-plugin :added "4.1"}
+(fact "normalizes a successful JSON response envelope"
+  (subject/response-plugin
+   {:response {"ok" true
+               "response" {"type" "data"
+                            "return" "integer"
+                            "value" 42}}})
+  => {:response {"ok" true
+                 "response" {"type" "data"
+                              "return" "integer"
+                              "value" 42}}
+      :result {:type "data" :return "integer" :value 42}})
+
+^{:refer lang.runtime.basic.transport-node/response-plugin :added "4.1"}
+(fact "raises target errors encoded by return-wrap"
+  (try
+    (subject/response-plugin
+     {:context {:lang :js}
+      :exchange {:request {"source" "throw new Error('bad')"}}
+      :response {"ok" true
+                 "response" {"type" "error"
+                             "value" {"message" "bad"}}}})
+    nil
+    (catch Throwable error
+      [(ex-message error)
+       (get-in (ex-data error) [:error/type])
+       (get-in (ex-data error) [:target-error "message"])]))
+  => ["bad" :lang/target "bad"])
+
+(run {:namespace "lang.runtime.basic.transport-node-test"})

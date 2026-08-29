@@ -88,7 +88,9 @@
     {:list (fn [values context] values)
      :run
      (fn [value context]
-       (throw (ex-info "template infrastructure failure" {:value value})))}}))
+       (throw (ex :generic
+                  {:value value}
+                  :ex/message "template infrastructure failure")))}}))
 
 (def failing-template-status
   (let [runtime (work/durable-runtime)
@@ -136,7 +138,7 @@
      :run
      (fn [value context]
        (throw
-        (ex-info "unit failure" {:value value})))})
+        (ex :generic {:value value} :ex/message "unit failure")))})
    9))
 
 (defn event-count
@@ -230,7 +232,7 @@
        :run
        (fn [value context]
          (throw
-          (ex-info "unit failure" {:value value})))})
+          (ex :generic {:value value} :ex/message "unit failure")))})
      11) false) (catch Throwable test_error__ true)) true)
 
    (test-check "unit task commands require an id" (try (do (task/unit {:run (fn [value context] value)}) false) (catch Throwable test_error__ true)) true)

@@ -71,7 +71,8 @@
          frame
          {:run/status :completed
           :run/result value
-          :run/error nil}
+          :run/error nil
+          :run/error-record nil}
          :work/run-completed
          {:result value}))
       (fn [_]
@@ -79,23 +80,29 @@
 
 (defn fail-run
   [runtime frame id error]
-  (result/then
-   (store/query (base/runtime-store runtime)
-                {:work/query :run/load :run/id id})
-   (fn [current]
-     (result/then
-      (if (= :cancelled (:run/status current))
-        (frame/emit runtime frame :work/run-cancelled
-                     {:error (str error)})
-        (commit-run-event
-         runtime
-         frame
-         {:run/status :failed
-          :run/error (str error)}
-         :work/run-failed
-         {:error (str error)}))
-      (fn [_]
-        (base/work-reference id))))))
+  (let [error (result/normalise-error error)
+        record (result/error-record error)
+        message (:error/message record)]
+    (result/then
+     (store/query (base/runtime-store runtime)
+                  {:work/query :run/load :run/id id})
+     (fn [current]
+       (result/then
+        (if (= :cancelled (:run/status current))
+          (frame/emit runtime frame :work/run-cancelled
+                       {:error message
+                        :error/record record})
+          (commit-run-event
+           runtime
+           frame
+           {:run/status :failed
+            :run/error message
+            :run/error-record record}
+           :work/run-failed
+           {:error message
+            :error/record record}))
+        (fn [_]
+          (base/work-reference id)))))))
 
 (defn execute-run
   [runtime run work options]
@@ -109,6 +116,7 @@
          frame
          {:run/status :running
           :run/error nil
+          :run/error-record nil
           :run/options options}
          :work/run-started
          {:run/version (:run/work-version run)})
@@ -149,6 +157,7 @@
    :run/input input
    :run/result nil
    :run/error nil
+   :run/error-record nil
    :run/options options
    :run/attributes (or (:attributes options) {})})
 
@@ -219,6 +228,7 @@
            (= query :status) (:run/status run)
            (= query :result) (:run/result run)
            (= query :error) (:run/error run)
+           (= query :error-record) (:run/error-record run)
            (= query :run) run
            :else
            (throw

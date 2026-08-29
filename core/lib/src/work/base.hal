@@ -459,6 +459,10 @@
   [runtime reference]
   (coordinator/query-run runtime reference {:query :error}))
 
+(defn error-record
+  [runtime reference]
+  (coordinator/query-run runtime reference {:query :error-record}))
+
 (defn run-record
   [runtime reference]
   (coordinator/query-run runtime reference {:query :run}))
@@ -488,10 +492,23 @@
        (async-result/then
         (error runtime reference)
         (fn [run-error]
-          (throw
-           (ex :host {:run/id (runtime/reference-id reference)
-                     :status run-status
-                     :error run-error} :ex/message "Work run did not complete"))))))))
+          (async-result/then
+           (error-record runtime reference)
+           (fn [record]
+             (let [data
+                   {:run/id (runtime/reference-id reference)
+                    :status run-status
+                    :error run-error
+                    :error/record record}
+                   data (if record
+                          (assoc data
+                                 :ex/cause
+                                 (async-result/exception-from-record record))
+                          data)]
+               (throw
+                (ex :host
+                    data
+                    :ex/message "Work run did not complete"))))))))))
 
 (defn run
   ([work input]

@@ -104,7 +104,7 @@
       (fn [value context]
         (let [attempt (swap! finish-count inc)]
           (if (= attempt 1)
-            (throw (ex-info "interrupted before checkpoint" {}))
+            (throw (ex :generic {} :ex/message "interrupted before checkpoint"))
             (+ value 3)))))]))
 
 (def recovery-reference
@@ -187,7 +187,7 @@
              :status :ok})
           (let [attempt (swap! framework-count inc)]
             (if (= attempt 1)
-              (throw (ex-info "inspection worker interrupted" {}))
+              (throw (ex :generic {} :ex/message "inspection worker interrupted"))
               {:name (:name subject)
                :status :ok})))))
 

@@ -69,7 +69,6 @@
     postgres.typed/throw-missing-argument postgres.typed/throw-missing-argument
     postgres.core.impl-update/assert-valid-keys postgres.core.impl-update/assert-valid-keys
     std.config.resolve/throw-include-cycle std.config.resolve/throw-include-cycle
-    lang.runtime.hara/pop-path lang.runtime.hara/pop-path
     postgres.core.impl/t:insert-untracked postgres.core.impl/t:insert-untracked
     postgres.core.impl/t:update-untracked postgres.core.impl/t:update-untracked})
 

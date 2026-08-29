@@ -1,0 +1,18 @@
+(ns lang.runtime.basic.impl.source-hara-test
+  (:use code.test)
+  (:require [lang.runtime.basic.impl.source-hara :as subject]))
+
+^{:refer lang.runtime.basic.impl.source-hara/transport-source :added "4.1"}
+(fact "emits the Hara child return pipeline with the requested port"
+  (let [source (subject/transport-source 45678)]
+    [(list? (read-string source))
+     (str/includes? source "Socket/listen")
+     (str/includes? source "Socket/connect \"127.0.0.1\" 45678")
+     (str/includes? source "Json/read")
+     (str/includes? source "+return-encode+")
+     (str/includes? source "+return-wrap+")
+     (str/includes? source "+return-eval+")
+     (str/includes? source "eval-in-ns")])
+  => [true true true true true true true true])
+
+(run {:namespace "lang.runtime.basic.impl.source-hara-test"})

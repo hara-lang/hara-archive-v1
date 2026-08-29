@@ -8,22 +8,26 @@
  {:grammar "lib/src/lang/model/v1/spec_hara.hal"
   :emitter "lib/src/lang/model/v1/spec_hara/emit.hal"
   :runtime "lib/src/lang/runtime/basic/type_hara.hal"
-  :registration "lib/src/lang/runtime/basic/impl/process_xtalk.hal"
+  :host-registration "lib/src/lang/runtime/basic/impl/process_xtalk.hal"
+  :process-registration "lib/src/lang/runtime/basic/impl/process_hara.hal"
   :standard-facade "lib/src/lang/runtime/standard.hal"}
 
  :architecture
  {:xtalk
   "The target-neutral parent grammar and public semantic runtime coordinate."
   :hara
-  "The concrete child grammar and in-process execution target."
+  "The concrete child grammar and Hara execution target."
   :standard
   "A thin XTalk-to-Hara naming facade over existing std.native types and methods."
   :coordinates
-  {[:xtalk :basic] :canonical
-   [:hara :basic] :explicit-alias}
-  :transport :in-process
-  :child-process false
-  :wire-protocol false}
+  {[:xtalk :host] :canonical-in-process
+   [:hara :host] :explicit-host-alias
+   [:xtalk :basic] :canonical-child-process
+   [:hara :basic] :explicit-child-alias}
+  :transport {:host :in-process
+              :basic :process-socket}
+  :child-process true
+  :wire-protocol :json-lines}
 
  :grammar
  {:coordinate {:grammar/id :hara
@@ -39,14 +43,14 @@
   :returns :tagged-local-unwind}
 
  :runtime
- {:state :persistent-hara-namespace
+ {:state :persistent-hara-child-namespace
   :semantic-input "XTalk AST compiled through the :hara grammar"
   :raw-input "Already-emitted Hara source"
-  :result "Native Hara value"
+  :result "JSON-decoded transfer-safe Hara value"
   :lifecycle [:created :started :stopped]
   :state-fields
-  [:status :target :namespace :evaluations :last-source :last-result
-   :last-compiled? :last-error]}
+  [:status :target :namespace :transport :evaluations :last-source
+   :last-result :last-compiled? :last-error]}
 
  :collection-model
  {:array-storage :std.native.Arr
@@ -76,8 +80,8 @@
 
  :intentional-differences
  [{:foundation "The historical :xtalk runtime executes emitted Scheme through Chez."
-   :hara "The :xtalk :basic runtime compiles to Hara and evaluates inside the current Hara kernel."
-   :reason "Self-hosting removes the external process, socket, and JSON result envelope."}
+   :hara "The :xtalk :host runtime evaluates in the current Hara kernel, while :xtalk :basic compiles to Hara and evaluates in a persistent Hara child process."
+   :reason "The host coordinate keeps an in-process development path; the basic coordinate provides process isolation through the existing loopback socket and JSON-line transport."}
   {:foundation "Mutable target languages permit both binding reassignment and native collection mutation."
    :hara "Rebindable lexical variables use atoms, while arrays and objects remain direct std.native.Arr and std.native.Obj values."
    :reason "Hara bindings are immutable, but its native collection types already provide the XTalk mutation model one-for-one."}
@@ -99,14 +103,24 @@
   {:path "lib/test-lang/lang/runtime/standard_test.hal"
    :facts 6}
   {:path "lib/test-lang/lang/runtime/basic/impl/process_xtalk_test.hal"
-   :facts 6}]
+   :facts 9}
+  {:path "lib/test-lang/lang/runtime/basic/impl/process_hara_test.hal"
+   :facts 8}
+  {:path "lib/test-lang/lang/runtime/basic/transport_node_test.hal"
+   :facts 8}
+  {:path "lib/test-lang/lang/runtime/basic/type_common_test.hal"
+   :facts 1}
+  {:path "lib/test-lang/lang/runtime/basic/type_hara_test.hal"
+   :facts 16}]
 
  :acceptance
  ["The :hara grammar resolves as a versioned child of :xtalk."
-  "The :xtalk :basic coordinate launches no process and owns no transport."
+  "The :xtalk and :hara :host coordinates evaluate in the current Hara kernel without a child process."
+  "The :xtalk and :hara :basic coordinates launch a persistent Hara child through tool.sh and the loopback socket transport."
+  "The child evaluates JSON-line requests in one persistent namespace and returns JSON response envelopes."
   "Raw Hara definitions persist within a runtime namespace."
-  "Separate runtime namespaces isolate their persistent Vars."
-  "XTalk vector and map literals produce std.native.Arr and std.native.Obj."
+  "Separate host runtime namespaces isolate their persistent Vars, while child identity remains process-local."
+  "XTalk vector and map literals produce std.native.Arr and std.native.Obj in the evaluator that owns them."
   "Collection mutations preserve native identity and XTalk return contracts."
   "lang.runtime.standard contains naming and semantic glue, not collection storage."
   "Canonical HAL sources and Rust packaged snapshots are identical."]}

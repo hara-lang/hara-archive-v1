@@ -68,8 +68,9 @@
           (fn [transition]
             (if (contains-uncommitted-event? transition)
               (throw
-               (ex-info "simulated transaction failure"
-                        {:transition transition}))
+               (ex :generic
+                   {:transition transition}
+                   :ex/message "simulated transaction failure"))
               ((:transact failing-backend) transition))))})
 
 (def failure-observer (work/recording-observer))

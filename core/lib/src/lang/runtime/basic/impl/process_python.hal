@@ -3,7 +3,8 @@
             [lang.runtime.basic.type-basic :as basic]
             [lang.runtime.basic.type-common :as common]
             [lang.runtime.basic.type-oneshot :as oneshot]
-            [lang.runtime.basic.type-verify :as verify]))
+            [lang.runtime.basic.type-verify :as verify]
+            [lang.runtime.basic.impl.source-python :as source]))
 
 (def +python-init+
   (common/put-program-options
@@ -40,7 +41,11 @@
     :emit {}
     :json :full
     :timeout 2000
-    :transport :oneshot-bootstrap}))
+    :transport :process-socket
+    :bootstrap source/transport-source
+    :profile {:input []
+              :source []
+              :response [[:lang/node-response 1]]}}))
 
 (def +python-oneshot+
   (runtime/install-type

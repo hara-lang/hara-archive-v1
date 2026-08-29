@@ -1,0 +1,17 @@
+(ns lang.runtime.basic.impl.source-lua
+  (:config {:role :internal}))
+
+(defn transport-source
+  "Builds Lua's persistent return-eval socket bootstrap."
+  [port]
+  (str/join
+   "\n"
+   ["local socket=require('socket');cjson=require('cjson');unpack=unpack or table.unpack"
+    (str "local wire=assert(socket.connect('127.0.0.1'," port "))")
+    "local function type_of(value) local kind=type(value);if value==nil then return 'nil' end;if kind~='table' then return kind end;local mt=getmetatable(value);if mt==cjson.array_mt or value[1]~=nil then return 'array' end;return 'object' end"
+    "local function json_filter(value) local kind=type(value);if kind=='function' then return cjson.null end;if kind~='table' then return value end;local mt=getmetatable(value);local array=mt==cjson.array_mt or value[1]~=nil;local out={};if array then local max=0;for key,_ in pairs(value) do if type(key)=='number' and key>max then max=key end end;for i=1,max do local item=value[i];if item==nil or type(item)=='function' then out[i]=cjson.null else out[i]=json_filter(item) end end;setmetatable(out,cjson.array_mt);return out end;for key,item in pairs(value) do if type(item)~='function' then out[key]=json_filter(item) end end;return out end"
+    "local function encode(value) local kind=type(value);if kind=='number' and value~=math.floor(value) then return {['$tahto']='float',value=tostring(value)} end;if kind~='table' then return value end;local out={};for key,item in pairs(value) do out[key]=encode(item) end;if getmetatable(value)==cjson.array_mt then setmetatable(out,cjson.array_mt) end;return out end"
+    "local function return_encode(value) local kind=type_of(value);local ok,payload=pcall(function() return {type='data',['return']=kind,value=encode(json_filter(value))} end);if ok then return payload end;return {type='raw',['return']=kind,value=tostring(value)} end"
+    "local function return_wrap(thunk) local ok,value=pcall(thunk);if not ok then return {type='error',value={name='Error',message=tostring(value),stack=debug.traceback(),value=tostring(value)}} end;return return_encode(value) end"
+    "local function return_eval(source) return return_wrap(function() local loader=loadstring or load;local chunk,load_error=loader(source);if not chunk then error(load_error) end;return chunk() end) end"
+    "while true do local line=wire:receive('*l');if not line then break end;local request=nil;local ok,response=pcall(function() request=cjson.decode(line);return {id=request.id,ok=true,response=return_eval(request.source)} end);if not ok then response={id=request and request.id or nil,ok=false,error={name='Error',message=tostring(response),stack=debug.traceback(),value=tostring(response)}} end;wire:send(cjson.encode(response)..'\\n') end"]))

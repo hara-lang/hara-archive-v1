@@ -73,19 +73,29 @@
 
 (defn finish-ensure
   [runtime frame spec input body-outcome cleanup-outcome]
-  (let [body-completed (= :completed (:status body-outcome))]
+  (let [body-completed (= :completed (:status body-outcome))
+        cleanup-failed (= :failed (:status cleanup-outcome))
+        body-error (if body-completed
+                     nil
+                     (result/normalise-error (:error body-outcome)))
+        cleanup-error (if cleanup-failed
+                        (result/normalise-error (:error cleanup-outcome))
+                        nil)]
     (cond
       (and (not body-completed)
-           (= :failed (:status cleanup-outcome)))
+           cleanup-failed)
       (throw
-       (ex :state {:body/error (str (:error body-outcome))
-                 :cleanup/error (str (:error cleanup-outcome))} :ex/message "Work body and cleanup both failed"))
+       (ex :state
+           {:body/error (result/error-record body-error)
+            :cleanup/error (result/error-record cleanup-error)
+            :ex/cause cleanup-error}
+           :ex/message "Work body and cleanup both failed"))
 
       (not body-completed)
-      (throw (:error body-outcome))
+      (throw body-error)
 
-      (= :failed (:status cleanup-outcome))
-      (throw (:error cleanup-outcome))
+      cleanup-failed
+      (throw cleanup-error)
 
       :else
       (result/then

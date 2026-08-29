@@ -99,7 +99,7 @@
          {:id :retry :retry {:maximum 2}}
          (fn [input context]
            (if (= 1 (swap! retry-count inc))
-             (throw (ex-info "retry" {:work/error :temporary}))
+             (throw (ex :generic {:work/error :temporary} :ex/message "retry"))
              input)))]
     [(eval/run nil qualified 6
                {:work/registry

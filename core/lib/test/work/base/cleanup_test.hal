@@ -47,7 +47,7 @@
     :version 1}
    (work/step :failed-body
      (fn [input context]
-       (throw (ex-info "body failed" {:input input}))))
+       (throw (ex :generic {:input input} :ex/message "body failed"))))
    (work/step :failed-cleanup
      (fn [outcome context]
        (swap! failed-cleanups inc)
@@ -92,10 +92,10 @@
     :version 1}
    (work/step :double-failure-body
      (fn [input context]
-       (throw (ex-info "body failure" {}))))
+       (throw (ex :generic {} :ex/message "body failure"))))
    (work/step :double-failure-cleanup
      (fn [outcome context]
-       (throw (ex-info "cleanup failure" {}))))))
+       (throw (ex :generic {} :ex/message "cleanup failure"))))))
 (def double-failure-reference
   (work/start double-failure-runtime
               double-failure-work

@@ -138,16 +138,17 @@ pub(crate) fn error_category(message: &str) -> &'static str {
 pub use artifact::{decode_program, encode_program};
 pub use bundle::{
     compile_bytecode_bundle, compile_embedded_cli_bundle,
-    compile_embedded_foundation_bootstrap_bundle,
-    compile_embedded_standard_library_bundle, compile_package_bytecode_bundle,
-    decode_bytecode_bundle, embedded_cli_sources, embedded_foundation_bootstrap_sources,
-    encode_bytecode_bundle, eval_bytecode_bundle, eval_eager_bytecode_bundle_with_registries,
-    BytecodeBundleModule, ModuleSource,
+    compile_embedded_foundation_bootstrap_bundle, compile_embedded_standard_library_bundle,
+    compile_package_bytecode_bundle, decode_bytecode_bundle, embedded_cli_sources,
+    embedded_foundation_bootstrap_sources, encode_bytecode_bundle, eval_bytecode_bundle,
+    eval_eager_bytecode_bundle_with_registries, BytecodeBundleModule, ModuleSource,
 };
+pub(crate) use compiler::rewrite_spanned_form;
 pub use compiler::{
     compile_form_with_config_allow_unbound_globals, compile_halc_module, compile_source,
     compile_source_with, compile_source_with_allow_unbound_globals, compile_source_with_config,
-    compile_source_with_config_allow_unbound_globals, source_namespace_config,
+    compile_source_with_config_allow_unbound_globals,
+    compile_spanned_form_with_config_allow_unbound_globals, source_namespace_config,
     source_uses_dynamic_evaluation,
 };
 pub use disassemble::disassemble;

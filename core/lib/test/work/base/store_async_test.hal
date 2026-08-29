@@ -41,8 +41,9 @@
                                 [:payloads id])]
            (if (and existing (not= existing envelope))
              (throw
-              (ex-info "async fake publisher idempotency conflict"
-                       {:receipt/id id})))
+              (ex :generic
+                  {:receipt/id id}
+                  :ex/message "async fake publisher idempotency conflict")))
            (swap!
             async-publisher-state
             (fn [data]

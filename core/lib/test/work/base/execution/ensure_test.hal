@@ -1,0 +1,40 @@
+(ns work.base.execution.ensure-test
+  (:use code.test)
+  (:require [work.base.execution.ensure :as subject]))
+
+^{:refer work.base.execution.ensure/finish-ensure}
+(fact "normalises a raw body failure before rethrowing it"
+  (let [failure
+        (try
+          (subject/finish-ensure
+           nil nil {} nil
+           {:status :failed :error "raw body failure"}
+           {:status :completed :result nil})
+          :not-rejected
+          (catch error
+            [(ex? error)
+             (:ex/code (ex-data error))
+             (:error (ex-data error))]))]
+    failure)
+  => [true :hara/host "raw body failure"])
+
+^{:refer work.base.execution.ensure/finish-ensure}
+(fact "retains both structured failures when body and cleanup fail"
+  (let [failure
+        (try
+          (subject/finish-ensure
+           nil nil {} nil
+           {:status :failed
+            :error (ex :io {:path "body.edn"} :ex/message "body")}
+           {:status :failed
+            :error (ex :state {:phase :cleanup} :ex/message "cleanup")})
+          :not-rejected
+          (catch error
+            [(:ex/code (ex-data error))
+             (:error/code (:body/error (ex-data error)))
+             (:error/code (:cleanup/error (ex-data error)))
+             (:ex/code (ex-data (ex-cause error)))]))]
+    failure)
+  => [:hara/state :hara/io :hara/state :hara/state])
+
+(pr-str (run {:namespace "work.base.execution.ensure-test"}))

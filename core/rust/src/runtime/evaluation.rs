@@ -54,7 +54,7 @@ impl Runtime {
             journal::JournalLimits::default(),
             || {
                 self.refresh_qualified_bindings();
-                let forms = kernel::parse_forms(source)?;
+                let forms = kernel::read_forms(source).map_err(|error| error.to_string())?;
                 let result = self.eval_forms(forms, true)?;
                 self.save_namespace();
                 self.refresh_qualified_bindings();
@@ -126,10 +126,9 @@ impl Runtime {
             }
             extension::WasmAbi::HtaV1 => {
                 let package_manifest_path = package.root.join("package.edn");
-                let package_manifest = package_manifest::PackageManifest::read(
-                    &package_manifest_path,
-                )
-                .map_err(|error| error.to_string())?;
+                let package_manifest =
+                    package_manifest::PackageManifest::read(&package_manifest_path)
+                        .map_err(|error| error.to_string())?;
                 if let Some(warning) = package_manifest.unsupported_host_flavors_warning() {
                     eprintln!("warning: {warning}");
                 }
@@ -143,15 +142,11 @@ impl Runtime {
                                 .get(*candidate)
                                 .and_then(|variant| variant.artifact.path.file_name())
                                 .and_then(|name| name.to_str())
-                                == package
-                                    .manifest
-                                    .module
-                                    .as_deref()
-                                    .and_then(|module| {
-                                        std::path::Path::new(module)
-                                            .file_name()
-                                            .and_then(|name| name.to_str())
-                                    })
+                                == package.manifest.module.as_deref().and_then(|module| {
+                                    std::path::Path::new(module)
+                                        .file_name()
+                                        .and_then(|name| name.to_str())
+                                })
                     })
                     .cloned()
                     .or_else(|| {
@@ -159,9 +154,7 @@ impl Runtime {
                             .then(|| package_manifest.wasm_imports.keys().next().cloned())
                             .flatten()
                     })
-                    .ok_or_else(|| {
-                        format!("package/missing-require-artifact: {namespace}")
-                    })?;
+                    .ok_or_else(|| format!("package/missing-require-artifact: {namespace}"))?;
                 let mut requirements = package_manifest::PackageRuntimeRequirements {
                     supported_targets: ["wasm32-wasi-preview1".to_owned()].into_iter().collect(),
                     supported_abis: ["hta.v1".to_owned()].into_iter().collect(),
@@ -185,7 +178,8 @@ impl Runtime {
                 if loaded.identity != package_manifest.identity {
                     return Err(format!("package/identity-mismatch: {namespace}"));
                 }
-                self.wasm_extensions.insert(namespace.to_owned(), loaded.extension);
+                self.wasm_extensions
+                    .insert(namespace.to_owned(), loaded.extension);
                 return Ok(());
             }
         };
@@ -250,10 +244,8 @@ impl Runtime {
         bindings_source: &str,
         bytes: &[u8],
     ) -> Result<(), String> {
-        let manifest = extension::ExtensionManifest::parse(
-            manifest_source,
-            "browser memory.v1 manifest",
-        )?;
+        let manifest =
+            extension::ExtensionManifest::parse(manifest_source, "browser memory.v1 manifest")?;
         let interface = crate::wasm_binding::WasmInterface::parse(
             interface_source,
             "browser memory.v1 interface",
@@ -321,8 +313,7 @@ impl Runtime {
     ) -> Result<(), String> {
         if manifest.provider != "wasm" || manifest.abi != extension::WasmAbi::MemoryV1 {
             return Err(
-                "native/manifest-mismatch: manifest must declare a Wasm :memory.v1 provider"
-                    .into(),
+                "native/manifest-mismatch: manifest must declare a Wasm :memory.v1 provider".into(),
             );
         }
         if manifest.namespace != interface.namespace
@@ -452,11 +443,8 @@ impl Runtime {
 
     #[cfg(not(target_arch = "wasm32"))]
     fn install_discovered_wasm_import(&mut self, logical: &str) -> Result<(), String> {
-        let package = native_extension::ExtensionPackage::discover(
-            logical,
-            &self.extension_roots,
-        )?
-        .ok_or_else(|| format!("native/import-missing: {logical}"))?;
+        let package = native_extension::ExtensionPackage::discover(logical, &self.extension_roots)?
+            .ok_or_else(|| format!("native/import-missing: {logical}"))?;
         let package_manifest_path = package.root.join("package.edn");
         if !package_manifest_path.is_file() {
             return Err(format!("native/import-missing: {logical}"));

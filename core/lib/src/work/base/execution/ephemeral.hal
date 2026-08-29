@@ -50,12 +50,7 @@
 
 (defn complete-error
   [options run-id error]
-  (let [error (if (ex? error)
-                error
-                (ex :generic
-                    {:run/id run-id
-                     :error error}
-                    :ex/message (str error)))]
+  (let [error (result/normalise-error error {:run/id run-id})]
     (invoke-run-hook options :work/run-complete
                      [run-id :failed nil error])
     (throw error)))

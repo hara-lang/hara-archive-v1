@@ -46,8 +46,9 @@
 
           :else
           (throw
-           (ex-info "OpenAI driver emitted an invalid request transcript"
-                    {:request/body body})))]
+           (ex :generic
+               {:request/body body}
+               :ex/message "OpenAI driver emitted an invalid request transcript")))]
     {:status 200
      :body (Json/write (openai/wire-value response))}))
 

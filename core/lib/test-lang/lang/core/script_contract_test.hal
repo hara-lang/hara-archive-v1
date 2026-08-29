@@ -44,7 +44,7 @@
                    function-pointer (deref function-var)
                    default-invoked (eval '(ADD 3 4))
                    basic-runtime
-                   (eval '(lang.core/script :xtalk {:runtime :basic}))]
+                   (eval '(lang.core/script :xtalk {:runtime :host}))]
                (try
                  (let [evaluated (eval '(!.xt (+ 1 2)))
                        invoked (eval '(ADD 3 4))
@@ -114,7 +114,7 @@
          true
          true
          :xtalk
-         :basic
+         :host
          true
          3
          true

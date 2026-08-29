@@ -1,0 +1,98 @@
+(ns work.base.coordinator-test
+  (:use code.test)
+  (:require [work.base.coordinator :as subject]
+            [work.base.model :as model]
+            [work.base.runtime :as runtime]
+            [work.base.store :as store]))
+
+^{:refer work.base.coordinator/initial-run-record}
+(fact "initialises a durable error-record slot alongside the legacy error message"
+  (let [runtime (runtime/durable-runtime)
+        run (subject/initial-run-record runtime "run-1" :work 1 nil {})]
+    [(:run/status run)
+     (:run/error run)
+     (:run/error-record run)])
+  => [:created nil nil])
+
+^{:refer work.base.coordinator/fail-run}
+(fact "persists the structured failure while retaining the legacy message"
+  (let [runtime (runtime/durable-runtime)
+        run (subject/initial-run-record runtime "run-2" :work 1 nil {})
+        frame (subject/initial-frame run {})
+        _ (store/create-run (model/runtime-store runtime) run)
+        _ (subject/commit-run-event runtime frame
+                                    {:run/status :running}
+                                    :work/run-started
+                                    {})
+        reference (subject/fail-run
+                   runtime
+                   frame
+                   "run-2"
+                   (ex :io {:path "state.edn"} :ex/message "missing"))
+        record (subject/query-run runtime reference {:query :run})]
+    [(:run/status record)
+     (:run/error record)
+     (:error/code (:run/error-record record))
+     (:path (:error/data (:run/error-record record)))])
+  => [:failed "missing" :hara/io "state.edn"])
+
+^{:refer work.base.coordinator/complete-run}
+(fact "clears the structured failure when a run completes"
+  (let [runtime (runtime/durable-runtime)
+        run (subject/initial-run-record runtime "run-4" :work 1 nil {})
+        frame (subject/initial-frame run {})
+        _ (store/create-run (model/runtime-store runtime) run)
+        _ (subject/commit-run-event runtime frame
+                                    {:run/status :running}
+                                    :work/run-started
+                                    {})
+        reference (subject/complete-run runtime frame "run-4" :done)
+        record (subject/query-run runtime reference {:query :run})]
+    [(:run/status record)
+     (:run/result record)
+     (:run/error record)
+     (:run/error-record record)])
+  => [:completed :done nil nil])
+
+^{:refer work.base.coordinator/execute-run}
+(fact "records a completed work run with no retained failure"
+  (let [runtime (runtime/durable-runtime)
+        run (subject/initial-run-record runtime "run-5" :work 1 3 {})
+        _ (store/create-run (model/runtime-store runtime) run)
+        reference
+        (subject/execute-run
+         runtime
+         run
+         (model/work-value
+          {:id :increment
+           :op :pure
+           :fn (fn [input context] (+ input 1))})
+         {})
+        record (subject/query-run runtime reference {:query :run})]
+    [(:run/status record)
+     (:run/result record)
+     (:run/error record)
+     (:run/error-record record)])
+  => [:completed 4 nil nil])
+
+^{:refer work.base.coordinator/query-run}
+(fact "exposes the durable structured failure through the error-record query"
+  (let [runtime (runtime/durable-runtime)
+        run (subject/initial-run-record runtime "run-3" :work 1 nil {})
+        frame (subject/initial-frame run {})
+        _ (store/create-run (model/runtime-store runtime) run)
+        _ (subject/commit-run-event runtime frame
+                                    {:run/status :running}
+                                    :work/run-started
+                                    {})
+        reference (subject/fail-run
+                   runtime
+                   frame
+                   "run-3"
+                   (ex :state {:phase :run} :ex/message "failed"))
+        record (subject/query-run runtime reference {:query :error-record})]
+    [(:error/code record)
+     (:phase (:error/data record))])
+  => [:hara/state :run])
+
+(pr-str (run {:namespace "work.base.coordinator-test"}))

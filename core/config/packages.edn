@@ -85,9 +85,6 @@
   lang.runtime.basic {:description "basic runtime providers"
                       :include [[lang.runtime.basic :complete]]
                       :dependencies [lang.protocol]}
-  lang.runtime.hara {:description "Hara runtime"
-                     :include [[lang.runtime.hara :complete]]
-                     :dependencies [lang.runtime.basic]}
   lang.runtime.standard {:description "standard runtime"
                          :include [[lang.runtime.standard :complete]]
                          :dependencies [lang.runtime.basic]}

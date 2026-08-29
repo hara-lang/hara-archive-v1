@@ -3,6 +3,7 @@
   (:require [lang.core.eval :as evaluation]
             [lang.core.registry :as registry]
             [lang.core.runtime :as runtime]
+            [lang.runtime.basic.impl.process-xtalk :as subject]
             [lang.runtime.basic.type-hara :as hara-basic]
             [lang.runtime.standard :as standard]))
 
@@ -11,22 +12,52 @@
   (evaluation/await value 2000))
 
 ^{:refer lang.core.runtime/rt-create :added "4.1"}
-(fact "registers one in-process implementation at the XTalk and Hara coordinates"
-  [(registry/registry-runtime-ns :xtalk :basic)
+(fact "registers host and child-process implementations at the XTalk and Hara coordinates"
+  [(registry/registry-runtime-ns :xtalk :host)
+   (registry/registry-runtime-ns :hara :host)
+   (registry/registry-runtime-ns :xtalk :basic)
    (registry/registry-runtime-ns :hara :basic)
+   (:type (runtime/runtime-spec :xtalk :host))
+   (:type (runtime/runtime-spec :hara :host))
    (:type (runtime/runtime-spec :xtalk :basic))
    (:type (runtime/runtime-spec :hara :basic))]
   => ['lang.runtime.basic.impl.process-xtalk
       'lang.runtime.basic.impl.process-xtalk
+      'lang.runtime.basic.impl.process-hara
+      'lang.runtime.basic.impl.process-hara
+      :lang/rt.hara-basic
+      :lang/rt.hara-basic
       :lang/rt.hara-basic
       :lang/rt.hara-basic])
 
+^{:refer lang.runtime.basic.impl.process-xtalk/+xtalk-host+ :added "4.1"}
+(fact "installs the XTalk host runtime without a process transport"
+  [(:lang subject/+xtalk-host+)
+   (:runtime subject/+xtalk-host+)
+   (get-in subject/+xtalk-host+ [:config :transport])]
+  => [:xtalk :host :in-process])
+
+^{:refer lang.runtime.basic.impl.process-xtalk/+hara-host+ :added "4.1"}
+(fact "installs the explicit Hara host alias without a process transport"
+  [(:lang subject/+hara-host+)
+   (:runtime subject/+hara-host+)
+   (get-in subject/+hara-host+ [:config :transport])]
+  => [:hara :host :in-process])
+
+^{:refer lang.runtime.basic.impl.process-xtalk/+init+ :added "4.1"}
+(fact "publishes both Hara host runtime coordinates"
+  [(:lang subject/+init+)
+   (:target subject/+init+)
+   (boolean (:xtalk-host subject/+init+))
+   (boolean (:hara-host subject/+init+))]
+  => [:xtalk :hara true true])
+
 ^{:refer lang.runtime.basic.type-hara/raw-eval-hara-basic :added "4.1"}
-(fact "persists Hara Vars inside one runtime namespace without a child process"
+(fact "persists Hara Vars inside one host runtime namespace"
   (let [instance
         (runtime/rt-start
          (runtime/rt-create
-          :xtalk :basic
+          :xtalk :host
           {:id :xtalk-persistent-test
            :namespace 'lang.xtalk.test.persistent}))
         defined (runtime/rt-raw-eval instance "(def counter 1)")
@@ -46,11 +77,11 @@
   => [1 2 2 3 :hara :stopped nil])
 
 ^{:refer lang.runtime.basic.type-hara/eval-hara-basic :added "4.1"}
-(fact "compiles XTalk forms into native Hara arrays and objects"
+(fact "compiles XTalk forms into native Hara arrays and objects on the host"
   (let [instance
         (runtime/rt-start
          (runtime/rt-create
-          :xtalk :basic
+          :xtalk :host
           {:id :xtalk-semantic-test
            :namespace 'lang.xtalk.test.semantic}))
         arithmetic (await (runtime/rt-eval instance '(+ 19 23)))
@@ -100,13 +131,13 @@
   (let [left
         (runtime/rt-start
          (runtime/rt-create
-          :xtalk :basic
+          :xtalk :host
           {:id :xtalk-left
            :namespace 'lang.xtalk.test.left}))
         right
         (runtime/rt-start
          (runtime/rt-create
-          :xtalk :basic
+          :xtalk :host
           {:id :xtalk-right
            :namespace 'lang.xtalk.test.right}))]
     (runtime/rt-raw-eval left "(def value 11)")
@@ -123,7 +154,7 @@
   (let [instance
         (runtime/rt-start
          (runtime/rt-create
-          :hara :basic
+          :hara :host
           {:id :hara-basic-alias
            :namespace 'lang.xtalk.test.hara_alias}))
         result (await (runtime/rt-eval instance '(x:cat "hara" "-" "xtalk")))
@@ -144,7 +175,7 @@
   (let [instance
         (runtime/rt-start
          (runtime/rt-create
-          :xtalk :basic
+          :xtalk :host
           {:id :xtalk-stopped-test
            :namespace 'lang.xtalk.test.stopped}))]
     (runtime/rt-stop instance)
@@ -154,7 +185,7 @@
       (catch Throwable error
         [(ex-message error)
          (get (ex-data error) :lang)
-         (get-in (ex-data error) [:state :status])]))))
+         (get-in (ex-data error) [:state :status])])))
   => ["Hara basic runtime is not started"
       :xtalk
       :stopped])

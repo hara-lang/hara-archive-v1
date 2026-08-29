@@ -91,6 +91,7 @@
    :run/input (:run/input run)
    :run/result (:run/result run)
    :run/error (:run/error run)
+   :run/error-record (:run/error-record run)
    :run/attributes (or (:run/attributes run) {})})
 
 (defn find-event

@@ -350,30 +350,6 @@ pub enum Step {
     Continue(Box<dyn FnOnce() -> Step>),
 }
 
-fn with_exception_site_step(site: ExceptionSite, step: Step) -> Step {
-    match step {
-        Step::Continue(next) => Step::Continue(Box::new(move || {
-            let step = with_exception_site(site.clone(), next);
-            with_exception_site_step(site, step)
-        })),
-        Step::Wait(promise, resume) => Step::Wait(
-            promise,
-            Box::new(move |state| {
-                let step = with_exception_site(site.clone(), || resume(state));
-                with_exception_site_step(site, step)
-            }),
-        ),
-        Step::Yield(value, resume) => Step::Yield(
-            value,
-            Box::new(move |value| {
-                let step = with_exception_site(site.clone(), || resume(value));
-                with_exception_site_step(site, step)
-            }),
-        ),
-        Step::Done(result) => with_exception_site(site, || Step::Done(result)),
-    }
-}
-
 fn with_trace_stack_step(trace: Vec<String>, step: Step) -> Step {
     match step {
         Step::Continue(next) => Step::Continue(Box::new(move || {
@@ -416,12 +392,14 @@ pub struct EvalFiber {
 }
 impl EvalFiber {
     pub fn start(source: &str, env: HashMap<String, Value>) -> Result<Self, String> {
-        let forms = crate::kernel::read_forms(source)
-            .map_err(|error| error.to_string())?
-            .iter()
-            .map(crate::core::exception_located_form)
-            .collect();
-        Self::start_forms(forms, env)
+        let forms = crate::kernel::read_forms(source).map_err(|error| error.to_string())?;
+        Self::start_forms(
+            forms
+                .iter()
+                .map(crate::core::attach_exception_sites)
+                .collect(),
+            env,
+        )
     }
     pub fn start_forms(forms: Vec<Form>, env: HashMap<String, Value>) -> Result<Self, String> {
         let (namespace_registry, environment) = execution_context(env);
@@ -729,37 +707,6 @@ fn list(v: Vec<Form>, env: Rc<RefCell<HashMap<String, Value>>>, k: Cont) -> Step
             Box::new(move |r| k(r.map(Value::Recur))),
         ),
         Some("try") => try_cps(v, env, k),
-        Some("__throw-at") => {
-            let [_, Form::Number(line), Form::Number(column), value] = v.as_slice() else {
-                return k(Err("internal throw location marker is malformed".into()));
-            };
-            let site = exception_site_at(*line as usize, *column as usize);
-            one(
-                value.clone(),
-                env,
-                Box::new(move |result| match result {
-                    Ok(value) if matches!(value, Value::ExceptionInfo(_)) => {
-                        k(Err(thrown_error_at(value, site.clone())))
-                    }
-                    Ok(_) => k(Err("throw expects an Exception value created by ex".into())),
-                    Err(error) => k(Err(error)),
-                }),
-            )
-        }
-        Some("__ex-at") => {
-            let [_, Form::Number(line), Form::Number(column), rest @ ..] = v.as_slice() else {
-                return k(Err("internal exception location marker is malformed".into()));
-            };
-            if rest.is_empty() {
-                return k(Err("internal exception location marker is malformed".into()));
-            }
-            let expression = Form::List(rest.to_vec());
-            let site = exception_site_at(*line as usize, *column as usize)
-                .expect("exception site always exists");
-            with_exception_site(site.clone(), || {
-                with_exception_site_step(site, one(expression, env, k))
-            })
-        }
         Some("throw") => {
             if v.len() != 2 {
                 return k(Err("throw expects one value".into()));

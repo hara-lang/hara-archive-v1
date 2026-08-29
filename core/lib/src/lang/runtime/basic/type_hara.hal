@@ -1,18 +1,21 @@
 (ns lang.runtime.basic.type-hara
+  (:config {:role :internal})
   (:require
             [lang.protocol.runtime :as context-eval]
             [lang.core.eval :as evaluation]
             [lang.model.v1.spec-hara :as hara]
+            [lang.runtime.basic.transport-node :as node]
+            [lang.runtime.basic.type-oneshot :as oneshot]
             [lang.runtime.standard]))
 
 (defstruct RuntimeHaraBasic
-  [id lang runtime target namespace compiler book state profile timeout])
+  [id lang runtime target namespace compiler book program exec process state transport profile timeout])
 
-(defn- default-id
+(defn default-id
   [language]
   (keyword (str (name language) ".hara-basic")))
 
-(defn- default-namespace
+(defn default-namespace
   [id]
   (symbol
    (str "lang.xtalk.session."
@@ -21,14 +24,47 @@
             (str/replace "." "_")))))
 
 (defn rt-hara-basic:create
-  "Creates an in-process Hara runtime for XTalk or explicit Hara source."
+  "Creates a Hara runtime in either the host or persistent process transport."
   [options]
   (let [lang (or (get options :lang) :xtalk)
-        runtime (or (get options :runtime) :basic)
+        runtime (or (get options :runtime) :host)
         id (or (get options :id) (default-id lang))
         namespace (or (get options :namespace)
                       (default-namespace id))
-        timeout (or (get options :timeout) 2000)]
+        timeout (or (get options :timeout)
+                    (get-in options [:process :timeout])
+                    2000)
+        transport-kind (or (get options :transport)
+                           (if (= runtime :basic)
+                             :process-socket
+                             :in-process))
+        process? (= :process-socket transport-kind)
+        setup (if process?
+                (oneshot/rt-oneshot-setup
+                 lang
+                 (get options :program)
+                 (get options :process)
+                 (get options :exec)
+                 runtime)
+                [nil (or (get options :process) {}) (get options :exec)])
+        program (first setup)
+        process (merge (second setup)
+                       {:transport (if process?
+                                    :process-socket
+                                    :in-process)
+                        :persistent process?})
+        exec (nth setup 2)
+        transport (if process?
+                    (node/create :hara exec process timeout)
+                    nil)
+        profile (if process?
+                  (or (get process :profile)
+                      {:input []
+                       :source []
+                       :response [[:lang/node-response 1]]})
+                  {:input []
+                   :source []
+                   :response []})]
     (lang.runtime.basic.type-hara/RuntimeHaraBasic
      id
      lang
@@ -37,13 +73,16 @@
      namespace
      (hara/compiler)
      hara/+book+
+     program
+     exec
+     process
      (atom {:status :created
             :target :hara
             :namespace namespace
+            :transport transport-kind
             :evaluations 0})
-     {:input []
-      :source []
-      :response []}
+     transport
+     profile
      timeout)))
 
 (defn hara-basic-state
@@ -52,18 +91,24 @@
 
 (defn start-hara-basic
   [runtime]
+  (if (get runtime :transport)
+    (node/start (get runtime :transport)))
   (swap! (get runtime :state)
          assoc
          :status :started
          :target :hara
-         :namespace (get runtime :namespace))
+         :namespace (get runtime :namespace)
+         :transport (get-in runtime [:process :transport]))
   runtime)
 
 (defn stop-hara-basic
   [runtime]
+  (if (get runtime :transport)
+    (node/stop (get runtime :transport)))
   (swap! (get runtime :state)
          assoc
-         :status :stopped)
+         :status :stopped
+         :transport (get-in runtime [:process :transport]))
   runtime)
 
 (defn compile-request
@@ -89,13 +134,21 @@
   (str "(do\n" source "\n)"))
 
 (defn evaluate-source
-  "Evaluates Hara source in the runtime's persistent Hara namespace."
-  [runtime source]
-  (eval-in-ns
-   (get runtime :namespace)
-   [(read-string (wrap-source source))]))
+  "Evaluates Hara source in the host namespace or persistent child process."
+  ([runtime source]
+   (evaluate-source runtime source {}))
+  ([runtime source options]
+   (if (get runtime :transport)
+     (get (evaluation/await
+           (evaluation/eval-context runtime source options)
+           (or (get options :timeout)
+               (get runtime :timeout)))
+          :value)
+     (eval-in-ns
+      (get runtime :namespace)
+      [(read-string (wrap-source source))]))))
 
-(defn- record-success
+(defn record-success
   [runtime source result compiled?]
   (swap! (get runtime :state)
          (fn [state]
@@ -109,7 +162,7 @@
                (dissoc :last-error))))
   result)
 
-(defn- record-error
+(defn record-error
   [runtime source error]
   (swap! (get runtime :state)
          assoc
@@ -137,7 +190,7 @@
             (record-success
              runtime
              source
-             (evaluate-source runtime source)
+             (evaluate-source runtime source options)
              (not (string? request)))
             (catch Throwable error
               (record-error runtime source error)
@@ -158,7 +211,7 @@
    (get runtime :timeout)))
 
 (defn rt-hara-basic
-  "Creates and starts an in-process Hara-backed XTalk runtime."
+  "Creates and starts a Hara-backed XTalk runtime."
   [options]
   (start-hara-basic (rt-hara-basic:create options)))
 
@@ -176,6 +229,7 @@
   (props [runtime]
     {:state {:get (fn [] (hara-basic-state runtime))}
      :namespace {:get (fn [] (get runtime :namespace))}
+     :transport {:get (fn [] (get runtime :transport))}
      :target {:get (fn [] :hara)}})
   (status [runtime]
     (get (hara-basic-state runtime) :status))

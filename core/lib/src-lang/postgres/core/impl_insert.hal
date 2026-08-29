@@ -1,6 +1,6 @@
 (ns postgres.core.impl-insert
   (:config {:blank true})
-  (:require [std.foundation :refer [= apply assoc concat conj count deref ex filter first get has? into keys list map map? merge nil? not nth reduce second sort-by symbol? vec vector? with-meta]]
+  (:require [std.foundation :refer [= apply assoc concat conj count deref ex filter first get has? into keys list map map? merge nil? not nth reduce second set set? sort-by str symbol? vec vector? with-meta]]
             [postgres.core.impl-base :as base]
             [lang.common.util :as util]))
 

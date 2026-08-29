@@ -75,6 +75,20 @@
     [thrown (deref seen)])
   => [:hara/state [["run-1" :failed nil :hara/state]]])
 
+^{:refer work.base.execution.ephemeral/complete-error}
+(fact "wraps raw host failures before reporting and rethrowing them"
+  (let [failure
+        (try
+          (subject/complete-error {} "run-1" "raw host failure")
+          :not-rejected
+          (catch error
+            [(ex? error)
+             (:ex/code (ex-data error))
+             (:run/id (ex-data error))
+             (:error (ex-data error))]))]
+    failure)
+  => [true :hara/host "run-1" "raw host failure"])
+
 ^{:refer work.base.execution.ephemeral/root-id}
 (fact "resolves a root identity from options, spec, or an anonymous fallback"
   [(subject/root-id {:root :spec-root :id :spec-id} {:work-root :option-root})

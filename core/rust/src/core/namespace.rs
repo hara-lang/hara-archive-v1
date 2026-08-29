@@ -18,7 +18,7 @@ fn eval_source_form(
         line: form.span.start.line,
         column: form.span.start.column,
     };
-    let form = exception_located_form(form);
+    let form = attach_exception_sites(form);
     with_exception_site(site, || eval(&form, env))
 }
 
@@ -110,9 +110,7 @@ fn ensure_namespace(
             Some(NamespaceLoadState::Loaded)
         }
         Some(state) => Some(state),
-        None => registry
-            .find(name)
-            .map(|_| NamespaceLoadState::Loaded),
+        None => registry.find(name).map(|_| NamespaceLoadState::Loaded),
     };
     let registry_before = registry.transaction_snapshot([requiring.as_str(), name]);
     // Qualified and aliased bindings are a derived namespace view. Snapshot
@@ -362,7 +360,8 @@ fn eval_require_spec(
     }
     let deferred = lazy && !reload;
     #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
-    let direct_reload = !deferred && direct_native_namespace_loader().is_some()
+    let direct_reload = !deferred
+        && direct_native_namespace_loader().is_some()
         && namespace_has_interpreted_functions(registry, &target);
     #[cfg(not(all(feature = "direct-native", not(target_arch = "wasm32"))))]
     let direct_reload = false;
@@ -520,10 +519,7 @@ fn eval_require_specs(
 }
 
 #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
-fn namespace_has_interpreted_functions(
-    registry: &NamespaceRegistry<Value>,
-    name: &str,
-) -> bool {
+fn namespace_has_interpreted_functions(registry: &NamespaceRegistry<Value>, name: &str) -> bool {
     registry.find(name).is_some_and(|namespace| {
         namespace.mappings().into_iter().any(|(_, var)| {
             matches!(var.deref_value(), Value::Function(function) if !is_direct_native_function(&function))
@@ -597,8 +593,8 @@ fn eval_namespace_form(fs: &[Form], env: &mut HashMap<String, Value>) -> Result<
         registry.register_global_alias(alias, &name)?;
     }
     for alias in config.declared_global_imports() {
-        let canonical = crate::core::canonical_native_symbol(alias)
-            .unwrap_or_else(|| alias.clone());
+        let canonical =
+            crate::core::canonical_native_symbol(alias).unwrap_or_else(|| alias.clone());
         registry.register_global_import(alias, canonical)?;
     }
     apply_global_aliases(&registry, &name);
@@ -703,8 +699,7 @@ fn eval_namespace_form(fs: &[Form], env: &mut HashMap<String, Value>) -> Result<
                     .collect::<Result<Vec<_>, _>>()?;
                 eval_require_specs(&registry, env, &specs)?;
             }
-            Form::List(clause_forms)
-                if matches!(clause_forms.first(), Some(Form::Keyword(k)) if k == "config") =>
+            Form::List(clause_forms) if matches!(clause_forms.first(), Some(Form::Keyword(k)) if k == "config") =>
             {
                 // :config is processed by the generated-namespace machinery for
                 // top-level ns forms. For ns forms loaded from source files (e.g.

@@ -1,0 +1,11 @@
+(ns lang.runtime.basic.type-common-test
+  (:use code.test)
+  (:require [lang.runtime.basic.type-common :as subject]))
+
+^{:refer lang.runtime.basic.type-common/+valid-contexts+ :added "4.1"}
+(fact "accepts the explicit Hara host runtime context"
+  [(boolean (subject/+valid-contexts+ :host))
+   (subject/valid-context :host)]
+  => [true :host])
+
+(run {:namespace "lang.runtime.basic.type-common-test"})

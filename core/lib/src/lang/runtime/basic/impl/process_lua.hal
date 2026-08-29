@@ -3,7 +3,8 @@
             [lang.runtime.basic.type-basic :as basic]
             [lang.runtime.basic.type-common :as common]
             [lang.runtime.basic.type-oneshot :as oneshot]
-            [lang.runtime.basic.type-verify :as verify]))
+            [lang.runtime.basic.type-verify :as verify]
+            [lang.runtime.basic.impl.source-lua :as source]))
 
 (def +lua-init+
   (common/put-program-options
@@ -34,7 +35,11 @@
   (common/set-context-options
    [:lua :basic :default]
    {:main {} :emit {} :json :full :timeout 2000
-    :transport :process-socket}))
+    :transport :process-socket
+    :bootstrap source/transport-source
+    :profile {:input []
+              :source []
+              :response [[:lang/node-response 1]]}}))
 
 (def +lua-oneshot+
   (runtime/install-type

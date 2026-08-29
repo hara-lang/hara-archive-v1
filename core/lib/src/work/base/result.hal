@@ -19,13 +19,58 @@
     (promise/catch value function)
     value))
 
+(defn normalise-error
+  "Returns an Exception for host and evaluator failures while preserving Exceptions."
+  ([error]
+   (normalise-error error {}))
+  ([error context]
+   (if (ex? error)
+     error
+     (ex :host
+         (assoc context :error error)
+         :ex/message (str error)))))
+
+(defn error-record
+  "Converts an Exception into durable Work error data, including its cause chain."
+  [error]
+  (let [error (normalise-error error)
+        data (ex-data error)
+        cause (ex-cause error)
+        code (:ex/code data)
+        class (:ex/class data)
+        message (ex-message error)
+        data (dissoc data :ex/cause)
+        data (dissoc data :ex/code)
+        data (dissoc data :ex/class)
+        data (dissoc data :ex/message)]
+    {:error/code code
+     :error/class class
+     :error/message message
+     :error/data data
+     :error/cause (if cause (error-record cause) nil)
+     :error/provenance (ex-provenance error)}))
+
+(defn exception-from-record
+  "Rebuilds the structured cause chain recorded by error-record."
+  [record]
+  (let [cause-record (:error/cause record)
+        data (or (:error/data record) {})
+        data (if cause-record
+               (assoc data :ex/cause (exception-from-record cause-record))
+               data)]
+    (ex (or (:error/code record) :host)
+        data
+        :ex/message (:error/message record))))
+
 (defn attempt
   "Runs function and sends synchronous throws or Promise rejection to handler."
   [function handler]
-  (try
-    (recover (function) handler)
-    (catch Throwable error
-      (handler error))))
+  (let [handle (fn [error]
+                 (handler (normalise-error error)))]
+    (try
+      (recover (function) handle)
+      (catch error
+        (handle error)))))
 
 (defn all
   "Returns direct values unchanged unless at least one value is a Promise."

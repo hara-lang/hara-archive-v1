@@ -64,8 +64,9 @@
             attempt (inc (or (get-in current [:attempts id]) 0))]
         (if (and existing (not= existing envelope))
           (throw
-           (ex-info "fake publisher idempotency conflict"
-                    {:receipt/id id})))
+           (ex :generic
+               {:receipt/id id}
+               :ex/message "fake publisher idempotency conflict")))
         (swap!
          state
          (fn [data]
@@ -76,8 +77,9 @@
         (if (and fail-first-create?
                  (= :work/run-created (:receipt/kind envelope))
                  (= 1 attempt))
-          (throw (ex-info "transient fake publisher outage"
-                          {:receipt/id id}))
+          (throw (ex :generic
+                     {:receipt/id id}
+                     :ex/message "transient fake publisher outage"))
           (do
             (swap!
              state
@@ -115,7 +117,7 @@
    (work/step
     :receipt-failure
     (fn [input context]
-      (throw (ex-info "receipt test failure" {:input input}))))
+      (throw (ex :generic {:input input} :ex/message "receipt test failure"))))
    3
    {:id "failed-receipts"}))
 (def failed-receipts
@@ -156,8 +158,9 @@
          :provider/receipt-root
          [:restart/receipt (:receipt/id envelope)]}
         (throw
-         (ex-info "publisher process unavailable"
-                  {:receipt/id (:receipt/id envelope)}))))}})
+         (ex :generic
+             {:receipt/id (:receipt/id envelope)}
+             :ex/message "publisher process unavailable"))))}})
 
 (def restart-runtime-one
   (work/durable-runtime

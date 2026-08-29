@@ -1,0 +1,61 @@
+(ns lang.runtime.basic.type-basic-test
+  (:use code.test)
+  (:require [lang.core.runtime :as runtime]
+            [lang.runtime.basic.type-basic :as subject]))
+
+^{:refer lang.runtime.basic.type-basic/rt-basic:create :added "4.1"}
+(fact "uses the language-owned basic bootstrap and evaluation profile"
+  (let [instance (subject/rt-basic:create {:lang :js :runtime :basic})]
+    [(:lang instance)
+     (get-in instance [:process :transport])
+     (get-in instance [:process :persistent])
+     (fn? (get-in instance [:process :bootstrap]))
+     (get instance :profile)
+     (boolean (get instance :transport))
+     (subject/basic-state instance)])
+  => [:js
+      :process-socket
+      true
+      true
+      {:input [] :source [] :response [[:lang/node-response 1]]}
+      true
+      {:status :created :transport :process-socket}])
+
+^{:refer lang.runtime.basic.type-basic/start-basic :added "4.1"}
+^{:refer lang.runtime.basic.type-basic/eval-basic :added "4.1"}
+^{:refer lang.runtime.basic.type-basic/raw-eval-basic :added "4.1"}
+^{:refer lang.runtime.basic.type-basic/stop-basic :added "4.1"}
+(fact "runs the Node return pipeline and tears its process down"
+  (let [instance (subject/rt-basic {:lang :js})
+        result (subject/raw-eval-basic instance "({answer: 42})")
+        stopped (subject/stop-basic instance)]
+    [result
+     (subject/basic-state stopped)])
+  => [{:type "data" :return "object" :value {"answer" 42}}
+      {:status :stopped :transport :process-socket}])
+
+^{:refer lang.runtime.basic.type-basic/eval-raw-basic :added "4.1"}
+(fact "retains language-specific basic configurations for Python and Lua"
+  (let [python (runtime/rt-create :python :basic)
+        lua (runtime/rt-create :lua :basic)]
+    [[(get-in python [:process :transport])
+      (fn? (get-in python [:process :bootstrap]))
+      (get-in python [:profile :response])]
+     [(get-in lua [:process :transport])
+      (fn? (get-in lua [:process :bootstrap]))
+      (get-in lua [:profile :response])]])
+  => [[:process-socket true [[:lang/node-response 1]]]
+      [:process-socket true [[:lang/node-response 1]]]])
+
+^{:refer lang.runtime.basic.type-basic/eval-basic :added "4.1"}
+(fact "rejects semantic evaluation before start"
+  (let [instance (subject/rt-basic:create {:lang :js :runtime :basic})]
+    (try
+      (subject/eval-basic instance "1 + 1")
+      nil
+      (catch Throwable error
+        [(ex-message error)
+         (get-in (ex-data error) [:state :status])]))
+  => ["Basic runtime is not started" :created])
+
+(run {:namespace "lang.runtime.basic.type-basic-test"})

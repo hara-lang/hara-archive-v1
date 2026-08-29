@@ -91,6 +91,32 @@
     value)
   => 7)
 
+^{:refer work.base.execution/execute-node-handler}
+(fact "normalises a raw handler failure before rethrowing it"
+  (let [runtime (assoc (ephemeral/execution-runtime)
+                       :work/policy {:work/mode :portable})
+        frame {:run/id "run-1"
+               :work/root :root
+               :node/path [:custom]
+               :item/id nil}
+        spec {:op :custom :id :custom}
+        failure
+        (try
+          (subject/execute-node-handler
+           runtime
+           frame
+           spec
+           :custom
+           (fn [execute runtime frame spec input]
+             (throw "raw node failure"))
+           nil)
+          :not-rejected
+          (catch error
+            [(ex? error)
+             (:ex/code (ex-data error))]))]
+    failure)
+  => [true :hara/host])
+
 ^{:refer work.base.execution/execute-node}
 (fact "resolves a work operation and evaluates it"
   (let [runtime (assoc (ephemeral/execution-runtime)

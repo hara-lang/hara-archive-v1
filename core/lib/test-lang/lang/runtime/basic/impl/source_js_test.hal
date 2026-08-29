@@ -1,0 +1,17 @@
+(ns lang.runtime.basic.impl.source-js-test
+  (:use code.test)
+  (:require [lang.runtime.basic.impl.source-js :as subject]))
+
+^{:refer lang.runtime.basic.impl.source-js/transport-source :added "4.1"}
+(fact "emits the Node.js return pipeline with the requested port"
+  (let [source (subject/transport-source 45678)]
+    [(str/starts-with? source "const net=")
+     (str/includes? source "port:45678")
+     (str/includes? source "vm.runInContext")
+     (str/includes? source "const returnEncode=")
+     (str/includes? source "const returnWrap=")
+     (str/includes? source "const returnEval=")
+     (str/includes? source "cyclic return value")])
+  => [true true true true true true true])
+
+(run {:namespace "lang.runtime.basic.impl.source-js-test"})

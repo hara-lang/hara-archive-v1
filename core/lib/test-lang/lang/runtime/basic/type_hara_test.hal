@@ -1,0 +1,228 @@
+(ns lang.runtime.basic.type-hara-test
+  (:use code.test)
+  (:require [lang.core.eval :as evaluation]
+            [lang.runtime.basic.type-hara :as subject]))
+
+^{:refer lang.runtime.basic.type-hara/default-id :added "4.1"}
+(fact "builds a stable language-specific runtime id"
+  (subject/default-id :xtalk)
+  => :xtalk.hara-basic)
+
+^{:refer lang.runtime.basic.type-hara/default-namespace :added "4.1"}
+(fact "derives a valid persistent session namespace"
+  (subject/default-namespace :demo.one)
+  => 'lang.xtalk.session.demo_one)
+
+^{:refer lang.runtime.basic.type-hara/rt-hara-basic:create :added "4.1"}
+(fact "creates an in-process host runtime without a child transport"
+  (let [runtime (subject/rt-hara-basic:create
+                 {:lang :xtalk
+                  :runtime :host
+                  :id :type-hara-create})]
+    [(:lang runtime)
+     (:runtime runtime)
+     (:target runtime)
+     (:transport runtime)
+     (get-in runtime [:process :transport])
+     (get-in runtime [:process :persistent])
+     (get-in runtime [:profile :response])
+     (:status (subject/hara-basic-state runtime))])
+  => [:xtalk :host :hara nil :in-process false [] :created])
+
+^{:refer lang.runtime.basic.type-hara/rt-hara-basic:create :added "4.1"}
+(fact "creates a persistent child runtime with the process transport"
+  (let [runtime (subject/rt-hara-basic:create
+                 {:lang :xtalk
+                  :runtime :basic
+                  :program :hara
+                  :exec ["hara" "--allow-net" "eval"]
+                  :id :type-hara-process})]
+    [(:lang runtime)
+     (:runtime runtime)
+     (:target runtime)
+     (:program runtime)
+     (:exec runtime)
+     (get-in runtime [:process :transport])
+     (get-in runtime [:process :persistent])
+     (boolean (get runtime :transport))
+     (get-in runtime [:profile :response])
+     (:status (subject/hara-basic-state runtime))])
+  => [:xtalk
+      :basic
+      :hara
+      :hara
+      ["hara" "--allow-net" "eval"]
+      :process-socket
+      true
+      true
+      [[:lang/node-response 1]]
+      :created])
+
+^{:refer lang.runtime.basic.type-hara/hara-basic-state :added "4.1"}
+(fact "returns the runtime lifecycle snapshot"
+  (let [runtime (subject/rt-hara-basic:create
+                 {:lang :xtalk
+                  :runtime :host
+                  :id :type-hara-state})]
+    (select-keys (subject/hara-basic-state runtime)
+                 [:status :target :namespace :transport :evaluations]))
+  => {:status :created
+      :target :hara
+      :namespace 'lang.xtalk.session.type_hara_state
+      :transport :in-process
+      :evaluations 0})
+
+^{:refer lang.runtime.basic.type-hara/start-hara-basic :added "4.1"}
+(fact "starts a host runtime and records its target"
+  (let [runtime (subject/rt-hara-basic:create
+                 {:lang :xtalk
+                  :runtime :host
+                  :id :type-hara-start})]
+    (subject/start-hara-basic runtime)
+    (let [result [(subject/hara-basic-state runtime)
+                  (= :started (get (subject/hara-basic-state runtime) :status))]]
+      (subject/stop-hara-basic runtime)
+      result))
+  => [{:status :started
+       :target :hara
+       :namespace 'lang.xtalk.session.type_hara_start
+       :transport :in-process
+       :evaluations 0}
+      true])
+
+^{:refer lang.runtime.basic.type-hara/stop-hara-basic :added "4.1"}
+(fact "stops a host runtime idempotently"
+  (let [runtime (subject/rt-hara-basic:create
+                 {:lang :xtalk
+                  :runtime :host
+                  :id :type-hara-stop})]
+    (subject/start-hara-basic runtime)
+    (subject/stop-hara-basic runtime)
+    (subject/stop-hara-basic runtime)
+    (get (subject/hara-basic-state runtime) :status))
+  => :stopped)
+
+^{:refer lang.runtime.basic.type-hara/compile-request :added "4.1"}
+(fact "leaves already-emitted Hara source unchanged"
+  (let [runtime (subject/rt-hara-basic:create
+                 {:lang :xtalk
+                  :runtime :host
+                  :id :type-hara-compile})
+        compiled (subject/compile-request runtime "(+ 1 2)" {})]
+    [(:output compiled)
+     (empty? (:dependencies compiled))])
+  => ["(+ 1 2)" false])
+
+^{:refer lang.runtime.basic.type-hara/wrap-source :added "4.1"}
+(fact "wraps a source fragment in one readable form"
+  (subject/wrap-source "(+ 1 2)")
+  => "(do\n(+ 1 2)\n)")
+
+^{:refer lang.runtime.basic.type-hara/evaluate-source :added "4.1"}
+(fact "evaluates host source in the runtime namespace"
+  (let [runtime (subject/rt-hara-basic:create
+                 {:lang :xtalk
+                  :runtime :host
+                  :id :type-hara-evaluate})]
+    (subject/start-hara-basic runtime)
+    (let [value (subject/evaluate-source runtime "(+ 4 5)")]
+      (subject/stop-hara-basic runtime)
+      value))
+  => 9)
+
+^{:refer lang.runtime.basic.type-hara/record-success :added "4.1"}
+(fact "records successful evaluations and clears prior errors"
+  (let [runtime (subject/rt-hara-basic:create
+                 {:lang :xtalk
+                  :runtime :host
+                  :id :type-hara-success})]
+    (subject/record-success runtime "(+ 1 2)" 3 true)
+    (select-keys (subject/hara-basic-state runtime)
+                 [:status :last-source :last-result :last-compiled? :evaluations]))
+  => {:status :started
+      :last-source "(+ 1 2)"
+      :last-result 3
+      :last-compiled? true
+      :evaluations 1})
+
+^{:refer lang.runtime.basic.type-hara/record-error :added "4.1"}
+(fact "records target errors without changing the runtime identity"
+  (let [runtime (subject/rt-hara-basic:create
+                 {:lang :xtalk
+                  :runtime :host
+                  :id :type-hara-error})
+        error (ex :generic {:source "bad"} :ex/message "bad source")]
+    (subject/record-error runtime "bad" error)
+    [(ex-message error)
+     (get-in (subject/hara-basic-state runtime) [:last-error :message])
+     (get-in (subject/hara-basic-state runtime) [:last-error :data :source])])
+  => ["bad source" "bad source" "bad"])
+
+^{:refer lang.runtime.basic.type-hara/eval-hara-basic :added "4.1"}
+(fact "evaluates a semantic XTalk form through the host Hara grammar"
+  (let [runtime (subject/rt-hara-basic
+                 {:lang :xtalk
+                  :runtime :host
+                  :id :type-hara-eval})]
+    (let [value (evaluation/await
+                 (subject/eval-hara-basic runtime '(+ 19 23))
+                 2000)]
+      (subject/stop-hara-basic runtime)
+      [value (:evaluations (subject/hara-basic-state runtime))]))
+  => [42 1])
+
+^{:refer lang.runtime.basic.type-hara/eval-raw-hara-basic :added "4.1"}
+(fact "evaluates raw Hara source through the same promise boundary"
+  (let [runtime (subject/rt-hara-basic
+                 {:lang :xtalk
+                  :runtime :host
+                  :id :type-hara-raw})]
+    (let [value (evaluation/await
+                 (subject/eval-raw-hara-basic runtime "(+ 7 8)")
+                 2000)]
+      (subject/stop-hara-basic runtime)
+      value))
+  => 15)
+
+^{:refer lang.runtime.basic.type-hara/raw-eval-hara-basic :added "4.1"}
+(fact "provides a blocking raw-source compatibility adapter"
+  (let [runtime (subject/rt-hara-basic
+                 {:lang :xtalk
+                  :runtime :host
+                  :id :type-hara-raw-blocking})]
+    (let [value (subject/raw-eval-hara-basic runtime "(+ 3 6)")]
+      (subject/stop-hara-basic runtime)
+      value))
+  => 9)
+
+^{:refer lang.runtime.basic.type-hara/evaluate-source :added "4.1"}
+(fact "runs Hara basic through its language-owned child bootstrap"
+  (let [runtime (subject/rt-hara-basic
+                 {:lang :hara
+                  :runtime :basic
+                  :id :type-hara-child
+                  :exec ["./core/hara" "--project" "core" "--offline"
+                         "--allow-net" "eval"]})]
+    (let [value (subject/evaluate-source runtime "(+ 40 2)")
+          profile (:profile runtime)
+          stopped (subject/stop-hara-basic runtime)]
+      [value
+       (fn? (get-in runtime [:process :bootstrap]))
+       profile
+       (:status (subject/hara-basic-state stopped))]))
+  => [42 true {:input [] :source [] :response [[:lang/node-response 1]]} :stopped])
+
+^{:refer lang.runtime.basic.type-hara/rt-hara-basic :added "4.1"}
+(fact "creates a started host runtime"
+  (let [runtime (subject/rt-hara-basic
+                 {:lang :hara
+                  :runtime :host
+                  :id :type-hara-runtime})]
+    (let [result [(= :started (get (subject/hara-basic-state runtime) :status))
+                  (:lang runtime)
+                  (:target runtime)]]
+      (subject/stop-hara-basic runtime)
+      result))
+  => [true :hara :hara])
+
+(run {:namespace "lang.runtime.basic.type-hara-test"})

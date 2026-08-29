@@ -13,70 +13,18 @@
   (or (get value key)
       (get value (name key))))
 
-(defn- node-source
-  [port]
-  (str/join
-   "\n"
-   ["const net=require(\"net\"),vm=require(\"vm\"),readline=require(\"readline\");"
-    (str "const socket=net.createConnection({host:\"127.0.0.1\",port:" port "});")
-    "const rl=readline.createInterface({input:socket,crlfDelay:Infinity});"
-    "const newContext=()=>{const context=vm.createContext({TextEncoder,TextDecoder,require,process});context.globalThis=context;return context;};"
-    "let chain=Promise.resolve();"
-    "const raw=(kind,value)=>({type:\"raw\",return:kind,value:String(value)});"
-    "const encode=(value)=>{if(value===null||typeof value===\"string\"||typeof value===\"boolean\")return value;if(typeof value===\"number\"){if(Number.isSafeInteger(value))return value;return {\"$tahto\":\"float\",value:String(value)};}if(Array.isArray(value))return value.map(encode);if(typeof value===\"object\"){const out={};for(const [key,item] of Object.entries(value))out[key]=encode(item);return out;}return String(value);};"
-    "const shape=(value)=>{const kind=value===null?\"nil\":Array.isArray(value)?\"array\":typeof value;if(value===null)return {type:\"data\",return:kind,value:null};if(kind===\"string\"||kind===\"number\"||kind===\"boolean\")return {type:\"data\",return:kind,value:encode(value)};if(kind===\"undefined\"||kind===\"function\"||kind===\"symbol\"||kind===\"bigint\")return raw(kind,value);try{JSON.stringify(value);return {type:\"data\",return:kind,value:encode(value)};}catch(_){return raw(kind,value);}};"
-    "const thrown=(error)=>({name:error&&error.name||\"Error\",message:error&&error.message||String(error),stack:error&&error.stack||null,value:String(error)});"
-    "rl.on(\"line\",(line)=>{chain=chain.then(async()=>{let request;try{request=JSON.parse(line);let value=vm.runInContext(request.source,newContext(),{timeout:request.timeout});value=await Promise.resolve(value);socket.write(JSON.stringify({id:request.id,ok:true,response:shape(value)})+\"\\n\");}catch(error){socket.write(JSON.stringify({id:request&&request.id,ok:false,error:thrown(error)})+\"\\n\");}});});"]))
-
-(defn- python-source
-  [port]
-  (str/join
-   "\n"
-   ["import ast,json,math,socket,traceback"
-    (str "wire=socket.create_connection(('127.0.0.1'," port "))")
-    "reader=wire.makefile('r',encoding='utf-8');writer=wire.makefile('w',encoding='utf-8');scope={'math':math}"
-    "def encode(value):"
-    "    if isinstance(value,float) and value.is_integer() and -(2**63) <= value < 2**63: return int(value)"
-    "    if isinstance(value,float): return {'$tahto':'float','value':repr(value)}"
-    "    if value is None or isinstance(value,(str,int,bool)): return value"
-    "    if isinstance(value,(list,tuple)): return [encode(item) for item in value]"
-    "    if isinstance(value,dict): return {str(key):encode(item) for key,item in value.items()}"
-    "    return str(value)"
-    "def shape(value):"
-    "    kind='nil' if value is None else ('array' if isinstance(value,(list,tuple)) else type(value).__name__)"
-    "    if value is None or isinstance(value,(str,int,float,bool,list,tuple,dict)): return {'type':'data','return':kind,'value':encode(value)}"
-    "    return {'type':'raw','return':kind,'value':str(value)}"
-    "def evaluate(source):"
-    "    tree=ast.parse(source,mode='exec')"
-    "    if tree.body and isinstance(tree.body[-1],ast.Expr):"
-    "        prefix=ast.Module(body=tree.body[:-1],type_ignores=[]);exec(compile(prefix,'<tahto>','exec'),scope,scope)"
-    "        return eval(compile(ast.Expression(tree.body[-1].value),'<tahto>','eval'),scope,scope)"
-    "    exec(compile(tree,'<tahto>','exec'),scope,scope);return None"
-    "for line in reader:"
-    "    request=None"
-    "    try:"
-    "        request=json.loads(line);response={'id':request.get('id'),'ok':True,'response':shape(evaluate(request['source']))}"
-    "    except BaseException as error:"
-    "        response={'id':request.get('id') if request else None,'ok':False,'error':{'name':type(error).__name__,'message':str(error),'stack':traceback.format_exc(),'value':str(error)}}"
-    "    writer.write(json.dumps(response,separators=(',',':'))+'\\n');writer.flush()"]))
-
-(defn- lua-source
-  [port]
-  (str/join
-   "\n"
-    ["local socket=require('socket');cjson=require('cjson');unpack=unpack or table.unpack"
-    (str "local wire=assert(socket.connect('127.0.0.1'," port "))")
-    "local function encode(value) local kind=type(value);if kind=='number' and value~=math.floor(value) then return {['$tahto']='float',value=tostring(value)} end;if kind=='table' then local mt=getmetatable(value);local out={};for key,item in pairs(value) do out[key]=encode(item) end;if mt==cjson.array_mt then setmetatable(out,cjson.array_mt) end;return out end;return value end"
-    "local function shape(value) local kind=type(value);if value==nil then kind='nil' end;return {type='data',['return']=kind,value=encode(value)} end"
-    "while true do local line=wire:receive('*l');if not line then break end;local request=nil;local ok,response=pcall(function() request=cjson.decode(line);local loader=loadstring or load;local chunk,load_error=loader(request.source);if not chunk then error(load_error) end;local value=chunk();return {id=request.id,ok=true,response=shape(value)} end);if not ok then response={id=request and request.id or nil,ok=false,error={name='Error',message=tostring(response),stack=debug.traceback(),value=tostring(response)}} end;wire:send(cjson.encode(response)..'\\n') end"]))
-
 (defn transport-source
-  [lang port]
-  (cond (= lang :js) (node-source port)
-        (= lang :python) (python-source port)
-        (= lang :lua) (lua-source port)
-        :else (throw (ex :host {:error/type :lang/runtime-unavailable
-                               :lang lang} :ex/message "Persistent basic transport is unavailable"))))
+  "Builds process source through the language-owned basic bootstrap factory."
+  [node port]
+  (let [bootstrap (get (get node :process-options) :bootstrap)]
+    (if (fn? bootstrap)
+      (bootstrap port)
+      (throw
+       (ex :host {:error/type :lang/runtime-bootstrap
+                  :lang (get node :lang)
+                  :process-options (select-keys (get node :process-options)
+                                                [:transport :persistent])}
+           :ex/message "Basic runtime has no language bootstrap factory")))))
 
 (defn create
   ([exec process-options timeout] (create :js exec process-options timeout))
@@ -122,10 +70,20 @@
   (let [current (state node)
         child (get current :process)
         connection (get current :connection)
+        request-connection (get current :request-connection)
         server (get current :server)]
-    (if connection (Socket/close connection))
-    (if child (Process/kill child))
-    (if server (Socket/close server))
+    (if connection
+      (try (Socket/close connection)
+           (catch Throwable ignored nil)))
+    (if request-connection
+      (try (Socket/close request-connection)
+           (catch Throwable ignored nil)))
+    (if child
+      (try (Process/kill child)
+           (catch Throwable ignored nil)))
+    (if server
+      (try (Socket/close server)
+           (catch Throwable ignored nil)))
     (let [stderr
           (if child
             (try
@@ -153,37 +111,122 @@
   (if (started? node)
     node
     (try
-      (let [server (Socket/listen "127.0.0.1" 0 {} (fn [event] nil))
-            stream (Socket/events server {})
-            endpoint (Socket/endpoint server)
-            source (transport-source (get node :lang)
-                                     (get endpoint :port))]
-        (reset! (get node :state)
-                {:status :starting
-                 :server server
-                 :stream stream})
-        (let [argv (conj (get node :exec) source)
-              child (sh/spawn argv (process-options node))]
-          (swap! (get node :state) assoc :process child)
-          (let [open (await-open node)
-                connection (get open :connection)
-                channel (relay/relay
-                         (duplex/from-socket connection)
-                         (frame/json-line)
-                         {:mode :correlated
-                          :timeout-ms (get node :timeout)
-                          :prepare-request
-                          (fn [id request]
-                            [id (assoc request "id" id)])
-                          :response-id
-                          (fn [response]
-                            (wire-get response :id))})]
-            (swap! (get node :state)
-                   assoc
-                   :status :started
-                   :connection connection
-                   :relay channel)
-            node)))
+      (letfn [(line-index [values]
+                (loop [index 0]
+                  (if (= index (count values))
+                    nil
+                    (if (= 10 (nth values index))
+                      index
+                      (recur (inc index))))))
+              (process-port [process]
+                (let [stream (Process/stdout-stream process)]
+                  (letfn [(read-port [buffer]
+                            (let [chunk (evaluation/await
+                                         (IStream/next stream)
+                                         (get node :timeout))]
+                              (if (nil? chunk)
+                                (throw
+                                 (ex :io {:error/type :lang/runtime-port}
+                                     :ex/message "Hara child exited before publishing its socket port"))
+                                (let [values (frame/append-bytes buffer chunk)
+                                      index (line-index values)]
+                                  (if (nil? index)
+                                    (read-port values)
+                                    (let [line (str/trim
+                                                (str/decode-utf8
+                                                 (apply Bytes/new (take index values))))
+                                          remaining (vec (drop (inc index) values))
+                                          value (try
+                                                  (read-string line)
+                                                  (catch Throwable ignored nil))]
+                                      (if (and (long? value)
+                                               (> value 0)
+                                               (< value 65536))
+                                        value
+                                        (read-port remaining))))))))]
+                    (read-port []))))
+              (connect-hara-request [port]
+                (let [pending
+                      (promise/new
+                       (fn [resolve reject]
+                         (Socket/connect
+                          "127.0.0.1"
+                          port
+                          {}
+                          (fn [error connection]
+                            (if error
+                              (reject
+                               (ex :io {:error/type :lang/runtime-request-connect
+                                        :port port
+                                        :error error}
+                                   :ex/message "Hara child request socket failed"))
+                              (resolve connection))))))]
+                  (evaluation/await pending (get node :timeout))))
+              (hara-duplex [connection request-connection]
+                (duplex/create
+                 (Socket/receive-stream connection)
+                 (fn [value]
+                   (promise/from (Socket/send request-connection value)))
+                 (fn []
+                   (Socket/close connection)
+                   (Socket/close request-connection))
+                 (fn [_]
+                   (Socket/close connection)
+                   (Socket/close request-connection))))]
+        (let [server (Socket/listen "127.0.0.1" 0 {} (fn [event] nil))
+              stream (Socket/events server {})
+              endpoint (Socket/endpoint server)
+              source (transport-source node (get endpoint :port))]
+          (reset! (get node :state)
+                  {:status :starting
+                   :server server
+                   :stream stream})
+          (let [argv (conj (get node :exec) source)
+                child (sh/spawn argv (process-options node))]
+            (swap! (get node :state) assoc :process child)
+            (if (= :hara (get node :lang))
+              (let [request-port (process-port child)
+                    request-connection (connect-hara-request request-port)
+                    open (await-open node)
+                    connection (get open :connection)
+                    bridge (hara-duplex connection request-connection)
+                    channel (relay/relay
+                             bridge
+                             (frame/json-line)
+                             {:mode :correlated
+                              :timeout-ms (get node :timeout)
+                              :prepare-request
+                              (fn [id request]
+                                [id (assoc request "id" id)])
+                              :response-id
+                              (fn [response]
+                                (wire-get response :id))})]
+                (swap! (get node :state)
+                       assoc
+                       :status :started
+                       :connection connection
+                       :request-connection request-connection
+                       :relay channel)
+                node)
+              (let [open (await-open node)
+                    connection (get open :connection)
+                    channel (relay/relay
+                             (duplex/from-socket connection)
+                             (frame/json-line)
+                             {:mode :correlated
+                              :timeout-ms (get node :timeout)
+                              :prepare-request
+                              (fn [id request]
+                                [id (assoc request "id" id)])
+                              :response-id
+                              (fn [response]
+                                (wire-get response :id))})]
+                (swap! (get node :state)
+                       assoc
+                       :status :started
+                       :connection connection
+                       :relay channel)
+                node)))))
       (catch Throwable error
         (fail-start node error)))))
 
@@ -192,13 +235,34 @@
   (let [current (state node)
         channel (get current :relay)
         connection (get current :connection)
+        request-connection (get current :request-connection)
         server (get current :server)
         child (get current :process)]
-    (if channel (relay/close channel))
-    (if (and connection (nil? channel)) (Socket/close connection))
-    (if server (Socket/close server))
-    (if child (Process/kill child))
-    (swap! (get node :state) assoc :status :stopped)
+    (if channel
+      (try (relay/close channel)
+           (catch Throwable ignored nil)))
+    (if connection
+      (try (Socket/close connection)
+           (catch Throwable ignored nil)))
+    (if request-connection
+      (try (Socket/close request-connection)
+           (catch Throwable ignored nil)))
+    (if server
+      (try (Socket/close server)
+           (catch Throwable ignored nil)))
+    (if child
+      (try (Process/kill child)
+           (catch Throwable ignored nil)))
+    (swap! (get node :state)
+           (fn [value]
+             (assoc (dissoc value
+                            :server
+                            :stream
+                            :process
+                            :connection
+                            :request-connection
+                            :relay)
+                    :status :stopped)))
     node))
 
 (defn exchange
@@ -250,11 +314,22 @@
   (let [wire (get frame :response)]
     (if (wire-get wire :ok)
       (let [response (wire-get wire :response)]
-        (assoc frame
-               :result
-               {:type (wire-get response :type)
-                :return (wire-get response :return)
-                :value (wire-value (wire-get response :value))}))
+        (if (= "error" (wire-get response :type))
+          (let [error (wire-value (wire-get response :value))]
+            (throw
+             (ex :io {:error/type :lang/target
+                       :target (get-in frame [:context :lang])
+                 :target-source-tail (vec (take-last 4
+                                                (str/split-lines
+                                                 (get-in frame [:exchange :request "source"]))))
+                       :target-error error}
+                 :ex/message (or (wire-get error :message)
+                                 "Target evaluation failed"))))
+          (assoc frame
+                 :result
+                 {:type (wire-get response :type)
+                  :return (wire-get response :return)
+                  :value (wire-value (wire-get response :value))})))
       (let [error (wire-get wire :error)]
         (throw
          (ex :io {:error/type :lang/target

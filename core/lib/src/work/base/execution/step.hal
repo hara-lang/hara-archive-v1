@@ -50,22 +50,24 @@
 
 (defn step-attempt-failed
   [runtime frame spec input attempt maximum error]
-  (if (and (< attempt maximum)
-           (retry-allowed? (or (:retry spec) {}) error))
-    (result/then
-     (frame/emit runtime frame :work/step-retry
-                  {:step/id (:id spec)
-                   :attempt attempt
-                   :next-attempt (inc attempt)})
-     (fn [_]
-       (step-attempt runtime frame spec input (inc attempt) maximum)))
-    (result/then
-     (frame/emit runtime frame :work/step-failed
-                  {:step/id (:id spec)
-                   :attempt attempt
-                   :error (str error)})
-     (fn [_]
-       (throw error)))))
+  (let [error (result/normalise-error error)]
+    (if (and (< attempt maximum)
+             (retry-allowed? (or (:retry spec) {}) error))
+      (result/then
+       (frame/emit runtime frame :work/step-retry
+                    {:step/id (:id spec)
+                     :attempt attempt
+                     :next-attempt (inc attempt)})
+       (fn [_]
+         (step-attempt runtime frame spec input (inc attempt) maximum)))
+      (result/then
+       (frame/emit runtime frame :work/step-failed
+                    {:step/id (:id spec)
+                     :attempt attempt
+                     :error (str error)
+                     :error/record (result/error-record error)})
+       (fn [_]
+         (throw error))))))
 
 (defn step-attempt
   [runtime frame spec input attempt maximum]

@@ -1,0 +1,21 @@
+(ns lang.runtime.basic.impl.source-js
+  (:config {:role :internal}))
+
+(defn transport-source
+  "Builds Node's persistent return-eval socket bootstrap."
+  [port]
+  (str/join
+   "\n"
+   ["const net=require(\"net\"),vm=require(\"vm\"),readline=require(\"readline\");"
+    (str "const socket=net.createConnection({host:\"127.0.0.1\",port:" port "});")
+    "const rl=readline.createInterface({input:socket,crlfDelay:Infinity});"
+    "const context=vm.createContext({TextEncoder,TextDecoder,require,process});context.globalThis=context;"
+    "let chain=Promise.resolve();"
+    "const raw=(kind,value)=>({type:\"raw\",return:kind,value:String(value)});"
+    "const encode=(value,seen)=>{if(value===null||typeof value===\"string\"||typeof value===\"boolean\")return value;if(typeof value===\"number\"){if(Number.isSafeInteger(value))return value;return {\"$tahto\":\"float\",value:String(value)};}if(Array.isArray(value)){if(seen.has(value))throw new Error(\"cyclic return value\");seen.add(value);const out=value.map(item=>encode(item,seen));seen.delete(value);return out;}if(typeof value===\"object\"){if(seen.has(value))throw new Error(\"cyclic return value\");seen.add(value);const out={};for(const [key,item] of Object.entries(value))out[key]=encode(item,seen);seen.delete(value);return out;}return String(value);};"
+    "const typeOf=(value)=>{if(value===null)return \"nil\";if(Array.isArray(value))return \"array\";const kind=typeof value;if(kind!==\"object\")return kind;const ctor=value.constructor&&value.constructor.name;return ctor===\"Object\"?\"object\":(ctor||\"object\");};"
+    "const returnEncode=(value)=>{const kind=typeOf(value);if(kind===\"undefined\"||kind===\"function\"||kind===\"symbol\"||kind===\"bigint\")return raw(kind,value);try{return {type:\"data\",return:kind,value:encode(value,new WeakSet())};}catch(_){return raw(kind,value);}};"
+    "const errorValue=(error)=>({name:error&&error.name||\"Error\",message:error&&error.message||String(error),stack:error&&error.stack||null,value:String(error)});"
+    "const returnWrap=async(thunk)=>{try{return returnEncode(await Promise.resolve(thunk()));}catch(error){return {type:\"error\",value:errorValue(error)};}};"
+    "const returnEval=(source,timeout)=>returnWrap(()=>vm.runInContext(source,context,{timeout}));"
+    "rl.on(\"line\",(line)=>{chain=chain.then(async()=>{let request;try{request=JSON.parse(line);const response=await returnEval(request.source,request.timeout);socket.write(JSON.stringify({id:request.id,ok:true,response})+\"\\n\");}catch(error){socket.write(JSON.stringify({id:request&&request.id,ok:false,error:errorValue(error)})+\"\\n\");}});});"]))

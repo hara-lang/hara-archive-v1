@@ -177,6 +177,17 @@ pub fn compile_form_with_config_allow_unbound_globals(
     config: crate::kernel::GeneratedNamespaceConfig,
 ) -> Result<Program, CompileError> {
     let form = synthetic_spanned_form(form);
+    compile_spanned_form_with_config_allow_unbound_globals(form, registry, config)
+}
+
+/// Compiles an already-read source form without discarding its parser span.
+/// Runtime entry points use this boundary so direct-native execution reports
+/// the source location of nested exception creation and throw instructions.
+pub fn compile_spanned_form_with_config_allow_unbound_globals(
+    form: SpannedForm,
+    registry: &crate::kernel::NamespaceRegistry<crate::core::Value>,
+    config: crate::kernel::GeneratedNamespaceConfig,
+) -> Result<Program, CompileError> {
     compile_spanned_forms_with_config_options(&[form], registry, config, false, true)
 }
 
@@ -330,7 +341,7 @@ fn sync_registry_global_aliases(
     );
 }
 
-fn rewrite_spanned_form(
+pub(crate) fn rewrite_spanned_form(
     form: &SpannedForm,
     config: &crate::kernel::GeneratedNamespaceConfig,
 ) -> SpannedForm {
@@ -421,7 +432,7 @@ fn top_level_operator(form: &Form, expected: &str) -> bool {
     )
 }
 
-fn synthetic_spanned_form(form: Form) -> SpannedForm {
+pub(crate) fn synthetic_spanned_form(form: Form) -> SpannedForm {
     let position = Position {
         offset: 0,
         line: 1,

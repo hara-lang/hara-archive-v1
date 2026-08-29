@@ -4,6 +4,36 @@ const EMBEDDED_FOUNDATION_BYTECODE: &[u8] = include_bytes!(concat!(
     "/assets/std.foundation.hbx"
 ));
 
+fn synthetic_spanned_form(form: Form) -> kernel::SpannedForm {
+    let position = kernel::Position {
+        offset: 0,
+        line: 1,
+        column: 1,
+    };
+    let children = match &form {
+        Form::List(values) | Form::Vector(values) | Form::Set(values) => {
+            values.iter().cloned().map(synthetic_spanned_form).collect()
+        }
+        Form::Map(entries) => entries
+            .iter()
+            .flat_map(|(key, value)| [key.clone(), value.clone()])
+            .map(synthetic_spanned_form)
+            .collect(),
+        Form::Tagged(_, value) | Form::Metadata(_, value) => {
+            vec![synthetic_spanned_form(value.as_ref().clone())]
+        }
+        _ => Vec::new(),
+    };
+    kernel::SpannedForm {
+        form,
+        span: kernel::Span {
+            start: position,
+            end: position,
+        },
+        children,
+    }
+}
+
 #[cfg_attr(not(feature = "raw-wasm"), wasm_bindgen)]
 impl Runtime {
     pub(crate) fn standalone_eval_context(
@@ -337,7 +367,6 @@ impl Runtime {
                 line: form.span.start.line,
                 column: form.span.start.column,
             };
-            let form = core::exception_located_form(&form);
             result = core::with_exception_site(site, || self.eval_forms(vec![form], traced))?;
         }
         self.save_namespace();
@@ -347,7 +376,7 @@ impl Runtime {
 
     fn eval_transfer_text(&mut self, source: &str) -> Result<String, String> {
         self.refresh_qualified_bindings();
-        let forms = kernel::parse_forms(source)?;
+        let forms = kernel::read_forms(source).map_err(|error| error.to_string())?;
         let result = self.eval_forms(forms, false)?;
         self.save_namespace();
         self.refresh_qualified_bindings();
@@ -364,7 +393,14 @@ impl Runtime {
         self.refresh_qualified_bindings();
         let module = kernel::halc::decode_halc(bytes)?;
         let schemas = module.schemas;
-        let result = self.eval_forms(module.forms, false)?;
+        let result = self.eval_forms(
+            module
+                .forms
+                .into_iter()
+                .map(synthetic_spanned_form)
+                .collect(),
+            false,
+        )?;
         self.halc_schema_definitions.extend(schemas.definitions);
         self.halc_function_schemas.extend(schemas.functions);
         self.halc_schema_types.extend(schemas.definition_types);
@@ -374,9 +410,14 @@ impl Runtime {
         Ok(result.display())
     }
 
-    fn eval_forms(&mut self, forms: Vec<Form>, traced: bool) -> Result<core::Value, String> {
+    fn eval_forms(
+        &mut self,
+        forms: Vec<kernel::SpannedForm>,
+        traced: bool,
+    ) -> Result<core::Value, String> {
         let mut result = core::Value::Nil;
-        for form in forms {
+        for source_form in forms {
+            let form = source_form.form.clone();
             let mut restore_namespace = None;
             if let Form::List(values) = &form {
                 if matches!(values.first(), Some(Form::Symbol(name)) if name == "ns" || name == "ns+")
@@ -602,8 +643,8 @@ impl Runtime {
                     }),
             );
             reject_legacy_iterator_calls(&form)?;
-            let resolved = config.rewrite(form);
-            result = self.eval_form(resolved, traced)?;
+            let resolved = vm::rewrite_spanned_form(&source_form, &config);
+            result = self.eval_form_spanned(resolved, traced)?;
             if let Some(namespace) = restore_namespace {
                 self.use_namespace(&namespace);
             }
@@ -623,6 +664,15 @@ impl Runtime {
     }
 
     fn eval_form(&mut self, form: Form, traced: bool) -> Result<core::Value, String> {
+        self.eval_form_spanned(synthetic_spanned_form(form), traced)
+    }
+
+    fn eval_form_spanned(
+        &mut self,
+        source_form: kernel::SpannedForm,
+        traced: bool,
+    ) -> Result<core::Value, String> {
+        let form = source_form.form.clone();
         #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
         if self.execution_backend == "direct-native" {
             if traced {
@@ -630,13 +680,13 @@ impl Runtime {
             }
             if !is_interpreter_management_form(&form) {
                 return self
-                    .compile_form_for_direct_native(&form)
+                    .compile_spanned_form_for_direct_native(&source_form)
                     .and_then(|program| self.execute_compiled_direct_native(program))
                     .map(|report| report.value);
             }
         }
         if traced {
-            return core::with_stack_trace(|| self.eval_form(form, false));
+            return core::with_stack_trace(|| self.eval_form_spanned(source_form, false));
         }
         let namespace_source = self.namespace_source();
         let (result, fiber) = core::with_test_runner(&self.test_runner, || {
@@ -653,7 +703,10 @@ impl Runtime {
                                     core::with_namespace_source(namespace_source, || {
                                         core::with_protocols(&self.protocols, || -> Result<(Result<core::Value, String>, core::EvalFiber), String> {
                                             let evaluate = || {
-                                                let mut fiber = self.execution.start_fiber(form)?;
+                                                let execution_form =
+                                                    core::attach_exception_sites(&source_form);
+                                                let mut fiber =
+                                                    self.execution.start_fiber(execution_form)?;
                                                 #[cfg(all(target_arch = "wasm32", not(feature = "raw-wasm")))]
                                                 if let Some(handler) = &self.host_handler {
                                                     let handler = handler.clone();
@@ -1120,7 +1173,7 @@ impl Runtime {
                             .dependencies
                             .iter()
                             .map(|coordinate| core::Value::String(coordinate.clone()))
-                        .collect::<Vec<_>>(),
+                            .collect::<Vec<_>>(),
                     )),
                 ),
             ];
@@ -1130,13 +1183,12 @@ impl Runtime {
                     core::Value::String(name.clone()),
                 ));
             }
-            self.package_catalog
-                .register(
-                    package.coordinate,
-                    package.name,
-                    core::Value::OrderedMap(Box::new(POrderedMap::from_iter(descriptor))),
-                    namespaces.clone(),
-                );
+            self.package_catalog.register(
+                package.coordinate,
+                package.name,
+                core::Value::OrderedMap(Box::new(POrderedMap::from_iter(descriptor))),
+                namespaces.clone(),
+            );
             for namespace in namespaces {
                 if self.namespace_registry.load_state(&namespace).is_none() {
                     self.namespace_registry
@@ -1481,8 +1533,7 @@ impl Runtime {
     #[cfg(feature = "bytecode-vm")]
     #[cfg_attr(not(feature = "raw-wasm"), wasm_bindgen(js_name = evalBytecodeBundle))]
     pub fn eval_bytecode_bundle_js(&mut self, bytes: &[u8]) -> Result<(), JsValue> {
-        crate::vm::eval_bytecode_bundle(self, bytes)
-            .map_err(|error| JsValue::from_str(&error))
+        crate::vm::eval_bytecode_bundle(self, bytes).map_err(|error| JsValue::from_str(&error))
     }
 
     #[cfg(any(not(target_arch = "wasm32"), target_os = "wasi"))]
