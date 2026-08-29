@@ -3,6 +3,7 @@ package hara.lang.base;
 import hara.lang.base.iter.*;
 import hara.lang.base.primitive.Array;
 import hara.lang.data.HaraCharacter;
+import hara.lang.data.MapEntry;
 import hara.lang.data.Tuple;
 import hara.lang.protocol.IPair;
 import hara.lang.protocol.IToMutable;
@@ -667,7 +668,7 @@ public interface Iter {
         }
       }
     }
-    return new Tuple.Tup2.L(null, new PairIterator(), new PairIterator());
+    return new MapEntry<>(null, new PairIterator(), new PairIterator());
   }
 
   public static <E> Iterator<E> constantly(E t) {
@@ -834,7 +835,7 @@ public interface Iter {
         if (!hasNext()) {
           throw new Ex.NoSuchElement();
         }
-        return new Tuple.Tup2.L(null, it0.next(), it1.next());
+        return new MapEntry<>(null, it0.next(), it1.next());
       }
     };
   }
@@ -922,7 +923,7 @@ public interface Iter {
       public IPair<E, E> next() {
         prime();
         if (_state == State.READY) {
-          var pair = new Tuple.Tup2.L(null, _v0, it.next());
+          var pair = new MapEntry<>(null, _v0, it.next());
           _state = State.NOT_SET;
           return pair;
         }

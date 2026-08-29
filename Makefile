@@ -17,13 +17,21 @@ RUST_LITE_BINARY ?= core/rust/target/release/hara-lite
 TRUFFLE_POM ?= core/java/pom.xml
 TRUFFLE_JAR ?= core/java/target/hara-truffle.jar
 TRUFFLE_NATIVE_BINARY ?= core/target/hara-truffle
+HARA_SPECS_REGISTRY ?= $(abspath ../hara-specs-registry)
 
 .PHONY: all build build-rust build-rust-lite build-truffle build-truffle-native \
   install install-rust install-rust-files \
   install-rust-lite install-rust-lite-files \
   install-truffle install-truffle-files \
   install-truffle-native install-truffle-native-files install-all \
-  uninstall check-install help
+  uninstall check-install \
+  check-rust-java-parity-specs \
+  test-rust-java-parity \
+  test-rust-java-parity-interfaces \
+  test-rust-java-parity-native \
+  test-rust-java-parity-halc \
+  test-rust-java-parity-hta \
+  help
 
 all: build
 
@@ -129,6 +137,64 @@ uninstall:
 check-install:
 	sh scripts/runtime/test-make-install.sh
 
+check-rust-java-parity-specs:
+	@test -d "$(HARA_SPECS_REGISTRY)" && { \
+	  test -f "$(HARA_SPECS_REGISTRY)/spec-manifest.json" || \
+	  test -f "$(HARA_SPECS_REGISTRY)/registry-index.json"; \
+	} || { \
+	  printf 'Hara specs registry is unavailable: %s\\n' "$(HARA_SPECS_REGISTRY)" >&2; \
+	  printf 'Set HARA_SPECS_REGISTRY to a valid hara-specs-registry checkout.\\n' >&2; \
+	  exit 2; \
+	}
+
+test-rust-java-parity: check-rust-java-parity-specs
+	@$(MAKE) --no-print-directory \
+	  HARA_SPECS_REGISTRY="$(HARA_SPECS_REGISTRY)" \
+	  test-rust-java-parity-interfaces
+	@$(MAKE) --no-print-directory \
+	  HARA_SPECS_REGISTRY="$(HARA_SPECS_REGISTRY)" \
+	  test-rust-java-parity-native
+	@$(MAKE) --no-print-directory \
+	  HARA_SPECS_REGISTRY="$(HARA_SPECS_REGISTRY)" \
+	  test-rust-java-parity-halc
+	@$(MAKE) --no-print-directory \
+	  HARA_SPECS_REGISTRY="$(HARA_SPECS_REGISTRY)" \
+	  test-rust-java-parity-hta
+
+test-rust-java-parity-interfaces: check-rust-java-parity-specs
+	HARA_SPECS_REGISTRY="$(HARA_SPECS_REGISTRY)" \
+	  $(CARGO) test --locked --manifest-path "$(RUST_MANIFEST)" --test protocol_declarations
+	$(MVN) -B -Ptruffle,conformance \
+	  -Dhara.specs.registry="$(HARA_SPECS_REGISTRY)" \
+	  -Dtest=HaraDeclarationCoverageTest test --file "$(TRUFFLE_POM)"
+
+test-rust-java-parity-native: check-rust-java-parity-specs
+	HARA_SPECS_REGISTRY="$(HARA_SPECS_REGISTRY)" \
+	  $(CARGO) test --locked --manifest-path "$(RUST_MANIFEST)" \
+	  native_behavioral_conformance_tests:: --lib -- --nocapture
+	$(MVN) -B -Ptruffle,conformance \
+	  -Dhara.specs.registry="$(HARA_SPECS_REGISTRY)" \
+	  -Dtest=NativeMethodParityTest,NativeBehavioralConformanceTest \
+	  test --file "$(TRUFFLE_POM)"
+
+test-rust-java-parity-halc: check-rust-java-parity-specs
+	HARA_SPECS_REGISTRY="$(HARA_SPECS_REGISTRY)" \
+	  $(CARGO) test --locked --manifest-path "$(RUST_MANIFEST)" --lib \
+	  kernel::halc::tests::registry_golden_matches_rust_encoding -- --nocapture
+	$(MVN) -B -Ptruffle,conformance \
+	  -Dhara.specs.registry="$(HARA_SPECS_REGISTRY)" \
+	  -Dtest=HalcArtifactTest#registryGoldenMatchesJavaEncoding \
+	  test --file "$(TRUFFLE_POM)"
+
+test-rust-java-parity-hta: check-rust-java-parity-specs
+	HARA_SPECS_REGISTRY="$(HARA_SPECS_REGISTRY)" \
+	  $(CARGO) test --locked --manifest-path "$(RUST_MANIFEST)" \
+	  --test hta_portable registry_golden_vector_matches_rust_encoding
+	$(MVN) -B -Ptruffle,conformance \
+	  -Dhara.specs.registry="$(HARA_SPECS_REGISTRY)" \
+	  -Dtest=HtaValueCodecTest#registryGoldenVectorMatchesJavaEncoding \
+	  test --file "$(TRUFFLE_POM)"
+
 help:
 	@printf '%s\n' \
 	  'make install            Build and install the Rust CLI as hara' \
@@ -139,5 +205,8 @@ help:
 	  'make install-all        Install the Rust CLI and JVM/Truffle launcher' \
 	  'make uninstall          Remove files installed by these targets' \
 	  'make check-install      Exercise staged install and uninstall flows' \
+	  'make test-rust-java-parity' \
+	  '                        Run Rust-Java protocol, native, HALC, and HTA parity' \
 	  '' \
-	  'Variables: PREFIX, DESTDIR, BINDIR, DATADIR, HARA_DATADIR, HARA_LITE_DATADIR'
+	  'Variables: PREFIX, DESTDIR, BINDIR, DATADIR, HARA_DATADIR, HARA_LITE_DATADIR,' \
+	  '           HARA_SPECS_REGISTRY'

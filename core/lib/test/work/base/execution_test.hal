@@ -92,7 +92,7 @@
   => 7)
 
 ^{:refer work.base.execution/execute-node-handler}
-(fact "normalises a raw handler failure before rethrowing it"
+(fact "normalises synchronous and Promise evaluator failures before rethrowing them"
   (let [runtime (assoc (ephemeral/execution-runtime)
                        :work/policy {:work/mode :portable})
         frame {:run/id "run-1"
@@ -100,7 +100,7 @@
                :node/path [:custom]
                :item/id nil}
         spec {:op :custom :id :custom}
-        failure
+        synchronous
         (try
           (subject/execute-node-handler
            runtime
@@ -113,9 +113,30 @@
           :not-rejected
           (catch error
             [(ex? error)
-             (:ex/code (ex-data error))]))]
-    failure)
-  => [true :hara/host])
+             (:ex/code (ex-data error))
+             (map? (ex-data error))]))
+        asynchronous
+        (try
+          (deref
+           (subject/execute-node-handler
+            runtime
+            frame
+            spec
+            :custom
+            (fn [execute runtime frame spec input]
+              (promise/new
+               (fn [_ reject]
+                 (reject "<= expects numbers"))))
+            nil))
+          :not-rejected
+          (catch error
+            [(ex? error)
+             (ex-message error)
+             (:ex/code (ex-data error))
+             (:error (ex-data error))]))]
+    [synchronous asynchronous])
+  => [[true :hara/host true]
+      [true "<= expects numbers" :hara/host "<= expects numbers"]])
 
 ^{:refer work.base.execution/execute-node}
 (fact "resolves a work operation and evaluates it"

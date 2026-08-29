@@ -560,8 +560,7 @@ public final class HaraContext {
               "class",
               new UnaryBuiltin(
                   "std.native.Exception/class", value -> portableType(value).getName()));
-      installNativeExportGroup(
-          "Base", exports, HaraNativeDeclarations.methods("Base"), Map.of("tuple", "tup"));
+      installNativeExportGroup("Base", exports, HaraNativeDeclarations.methods("Base"), Map.of());
       installNativeExportGroup("Iter", exports, HaraNativeDeclarations.methods("Iter"), Map.of());
       return;
     }
@@ -593,6 +592,10 @@ public final class HaraContext {
       foundation.define(
           entry.getKey(), seed.value, seed.metadata, HaraVar.Origin.RUNTIME_PRIMITIVE);
     }
+    BuiltinExport pair = seeds.get("pair");
+    if (pair == null) throw new HaraException("Missing Foundation pair bootstrap callable");
+    namespace("global")
+        .define("pair", pair.value, pair.metadata, HaraVar.Origin.RUNTIME_PRIMITIVE);
   }
 
   /** Keeps native iterator combinators available through Iter, not the portable root surface. */
@@ -3531,8 +3534,8 @@ public final class HaraContext {
     else if (raw instanceof hara.lang.data.Seq<?>) type = "Seq";
     else if (raw instanceof hara.lang.data.Queue<?>) type = "Queue";
     else if (raw instanceof hara.lang.data.Deque<?>) type = "Deque";
-    else if (raw instanceof hara.lang.data.Tuple.Tup0
-        || raw instanceof hara.lang.data.Tuple.Tup1<?>) type = "Tuple";
+    else if (raw instanceof hara.lang.data.MapEntry<?, ?>) type = "MapEntry";
+    else if (hara.lang.data.Tuple.isCompact(raw)) type = "Vector";
     else if (raw instanceof hara.lang.data.Vector<?>) type = "Vector";
     else if (raw instanceof hara.lang.data.OrderedMap<?, ?>) type = "OrderedMap";
     else if (raw instanceof hara.lang.data.PriorityMap<?, ?>) type = "PriorityMap";

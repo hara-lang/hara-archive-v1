@@ -154,7 +154,7 @@ public class HaraGeneratedLibrariesTest {
               .toString());
       assertTrue(context.eval(HaraLanguage.ID, "(map-entry? (first {:a 1}))").asBoolean());
       assertEquals(
-          ":std.native.Tuple",
+          ":std.native.MapEntry",
           context.eval(HaraLanguage.ID, "(type (first {:a 1}))").toString());
       assertEquals(
           "[false true]",
@@ -176,9 +176,9 @@ public class HaraGeneratedLibrariesTest {
     try (Context context = context()) {
       assertEquals(
           "[:std.native.Nil :std.native.Long :std.native.BigInteger :std.native.Float :std.native.String :std.native.Keyword "
-              + ":std.native.Symbol :std.native.Tuple :std.native.Vector :std.native.HashMap "
-              + ":std.native.OrderedSet :std.native.Pointer :std.native.Function :std.native.Atom :std.native.Tuple "
-              + ":std.native.Tuple :std.native.Vector :std.native.RegExp]",
+              + ":std.native.Symbol :std.native.Vector :std.native.Vector :std.native.HashMap "
+              + ":std.native.OrderedSet :std.native.Pointer :std.native.Function :std.native.Atom :std.native.Vector "
+              + ":std.native.Vector :std.native.Vector :std.native.RegExp]",
           context
               .eval(
                   HaraLanguage.ID,
@@ -198,12 +198,12 @@ public class HaraGeneratedLibrariesTest {
                       + "[(type (Point 1 2)) (type (Cursor 1 2)) (type Point) (type Cursor)]")
               .toString());
       assertEquals(
-          "[true true true true false true false false]",
+          "[true false true true true true false false]",
           context
               .eval(
                   HaraLanguage.ID,
-                  "[(vector? []) (tuple? []) (pair? [1 2]) "
-                      + "(tuple? [1 2 3 4 5 6 7 8]) (tuple? [1 2 3 4 5 6 7 8 9]) "
+                  "[(vector? []) (pair? [1 2]) (pair? (pair 1 2)) "
+                      + "(map-entry? (pair 1 2)) (vector? [1 2 3 4 5 6 7 8]) "
                       + "(vector? [1 2 3 4 5 6 7 8 9]) (pair? (vector 1 2)) "
                       + "(pair? (list 1 2))]")
               .toString());

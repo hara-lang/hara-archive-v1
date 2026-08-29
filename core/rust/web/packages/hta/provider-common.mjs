@@ -1,4 +1,4 @@
-import { HtaKeyword } from "./index.js";
+import { HtaKeyword, HtaMapEntry } from "./index.js";
 
 export const HTA_PROVIDER_EVENT_SCHEMA = "hara.hta.provider.event/0-alpha";
 
@@ -65,7 +65,7 @@ export function toHta(value) {
   if (value === null || value === undefined || typeof value !== "object") {
     return value ?? null;
   }
-  if (value instanceof HtaKeyword || value instanceof Uint8Array) return value;
+  if (value instanceof HtaKeyword || value instanceof HtaMapEntry || value instanceof Uint8Array) return value;
   if (Array.isArray(value)) return value.map(toHta);
   if (value instanceof Map) {
     const result = new Map();

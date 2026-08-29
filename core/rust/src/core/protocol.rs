@@ -26,6 +26,12 @@ fn value_to_metadata(value: &Value) -> Result<MetadataValue, String> {
                 .map(value_to_metadata)
                 .collect::<Result<_, _>>()?,
         )),
+        Value::MapEntry(entry) => Ok(MetadataValue::Vector(
+            entry
+                .iter()
+                .map(value_to_metadata)
+                .collect::<Result<_, _>>()?,
+        )),
         Value::Queue(values) => Ok(MetadataValue::List(
             values
                 .iter()
@@ -118,6 +124,7 @@ fn value_metadata(value: &Value) -> Option<Rc<Metadata>> {
         Value::Pointer(value) => value.meta().cloned(),
         Value::Tuple(value) => value.meta().cloned(),
         Value::Vector(value) => value.meta().cloned(),
+        Value::MapEntry(value) => value.meta().cloned(),
         Value::List(value) => value.meta().cloned(),
         Value::Cons(value) => value.meta().cloned(),
         Value::Queue(value) => value.meta().cloned(),
@@ -426,24 +433,13 @@ fn protocol_dissoc(arguments: &[Value]) -> Result<Value, String> {
 
 fn pair_parts(value: &Value) -> Option<(Value, Value)> {
     match value {
-        Value::Tuple(values) if values.len() == 2 => Some((
-            values.get(0).unwrap().clone(),
-            values.get(1).unwrap().clone(),
-        )),
-        Value::Vector(values) if values.len() == 2 => Some((
-            values.get(0).unwrap().clone(),
-            values.get(1).unwrap().clone(),
-        )),
-        Value::List(values) if values.len() == 2 => Some((
-            values.get(0).unwrap().clone(),
-            values.get(1).unwrap().clone(),
-        )),
+        Value::MapEntry(entry) => Some((entry.key().clone(), entry.value().clone())),
         _ => None,
     }
 }
 
 fn pair_value(key: Value, value: Value) -> Value {
-    Value::Tuple(Box::new(PTuple::Tup2([key, value])))
+    Value::MapEntry(Box::new(PMapEntry::new(key, value)))
 }
 
 fn indexed_find(value: Option<&Value>, index: usize) -> Result<Value, String> {
@@ -554,6 +550,7 @@ fn protocol_find(arguments: &[Value]) -> Result<Value, String> {
         }
         Value::Tuple(values) => indexed_find(values.get(value_index(key)?), value_index(key)?),
         Value::Vector(values) => indexed_find(values.get(value_index(key)?), value_index(key)?),
+        Value::MapEntry(entry) => indexed_find(entry.nth(value_index(key)?), value_index(key)?),
         Value::Seq(values) => {
             let index = value_index(key)?;
             let value = values.iter().nth(index).transpose()?;
@@ -601,6 +598,7 @@ fn protocol_iter(arguments: &[Value]) -> Result<Value, String> {
                     | Value::Queue(_)
                     | Value::Deque(_)
                     | Value::Tuple(_)
+                    | Value::MapEntry(_)
                     | Value::Vector(_)
             ) =>
         {
@@ -1118,10 +1116,6 @@ fn native_base_values(operation: &str, values: &[Value]) -> Result<Value, String
             )),
             _ => Err("Base/set expects one collection".into()),
         },
-        "tuple" if values.len() <= 8 => Ok(Value::Tuple(Box::new(PTuple::from_values(
-            values.to_vec(),
-        )?))),
-        "tuple" => Err("Base/tuple expects at most 8 arguments".into()),
         "hash-map" if values.len() % 2 == 0 => Ok(Value::Map(PMap::from_iter(
             values
                 .chunks_exact(2)
@@ -1386,6 +1380,7 @@ fn protocol_encode_with(arguments: &[Value]) -> Result<Value, String> {
         Value::Vector(_) | Value::Tuple(_) => {
             ("visit-vector", vec![visitor.clone(), value.clone()])
         }
+        Value::MapEntry(_) => ("visit-unknown", vec![visitor.clone(), value.clone()]),
         Value::Map(_)
         | Value::OrderedMap(_)
         | Value::SortedMap(_)
@@ -1994,6 +1989,7 @@ impl Value {
                     | Self::MutableCollection(_)
                     | Self::Seq(_)
                     | Self::Pointer(_)
+                    | Self::MapEntry(_)
             )
     }
     fn supports_native_ireduce(value: &Self) -> bool {
@@ -2043,6 +2039,7 @@ impl Value {
                     | Self::MutableCollection(_)
                     | Self::Iterator(_)
                     | Self::Nil
+                    | Self::MapEntry(_)
             )
     }
     fn supports_native_inth(value: &Self) -> bool {
@@ -2058,6 +2055,7 @@ impl Value {
                 | Self::Bytes(_)
                 | Self::ByteBuffer(_)
                 | Self::Array(_)
+                | Self::MapEntry(_)
         ) || mutable_linear_satisfies(value, true, true)
     }
     fn supports_native_map(value: &Self) -> bool {
@@ -2130,6 +2128,7 @@ impl Value {
                 | Self::OrderedSet(_)
                 | Self::SortedSet(_)
                 | Self::Result(_)
+                | Self::MapEntry(_)
         )
             || Self::supports_native_map(value)
             || matches!(
@@ -2191,6 +2190,7 @@ impl Value {
                     | Self::Struct(_)
                     | Self::Mutable(_)
                     | Self::NativeType(_)
+                    | Self::MapEntry(_)
             )
     }
     fn supports_native_istringlike(value: &Self) -> bool {
@@ -2245,7 +2245,7 @@ impl Value {
     }
     fn supports_native_ipersistent(value: &Self) -> bool {
         (Self::supports_native_icoll(value) && !matches!(value, Self::MutableCollection(_)))
-            || matches!(value, Self::Struct(_))
+            || matches!(value, Self::Struct(_) | Self::MapEntry(_))
     }
     fn supports_native_iequality(value: &Self) -> bool {
         !matches!(value, Self::Protocol(_))
@@ -2264,7 +2264,8 @@ impl Value {
             || matches!(value, Self::Bytes(_) | Self::MutableCollection(_))
     }
     fn supports_native_ihashcached(value: &Self) -> bool {
-        Self::supports_native_icoll(value) || matches!(value, Self::Symbol(_) | Self::Struct(_))
+        Self::supports_native_icoll(value)
+            || matches!(value, Self::Symbol(_) | Self::Struct(_) | Self::MapEntry(_))
     }
     fn supports_native_ipromise(value: &Self) -> bool {
         matches!(value, Self::Promise(_))

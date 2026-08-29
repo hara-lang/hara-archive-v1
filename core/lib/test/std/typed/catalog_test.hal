@@ -23,6 +23,17 @@
 (def +profile-coordinate+ (catalog/coordinate +catalog+ :model/profile))
 (def +account-coordinate+ (catalog/coordinate +catalog+ :model/account))
 
+^{:refer std.typed.catalog/semantic-value}
+(fact "semantic values retain vector semantics without a tuple backend"
+  (let [value (catalog/semantic-value [1 2])]
+    [(type value) value])
+  => [:std.native.Vector [1 2]])
+
+^{:refer std.typed.catalog/canonical-value}
+(fact "canonical values identify vectors distinctly from map entries"
+  (catalog/canonical-value [1 2])
+  => [:vector [[:scalar 1] [:scalar 2]]])
+
 ^{:refer std.typed.catalog/catalog
   :id 'stable-schema-identity}
 (fact "catalog entries have canonical ids and reproducible hashes"

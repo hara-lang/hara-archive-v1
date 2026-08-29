@@ -1,5 +1,6 @@
 package hara.lang.data;
 
+import hara.lang.base.Iter;
 import hara.lang.protocol.IMapType;
 import hara.lang.data.types.ObjMutable;
 
@@ -39,7 +40,7 @@ public class AsMap<K, V> extends ObjMutable implements IMapType<K, V> {
 
   @Override
   public Entry<K, V> find(K key) {
-    return (_m.containsKey(key)) ? new Tuple.Tup2.L<K, V>(null, key, _m.get(key)) : null;
+    return (_m.containsKey(key)) ? new MapEntry<K, V>(null, key, _m.get(key)) : null;
   }
 
   @Override
@@ -49,7 +50,8 @@ public class AsMap<K, V> extends ObjMutable implements IMapType<K, V> {
 
   @Override
   public Iterator<Entry<K, V>> iterator() {
-    return _m.entrySet().iterator();
+    return Iter.map(
+        _m.entrySet().iterator(), entry -> new MapEntry<>(null, entry.getKey(), entry.getValue()));
   }
 
   @Override

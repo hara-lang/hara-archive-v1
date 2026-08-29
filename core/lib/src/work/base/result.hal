@@ -16,7 +16,9 @@
   "Passes direct values through and handles Promise rejection."
   [value function]
   (if (asynchronous? value)
-    (promise/catch value function)
+    (promise/catch value
+                   (fn [error]
+                     (function (normalise-error error))))
     value))
 
 (defn normalise-error
@@ -24,7 +26,8 @@
   ([error]
    (normalise-error error {}))
   ([error context]
-   (if (ex? error)
+   (if (and (ex? error)
+            (map? (ex-data error)))
      error
      (ex :host
          (assoc context :error error)

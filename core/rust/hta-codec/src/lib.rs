@@ -39,6 +39,7 @@ const CHARACTER: u8 = 19;
 const BIG_INTEGER: u8 = 20;
 const REGEX: u8 = 22;
 const TUPLE: u8 = 23;
+const MAP_ENTRY: u8 = 38;
 const CONS: u8 = 24;
 const QUEUE: u8 = 25;
 const ORDERED_MAP: u8 = 26;
@@ -352,7 +353,8 @@ fn encode_value(value: &Value, depth: usize, output: &mut Vec<u8>) -> Result<(),
         Value::Symbol(value) => write_sized(output, SYMBOL, value.as_bytes()),
         Value::List(values) => encode_sequence(LIST, values, depth, output),
         Value::Vector(values) => encode_sequence(VECTOR, values, depth, output),
-        Value::Tuple(values) => encode_sequence(TUPLE, values, depth, output),
+        Value::MapEntry(values) => encode_map_entry(values, depth, output),
+        Value::Tuple(values) => encode_sequence(VECTOR, values, depth, output),
         Value::Cons(values) => encode_sequence(CONS, values, depth, output),
         Value::Queue(values) => encode_sequence(QUEUE, values, depth, output),
         Value::Set(values) => encode_unordered_sequence(SET, values, depth, output),
@@ -436,6 +438,13 @@ fn encode_sequence(
         encode_value(value, depth + 1, output)?;
     }
     Ok(())
+}
+
+fn encode_map_entry(values: &[Value], depth: usize, output: &mut Vec<u8>) -> Result<(), String> {
+    if values.len() != 2 {
+        return Err("hta/value-invalid: map entry must contain two values".into());
+    }
+    encode_sequence(MAP_ENTRY, values, depth, output)
 }
 
 fn encode_unordered_sequence(
@@ -588,6 +597,13 @@ impl Reader<'_> {
             LIST => self.sequence(depth).map(Value::List),
             VECTOR => self.vector(depth),
             TUPLE => self.sequence(depth).map(Value::Tuple),
+            MAP_ENTRY => {
+                let values = self.sequence(depth)?;
+                if values.len() != 2 {
+                    return Err("hta/value-malformed: map entry must contain two values".into());
+                }
+                Ok(Value::MapEntry(values))
+            }
             CONS => {
                 let values = self.sequence(depth)?;
                 if values.is_empty() {
@@ -836,7 +852,7 @@ mod tests {
             Value::BigInteger("123456789012345678901234567890".into()),
             Value::Regex("^[a-z]+$".into()),
             Value::List(vec![Value::Integer(1), Value::Integer(2)]),
-            Value::Tuple(vec![Value::Integer(1), Value::Integer(2)]),
+            Value::MapEntry(vec![Value::Integer(1), Value::Integer(2)]),
             Value::Queue(vec![Value::Integer(1), Value::Integer(2)]),
             Value::Set(vec![Value::Keyword("a".into()), Value::Keyword("b".into())]),
             Value::Map(vec![(Value::String("answer".into()), Value::Integer(42))]),
@@ -855,6 +871,26 @@ mod tests {
         for value in values {
             assert_eq!(decode(&encode(&value).unwrap()).unwrap(), value);
         }
+    }
+
+    #[test]
+    fn compact_tuples_use_the_vector_wire_identity_and_map_entries_are_distinct() {
+        let tuple = Value::Tuple(vec![Value::Integer(1), Value::Integer(2)]);
+        let encoded = encode(&tuple).unwrap();
+        assert_eq!(encoded[4], VECTOR);
+        assert_eq!(
+            decode(&encoded).unwrap(),
+            Value::Vector(vec![Value::Integer(1), Value::Integer(2)])
+        );
+
+        let mut legacy = encoded;
+        legacy[4] = TUPLE;
+        assert_eq!(decode(&legacy).unwrap(), tuple);
+
+        let entry = Value::MapEntry(vec![Value::Keyword("key".into()), Value::Integer(42)]);
+        let encoded_entry = encode(&entry).unwrap();
+        assert_eq!(encoded_entry[4], MAP_ENTRY);
+        assert_eq!(decode(&encoded_entry).unwrap(), entry);
     }
 
     #[test]

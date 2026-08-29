@@ -10,6 +10,7 @@ import hara.lang.data.Keyword;
 import hara.lang.data.List;
 import hara.lang.data.Symbol;
 import hara.lang.data.HaraCharacter;
+import hara.lang.data.MapEntry;
 import hara.lang.data.TaggedLiteral;
 import hara.lang.data.Tuple;
 import hara.lang.protocol.*;
@@ -107,6 +108,15 @@ final class HaraProtocolExtensions {
       intrinsic = true)
   static Object lookupTupleProtocol(Object receiver, Object[] arguments) {
     return lookupTuple(receiver, arguments);
+  }
+
+  @HaraProtocolExtension(
+      protocol = ILookup.class,
+      method = "lookup",
+      receiver = MapEntry.class,
+      intrinsic = true)
+  static Object lookupMapEntryProtocol(Object receiver, Object[] arguments) {
+    return lookupMapEntry((MapEntry<?, ?>) receiver, arguments);
   }
 
   @HaraProtocolExtension(
@@ -368,9 +378,10 @@ final class HaraProtocolExtensions {
                             ? "visit-keyword"
                             : receiver instanceof Symbol
                                 ? "visit-symbol"
-                                : receiver instanceof IVectorType<?>
-                                        || receiver instanceof Tuple.Tup0
-                                        || receiver instanceof Tuple.Tup1<?>
+                                : receiver instanceof MapEntry
+                                    ? "visit-unknown"
+                                    : receiver instanceof IVectorType<?>
+                                        || Tuple.isCompact(receiver)
                                     ? "visit-vector"
                                     : receiver instanceof IMapType<?, ?>
                                         ? "visit-map"
@@ -658,6 +669,17 @@ final class HaraProtocolExtensions {
     return tuple.nth(index);
   }
 
+  private static Object lookupMapEntry(MapEntry<?, ?> entry, Object[] arguments) {
+    if (arguments.length < 1 || arguments.length > 2) {
+      throw new HaraException("ILookup/lookup expects one or two arguments");
+    }
+    long index = sequentialLookupIndex(arguments[0]);
+    if (index < 0 || index >= 2) {
+      return arguments.length == 2 ? arguments[1] : null;
+    }
+    return entry.nth(index);
+  }
+
   @SuppressWarnings("unchecked")
   private static Object lookupValueUnchecked(ILookup<?, ?> lookup, Object[] arguments) {
     ILookup<Object, Object> typed = (ILookup<Object, Object>) lookup;
@@ -704,7 +726,7 @@ final class HaraProtocolExtensions {
     long index = sequentialLookupIndex(key);
     ILinearType<?> tuple = (ILinearType<?>) receiver;
     if (index < 0 || index >= tuple.count()) return null;
-    return new Tuple.Tup2.L<>(null, index, tuple.nth(index));
+    return new MapEntry<>(null, index, tuple.nth(index));
   }
 
   private static Object nthTuple(Object receiver, Object[] arguments) {
@@ -728,8 +750,8 @@ final class HaraProtocolExtensions {
     if (conj instanceof ISetType<?> && value == null) {
       value = HaraNull.SINGLETON;
     }
-    if (conj instanceof IMapType<?, ?> && value instanceof ILinearType<?> pair && pair.count() == 2) {
-      value = new java.util.AbstractMap.SimpleImmutableEntry<>(pair.nth(0), pair.nth(1));
+    if (conj instanceof IMapType<?, ?> && !(value instanceof MapEntry<?, ?>)) {
+      throw new HaraException("IConj/conj map expects a MapEntry");
     }
     return ((IConj<Object>) conj).conj(value);
   }
@@ -740,7 +762,7 @@ final class HaraProtocolExtensions {
       long index = sequentialLookupIndex(key);
       return index < 0 || index >= sequential.count()
           ? null
-          : new hara.lang.data.Tuple.Tup2.L<>(null, index, sequential.nth(index));
+          : new MapEntry<>(null, index, sequential.nth(index));
     }
     return ((IFind<Object, Object>) find).find(key);
   }

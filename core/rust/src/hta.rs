@@ -1,4 +1,5 @@
 use crate::core::{ResultValue, Value};
+use crate::lang::data::MapEntry as PMapEntry;
 #[cfg(test)]
 use crate::lang::data::{Tuple as PTuple, Vector as PVector};
 use crate::lang::protocol::INamespaced;
@@ -45,6 +46,7 @@ const POINTER: u8 = 34;
 const VAR_REF: u8 = 35;
 const DEQUE: u8 = 36;
 const PRIORITY_MAP: u8 = 37;
+const MAP_ENTRY: u8 = 38;
 const RESULT_STRUCT_NAME: &str = "std.native/Result";
 const RESULT_STRUCT_FIELDS: [&str; 4] = ["status", "data", "error", "context"];
 
@@ -88,6 +90,7 @@ pub const HTA0_TAG_INVENTORY: &[(u8, &str)] = &[
     (VAR_REF, "var-ref"),
     (DEQUE, "deque"),
     (PRIORITY_MAP, "priority-map"),
+    (MAP_ENTRY, "map-entry"),
 ];
 
 fn decode_exception_provenance(
@@ -268,7 +271,8 @@ fn encode_bare(value: &Value, output: &mut Vec<u8>, depth: usize) -> Result<(), 
             encode_bytes(value.as_str().as_bytes(), output)?;
         }
         Value::List(values) => encode_sequence(LIST, values.iter(), output, depth)?,
-        Value::Tuple(values) => encode_sequence(TUPLE, values.iter(), output, depth)?,
+        Value::Tuple(values) => encode_sequence(VECTOR, values.iter(), output, depth)?,
+        Value::MapEntry(entry) => encode_sequence(MAP_ENTRY, entry.iter(), output, depth)?,
         Value::Vector(values) => encode_sequence(VECTOR, values.iter(), output, depth)?,
         Value::Cons(values) => encode_sequence(
             CONS,
@@ -601,6 +605,16 @@ impl Reader<'_> {
             TUPLE => Ok(Value::Tuple(Box::new(
                 crate::lang::data::Tuple::from_values(self.sequence(depth)?)?,
             ))),
+            MAP_ENTRY => {
+                let values = self.sequence(depth)?;
+                let [key, value] = values.as_slice() else {
+                    return Err("hta/value-malformed: map entry must contain two values".into());
+                };
+                Ok(Value::MapEntry(Box::new(PMapEntry::new(
+                    key.clone(),
+                    value.clone(),
+                ))))
+            }
             VECTOR => Ok(Value::Vector(self.sequence(depth)?.into())),
             CONS => {
                 let mut values = self.sequence(depth)?;
@@ -852,12 +866,25 @@ mod tests {
         assert_eq!(encode(&decode(&encoded).unwrap()).unwrap(), encoded);
     }
     #[test]
-    fn compact_tuple_preserves_its_portable_identity() {
+    fn compact_vectors_and_legacy_tuples_have_distinct_wire_boundaries() {
         let tuple = Value::Tuple(Box::new(
             PTuple::from_values(vec![Value::Number(1), Value::Number(2)]).unwrap(),
         ));
-        let decoded = decode(&encode(&tuple).unwrap()).unwrap();
-        assert!(matches!(decoded, Value::Tuple(_)));
+        let encoded = encode(&tuple).unwrap();
+        assert_eq!(encoded[4], VECTOR);
+        assert!(matches!(decode(&encoded).unwrap(), Value::Vector(_)));
+
+        let mut legacy = encoded;
+        legacy[4] = TUPLE;
+        assert!(matches!(decode(&legacy).unwrap(), Value::Tuple(_)));
+
+        let entry = Value::MapEntry(Box::new(PMapEntry::new(
+            Value::Keyword("key".into()),
+            Value::Number(42),
+        )));
+        let encoded_entry = encode(&entry).unwrap();
+        assert_eq!(encoded_entry[4], MAP_ENTRY);
+        assert_eq!(decode(&encoded_entry).unwrap(), entry);
     }
 
     #[test]

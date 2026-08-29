@@ -414,6 +414,7 @@ fn value_kind(value: &Value) -> &'static str {
         Value::Vector(_) => "vector",
         Value::List(_) => "list",
         Value::Tuple(_) => "tuple",
+        Value::MapEntry(_) => "map-entry",
         Value::Set(_) | Value::OrderedSet(_) | Value::SortedSet(_) => "set",
         Value::Map(_)
         | Value::OrderedMap(_)

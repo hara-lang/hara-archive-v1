@@ -9,7 +9,7 @@ import {
   projectBrowserSandboxValue,
   validateBrowserSandboxRequest,
 } from "./packages/hta/sandbox.js";
-import { HtaHandle, HtaKeyword, HtaStruct } from "./packages/hta/index.js";
+import { HtaHandle, HtaKeyword, HtaMapEntry, HtaStruct } from "./packages/hta/index.js";
 
 function cancellable(value) {
   let rejectPromise;
@@ -247,6 +247,10 @@ test("projects bounded transfer-safe values and rejects live values", () => {
       100,
     ),
     { text: '{"answer":42,":status":":ok"}', json: { answer: 42, ":status": ":ok" } },
+  );
+  assert.deepEqual(
+    projectBrowserSandboxValue(new HtaMapEntry(new HtaKeyword("key"), 42), 100),
+    { text: '[":key",42]', json: [":key", 42] },
   );
   assert.throws(() => projectBrowserSandboxValue(new HtaHandle("owner", "type", 1), 100), {
     code: "sandbox/result-non-transferable",

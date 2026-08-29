@@ -49,13 +49,13 @@ test("browser Wasm consumes the specs-owned Foundation behavioral corpus", async
     const probe = JSON.parse(
       String(
         hara.eval(
-          "(get (get foundation-calibration-snippets :compact-tuple-type-boundary) :source)"
+          "(get (get foundation-calibration-snippets :compact-vector-type-boundary) :source)"
         )
       )
     );
     const probeExpected = String(
       hara.eval(
-        "(get (get foundation-calibration-snippets :compact-tuple-type-boundary) :expected)"
+        "(get (get foundation-calibration-snippets :compact-vector-type-boundary) :expected)"
       )
     );
     const interpreted = String(hara.eval(probe));

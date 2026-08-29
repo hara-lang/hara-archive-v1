@@ -85,9 +85,6 @@
     (vector? value)
     (vec (map semantic-value value))
 
-    (tuple? value)
-    (apply tuple (map semantic-value value))
-
     (set? value)
     (set (map semantic-value value))
 
@@ -113,9 +110,6 @@
 
     (vector? value)
     [:vector (vec (map canonical-value value))]
-
-    (tuple? value)
-    [:tuple (vec (map canonical-value value))]
 
     (set? value)
     (let [items (vec (map canonical-value value))]

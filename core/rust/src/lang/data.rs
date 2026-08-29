@@ -12,6 +12,8 @@ pub mod keyword;
 pub mod list;
 #[path = "data/map.rs"]
 pub mod map;
+#[path = "data/map_entry.rs"]
+pub mod map_entry;
 #[path = "data/metadata.rs"]
 pub mod metadata;
 #[path = "data/ordered_map.rs"]
@@ -49,6 +51,7 @@ pub use deque::Standard as Deque;
 pub use keyword::Keyword;
 pub use list::{Mutable as MutableList, Standard as List};
 pub use map::{Mutable as MutableMap, Standard as Map};
+pub use map_entry::MapEntry;
 pub use metadata::{Metadata, MetadataValue};
 pub use ordered_map::{Mutable as MutableOrderedMap, Standard as OrderedMap};
 pub use ordered_set::{Mutable as MutableOrderedSet, Standard as OrderedSet};

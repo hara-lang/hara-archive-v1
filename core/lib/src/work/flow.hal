@@ -30,10 +30,16 @@
    (or left {})
    (or right {})))
 
+(defn vector-like?
+  "Accepts persistent vectors and tuple-backed vector literals."
+  [value]
+  (or (vector? value)
+      (= (type value) :std.native.Tuple)))
+
 (defn flow-path?
   "Checks that value is a non-empty workflow path of keywords."
   [value]
-  (and (vector? value)
+  (and (vector-like? value)
        (not (empty? value))
        (every? keyword? value)))
 
@@ -46,13 +52,13 @@
 
 (defn removal-path?
   [value]
-  (and (vector? value)
+  (and (vector-like? value)
        (not (empty? value))))
 
 (defn assert-removals
   [removals]
   (let [removals (or removals [])]
-    (if (not (vector? removals))
+    (if (not (vector-like? removals))
       (throw
        (ex :io {:workflow/removals removals} :ex/message "Workflow removals must be a vector of paths")))
     (if (not (every? removal-path? removals))

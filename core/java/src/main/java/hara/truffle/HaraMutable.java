@@ -145,7 +145,7 @@ public final class HaraMutable
       return null;
     }
     Keyword canonical = Keyword.create(type.fields()[index]);
-    return new Tuple.Tup2.L<>(null, canonical, state.values[index]);
+    return new hara.lang.data.MapEntry<>(null, canonical, state.values[index]);
   }
 
   @Override
@@ -197,7 +197,7 @@ public final class HaraMutable
       @Override
       public Map.Entry<Object, Object> next() {
         int current = index++;
-        return new Tuple.Tup2.L<>(
+        return new hara.lang.data.MapEntry<>(
             null, Keyword.create(fields[current]), state.values[current]);
       }
     };

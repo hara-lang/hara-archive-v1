@@ -6,9 +6,9 @@
 
 use super::{
     encode_value, ARRAY, ATOM, BIG_INTEGER, BYTES, CHARACTER, CONS, EXCEPTION_INFO, F64, FALSE,
-    HANDLE, I64, KEYWORD, LIST, MAGIC, MAP, MAX_FRAME_BYTES, MAX_NESTING_DEPTH, NAMESPACE, NIL,
-    OBJECT, ORDERED_MAP, ORDERED_SET, POINTER, QUEUE, REGEX, SET, SORTED_MAP, SORTED_SET, STRING,
-    STRUCT, SYMBOL, TAGGED, TRIE, TRUE, TUPLE, VAR, VAR_REF, VECTOR,
+    HANDLE, I64, KEYWORD, LIST, MAGIC, MAP, MAP_ENTRY, MAX_FRAME_BYTES, MAX_NESTING_DEPTH,
+    NAMESPACE, NIL, OBJECT, ORDERED_MAP, ORDERED_SET, POINTER, QUEUE, REGEX, SET, SORTED_MAP,
+    SORTED_SET, STRING, STRUCT, SYMBOL, TAGGED, TRIE, TRUE, TUPLE, VAR, VAR_REF, VECTOR,
 };
 use hara_abi::ImmutableValue as PortableValue;
 use std::str;
@@ -49,6 +49,7 @@ pub enum Kind {
     Struct,
     Pointer,
     VarRef,
+    MapEntry,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -130,6 +131,7 @@ impl<'a> ValueView<'a> {
             BIG_INTEGER => Kind::BigInteger,
             REGEX => Kind::Regex,
             TUPLE => Kind::Tuple,
+            MAP_ENTRY => Kind::MapEntry,
             CONS => Kind::Cons,
             QUEUE => Kind::Queue,
             ORDERED_MAP => Kind::OrderedMap,
@@ -215,9 +217,8 @@ impl<'a> ValueView<'a> {
 
     pub fn items(&self) -> Result<Vec<ValueView<'a>>, String> {
         match self.bare[0] {
-            LIST | VECTOR | SET | ARRAY | TUPLE | CONS | QUEUE | ORDERED_SET | SORTED_SET => {
-                sequence_items(self.bare)
-            }
+            LIST | VECTOR | SET | ARRAY | TUPLE | MAP_ENTRY | CONS | QUEUE | ORDERED_SET
+            | SORTED_SET => sequence_items(self.bare),
             _ => Err(kind_error("sequence", self.kind())),
         }
     }
@@ -370,6 +371,7 @@ fn scan_value(bytes: &[u8], start: usize, depth: usize) -> Result<usize, String>
         LIST | VECTOR | ARRAY | TUPLE | CONS | QUEUE | ORDERED_SET => {
             scan_sequence(bytes, cursor, depth, false)
         }
+        MAP_ENTRY => scan_map_entry(bytes, cursor, depth),
         SET | SORTED_SET => scan_sequence(bytes, cursor, depth, true),
         MAP => scan_map(bytes, cursor, depth, true),
         ORDERED_MAP | SORTED_MAP | TRIE => scan_map(bytes, cursor, depth, false),
@@ -467,6 +469,15 @@ fn scan_sequence(
         }
     }
     Ok(cursor)
+}
+
+fn scan_map_entry(bytes: &[u8], cursor: usize, depth: usize) -> Result<usize, String> {
+    let (count, cursor) = read_len(bytes, cursor)?;
+    if count != 2 {
+        return Err("hta/value-malformed: map entry must contain two values".into());
+    }
+    let cursor = scan_value(bytes, cursor, depth + 1)?;
+    scan_value(bytes, cursor, depth + 1)
 }
 
 fn scan_map(

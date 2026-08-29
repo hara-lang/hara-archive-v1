@@ -2,16 +2,65 @@
   (:use code.test)
   (:require [work.base.result :as subject]))
 
+^{:refer work.base.result/asynchronous?}
+(fact "recognises portable Promises but not direct values"
+  [(subject/asynchronous? (promise/from 1))
+   (subject/asynchronous? 1)]
+  => [true false])
+
 ^{:refer work.base.result/normalise-error}
-(fact "wraps raw host failures while preserving structured exceptions"
-  (let [raw (subject/normalise-error "host failure")
-        structured (ex :io {:path "state.edn"} :ex/message "missing")
-        preserved (subject/normalise-error structured)]
-    [(ex? raw)
+(fact "preserves structured exceptions and wraps raw failures as host exceptions"
+  (let [existing (ex :state {:reason :existing} :ex/message "existing failure")
+        raw (subject/normalise-error "raw synchronous failure")
+        native
+        (subject/normalise-error
+         (try
+           (throw "unstructured failure")
+           nil
+           (catch error error)))]
+    [(= existing (subject/normalise-error existing))
+     (ex-message (subject/normalise-error existing))
+     (ex? raw)
      (:ex/code (ex-data raw))
+     (ex-message raw)
      (:error (ex-data raw))
-     (= structured preserved)])
-  => [true :hara/host "host failure" true])
+     (:ex/code (ex-data native))
+     (ex? (:error (ex-data native)))])
+  => [true
+      "existing failure"
+      true
+      :hara/host
+      "raw synchronous failure"
+      "raw synchronous failure"
+      :hara/host
+      true])
+
+^{:refer work.base.result/then}
+(fact "applies callbacks to direct values and Promise resolutions"
+  [(subject/then 41 inc)
+   (deref (subject/then (promise/from 41) inc))]
+  => [42 42])
+
+^{:refer work.base.result/recover}
+(fact "passes direct values through and normalises raw Promise rejections"
+  (let [seen (atom [])
+        direct (subject/recover 42 (fn [value] (swap! seen conj value)))
+        recovered
+        (deref
+         (subject/recover
+          (promise/new (fn [_ reject] (reject "raw Promise rejection")))
+          (fn [error]
+            [(ex? error)
+             (:ex/code (ex-data error))
+             (ex-message error)
+             (:error (ex-data error))])))]
+    [direct @seen recovered])
+  => [42
+      []
+      [true
+       :hara/host
+       "raw Promise rejection"
+       "raw Promise rejection"]])
 
 ^{:refer work.base.result/error-record}
 (fact "records the complete structured cause chain as durable data"
@@ -44,7 +93,24 @@
   => ["failed" :load "missing" "state.edn"])
 
 ^{:refer work.base.result/attempt}
-(fact "passes only structured exceptions to failure handlers"
+(fact "returns normal values and preserves structured synchronous failures"
+  (let [existing (ex :state {:reason :existing} :ex/message "existing failure")
+        failure
+        (try
+          (subject/attempt
+           (fn [] (throw existing))
+           (fn [error] (throw error)))
+          :not-rejected
+          (catch error
+            [(= existing error)
+             (ex-message error)
+             (:reason (ex-data error))]))]
+    [(subject/attempt (fn [] 42) identity)
+     failure])
+  => [42 [true "existing failure" :existing]])
+
+^{:refer work.base.result/attempt}
+(fact "passes structured exceptions to failure handlers"
   (let [handled
         (subject/attempt
          (fn [] (throw (ex :state {:phase :run} :ex/message "failed")))
@@ -54,5 +120,11 @@
             (:phase (ex-data error))]))]
     handled)
   => [true :hara/state :run])
+
+^{:refer work.base.result/all}
+(fact "returns vectors directly or after all Promise values resolve"
+  [(subject/all [1 2])
+   (vec (deref (subject/all [1 (promise/from 2)])))]
+  => [[1 2] [1 2]])
 
 (pr-str (run {:namespace "work.base.result-test"}))

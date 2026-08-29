@@ -21,6 +21,14 @@ fn eval(source: &str) -> String {
         .expect("evaluation must succeed")
 }
 
+fn eval_embedded_foundation(source: &str) -> String {
+    let registry = crate::embedding_namespace_registry();
+    let program = compile_source_with(source, &registry).expect("evaluation must compile");
+    execute_program_with_globals(Rc::new(program), &registry)
+        .map(|value| value.display())
+        .expect("evaluation must succeed")
+}
+
 #[test]
 fn embedded_foundation_reduce_executes_in_bytecode() {
     let registry = crate::embedding_namespace_registry();
@@ -98,25 +106,37 @@ fn literals() {
 
 #[test]
 fn dynamic_collections_and_short_circuit_forms() {
-    assert_eq!(eval("(let [x 19 y 23] [x y])"), "[19 23]");
     assert_eq!(
-        eval(
-            "[(type []) (vector? []) (tuple? []) \
-               (type [1 2 3 4 5 6 7 8]) (tuple? [1 2 3 4 5 6 7 8]) \
-               (type [1 2 3 4 5 6 7 8 9]) (vector? [1 2 3 4 5 6 7 8 9]) \
-               (tuple? [1 2 3 4 5 6 7 8 9])]"
-        ),
-        "[:std.native.Tuple true true :std.native.Tuple true :std.native.Vector true false]"
+        eval_embedded_foundation("(let [x 19 y 23] [x y])"),
+        "[19 23]"
     );
-    assert_eq!(eval("[(get [1 2] 1) (get [] 0 :missing)]"), "[2 :missing]");
-    assert_eq!(eval("(let [x 42] {:answer x})"), "{:answer 42}");
-    assert_eq!(eval("(let [x 42] #{x 1})"), "#{42 1}");
-    assert_eq!(eval("(and true 42)"), "42");
-    assert_eq!(eval("(and 19 false (/ 1 0))"), "false");
-    assert_eq!(eval("(or nil false 42)"), "42");
-    assert_eq!(eval("(or 42 (/ 1 0))"), "42");
-    assert_eq!(eval("(cond false 1 (= 1 1) 42 :else 0)"), "42");
-    assert_eq!(eval("'(a [1 2])"), "(a [1 2])");
+    assert_eq!(
+        eval_embedded_foundation(
+            "[(type []) (vector? []) (pair? [1 2]) \
+               (type [1 2 3 4 5 6 7 8]) (map-entry? (pair 1 2)) \
+               (type [1 2 3 4 5 6 7 8 9]) (vector? [1 2 3 4 5 6 7 8 9]) \
+               (pair? [1 2 3 4 5 6 7 8 9])]"
+        ),
+        "[:std.native.Vector true false :std.native.Vector true :std.native.Vector true false]"
+    );
+    assert_eq!(
+        eval_embedded_foundation("[(get [1 2] 1) (get [] 0 :missing)]"),
+        "[2 :missing]"
+    );
+    assert_eq!(
+        eval_embedded_foundation("(let [x 42] {:answer x})"),
+        "{:answer 42}"
+    );
+    assert_eq!(eval_embedded_foundation("(let [x 42] #{x 1})"), "#{42 1}");
+    assert_eq!(eval_embedded_foundation("(and true 42)"), "42");
+    assert_eq!(eval_embedded_foundation("(and 19 false (/ 1 0))"), "false");
+    assert_eq!(eval_embedded_foundation("(or nil false 42)"), "42");
+    assert_eq!(eval_embedded_foundation("(or 42 (/ 1 0))"), "42");
+    assert_eq!(
+        eval_embedded_foundation("(cond false 1 (= 1 1) 42 :else 0)"),
+        "42"
+    );
+    assert_eq!(eval_embedded_foundation("'(a [1 2])"), "(a [1 2])");
 }
 
 #[test]

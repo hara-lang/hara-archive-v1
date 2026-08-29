@@ -508,7 +508,7 @@
                (throw
                 (ex :host
                     data
-                    :ex/message "Work run did not complete"))))))))))
+                    :ex/message "Work run did not complete")))))))))))
 
 (defn run
   ([work input]

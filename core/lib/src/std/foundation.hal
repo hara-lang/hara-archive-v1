@@ -171,18 +171,15 @@
   (ICons/cons sequence value))
 
 (defn ^{:schema [:fn [:any :any] :any]}
-  pair "Creates a key/value pair." [left right] (tuple left right))
+  pair "Creates a key/value pair." [left right] (global/pair left right))
 
 (defn ^{:schema [:fn [:any] :bool]}
   pair? "Returns true when value is a key/value pair." [value]
-  (and (tuple? value) (= 2 (count value))))
+  (= (type value) :std.native.MapEntry))
 
 (defn ^{:schema [:fn [:any] :bool]}
   map-entry? "Returns true when value is a map entry pair." [value]
-  (pair? value))
-
-(defn ^{:inline true :schema [:fn [& :any] :any]}
-  tuple "Creates a fixed-width tuple from values." [& values] (apply Base/tuple values))
+  (= (type value) :std.native.MapEntry))
 
 (defn ^{:inline true :schema [:fn [& :any] :map]}
   hash-map "Creates a persistent map from alternating keys and values." [& entries] (apply Base/hash-map entries))
@@ -539,11 +536,7 @@
 
 (defn ^{:schema [:fn [:any] :bool]}
   vector? "Returns true when value is a persistent vector." [value]
-  (or (= (type value) :std.native.Vector)
-      (= (type value) :std.native.Tuple)))
-
-(defn ^{:schema [:fn [:any] :bool]}
-  tuple? "Returns true when value is a tuple." [value] (= (type value) :std.native.Tuple))
+  (= (type value) :std.native.Vector))
 
 (defn ^{:schema [:fn [:any] :bool]}
   map? "Returns true when value is a persistent map." [value]
@@ -1304,11 +1297,6 @@
               (list? template) (rebuild (empty template) (reverse (vec values)))
               (= (type template) :hara/Queue)
               (rebuild (empty template) values)
-              (tuple? template)
-              (let [items (vec values)]
-                (if (<= (count items) 8)
-                  (rebuild (empty template) items)
-                  items))
               (vector? template) (rebuild (empty template) values)
               :else (vec values))]
     (if (not (nil? (meta template)))

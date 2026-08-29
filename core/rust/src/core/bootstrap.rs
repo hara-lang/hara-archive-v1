@@ -76,6 +76,18 @@ pub fn minimal_namespace_registry() -> NamespaceRegistry<Value> {
         }
     }
 
+    // `pair` is the one representation constructor retained by Foundation.
+    // Keep its host implementation under the runtime-only `global` namespace
+    // so the source-owned `std.foundation/pair` facade can delegate to it
+    // without exposing another public constructor name.
+    let global = namespaces.find_or_create("global");
+    global.intern_with_origin(
+        "pair",
+        crate::core::direct_function_value("pair")
+            .unwrap_or_else(|| panic!("missing global pair implementation")),
+        VarOrigin::RuntimePrimitive,
+    );
+
     for (name, protocol) in foundation_protocol_values() {
         let declaration = crate::lang::protocol::find_protocol(&name)
             .unwrap_or_else(|| panic!("annotated protocol declaration missing: {name}"));

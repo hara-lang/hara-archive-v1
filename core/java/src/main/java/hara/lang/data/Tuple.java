@@ -7,7 +7,6 @@ import hara.lang.data.types.ObjEmpty;
 import hara.lang.data.types.ObjPersistent;
 import hara.lang.protocol.IMetadata;
 import hara.lang.protocol.IObjType;
-import hara.lang.protocol.IPair;
 import hara.lang.protocol.IPopFirst;
 import hara.lang.protocol.IPopLast;
 import hara.lang.protocol.IPushFirst;
@@ -16,6 +15,19 @@ import hara.lang.protocol.IPushLast;
 import java.util.Iterator;
 
 public interface Tuple {
+
+  /** Returns whether a value uses the compact, fixed-arity vector backend. */
+  static boolean isCompact(Object value) {
+    return value instanceof Tup0
+        || value instanceof Tup1
+        || value instanceof Tup2
+        || value instanceof Tup3
+        || value instanceof Tup4
+        || value instanceof Tup5
+        || value instanceof Tup6
+        || value instanceof Tup7
+        || value instanceof Tup8;
+  }
 
   @SuppressWarnings({"unchecked", "rawtypes"})
   public class Tup0 extends ObjEmpty
@@ -155,7 +167,7 @@ public interface Tuple {
 
     B B();
 
-    public class L<A, B> extends ObjPersistent implements Tup2<A, B>, IPair<A, B> {
+    public class L<A, B> extends ObjPersistent implements Tup2<A, B> {
       A _a;
       B _b;
 
@@ -172,16 +184,6 @@ public interface Tuple {
 
       @Override
       public B B() {
-        return _b;
-      }
-
-      @Override
-      public A getKey() {
-        return _a;
-      }
-
-      @Override
-      public B getValue() {
         return _b;
       }
 

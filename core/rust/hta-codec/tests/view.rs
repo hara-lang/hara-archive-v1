@@ -1,5 +1,5 @@
 use hara_abi::ImmutableValue as PortableValue;
-use hara_hta::view::{compose_record, compose_vector, Fragment, FrameView};
+use hara_hta::view::{compose_record, compose_vector, Fragment, FrameView, Kind};
 use hara_hta::{encode_immutable, MAGIC};
 use std::collections::BTreeMap;
 
@@ -25,6 +25,7 @@ const OBJECT: u8 = 18;
 const CHARACTER: u8 = 19;
 const BIG_INTEGER: u8 = 20;
 const REGEX: u8 = 22;
+const MAP_ENTRY: u8 = 38;
 
 fn sized(tag: u8, value: &[u8]) -> Vec<u8> {
     let mut output = vec![tag];
@@ -44,6 +45,16 @@ fn vector(values: &[Vec<u8>]) -> Vec<u8> {
         output.extend_from_slice(value);
     }
     output
+}
+
+fn map_entry(key: Vec<u8>, value: Vec<u8>) -> Vec<u8> {
+    [
+        vec![MAP_ENTRY],
+        2_u32.to_be_bytes().to_vec(),
+        key,
+        value,
+    ]
+    .concat()
 }
 
 fn map(mut entries: Vec<(Vec<u8>, Vec<u8>)>) -> Vec<u8> {
@@ -157,9 +168,27 @@ fn scans_every_runtime_wire_shape() {
         character,
         sized(BIG_INTEGER, b"12345678901234567890"),
         sized(REGEX, b"a.*b"),
+        map_entry(integer(1), integer(2)),
     ];
     for value in values {
         FrameView::parse(&frame(value)).unwrap();
+    }
+}
+
+#[test]
+fn validates_map_entries_as_exact_two_value_sequences() {
+    let entry = frame(map_entry(integer(1), integer(2)));
+    let parsed = FrameView::parse(&entry).unwrap();
+    assert_eq!(parsed.root().kind(), Kind::MapEntry);
+    assert_eq!(parsed.root().items().unwrap().len(), 2);
+
+    for count in [0_u32, 1, 3] {
+        let mut bare = vec![MAP_ENTRY];
+        bare.extend_from_slice(&count.to_be_bytes());
+        for _ in 0..count {
+            bare.extend_from_slice(&integer(1));
+        }
+        assert!(FrameView::parse(&frame(bare)).is_err());
     }
 }
 

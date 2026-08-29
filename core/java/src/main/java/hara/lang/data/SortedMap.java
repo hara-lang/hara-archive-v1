@@ -512,7 +512,7 @@ public interface SortedMap<K, V> extends IMapType<K, V>, INth<Map.Entry<K, V>>, 
     @Override
     default Entry<K, V> find(K key) {
       Node<K, V> found = S.find(_root(), key, _comparator());
-      return found == null ? null : new Tuple.Tup2.L<>(null, found.k, found.v);
+      return found == null ? null : new MapEntry<>(null, found.k, found.v);
     }
 
     @Override
@@ -522,7 +522,7 @@ public interface SortedMap<K, V> extends IMapType<K, V>, INth<Map.Entry<K, V>>, 
             String.format("%d must be within [0,%d)", idx, count()));
       }
       Node<K, V> found = S.nth(_root(), (int) idx);
-      return new Tuple.Tup2.L<>(null, found.k, found.v);
+      return new MapEntry<>(null, found.k, found.v);
     }
 
     @Override
@@ -534,7 +534,7 @@ public interface SortedMap<K, V> extends IMapType<K, V>, INth<Map.Entry<K, V>>, 
     default Iterator<Entry<K, V>> iterator() {
       Iterator<Entry<K, V>> entries = S.iterator(_root());
       return Iter.map(
-          entries, entry -> new Tuple.Tup2.L<>(null, entry.getKey(), entry.getValue()));
+          entries, entry -> new MapEntry<>(null, entry.getKey(), entry.getValue()));
     }
 
     @Override

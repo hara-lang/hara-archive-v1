@@ -110,7 +110,7 @@ public final class Pointer
 
   @Override
   public java.util.Map.Entry<Object, Object> find(Object key) {
-    return containsKey(key) ? new Tuple.Tup2.L<>(null, key, lookup(key)) : null;
+    return containsKey(key) ? new MapEntry<>(null, key, lookup(key)) : null;
   }
 
   @Override
@@ -134,7 +134,7 @@ public final class Pointer
   public Iterator<java.util.Map.Entry<Object, Object>> iter() {
     return hara.lang.base.Iter.map(
         values.entrySet().iterator(),
-        entry -> new Tuple.Tup2.L<>(null, entry.getKey(), entry.getValue()));
+        entry -> new MapEntry<>(null, entry.getKey(), entry.getValue()));
   }
 
   private boolean containsKey(Object key) {

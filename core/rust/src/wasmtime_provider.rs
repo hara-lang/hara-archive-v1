@@ -1237,6 +1237,10 @@ fn validate_handles_in_value(value: &Value, manifest: &ExtensionManifest) -> Res
         Value::Vector(values) => validate_handles_iter(values.iter(), manifest)?,
         Value::List(values) => validate_handles_iter(values.iter(), manifest)?,
         Value::Tuple(values) => validate_handles_iter(values.iter(), manifest)?,
+        Value::MapEntry(entry) => {
+            validate_handles_in_value(entry.key(), manifest)?;
+            validate_handles_in_value(entry.value(), manifest)?;
+        }
         Value::Map(values) => validate_handles_map(values.iter(), manifest)?,
         Value::SortedMap(values) => validate_handles_map(values.iter(), manifest)?,
         Value::OrderedMap(values) => {
@@ -1305,6 +1309,10 @@ fn validate_live_handles(
         Value::Vector(values) => validate_live_iter(values.iter(), handles)?,
         Value::List(values) => validate_live_iter(values.iter(), handles)?,
         Value::Tuple(values) => validate_live_iter(values.iter(), handles)?,
+        Value::MapEntry(entry) => {
+            validate_live_handles(entry.key(), handles)?;
+            validate_live_handles(entry.value(), handles)?;
+        }
         Value::Map(values) => validate_live_map(values.iter(), handles)?,
         Value::SortedMap(values) => validate_live_map(values.iter(), handles)?,
         Value::OrderedMap(values) => {
@@ -1366,6 +1374,10 @@ fn collect_handles(value: &Value, handles: &mut HashSet<(String, String, u64)>) 
         Value::Vector(values) => collect_iter(values.iter(), handles),
         Value::List(values) => collect_iter(values.iter(), handles),
         Value::Tuple(values) => collect_iter(values.iter(), handles),
+        Value::MapEntry(entry) => {
+            collect_handles(entry.key(), handles);
+            collect_handles(entry.value(), handles);
+        }
         Value::Map(values) => collect_map(values.iter(), handles),
         Value::SortedMap(values) => collect_map(values.iter(), handles),
         Value::OrderedMap(values) => {

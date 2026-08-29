@@ -152,15 +152,22 @@
 (Test/run
  [{:name "dispatches indexed access through INth"
    :test (fn [] [(std.foundation/nth [10 20 30] 1)
-                 (std.foundation/nth (std.foundation/tuple 10 20) 1)])
+                 (std.foundation/nth [10 20] 1)])
    :expected [20 20]}])
 
 ^{:refer std.foundation/conj}
 (Test/run
  [{:name "conjoins values through IConj"
    :test (fn [] [(std.foundation/conj [1] 2)
-                 (std.foundation/conj [1] 2 3)])
-   :expected [[1 2] [1 2 3]]}])
+                 (std.foundation/conj [1] 2 3)
+                 (std.foundation/conj {:a 1} (std.foundation/pair :b 2))])
+   :expected [[1 2] [1 2 3] {:a 1 :b 2}]}
+  {:name "rejects non-entry values when conjoining to a map"
+   :test (fn [] [(try (std.foundation/conj {} [:a 1]) false
+                      (catch Throwable error true))
+                 (try (std.foundation/conj {} '(:a 1)) false
+                      (catch Throwable error true))])
+   :expected [true true]}])
 
 ^{:refer std.foundation/cons}
 (Test/run
@@ -168,14 +175,35 @@
      :test (fn [] (std.foundation/cons 1 [2 3]))
      :expected '(1 2 3)}])
 
-^{:refer std.foundation/tuple}
+^{:refer std.foundation/pair}
 (Test/run
- [{:name "constructs a fixed-width tuple from all values"
-   :test (fn [] (let [value (std.foundation/tuple 1 2 3)]
-                  [(std.foundation/tuple? value)
-                   (count value)
-                   (first value)]))
-   :expected [true 3 1]}])
+ [{:name "constructs a dedicated map entry"
+   :test (fn [] (let [entry (std.foundation/pair :a 1)]
+                  [(type entry)
+                   (std.foundation/count entry)
+                   (std.foundation/nth entry 0)
+                   (std.foundation/nth entry 1)
+                   (std.foundation/vector? entry)
+                   (std.foundation/sequential? entry)
+                   (std.foundation/map-entry? entry)]))
+   :expected [:std.native.MapEntry 2 :a 1 false false true]}
+  {:name "exposes pair indexing and iteration without collection capabilities"
+   :test (fn [] (let [entry (std.foundation/pair :a 1)]
+                  [(satisfies? IPair entry)
+                   (satisfies? ICount entry)
+                   (satisfies? INth entry)
+                   (std.foundation/get entry 0 :missing)
+                   (std.foundation/get entry 1 :missing)
+                   (std.foundation/get entry 2 :missing)
+                   (satisfies? IIter entry)
+                   (std.foundation/vec entry)
+                   (satisfies? ISequential entry)
+                   (satisfies? ILinearType entry)
+                   (satisfies? IColl entry)
+                   (satisfies? IConj entry)
+                   (satisfies? IEmpty entry)]))
+   :expected [true true true :a 1 :missing true [:a 1]
+              false false false false false]}])
 
 ^{:refer std.foundation/hash-map}
 (Test/run
@@ -826,9 +854,9 @@
 
 ^{:refer std.foundation/pair?}
 (Test/run
- [{:name "recognizes compact map entry pairs"
+ [{:name "recognizes dedicated map entry pairs"
    :test (fn [] [(std.foundation/pair? (first {:a 1}))
-                 (std.foundation/pair? (tuple :a 1))
+                 (std.foundation/pair? (std.foundation/pair :a 1))
                  (std.foundation/pair? (std.foundation/vector 1 2))
                  (std.foundation/pair? '(1 2))])
    :expected [true true false false]}])
@@ -837,9 +865,21 @@
 (Test/run
  [{:name "recognizes map entry pairs"
    :test (fn [] [(std.foundation/map-entry? (first {:a 1}))
-                 (std.foundation/map-entry? (std.foundation/tuple :a 1))
-                 (std.foundation/map-entry? (std.foundation/vector :a 1))])
-   :expected [true true false]}])
+                 (std.foundation/map-entry? (std.foundation/pair :a 1))
+                 (std.foundation/map-entry? (std.foundation/vector :a 1))
+                 (std.foundation/map-entry? '(:a 1))])
+   :expected [true true false false]}])
+
+^{:refer std.foundation/collect-like}
+(Test/run
+ [{:name "rebuilds vector and map result modes"
+   :test (fn []
+           (let [vector (std.foundation/collect-like [0] [1 2])
+                 map-value (std.foundation/collect-like
+                            {:a 0}
+                            [(std.foundation/pair :b 2)])]
+             [(type vector) vector map-value]))
+   :expected [:std.native.Vector [1 2] {:b 2}]}])
 
 ^{:refer std.foundation/set?}
 (Test/run
@@ -889,7 +929,7 @@
 (Test/run
  [{:name "peeks without changing collection semantics"
    :test (fn [] [(std.foundation/first [1 2])
-                 (std.foundation/first (tuple 1 2))
+                 (std.foundation/first [1 2])
                  (std.foundation/first [])
                  (std.foundation/first '())
                  (std.foundation/first (vec []))])
@@ -908,7 +948,7 @@
 (Test/run
  [{:name "peeks at the final collection item"
    :test (fn [] [(std.foundation/last [1 2])
-                 (std.foundation/last (tuple 1 2))
+                 (std.foundation/last [1 2])
                  (std.foundation/last [])
                  (std.foundation/last '())
                  (std.foundation/last (vec []))])
@@ -1603,7 +1643,7 @@
    :test (fn []
            [(std.foundation/for [x [1 2 2 3] :into #{}] x)
             (std.foundation/for [x [1 2] :into [:start]] (* x 10))
-            (std.foundation/for [x [1 2] :into {:zero 0}] [x (* x x)])])
+            (std.foundation/for [x [1 2] :into {:zero 0}] (std.foundation/pair x (* x x)))])
    :expected [#{1 2 3} [:start 10 20] {:zero 0 1 1 2 4}]}
   {:name "rejects invalid into placement"
    :test (fn []

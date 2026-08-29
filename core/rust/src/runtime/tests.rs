@@ -4416,12 +4416,18 @@ mod tests {
         let tuple = core::Value::Tuple(Box::new(
             crate::lang::data::Tuple::from_values(values.clone()).unwrap(),
         ));
+        let map_entry = core::Value::MapEntry(Box::new(crate::lang::data::MapEntry::new(
+            values[0].clone(),
+            values[1].clone(),
+        )));
         let vector = core::Value::Vector(values.into());
 
         assert_eq!(list, tuple);
         assert_eq!(tuple, vector);
+        assert_ne!(tuple, map_entry);
         assert_eq!(list.stable_hash(), tuple.stable_hash());
         assert_eq!(tuple.stable_hash(), vector.stable_hash());
+        assert_eq!(tuple.stable_hash(), map_entry.stable_hash());
 
         let mut runtime = Runtime::new();
         assert_eq!(runtime.eval_text("(= [1 2] '(1 2))").unwrap(), "true");
@@ -4430,11 +4436,6 @@ mod tests {
         assert_eq!(runtime.eval_text("(pair 1 2)").unwrap(), "[1 2]");
         assert_eq!(runtime.eval_text("(key (pair 1 2))").unwrap(), "1");
         assert_eq!(runtime.eval_text("(val (pair 1 2))").unwrap(), "2");
-        assert_eq!(runtime.eval_text("(tup 1 2 3 4 5)").unwrap(), "[1 2 3 4 5]");
-        assert!(runtime
-            .eval_text("(tup 1 2 3 4 5 6)")
-            .unwrap_err()
-            .contains("at most 5"));
         assert_eq!(runtime.eval_text("(= [1 2] [1 2 3])").unwrap(), "false");
         assert_eq!(
             runtime.eval_text("(get {[1 2] :found} '(1 2))").unwrap(),
@@ -4611,7 +4612,7 @@ mod tests {
                      (set? [1])\
                      (sequential? '(1 2))\
                      (sequential? [1 2])\
-                     (sequential? (tuple 1 2))\
+                     (sequential? [1 2])\
                      (sequential? (std.native.Algo/queue 1 2))\
                      (sequential? (std.native.Algo/deque 1 2))\
                      (sequential? (cons 1 [2]))\
@@ -6993,7 +6994,7 @@ mod tests {
             ("9223372036854775808", ":std.native.BigInteger"),
             (":key", ":std.native.Keyword"),
             ("(symbol \"hara/name\")", ":std.native.Symbol"),
-            ("[]", ":std.native.Tuple"),
+            ("[]", ":std.native.Vector"),
             ("(list)", ":std.native.List"),
             ("(std.native.Algo/queue)", ":std.native.Queue"),
             ("(vector)", ":std.native.Vector"),
@@ -7024,7 +7025,7 @@ mod tests {
             runtime
                 .eval_text("[(type [1 2 3 4 5 6 7 8]) (type [1 2 3 4 5 6 7 8 9])]")
                 .unwrap(),
-            "[:std.native.Tuple :std.native.Vector]"
+            "[:std.native.Vector :std.native.Vector]"
         );
         assert_eq!(
             runtime
@@ -7038,13 +7039,13 @@ mod tests {
         assert_eq!(
             runtime
                 .eval_text(
-                    "[(vector? []) (tuple? []) (pair? [1 2]) \
-                     (tuple? [1 2 3 4 5 6 7 8]) (tuple? [1 2 3 4 5 6 7 8 9]) \
+                    "[(vector? []) (pair? [1 2]) (pair? (pair 1 2)) \
+                     (map-entry? (pair 1 2)) (vector? [1 2 3 4 5 6 7 8]) \
                      (vector? [1 2 3 4 5 6 7 8 9]) (pair? (vector 1 2)) \
                      (pair? (list 1 2))]",
                 )
                 .unwrap(),
-            "[true true true true false true false false]"
+            "[true false true true true true false false]"
         );
         assert!(runtime
             .eval_text("(type)")
@@ -8963,8 +8964,8 @@ mod tests {
     }
 
     #[test]
-    fn map_iteration_and_find_return_canonical_pair_tuples() {
-        let mut runtime = Runtime::core();
+    fn map_iteration_and_find_return_dedicated_map_entries() {
+        let mut runtime = Runtime::new();
         assert_eq!(
             runtime
                 .eval_text(
@@ -8974,7 +8975,7 @@ mod tests {
                       (count (IFind/find {:a 1} :a))]",
                 )
                 .unwrap(),
-            "[:std.native.Tuple :std.native.Tuple 2 2]"
+            "[:std.native.MapEntry :std.native.MapEntry 2 2]"
         );
     }
 
