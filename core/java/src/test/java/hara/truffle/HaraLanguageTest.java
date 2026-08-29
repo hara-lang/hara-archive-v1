@@ -91,7 +91,7 @@ public class HaraLanguageTest {
                       + " (set? [1]) "
                       + " (sequential? '(1 2)) "
                       + " (sequential? [1 2]) "
-                      + " (sequential? (tuple 1 2)) "
+                      + " (sequential? [1 2]) "
                       + " (sequential? (std.native.Algo/queue 1 2)) "
                       + " (sequential? (std.native.Algo/deque 1 2)) "
                       + " (sequential? (cons 1 [2])) "
@@ -437,8 +437,8 @@ public class HaraLanguageTest {
           context.eval(HaraLanguage.ID, "(seq? ((map inc) (seq [1 2 3])))").asBoolean());
       assertTrue(
           context.eval(HaraLanguage.ID, "(iter? ((map inc) (iter [1 2 3])))").asBoolean());
-      assertEquals(1, context.eval(HaraLanguage.ID, "(first (tuple 1 2))").asLong());
-      assertEquals(2, context.eval(HaraLanguage.ID, "(last (tuple 1 2))").asLong());
+      assertEquals(1, context.eval(HaraLanguage.ID, "(first [1 2])").asLong());
+      assertEquals(2, context.eval(HaraLanguage.ID, "(last [1 2])").asLong());
       assertEquals(2, context.eval(HaraLanguage.ID, "(first (map inc [1 2 3]))").asLong());
       assertEquals(2, context.eval(HaraLanguage.ID, "(first ((map inc) [1 2 3]))").asLong());
       assertEquals(2, context.eval(HaraLanguage.ID, "(first ((map inc) (seq [1 2 3])))").asLong());

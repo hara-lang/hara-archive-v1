@@ -573,7 +573,7 @@
    :meta {:path (:test/path item)}
    :status :error
    :checks []
-   :error (str error)
+   :error (ex-message (work-result/normalise-error error))
    :reason phase})
 
 (defn namespace-summary

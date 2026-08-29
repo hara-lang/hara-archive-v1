@@ -91,6 +91,37 @@
     value)
   => 7)
 
+^{:refer work.base.execution/execute-node-handler}
+(fact "preserves a raw evaluator rejection as the original Hara error"
+  (let [runtime (assoc (ephemeral/execution-runtime)
+                       :work/policy {:work/mode :portable})
+        frame {:run/id "raw-evaluator"
+               :work/root :root
+               :node/path [:custom]
+               :item/id nil}
+        spec {:op :custom :id :custom}
+        outcome
+        (try
+          (deref
+           (subject/execute-node-handler
+            runtime
+            frame
+            spec
+            :custom
+            (fn [execute runtime frame spec input]
+              (promise/new
+               (fn [_ reject]
+                 (reject "<= expects numbers"))))
+            nil))
+          :not-rejected
+          (catch error
+            [(ex? error)
+             (ex-message error)
+             (:ex/code (ex-data error))
+             (:error (ex-data error))]))]
+    outcome)
+  => [true "<= expects numbers" :hara/generic "<= expects numbers"])
+
 ^{:refer work.base.execution/execute-node}
 (fact "resolves a work operation and evaluates it"
   (let [runtime (assoc (ephemeral/execution-runtime)

@@ -57,16 +57,16 @@
     (reduce
      (fn [found pair]
        (or found
-           (and (<= (first pair) character)
-                (<= character (second pair)))))
+           (and (<= (compare (first pair) character) 0)
+                (<= (compare character (second pair)) 0))))
      false
      +zero-width-ranges+)
     0
     (reduce
      (fn [found pair]
        (or found
-           (and (<= (first pair) character)
-                (<= character (second pair)))))
+           (and (<= (compare (first pair) character) 0)
+                (<= (compare character (second pair)) 0))))
      false
      +wide-width-ranges+)
     2

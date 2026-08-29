@@ -148,6 +148,7 @@ pub enum Value {
     Function(Rc<Function>),
     Tuple(Box<PTuple<Value>>),
     Vector(PVector<Value>),
+    MapEntry(Box<PMapEntry>),
     MutableCollection(Rc<RefCell<Option<MutableCollection>>>),
     Seq(Box<PSeq<Result<Value, String>>>),
     Iterator(Rc<RefCell<IteratorState>>),
@@ -983,6 +984,12 @@ pub(crate) fn exception_function_values() -> Vec<(&'static str, Value)> {
 
 pub(crate) fn direct_function_value(name: &str) -> Option<Value> {
     match name {
+        "pair" => Some(native_function("pair", 2, |arguments| {
+            Ok(Value::MapEntry(Box::new(PMapEntry::new(
+                arguments[0].clone(),
+                arguments[1].clone(),
+            ))))
+        })),
         "disj" => Some(native_variadic_function("disj", |arguments| {
             let (collection, values) = arguments
                 .split_first()
@@ -1897,6 +1904,12 @@ pub(crate) fn value_to_form(value: &Value) -> Result<Form, String> {
             values
                 .iter()
                 .map(|v| value_to_form(v))
+                .collect::<Result<_, _>>()?,
+        )),
+        Value::MapEntry(entry) => Ok(Form::Vector(
+            entry
+                .iter()
+                .map(value_to_form)
                 .collect::<Result<_, _>>()?,
         )),
         Value::Set(_) | Value::OrderedSet(_) | Value::SortedSet(_) => Ok(Form::Set(
@@ -2852,6 +2865,9 @@ pub(crate) fn session_transferable(value: &Value) -> bool {
         Value::Deque(values) => values.iter().all(session_transferable),
         Value::Tuple(values) => values.iter().all(session_transferable),
         Value::Vector(values) => values.iter().all(session_transferable),
+        Value::MapEntry(entry) => {
+            session_transferable(entry.key()) && session_transferable(entry.value())
+        }
         Value::Struct(value) => value.ordered_values().into_iter().all(session_transferable),
         Value::Pointer(value) => value
             .fields()
@@ -3094,6 +3110,7 @@ impl PartialEq for Value {
             (Value::Function(a), Value::Function(b)) => Rc::ptr_eq(a, b),
             (Value::Tuple(a), Value::Tuple(b)) => a == b,
             (Value::Vector(a), Value::Vector(b)) => a == b,
+            (Value::MapEntry(a), Value::MapEntry(b)) => a == b,
             (Value::MutableCollection(a), Value::MutableCollection(b)) => Rc::ptr_eq(a, b),
             (Value::Iterator(a), Value::Iterator(b)) => Rc::ptr_eq(a, b),
             (Value::Var(a), Value::Var(b)) => a.same_identity(b),
@@ -3160,6 +3177,7 @@ impl Ord for Value {
                 | Value::Deque(_)
                 | Value::Tuple(_)
                 | Value::Vector(_)
+                | Value::MapEntry(_)
                 | Value::Seq(_) => 10,
                 Value::Map(_)
                 | Value::OrderedMap(_)
@@ -3303,6 +3321,7 @@ impl crate::lang::hash::JavaHash for Value {
             Self::Queue(v) => v.hash_calc(hash_type) as i64,
             Self::Tuple(v) => v.hash_calc(hash_type) as i64,
             Self::Vector(v) => v.hash_calc(hash_type) as i64,
+            Self::MapEntry(v) => v.hash_calc(hash_type) as i64,
             Self::Seq(v) => jh::compose_ordered(
                 "SEQUENTIAL",
                 v.iter().map(|item| match item {
@@ -3483,6 +3502,7 @@ impl Value {
                     .collect::<Vec<_>>()
                     .join(" ")
             ),
+            Self::MapEntry(entry) => entry.display(),
             Self::Vector(values) => format!(
                 "[{}]",
                 values

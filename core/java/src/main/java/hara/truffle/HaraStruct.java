@@ -177,7 +177,7 @@ public final class HaraStruct
     if (canonical == null) {
       return null;
     }
-    return new Tuple.Tup2.L<>(null, canonical, values.lookup(canonical));
+    return new hara.lang.data.MapEntry<>(null, canonical, values.lookup(canonical));
   }
 
   @Override
@@ -230,7 +230,7 @@ public final class HaraStruct
       @Override
       public Map.Entry<Object, Object> next() {
         Keyword key = Keyword.create(fields[index++]);
-        return new Tuple.Tup2.L<>(null, key, values.lookup(key));
+        return new hara.lang.data.MapEntry<>(null, key, values.lookup(key));
       }
     };
   }

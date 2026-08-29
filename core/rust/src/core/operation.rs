@@ -774,15 +774,14 @@ pub(crate) fn iterator_values(value: Value) -> Result<Vec<Value>, String> {
         Value::Nil => Ok(Vec::new()),
         Value::Tuple(values) => Ok(values.iter().cloned().collect()),
         Value::Vector(values) => Ok(values.iter().cloned().collect()),
+        Value::MapEntry(entry) => Ok(entry.iter().cloned().collect()),
         Value::List(values) => Ok(values.iter().cloned().collect()),
         Value::Cons(values) => Ok(values.iter().collect()),
         Value::Deque(values) => Ok(values.iter().cloned().collect()),
         Value::Queue(values) => Ok(values.iter().cloned().collect()),
         Value::PriorityMap(values) => Ok(values
             .iter()
-            .map(|(key, value)| {
-                Value::Tuple(Box::new(PTuple::from_values(vec![key, value]).unwrap()))
-            })
+            .map(|(key, value)| pair_value(key, value))
             .collect()),
         Value::String(text) => Ok(text.chars().map(Value::Character).collect()),
         Value::Bytes(bytes) => Ok(bytes
@@ -903,6 +902,7 @@ fn make_iterator(value: Value) -> Result<Value, String> {
         | Value::Queue(_)
         | Value::Deque(_)
         | Value::Tuple(_)
+        | Value::MapEntry(_)
         | Value::Vector(_) => Ok(Value::Iterator(Rc::new(RefCell::new(IteratorState::new(
             iterator_values(value)?,
         ))))),
@@ -1258,6 +1258,7 @@ fn collection_count(value: &Value) -> Result<Value, String> {
         Value::String(v) => v.chars().count(),
         Value::Tuple(v) => v.len(),
         Value::Vector(v) => v.len(),
+        Value::MapEntry(_) => 2,
         Value::List(v) => v.len(),
         Value::Cons(v) => v.iter().count(),
         Value::Queue(v) => v.len(),
@@ -1339,6 +1340,10 @@ fn collection_get(value: &Value, key: &Value, default: Value) -> Result<Value, S
         Value::Vector(values) => {
             let index = value_index(key)?;
             Ok(values.get(index).cloned().unwrap_or(default))
+        }
+        Value::MapEntry(entry) => {
+            let index = value_index(key)?;
+            Ok(entry.nth(index).cloned().unwrap_or(default))
         }
         Value::Array(values) => {
             let index = value_index(key)?;
@@ -1458,6 +1463,7 @@ fn collection_nth(value: &Value, key: &Value) -> Result<Value, String> {
     let result = match value {
         Value::Tuple(values) => values.get(index).cloned(),
         Value::Vector(values) => values.get(index).cloned(),
+        Value::MapEntry(entry) => entry.nth(index).cloned(),
         Value::Array(values) => values.borrow().get(index).cloned(),
         Value::Cons(values) => values.iter().nth(index),
         Value::List(values) => values.get(index).cloned(),

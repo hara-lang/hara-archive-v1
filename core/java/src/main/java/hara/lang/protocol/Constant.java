@@ -36,7 +36,7 @@ public interface Constant {
     SEQUENTIAL,
     LIST,
     VECTOR,
-    TUPLE,
+    MAP_ENTRY,
     MAP,
     SET,
     FUNCTION,

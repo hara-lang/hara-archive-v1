@@ -70,7 +70,7 @@ public interface BuiltinStruct {
 
   @Module.Fn(name = "pair", complete = true)
   public static <K, V> IPair<K, V> pair(K key, V val) {
-    return new Tuple.Tup2.L(null, key, val);
+    return new MapEntry<>(null, key, val);
   }
 
   @Module.Fn(name = "symbol", complete = true)

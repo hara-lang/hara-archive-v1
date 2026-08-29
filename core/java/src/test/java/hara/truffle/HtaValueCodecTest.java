@@ -178,8 +178,15 @@ public class HtaValueCodecTest {
   public void immutableRuntimeCollectionsAndPointersRoundTrip() {
     Object tuple = new hara.lang.data.Tuple.Tup2.L<>(null, Keyword.create("x"), 42L);
     Object decodedTuple = HtaValueCodec.decodeCanonical(HtaValueCodec.encode(tuple));
-    assertTrue(decodedTuple instanceof hara.lang.data.Tuple.Tup2<?, ?>);
-    assertEquals(42L, ((hara.lang.data.Tuple.Tup2<?, ?>) decodedTuple).B());
+    assertTrue(decodedTuple instanceof hara.lang.data.Vector<?>);
+    assertEquals(42L, ((hara.lang.data.Vector<?>) decodedTuple).nth(1));
+
+    Object entry = new hara.lang.data.MapEntry<>(null, Keyword.create("x"), 42L);
+    byte[] encodedEntry = HtaValueCodec.encode(entry);
+    assertEquals(38, Byte.toUnsignedInt(encodedEntry[4]));
+    Object decodedEntry = HtaValueCodec.decodeCanonical(encodedEntry);
+    assertTrue(decodedEntry instanceof hara.lang.data.MapEntry<?, ?>);
+    assertEquals(entry, decodedEntry);
 
     Object orderedSet = hara.lang.data.OrderedSet.Standard.from(null, "b", "a");
     Object decodedSet = HtaValueCodec.decodeCanonical(HtaValueCodec.encode(orderedSet));

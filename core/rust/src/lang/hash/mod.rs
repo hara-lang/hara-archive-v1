@@ -251,9 +251,9 @@ pub fn compose_unordered(obj_name: &str, items: impl IntoIterator<Item = i64>) -
     acc
 }
 
-/// Hash of a map entry. Java map iterators yield `Tuple.Tup2.L` entries,
-/// which are `ISequential` — ordered composition with the
-/// `"::SEQUENTIAL"` seed: `(seed * 31 + hk) * 31 + hv`.
+/// Hash of a map entry. Map iterators yield `MapEntry` values, which use
+/// ordered composition with the `"::SEQUENTIAL"` seed:
+/// `(seed * 31 + hk) * 31 + hv`.
 pub fn compose_entry(key_hash: i64, value_hash: i64) -> i64 {
     compose_ordered("SEQUENTIAL", [key_hash, value_hash])
 }
@@ -415,7 +415,9 @@ mod tests {
     use crate::core::Value;
     use crate::kernel::parser::parse_forms;
     use crate::kernel::Form;
-    use crate::lang::data::{Keyword, Map as PMap, Set as PSet, Symbol, Tuple as PTuple};
+    use crate::lang::data::{
+        Keyword, Map as PMap, MapEntry as PMapEntry, Set as PSet, Symbol, Tuple as PTuple,
+    };
     use crate::lang::protocol::{IDisplay, IHash, IObjType};
 
     /// Locates a repo-relative file from the crate manifest dir (mirrors the
@@ -491,8 +493,8 @@ mod tests {
     }
 
     /// Builds the corpus collection for a `:kind :collection` case, using
-    /// `:structure` to interpret the input form (queue and tuple2 inputs are
-    /// vector-encoded).
+    /// `:structure` to interpret the input form (queue, compact-vector2, and
+    /// map-entry inputs are vector-encoded).
     fn collection_value(structure: &str, input: &Form) -> Value {
         match structure {
             "vector" | "list" | "map" | "set" => element_value(input),
@@ -502,11 +504,17 @@ mod tests {
                 }
                 other => panic!("queue input must be a vector: {other}"),
             },
-            "tuple2" => match input {
+            "compact-vector2" => match input {
                 Form::Vector(items) if items.len() == 2 => Value::Tuple(Box::new(
                     PTuple::from_values(items.iter().map(element_value).collect()).unwrap(),
                 )),
-                other => panic!("tuple2 input must be a 2-vector: {other}"),
+                other => panic!("compact-vector2 input must be a 2-vector: {other}"),
+            },
+            "map-entry" => match input {
+                Form::Vector(items) if items.len() == 2 => Value::MapEntry(Box::new(
+                    PMapEntry::new(element_value(&items[0]), element_value(&items[1])),
+                )),
+                other => panic!("map-entry input must be a 2-vector: {other}"),
             },
             other => panic!("unknown collection structure: {other}"),
         }

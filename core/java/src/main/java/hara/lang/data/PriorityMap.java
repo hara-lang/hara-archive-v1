@@ -1,6 +1,5 @@
 package hara.lang.data;
 
-import hara.lang.data.Tuple.Tup2;
 import hara.lang.protocol.IMapType;
 import hara.lang.data.types.ObjPersistent;
 import hara.lang.protocol.IMetadata;
@@ -51,7 +50,7 @@ public interface PriorityMap<K, V>
       ArrayList<Entry<K, V>> output = new ArrayList<>();
       for (Entry<V, OrderedMap.Standard<K, Boolean>> priority : buckets) {
         for (Entry<K, Boolean> key : priority.getValue())
-          output.add(new Tup2.L<>(null, key.getKey(), priority.getKey()));
+          output.add(new MapEntry<>(null, key.getKey(), priority.getKey()));
       }
       return output.iterator();
     }

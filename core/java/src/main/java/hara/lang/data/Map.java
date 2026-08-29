@@ -288,7 +288,7 @@ public interface Map<K, V> extends IMapType<K, V> {
         final int idx = bitmapNodeIndex(_datamap, bit);
         final K current_key = (K) _array[2 * idx];
         if (Eq.eq(current_key, key)) {
-          return new Tuple.Tup2.L(null, current_key, _array[2 * idx + 1]);
+          return new MapEntry<K, V>(null, current_key, (V) _array[2 * idx + 1]);
         } else {
           return null;
         }
@@ -441,7 +441,7 @@ public interface Map<K, V> extends IMapType<K, V> {
         return null;
       }
       if (Eq.eq(key, _array[idx])) {
-        return new Tuple.Tup2.L(null, _array[idx], _array[idx + 1]);
+        return new MapEntry<K, V>(null, (K) _array[idx], (V) _array[idx + 1]);
       }
       return null;
     }
@@ -507,14 +507,14 @@ public interface Map<K, V> extends IMapType<K, V> {
         _data_len = _data_len - 1;
       }
 
-      _next = new Tuple.Tup2.L(null, _array[(_data_idx * 2)], _array[((_data_idx * 2) + 1)]);
+      _next = new MapEntry<>(null, _array[(_data_idx * 2)], _array[((_data_idx * 2) + 1)]);
     }
 
     @SuppressWarnings("rawtypes")
     private boolean advance() {
       if (_data_idx < _data_len) {
         _data_idx = _data_idx + 1;
-        _next = new Tuple.Tup2.L(null, _array[(_data_idx * 2)], _array[((_data_idx * 2) + 1)]);
+        _next = new MapEntry<>(null, _array[(_data_idx * 2)], _array[((_data_idx * 2) + 1)]);
 
         return true;
       } else {
@@ -540,7 +540,7 @@ public interface Map<K, V> extends IMapType<K, V> {
               _data_idx = 0;
               _data_len = (node.dataArity() - 1);
               _next =
-                  new Tuple.Tup2.L(null, _array[(_data_idx * 2)], _array[((_data_idx * 2) + 1)]);
+                  new MapEntry<>(null, _array[(_data_idx * 2)], _array[((_data_idx * 2) + 1)]);
 
               return true;
             }

@@ -5,6 +5,7 @@ on:
     branches: [main, testing]
     paths:
       - '.github/workflows/cross-runtime-conformance.yml'
+      - 'Makefile'
       - 'core/java/**'
       - 'core/lib/**'
       - 'core/rust/**'
@@ -12,6 +13,7 @@ on:
     branches: [main, testing]
     paths:
       - '.github/workflows/cross-runtime-conformance.yml'
+      - 'Makefile'
       - 'core/java/**'
       - 'core/lib/**'
       - 'core/rust/**'
@@ -31,6 +33,7 @@ concurrency:
 
 env:
   DEFAULT_SPECS_REF: f0c9f72c6c22ef7b9a3df4f996dc35e72e35fe44
+  HARA_SPECS_REGISTRY: ${{ github.workspace }}/hara-specs-registry
 
 jobs:
   interfaces:
@@ -54,9 +57,6 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Check Rust protocol declarations
-        run: cargo test --locked --manifest-path core/rust/Cargo.toml --test protocol_declarations
-
       - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
@@ -65,8 +65,8 @@ jobs:
           cache: maven
           cache-dependency-path: core/java/pom.xml
 
-      - name: Check Java protocol declarations
-        run: mvn -B -Ptruffle,conformance -Dtest=HaraDeclarationCoverageTest test --file core/java/pom.xml
+      - name: Run Rust-Java protocol declaration parity
+        run: make test-rust-java-parity-interfaces
 
   native:
     name: std.native (Rust evaluator and Java Truffle)
@@ -90,13 +90,6 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Check Rust native inventory and behavior
-        run: >-
-          cargo test --locked
-          --manifest-path core/rust/Cargo.toml
-          native_behavioral_conformance_tests::
-          --lib -- --nocapture
-
       - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
@@ -105,11 +98,8 @@ jobs:
           cache: maven
           cache-dependency-path: core/java/pom.xml
 
-      - name: Check Java native inventory and behavior
-        run: >-
-          mvn -B -Ptruffle,conformance
-          -Dtest=NativeMethodParityTest,NativeBehavioralConformanceTest
-          test --file core/java/pom.xml
+      - name: Run Rust-Java native inventory and behavior parity
+        run: make test-rust-java-parity-native
 
   halc:
     name: HALC (Rust evaluator and Java Truffle)
@@ -133,14 +123,6 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Check Rust HALC corpus
-        run: >-
-          cargo test --locked
-          --manifest-path core/rust/Cargo.toml
-          --lib
-          kernel::halc::tests::registry_golden_matches_rust_encoding
-          -- --nocapture
-
       - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
@@ -149,11 +131,8 @@ jobs:
           cache: maven
           cache-dependency-path: core/java/pom.xml
 
-      - name: Check Java HALC corpus
-        run: >-
-          mvn -B -Ptruffle,conformance
-          -Dtest=HalcArtifactTest#registryGoldenMatchesJavaEncoding
-          test --file core/java/pom.xml
+      - name: Run Rust-Java HALC artifact parity
+        run: make test-rust-java-parity-halc
 
   hta:
     name: HTA portable wire (Rust and Java)
@@ -177,13 +156,6 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Check Rust HTA portable corpus
-        run: >-
-          cargo test --locked
-          --manifest-path core/rust/Cargo.toml
-          --test hta_portable
-          registry_golden_vector_matches_rust_encoding
-
       - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
@@ -192,8 +164,5 @@ jobs:
           cache: maven
           cache-dependency-path: core/java/pom.xml
 
-      - name: Check Java HTA portable corpus
-        run: >-
-          mvn -B -Ptruffle,conformance
-          -Dtest=HtaValueCodecTest#registryGoldenVectorMatchesJavaEncoding
-          test --file core/java/pom.xml
+      - name: Run Rust-Java HTA portable-wire parity
+        run: make test-rust-java-parity-hta

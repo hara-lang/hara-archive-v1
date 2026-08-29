@@ -77,7 +77,7 @@
       (frame/emit runtime frame :work/node-failed
                    {:operation operation
                     :node/id (:id spec)
-                    :error (str error)})
+                    :error (ex-message error)})
       (fn [_]
         (throw error))))))
 

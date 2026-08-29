@@ -522,9 +522,9 @@ public class HbcCodecTest {
   }
 
   @Test
-  public void portableMachineKeepsCompactTuplesBehindTheVectorSurface() throws Exception {
+  public void portableMachineKeepsCompactVectorsBehindTheVectorSurface() throws Exception {
     List<Object> constants =
-        new ArrayList<>(List.of("type", "vector?", "tuple?", "pair?"));
+        new ArrayList<>(List.of("type", "vector?", "pair?", "map-entry?"));
     for (long value = 1; value <= 9; value++) constants.add(value);
 
     List<Instruction> code = new ArrayList<>();
@@ -533,7 +533,7 @@ public class HbcCodecTest {
     appendVectorCall(code, 2, 0);
     appendVectorCall(code, 3, 2);
     appendVectorCall(code, 0, 8);
-    appendVectorCall(code, 2, 8);
+    appendVectorCall(code, 1, 8);
     appendVectorCall(code, 0, 9);
     appendVectorCall(code, 1, 9);
     appendVectorCall(code, 2, 9);
@@ -562,7 +562,7 @@ public class HbcCodecTest {
             .build();
     try (Context context = Context.newBuilder(HaraLanguage.ID).build()) {
       assertEquals(
-          "[:std.native.Tuple true true true :std.native.Tuple true :std.native.Vector true false]",
+          "[:std.native.Vector true false false :std.native.Vector true :std.native.Vector true false]",
           context.eval(source).toString());
     }
   }

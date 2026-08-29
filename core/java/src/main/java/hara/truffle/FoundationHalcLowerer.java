@@ -98,6 +98,7 @@ final class FoundationHalcLowerer {
       case "and" -> lowerShortCircuit(list, true);
       case "or" -> lowerShortCircuit(list, false);
       case "let" -> lowerLet(list);
+      case "letfn" -> lowerLetFn(list);
       case "loop" -> lowerLoop(list);
       case "recur" -> lowerRecur(list);
       case "throw" -> lowerThrow(list);
@@ -308,6 +309,44 @@ final class FoundationHalcLowerer {
               body);
     }
     return body;
+  }
+
+  private HaraExpressionNode lowerLetFn(List<?> form) {
+    if (form.count() < 3 || !bindingVector(form.nth(1))) {
+      fail("letfn expects a function binding vector and a body");
+    }
+    ILinearType<?> bindings = (ILinearType<?>) form.nth(1);
+    int functionCount = (int) bindings.count();
+    int[] slots = new int[functionCount];
+    Map<Symbol, Integer> functionLocals = new HashMap<>(locals);
+    ArrayList<Object[]> definitions = new ArrayList<>();
+    for (int index = 0; index < functionCount; index++) {
+      Object value = bindings.nth(index);
+      if (!(value instanceof List<?>) || ((List<?>) value).count() < 3) {
+        fail("letfn definitions must be (name [arguments] body...)");
+      }
+      List<?> definition = (List<?>) value;
+      Object rawName = definition.nth(0);
+      if (!(rawName instanceof Symbol) || ((Symbol) rawName).getNamespace() != null) {
+        fail("letfn names must be unqualified symbols");
+      }
+      Symbol symbol = (Symbol) rawName;
+      if (functionLocals.containsKey(symbol)) fail("Duplicate letfn name: " + symbol.getName());
+      slots[index] = frames.addSlot(FrameSlotKind.Object, symbol, null);
+      functionLocals.put(symbol, slots[index]);
+      definitions.add(new Object[] {definition.nth(1), bodyForms(definition, 2)});
+    }
+
+    FoundationHalcLowerer letFnLowerer =
+        new FoundationHalcLowerer(language, context, frames, functionLocals, recurTarget);
+    HaraExpressionNode[] functions = new HaraExpressionNode[functionCount];
+    for (int index = 0; index < functionCount; index++) {
+      Object[] definition = definitions.get(index);
+      if (!bindingVector(definition[0])) fail("letfn parameters must be a binding vector");
+      functions[index] =
+          letFnLowerer.lowerFunction((ILinearType<?>) definition[0], (Object[]) definition[1]);
+    }
+    return new HaraNodes.LetFn(slots, functions, letFnLowerer.lowerBody(form, 2));
   }
 
   private HaraExpressionNode lowerLoop(List<?> form) {

@@ -227,6 +227,7 @@ fn attach_optional_metadata(value: Value, metadata: Option<Rc<Metadata>>) -> Res
         Value::Pointer(value) => Value::Pointer(value.with_meta(metadata.clone())),
         Value::Tuple(value) => Value::Tuple(Box::new(value.with_meta(metadata.clone()))),
         Value::Vector(value) => Value::Vector(value.with_meta(metadata.clone())),
+        Value::MapEntry(value) => Value::MapEntry(Box::new(value.with_meta(metadata.clone()))),
         Value::List(value) => Value::List(value.with_meta(metadata.clone())),
         Value::Cons(value) => Value::Cons(Box::new(value.with_meta(metadata.clone()))),
         Value::Queue(value) => Value::Queue(Box::new(value.with_meta(metadata.clone()))),

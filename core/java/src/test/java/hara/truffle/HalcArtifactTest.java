@@ -429,6 +429,31 @@ public class HalcArtifactTest {
     }
   }
 
+  @Test
+  public void foundationHalcLowersLetfnBindings() {
+    try (Context context = Context.newBuilder(HaraLanguage.ID).build()) {
+      assertEquals(-1, context.eval(HaraLanguage.ID, "(std.foundation/compare 1 2)").asLong());
+      assertEquals(
+          ":std.native.MapEntry",
+          context.eval(HaraLanguage.ID, "(type (std.foundation/pair :key 42))").toString());
+      assertEquals(
+          4,
+          context
+              .eval(
+                  HaraLanguage.ID,
+                  "(letfn [(twice [value] (+ value value))] (twice 2))")
+              .asLong());
+      assertTrue(
+          context
+              .eval(
+                  HaraLanguage.ID,
+                  "(letfn [(even? [value] (if (= value 0) true (odd? (- value 1)))) "
+                      + "(odd? [value] (if (= value 0) false (even? (- value 1))))] "
+                      + "(even? 6))")
+              .asBoolean());
+    }
+  }
+
   private static void assertFoundation() {
     try (Context context =
         Context.newBuilder(HaraLanguage.ID)

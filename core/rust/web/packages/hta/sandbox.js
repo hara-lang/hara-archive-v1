@@ -1,4 +1,4 @@
-import { HtaContext, HtaHandle, HtaKeyword, HtaStruct } from "./index.js";
+import { HtaContext, HtaHandle, HtaKeyword, HtaMapEntry, HtaStruct } from "./index.js";
 
 export const BROWSER_WASM_SANDBOX_PROTOCOL = "hara.browser-wasm-sandbox/0-alpha";
 export const MCP_PURE_PROFILE = "hara.mcp-pure/0-alpha";
@@ -160,6 +160,12 @@ function projectValue(value, state, depth) {
     return number;
   }
   if (value instanceof HtaKeyword) return `:${value.name}`;
+  if (value instanceof HtaMapEntry) {
+    return [
+      projectValue(value.key, state, depth + 1),
+      projectValue(value.value, state, depth + 1),
+    ];
+  }
   if (value instanceof HtaHandle || value instanceof HtaStruct) {
     throw fail(
       "sandbox/result-non-transferable",

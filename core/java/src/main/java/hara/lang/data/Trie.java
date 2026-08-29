@@ -32,7 +32,7 @@ public interface Trie<V>
       current = node;
     }
     return current.isEndOfWord()
-        ? new hara.lang.data.Tuple.Tup2.L<>(null, key, current.getValue())
+        ? new MapEntry<>(null, key, current.getValue())
         : null;
   }
 
@@ -174,7 +174,7 @@ public interface Trie<V>
         }
 
         if (node.isEndOfWord()) {
-          nextValue = new hara.lang.data.Tuple.Tup2.L<>(null, prefix, node.getValue());
+          nextValue = new MapEntry<>(null, prefix, node.getValue());
           return;
         }
       }

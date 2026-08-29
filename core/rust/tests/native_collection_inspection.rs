@@ -65,7 +65,7 @@ fn foundation_first_and_last_use_indexed_collections_before_iteration() {
     assert_eq!(
         runtime
             .eval_native(
-                "[(first [40 41 42]) (first (tuple 40 41 42)) (last [40 41 42]) (last (tuple 40 41 42))]"
+                "[(first [40 41 42]) (first [40 41 42]) (last [40 41 42]) (last [40 41 42])]"
             )
             .unwrap(),
         "[40 40 42 42]"
@@ -107,7 +107,7 @@ fn portable_collection_categories_classify_all_portable_families() {
                  (set? [1])\
                  (sequential? '(1 2))\
                  (sequential? [1 2])\
-                 (sequential? (tuple 1 2))\
+                 (sequential? (vector 1 2))\
                  (sequential? (std.native.Algo/queue 1 2))\
                  (sequential? (std.native.Algo/deque 1 2))\
                  (sequential? (cons 1 [2]))\

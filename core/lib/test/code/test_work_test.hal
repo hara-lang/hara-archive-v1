@@ -308,10 +308,11 @@
       {:test/namespace "sample.test" :test/path "sample_test.hal"}
       :before-all
       (ex :generic {} :ex/message "boom"))
-     [:namespace :name :status :reason])
+     [:namespace :name :status :error :reason])
     {:namespace "sample.test"
      :name ":before-all"
      :status :error
+     :error "boom"
      :reason :before-all})
 
    ^{:refer code.test.work/namespace-summary}

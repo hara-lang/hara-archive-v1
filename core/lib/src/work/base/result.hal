@@ -5,6 +5,15 @@
   [value]
   (promise? value))
 
+(defn normalise-error
+  "Preserves Hara exceptions and wraps raw failures as generic exceptions."
+  [error]
+  (if (ex? error)
+    error
+    (ex :generic
+        {:error error}
+        :ex/message (str error))))
+
 (defn then
   "Applies function immediately to direct values and chains Promises."
   [value function]
@@ -16,7 +25,9 @@
   "Passes direct values through and handles Promise rejection."
   [value function]
   (if (asynchronous? value)
-    (promise/catch value function)
+    (promise/catch value
+                   (fn [error]
+                     (function (normalise-error error))))
     value))
 
 (defn attempt
@@ -24,8 +35,8 @@
   [function handler]
   (try
     (recover (function) handler)
-    (catch Throwable error
-      (handler error))))
+    (catch error
+      (handler (normalise-error error)))))
 
 (defn all
   "Returns direct values unchanged unless at least one value is a Promise."

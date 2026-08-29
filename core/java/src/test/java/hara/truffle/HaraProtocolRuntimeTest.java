@@ -8,6 +8,7 @@ import hara.lang.protocol.IDeps;
 import hara.lang.protocol.ISetType;
 import hara.lang.data.List;
 import hara.lang.data.Keyword;
+import hara.lang.data.MapEntry;
 import hara.lang.data.Queue;
 import hara.lang.data.Set;
 import hara.lang.data.SortedMap;
@@ -227,8 +228,8 @@ public void bridgesTheDependencyContractThroughTheGenericAdapter() {
 
     HaraProtocol pair = new HaraProtocol("IPair", Map.of("key", 1, "value", 1));
     HaraProtocolRuntime.installForTest(pair);
-    Tuple.Tup2.L<String, Integer> tuple = new Tuple.Tup2.L<>(null, "key", 42);
-    assertEquals("key", pair.invoke("key", tuple, new Object[0]));
-    assertEquals(42, pair.invoke("value", tuple, new Object[0]));
+    MapEntry<String, Integer> entry = new MapEntry<>(null, "key", 42);
+    assertEquals("key", pair.invoke("key", entry, new Object[0]));
+    assertEquals(42, pair.invoke("value", entry, new Object[0]));
   }
 }

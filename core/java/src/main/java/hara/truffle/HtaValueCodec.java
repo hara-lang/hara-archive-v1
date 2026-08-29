@@ -1,8 +1,10 @@
 package hara.truffle;
 
 import hara.lang.data.Keyword;
+import hara.lang.data.MapEntry;
 import hara.lang.data.Symbol;
 import hara.lang.data.HaraCharacter;
+import hara.lang.data.Tuple;
 import hara.lang.base.NumUtils;
 import hara.lang.protocol.ILinearType;
 import hara.lang.protocol.IMapType;
@@ -59,6 +61,7 @@ public final class HtaValueCodec {
   private static final int VAR_REF = 35;
   private static final int DEQUE = 36;
   private static final int PRIORITY_MAP = 37;
+  private static final int MAP_ENTRY = 38;
   private static final String RESULT_STRUCT_NAME = "std.native/Result";
   private static final String[] RESULT_STRUCT_FIELDS = {"status", "data", "error", "context"};
 
@@ -193,6 +196,9 @@ public final class HtaValueCodec {
       output.write(TAGGED);
       write(output, tagged.tag(), depth + 1);
       write(output, tagged.form(), depth + 1);
+    } else if (value instanceof MapEntry<?, ?> entry) {
+      output.write(MAP_ENTRY);
+      writeCollection(output, entry, depth);
     } else if (value instanceof hara.lang.base.Ex.Info info) {
       output.write(EXCEPTION_INFO);
       write(output, info.getMessage(), depth + 1);
@@ -222,9 +228,8 @@ public final class HtaValueCodec {
     } else if (value instanceof hara.lang.data.List<?>) {
       output.write(LIST);
       writeCollection(output, (ILinearType<?>) value, depth);
-    } else if (value instanceof hara.lang.data.Tuple.Tup0
-        || value instanceof hara.lang.data.Tuple.Tup1<?>) {
-      output.write(TUPLE);
+    } else if (Tuple.isCompact(value)) {
+      output.write(VECTOR);
       writeCollection(output, (ILinearType<?>) value, depth);
     } else if (value instanceof hara.lang.data.Cons<?>) {
       output.write(CONS);
@@ -419,6 +424,8 @@ public final class HtaValueCodec {
           return sequence(depth + 1, true);
         case TUPLE:
           return tuple(depth + 1);
+        case MAP_ENTRY:
+          return mapEntry(depth + 1);
         case CONS:
           return cons(depth + 1);
         case QUEUE:
@@ -565,6 +572,12 @@ public final class HtaValueCodec {
         case 8 -> new hara.lang.data.Tuple.Tup8.L<>(null, values[0], values[1], values[2], values[3], values[4], values[5], values[6], values[7]);
         default -> throw malformed("tuple arity exceeds Java runtime maximum");
       };
+    }
+
+    private Object mapEntry(int depth) {
+      Object[] values = sequenceArray(depth, "map entry");
+      if (values.length != 2) throw malformed("map entry must contain two values");
+      return new MapEntry<>(null, values[0], values[1]);
     }
 
     private Object cons(int depth) {

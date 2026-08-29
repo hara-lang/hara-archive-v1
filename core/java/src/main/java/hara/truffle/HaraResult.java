@@ -226,7 +226,7 @@ public final class HaraResult implements IDeref<Object>, IDisplay, IEquality, IH
       case "context" -> context.count() == 0 ? null : context();
       default -> MISSING;
     };
-    return value == MISSING ? null : new Tuple.Tup2.L<>(null, keyword, value);
+    return value == MISSING ? null : new hara.lang.data.MapEntry<>(null, keyword, value);
   }
 
   @Override

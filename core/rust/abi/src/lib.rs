@@ -40,6 +40,9 @@ pub enum ImmutableValue {
     Symbol(String),
     List(Vec<ImmutableValue>),
     Vector(Vec<ImmutableValue>),
+    /// A dedicated two-value entry produced by map and lookup operations.
+    MapEntry(Vec<ImmutableValue>),
+    /// Legacy compact tuple representation retained for decoding old HTA data.
     Tuple(Vec<ImmutableValue>),
     Cons(Vec<ImmutableValue>),
     Queue(Vec<ImmutableValue>),

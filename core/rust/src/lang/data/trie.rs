@@ -227,7 +227,7 @@ impl<V: Clone + std::fmt::Debug> IDisplay for Standard<V> {
 impl<V: Clone + std::hash::Hash + JavaHash> IHash for Standard<V> {
     fn hash_calc(&self, hash_type: HashType) -> u64 {
         // Java Trie.hashCalc override: acc = "::MAP".hashCode(), then
-        // acc += hash(key) + hash(value) per entry (NOT the entry-tuple
+        // acc += hash(key) + hash(value) per entry (NOT the MapEntry
         // composition used by maps). Keys are plain Strings, so they hash
         // via Java String.hashCode under every hash type (see lang::hash).
         let mut acc = crate::lang::hash::hash_seed("MAP") as i64;

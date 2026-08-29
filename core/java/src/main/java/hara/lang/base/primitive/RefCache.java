@@ -1,7 +1,7 @@
 package hara.lang.base.primitive;
 
 import hara.lang.base.Iter;
-import hara.lang.data.Tuple;
+import hara.lang.data.MapEntry;
 import hara.lang.protocol.ICount;
 import hara.lang.protocol.ILookup;
 
@@ -46,7 +46,7 @@ public final class RefCache<K, V> implements ILookup<K, Reference<V>>, ICount {
   @Override
   public Entry<K, Reference<V>> find(K key) {
     var ret = _lu.getOrDefault(key, null);
-    return (ret == null) ? null : new Tuple.Tup2.L(null, key, ret);
+    return (ret == null) ? null : new MapEntry(null, key, ret);
   }
 
   public V get(K key) {

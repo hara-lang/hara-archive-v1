@@ -6,8 +6,9 @@ pub use crate::kernel::Form;
 use crate::kernel::{NamespaceLoadState, NamespaceRegistry, Var as KernelVar, VarOrigin};
 use crate::lang::data::List as PList;
 use crate::lang::data::{
-    Atom as PAtom, Cons as PCons, Deque as PDeque, Keyword, Map as PMap, OrderedMap as POrderedMap,
-    OrderedSet as POrderedSet, Pointer as PPointer, PriorityMap as PPriorityMap, Queue as PQueue,
+    Atom as PAtom, Cons as PCons, Deque as PDeque, Keyword, Map as PMap, MapEntry as PMapEntry,
+    OrderedMap as POrderedMap, OrderedSet as POrderedSet, Pointer as PPointer,
+    PriorityMap as PPriorityMap, Queue as PQueue,
     Seq as PSeq, Set as PSet, SortedMap as PSortedMap, SortedSet as PSortedSet, Symbol,
     TaggedLiteral as PTaggedLiteral, Trie as PTrie, Tuple as PTuple, Vector as PVector,
 };

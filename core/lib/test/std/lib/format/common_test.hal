@@ -2,6 +2,43 @@
   (:use code.test)
   (:require [std.lib.format.common :as common]))
 
+^{:refer std.lib.format.common/+space+}
+(fact "defines one ordinary terminal space"
+  common/+space+
+  => " ")
+
+^{:refer std.lib.format.common/+pad+}
+(fact "defines the padding character"
+  common/+pad+
+  => " ")
+
+^{:refer std.lib.format.common/+up+}
+(fact "defines the cursor-up terminal sequence"
+  common/+up+
+  => "\u001b[1A")
+
+^{:refer std.lib.format.common/+clearline+}
+(fact "defines the clear-line terminal sequence"
+  common/+clearline+
+  => "\u001b[2K")
+
+^{:refer std.lib.format.common/+zero-width-ranges+}
+(fact "defines the zero-width terminal-character boundaries"
+  [(count common/+zero-width-ranges+)
+   (first common/+zero-width-ranges+)
+   (nth common/+zero-width-ranges+
+        (dec (count common/+zero-width-ranges+)))]
+  => [9 [\u0000 \u001f] [\ufe20 \ufe2f]])
+
+^{:refer std.lib.format.common/+wide-width-ranges+}
+(fact "defines the wide terminal-character boundaries"
+  [(count common/+wide-width-ranges+)
+   (first common/+wide-width-ranges+)
+   (nth common/+wide-width-ranges+
+        (dec (count common/+wide-width-ranges+)))]
+  => [15 [\u1100 \u115f]
+      [(str/char-at "🌀" 0) (str/char-at "🫿" 0)]])
+
 ^{:refer std.lib.format.common/line}
 (fact "creates structured lines with default and explicit roles"
   [(common/line "hello")
