@@ -2,6 +2,7 @@ use hara_abi::Value as PortableValue;
 use hara_wasm::core::Value;
 use hara_wasm::hta;
 use hara_wasm::kernel::{parse_forms, Form};
+use hara_wasm::lang::data::MapEntry;
 use hara_wasm::spec_registry;
 use num_bigint::BigInt;
 use std::collections::BTreeMap;
@@ -145,6 +146,67 @@ fn registry_golden_vector_matches_rust_encoding() {
         expected,
         hta::encode(&Value::Vector(values.into())).unwrap()
     );
+}
+
+#[test]
+fn registry_map_entry_matches_rust_encoding_and_rejects_wrong_arity() {
+    let source = std::fs::read_to_string(spec_registry::require(
+        "02-platform/000050-transport-hta/draft/conformance/transport-hta.edn",
+    ))
+    .expect("HTA conformance suite is readable");
+    let root = parse_forms(&source)
+        .expect("HTA conformance suite parses")
+        .into_iter()
+        .next()
+        .expect("HTA conformance suite has a root");
+    let Form::Map(root) = root else {
+        panic!("HTA conformance suite root must be a map");
+    };
+    let Form::Vector(cases) = lookup(&root, "suite/cases") else {
+        panic!("HTA conformance suite cases must be a vector");
+    };
+    let case = cases
+        .iter()
+        .find(|case| matches!(lookup_map(case, "case/id"), Form::Keyword(id) if id == "hta.case/map-entry"))
+        .expect("registry HTA map-entry case");
+    let Form::Vector(input) = lookup_map(case, "case/input") else {
+        panic!("HTA map-entry input must be a vector");
+    };
+    let [Form::Keyword(key), Form::Number(value)] = input.as_slice() else {
+        panic!("HTA map-entry input must be a keyword and number");
+    };
+    let Form::Map(expectation) = lookup_map(case, "case/expect") else {
+        panic!("HTA map-entry expectation must be a map");
+    };
+    let Form::Vector(expected) = lookup(expectation, "bytes") else {
+        panic!("HTA map-entry expected bytes must be a vector");
+    };
+    let expected = expected
+        .iter()
+        .map(|value| match value {
+            Form::Number(value) => u8::try_from(*value).expect("HTA map-entry byte fits in u8"),
+            other => panic!("HTA map-entry byte must be a number: {other:?}"),
+        })
+        .collect::<Vec<_>>();
+    let entry = Value::MapEntry(Box::new(MapEntry::new(
+        Value::Keyword(key.clone().into()),
+        Value::Number(*value),
+    )));
+
+    assert_eq!(expected, hta::encode(&entry).unwrap());
+    assert_eq!(hta::decode_canonical(&expected).unwrap(), entry);
+
+    let zero = vec![b'H', b'T', b'A', b'0', 38, 0, 0, 0, 0];
+    let mut one = expected[..17].to_vec();
+    one[8] = 1;
+    let mut three = expected.clone();
+    three[8] = 3;
+    three.push(0);
+    for malformed in [zero, one, three] {
+        assert!(hta::decode(&malformed)
+            .unwrap_err()
+            .starts_with("hta/value-malformed: map entry"));
+    }
 }
 
 fn runtime_value(form: &Form) -> Value {

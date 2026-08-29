@@ -34,14 +34,9 @@ public class FoundationRuntimeCorpusTest {
   public void specsOwnedFoundationCorpusClosesAndPassesOnTheJvm() throws Exception {
     Set<String> specified = surfaceSymbols();
     String source =
-        String.join(
-                "\n",
-                Files.readString(FOUNDATION_SOURCE.resolve("bytes.hal")),
-                Files.readString(FOUNDATION_SOURCE.resolve("coroutine.hal")),
-                Files.readString(FOUNDATION_SOURCE.resolve("pretty.hal")),
-                Files.readString(FOUNDATION_SOURCE.resolve("promise.hal")),
-                Files.readString(FOUNDATION_SOURCE.resolve("string.hal")),
-                Files.readString(CORPUS))
+        foundationModules()
+            + "\n"
+            + Files.readString(CORPUS)
             + """
 
             (let [report (foundation-host-assertion-report)
@@ -55,6 +50,7 @@ public class FoundationRuntimeCorpusTest {
                :passed (:passed profile)
                :failed (:failed profile)
                :skipped (:skipped profile)
+               :calibrations (vec (filter (fn [case] (not (:pass case))) (foundation-calibration-results)))
                :vars foundation-source-vars})
             """;
 
@@ -67,7 +63,10 @@ public class FoundationRuntimeCorpusTest {
     }
 
     assertEquals(true, report.lookup(keyword("corpus-valid")));
-    assertEquals(0L, report.lookup(keyword("calibration-failed")));
+    assertEquals(
+        "Foundation calibration failures: " + report.lookup(keyword("calibrations")),
+        0L,
+        report.lookup(keyword("calibration-failed")));
     assertEquals(0L, report.lookup(keyword("boundary-failed")));
     assertEquals(0L, report.lookup(keyword("failed")));
     long portable = ((Number) report.lookup(keyword("portable"))).longValue();
@@ -85,6 +84,24 @@ public class FoundationRuntimeCorpusTest {
       assertTrue("duplicate corpus symbol " + display, corpusSymbols.add(display));
     }
     assertEquals(specified, corpusSymbols);
+  }
+
+  @Test
+  public void specsOwnedMapEntryCalibrationPassesOnTheJvm() throws Exception {
+    String source =
+        foundationModules()
+            + "\n"
+            + Files.readString(CORPUS)
+            + """
+
+            (first (filter (fn [case] (= :map-entry-boundary (:id case)))
+                           (foundation-calibration-results)))
+            """;
+    String result;
+    try (Context context = Context.newBuilder(HaraLanguage.ID).build()) {
+      result = context.eval(HaraLanguage.ID, source).toString();
+    }
+    assertTrue("MapEntry calibration: " + result, result.contains(":pass true"));
   }
 
   @SuppressWarnings("rawtypes")
@@ -108,6 +125,16 @@ public class FoundationRuntimeCorpusTest {
 
   private static Keyword keyword(String name) {
     return Keyword.create(name);
+  }
+
+  private static String foundationModules() throws Exception {
+    return String.join(
+        "\n",
+        Files.readString(FOUNDATION_SOURCE.resolve("bytes.hal")),
+        Files.readString(FOUNDATION_SOURCE.resolve("coroutine.hal")),
+        Files.readString(FOUNDATION_SOURCE.resolve("pretty.hal")),
+        Files.readString(FOUNDATION_SOURCE.resolve("promise.hal")),
+        Files.readString(FOUNDATION_SOURCE.resolve("string.hal")));
   }
 
   private static Path specsRegistry() {

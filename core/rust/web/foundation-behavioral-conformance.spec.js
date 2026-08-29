@@ -85,3 +85,52 @@ test("browser Wasm consumes the specs-owned Foundation behavioral corpus", async
   expect(observed.interpreted).toBe(observed.probeExpected);
   expect(observed.compiled).toBe(observed.probeExpected);
 });
+
+test("browser Wasm keeps the specs-owned MapEntry calibration in evaluator/bytecode parity", async ({ page }) => {
+  const corpus = await readFile(fileURLToPath(corpusUrl), "utf8");
+  const resources = await readFoundationResources();
+
+  await page.goto("/rust/web/index.html");
+  const observed = await page.evaluate(async ({ resources, corpus }) => {
+    const { start } = await import(
+      "/rust/web/packages/browser/dist/hara-wasm-full/hara.mjs"
+    );
+    const hara = await start({ resources });
+    for (const namespace of Object.keys(resources)) hara.require(namespace);
+    hara.eval("(ns user)");
+    hara.eval(corpus);
+    const probe = JSON.parse(
+      String(
+        hara.eval(
+          "(get (get foundation-calibration-snippets :map-entry-boundary) :source)"
+        )
+      )
+    );
+    const expected = String(
+      hara.eval(
+        "(get (get foundation-calibration-snippets :map-entry-boundary) :expected)"
+      )
+    );
+    const calibration = String(
+      hara.eval(
+        "(first (filter (fn [case] (= :map-entry-boundary (:id case))) (foundation-calibration-results)))"
+      )
+    );
+    const pass = String(
+      hara.eval(
+        "(get (first (filter (fn [case] (= :map-entry-boundary (:id case))) (foundation-calibration-results))) :pass)"
+      )
+    );
+    return {
+      calibration,
+      expected,
+      pass,
+      interpreted: String(hara.eval(probe)),
+      compiled: String(hara.evalBytecode(hara.compileBytecode(probe)))
+    };
+  }, { resources, corpus });
+
+  expect(observed.pass, observed.calibration).toBe("true");
+  expect(observed.interpreted).toBe(observed.expected);
+  expect(observed.compiled).toBe(observed.expected);
+});

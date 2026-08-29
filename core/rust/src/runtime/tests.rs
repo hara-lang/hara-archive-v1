@@ -3085,6 +3085,49 @@ mod tests {
     }
 
     #[test]
+    fn specs_owned_map_entry_calibration_agrees_in_evaluator_and_bytecode() {
+        let Some((modules, corpus)) = foundation_behavior_sources() else {
+            return;
+        };
+        let result = std::thread::Builder::new()
+            .name("map-entry-parity".into())
+            .stack_size(32 * 1024 * 1024)
+            .spawn(move || {
+                let mut runtime = Runtime::new();
+                runtime.eval_text(&(modules + &corpus))?;
+                let probe = runtime.eval_text(
+                    "(get (get foundation-calibration-snippets :map-entry-boundary) :source)",
+                )?;
+                let forms = kernel::parse_forms(&probe)?;
+                let [Form::String(source)] = forms.as_slice() else {
+                    return Err(format!("MapEntry calibration source must be a string: {probe}"));
+                };
+                let expected = runtime.eval_text(
+                    "(get (get foundation-calibration-snippets :map-entry-boundary) :expected)",
+                )?;
+                let evaluator = runtime.eval_text(source)?;
+                let bytecode = runtime.eval_bytecode_native(source)?;
+                Ok::<_, String>((expected, evaluator, bytecode))
+            })
+            .expect("spawn MapEntry parity runtime")
+            .join()
+            .expect("MapEntry parity runtime panicked")
+            .unwrap_or_else(|error| panic!("MapEntry calibration: {error}"));
+        assert_eq!(
+            result.1, result.0,
+            "MapEntry calibration evaluator result"
+        );
+        assert_eq!(
+            result.2, result.0,
+            "MapEntry calibration bytecode result"
+        );
+        assert_eq!(
+            result.1, result.2,
+            "MapEntry evaluator/bytecode parity"
+        );
+    }
+
+    #[test]
     fn shared_foundation_protocol_conformance_fixture_runs_in_the_native_runtime() {
         let mut runtime = Runtime::new();
         let source =
