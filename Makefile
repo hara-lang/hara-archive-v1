@@ -27,6 +27,7 @@ HARA_SPECS_REGISTRY ?= $(abspath ../hara-specs-registry)
   uninstall check-install \
   check-rust-java-parity-specs \
   test-rust-java-parity \
+  test-hara-native-interpreter-parity \
   test-rust-java-parity-interfaces \
   test-rust-java-parity-native \
   test-rust-java-parity-halc \
@@ -161,6 +162,10 @@ test-rust-java-parity: check-rust-java-parity-specs
 	  HARA_SPECS_REGISTRY="$(HARA_SPECS_REGISTRY)" \
 	  test-rust-java-parity-hta
 
+test-hara-native-interpreter-parity:
+	./scripts/runtime/run-lib-tests --backend native
+	./scripts/runtime/run-lib-tests --backend interpreter
+
 test-rust-java-parity-interfaces: check-rust-java-parity-specs
 	HARA_SPECS_REGISTRY="$(HARA_SPECS_REGISTRY)" \
 	  $(CARGO) test --locked --manifest-path "$(RUST_MANIFEST)" --test protocol_declarations
@@ -207,6 +212,8 @@ help:
 	  'make check-install      Exercise staged install and uninstall flows' \
 	  'make test-rust-java-parity' \
 	  '                        Run Rust-Java protocol, native, HALC, and HTA parity' \
+	  'make test-hara-native-interpreter-parity' \
+	  '                        Run the complete native and interpreter Hara library suites' \
 	  '' \
 	  'Variables: PREFIX, DESTDIR, BINDIR, DATADIR, HARA_DATADIR, HARA_LITE_DATADIR,' \
 	  '           HARA_SPECS_REGISTRY'

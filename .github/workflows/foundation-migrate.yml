@@ -16,7 +16,6 @@ on:
       - 'core/lib/test/work/verify/**'
       - 'core/spec/tool-migrate/**'
       - 'core/rust/standard-library.namespaces'
-      - 'scripts/runtime/foundation_target_snapshot*'
       - 'scripts/runtime/sync-rust-hal-src'
       - '.github/workflows/foundation-migrate.yml'
   pull_request:
@@ -34,7 +33,6 @@ on:
       - 'core/lib/test/work/verify/**'
       - 'core/spec/tool-migrate/**'
       - 'core/rust/standard-library.namespaces'
-      - 'scripts/runtime/foundation_target_snapshot*'
       - 'scripts/runtime/sync-rust-hal-src'
       - '.github/workflows/foundation-migrate.yml'
   workflow_dispatch:
@@ -49,6 +47,7 @@ concurrency:
 jobs:
   evidence:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
@@ -96,11 +95,31 @@ jobs:
           test ! -e foundation-base/.git/index
           test ! -d .foundation-reference
 
-      - name: Validate retained native target snapshots
+      - name: Set up JDK 21 for native ledger regeneration
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+          cache-dependency-path: core/java/pom.xml
+
+      - name: Build a fresh JVM runtime for native ledger regeneration
+        run: mvn -B -f core/java/pom.xml -Ptruffle -DskipTests package
+
+      - name: Regenerate the native XT ledger from the pinned bare object
         run: |
           set -euo pipefail
-          python3 scripts/runtime/foundation_target_snapshot_test.py
-          python3 scripts/runtime/foundation_target_snapshot.py
+          write_ledger="(do
+            (require (quote tool.migrate.policy.foundation.xt))
+            (tool.migrate.policy.foundation.xt/write-inventory
+             \"\"
+             {:foundation/root \"/foundation-base\"
+              :foundation/git-dir \"$GITHUB_WORKSPACE/.foundation.git\"}))"
+          core/hara --project core --offline --allow-file --allow-process eval "$write_ledger"
+          first_hash="$(git hash-object core/spec/tool-migrate/foundation-f55f-xt.edn)"
+          core/hara --project core --offline --allow-file --allow-process eval "$write_ledger"
+          test "$first_hash" = "$(git hash-object core/spec/tool-migrate/foundation-f55f-xt.edn)"
+          git diff --exit-code -- core/spec/tool-migrate/foundation-f55f-xt.edn
 
       - name: Verify Foundation object status is unchanged
         run: |

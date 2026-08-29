@@ -228,6 +228,15 @@ lang.runtime.postgres.db-client
 lang.runtime.standard
 lang.seedgen
 lang.seedgen.cli
+lang.seedgen.common-infile
+lang.seedgen.common-meta
+lang.seedgen.common-util
+lang.seedgen.common-xtalk
+lang.seedgen.form-bench
+lang.seedgen.form-common
+lang.seedgen.form-infile
+lang.seedgen.form-parse
+lang.seedgen.metrics
 lang.typed.xtalk-common
 lang.typed.xtalk-parse
 std.block

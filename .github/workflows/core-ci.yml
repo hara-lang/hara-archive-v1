@@ -94,11 +94,13 @@ jobs:
             core/lib \
             ':(exclude)core/lib/examples' \
             contrib \
+            Makefile \
             hara-specs-registry \
             scripts/runtime/run-lib-tests \
             scripts/runtime/check-work-flow-make-clean \
             scripts/runtime/check_work_flow_make_clean.py \
-            scripts/runtime/check_work_flow_make_clean_test.py; then
+            scripts/runtime/check_work_flow_make_clean_test.py \
+            .github/workflows/core-ci.yml; then
             echo "run_core=false" >> "$GITHUB_OUTPUT"
             echo "No core runtime changes detected."
           else
@@ -175,6 +177,43 @@ jobs:
       - name: Run library HAL tests
         if: steps.scope.outputs.run_core == 'true'
         run: ./scripts/runtime/run-lib-tests
+
+  native-interpreter-parity:
+    name: Native and interpreter library parity
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    needs: validate
+    if: needs.validate.outputs.run_core == 'true'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run complete native library suite
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p target/native-interpreter-parity
+          ./scripts/runtime/run-lib-tests --backend native \
+            2>&1 | tee target/native-interpreter-parity/native.log
+
+      - name: Run complete interpreter library suite
+        shell: bash
+        run: |
+          set -o pipefail
+          ./scripts/runtime/run-lib-tests --backend interpreter \
+            2>&1 | tee target/native-interpreter-parity/interpreter.log
+
+      - name: Upload native and interpreter parity logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-interpreter-parity-${{ github.event.pull_request.head.sha || github.sha }}
+          path: target/native-interpreter-parity
+          if-no-files-found: warn
 
   bytecode-observation:
     name: Live bytecode observation

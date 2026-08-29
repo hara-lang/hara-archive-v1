@@ -230,8 +230,8 @@ impl ProcessExtensionProvider {
         Ok(bytes)
     }
 
-    fn list(values: impl IntoIterator<Item = Value>) -> Value {
-        Value::List(values.into_iter().collect())
+    fn frame(values: impl IntoIterator<Item = Value>) -> Value {
+        Value::Vector(values.into_iter().collect())
     }
 
     fn timeout() -> Option<Duration> {
@@ -270,7 +270,7 @@ impl ProcessExtensionProvider {
                 dispatcher.remove(request);
                 let _ = Self::write(
                     &output,
-                    &Self::list([
+                    &Self::frame([
                         Value::String("cancel".into()),
                         Value::Number(request as i64),
                     ]),
@@ -320,7 +320,7 @@ impl WasmExtensionProvider for ProcessExtensionProvider {
         let output = Arc::new(Mutex::new(BufWriter::new(stdin)));
         Self::write(
             &output,
-            &Self::list([
+            &Self::frame([
                 Value::String("handshake".into()),
                 Value::Number(1),
                 Value::String(manifest.namespace.clone()),
@@ -396,7 +396,7 @@ impl WasmExtensionProvider for ProcessExtensionProvider {
             .insert(request, promise.clone(), session.timeout);
         if let Err(error) = Self::write(
             &session.output,
-            &Self::list([
+            &Self::frame([
                 Value::String("call".into()),
                 Value::Number(request as i64),
                 Value::String(export.into()),
@@ -417,7 +417,7 @@ impl WasmExtensionProvider for ProcessExtensionProvider {
         session.dispatcher.remove(request);
         Self::write(
             &session.output,
-            &Self::list([
+            &Self::frame([
                 Value::String("cancel".into()),
                 Value::Number(request as i64),
             ]),
@@ -429,7 +429,7 @@ impl WasmExtensionProvider for ProcessExtensionProvider {
             session.dispatcher.fail_all("hta/process-shutdown".into());
             let _ = Self::write(
                 &session.output,
-                &Self::list([Value::String("shutdown".into())]),
+                &Self::frame([Value::String("shutdown".into())]),
             );
             let _ = session.child.kill();
             let _ = session.child.wait();
@@ -445,6 +445,7 @@ mod tests {
     use super::{Dispatcher, PendingRequest, ProcessExtensionProvider, ReaderEvent};
     use crate::core::{Promise, PromiseState, Value};
     use crate::extension::{ExtensionManifest, WasmExtensionProvider};
+    use crate::hta;
     use crate::task::PromiseRejection;
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::mpsc;
@@ -461,6 +462,29 @@ mod tests {
  :exports {"later" {:args [:integer :integer] :returns :integer :async true}
            "crash" {:args [] :returns :value :async true}}
  :capabilities [:process]}"#;
+
+    #[test]
+    fn process_requests_use_canonical_vector_frames() {
+        let frame = ProcessExtensionProvider::frame([
+            Value::String("call".into()),
+            Value::Number(1),
+            Value::String("fixture/run".into()),
+            Value::Vector(vec![Value::Number(2)].into()),
+        ]);
+        assert_eq!(
+            frame,
+            Value::Vector(
+                vec![
+                    Value::String("call".into()),
+                    Value::Number(1),
+                    Value::String("fixture/run".into()),
+                    Value::Vector(vec![Value::Number(2)].into()),
+                ]
+                .into()
+            )
+        );
+        assert!(hta::decode_canonical(&hta::encode(&frame).unwrap()).is_ok());
+    }
 
     fn result(promise: Promise) -> Result<Value, String> {
         match promise.wait_state() {
