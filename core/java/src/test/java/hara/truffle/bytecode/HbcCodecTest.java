@@ -111,6 +111,36 @@ public class HbcCodecTest {
   }
 
   @Test
+  public void mapEntryConstantsSurviveHbcDecodeAndExecution() throws Exception {
+    Object entry = new hara.lang.data.MapEntry<>(null, hara.lang.data.Keyword.create("key"), 42L);
+    Function function =
+        new Function(
+            null,
+            false,
+            0,
+            false,
+            0,
+            0,
+            1,
+            List.of(new Instruction(Opcode.CONSTANT, 0, 0, 0), Instruction.of(Opcode.RETURN)),
+            Arrays.asList(null, null),
+            List.of());
+    byte[] artifact = HbcCodec.encode(new HbcProgram(List.of(entry), List.of(), List.of(function), 0));
+
+    Object decoded = HbcCodec.decode(artifact).constants().get(0);
+    assertTrue(decoded instanceof hara.lang.data.MapEntry<?, ?>);
+    assertEquals(entry, decoded);
+
+    Source source =
+        Source.newBuilder(HaraLanguage.ID, ByteSequence.create(artifact), "map-entry.hbc")
+            .mimeType(HaraLanguage.BYTECODE_MIME_TYPE)
+            .build();
+    try (Context context = Context.newBuilder(HaraLanguage.ID).build()) {
+      assertEquals("[:key 42]", context.eval(source).toString());
+    }
+  }
+
+  @Test
   public void canonicalizesBigIntegerConstantsAtTheHbcBoundary() {
     HbcProgram base = arithmeticProgram();
     HbcProgram program =

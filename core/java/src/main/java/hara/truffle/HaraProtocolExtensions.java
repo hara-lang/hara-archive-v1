@@ -751,7 +751,11 @@ final class HaraProtocolExtensions {
       value = HaraNull.SINGLETON;
     }
     if (conj instanceof IMapType<?, ?> && !(value instanceof MapEntry<?, ?>)) {
-      throw new HaraException("IConj/conj map expects a MapEntry");
+      if (value instanceof ILinearType<?> linear && linear.count() == 2) {
+        value = new MapEntry<>(null, linear.nth(0), linear.nth(1));
+      } else {
+        throw new HaraException("IConj/conj map expects a two-element entry");
+      }
     }
     return ((IConj<Object>) conj).conj(value);
   }

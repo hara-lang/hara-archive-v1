@@ -111,6 +111,31 @@ public class HtaValueCodecTest {
   }
 
   @Test
+  @org.junit.experimental.categories.Category(hara.spec.RegistryConformance.class)
+  public void registryMapEntryMatchesJavaEncodingAndRejectsWrongArity() throws Exception {
+    IMapType testCase = registryCase("map-entry");
+    ILinearType input = linear(testCase.lookup(Keyword.create("case", "input")));
+    IMapType expectation = (IMapType) testCase.lookup(Keyword.create("case", "expect"));
+    byte[] expectedBytes = bytes(linear(expectation.lookup(Keyword.create("bytes"))));
+    Object entry = new hara.lang.data.MapEntry<>(null, input.nth(0), input.nth(1));
+
+    assertArrayEquals(expectedBytes, HtaValueCodec.encode(entry));
+    Object decoded = HtaValueCodec.decodeCanonical(expectedBytes);
+    assertTrue(decoded instanceof hara.lang.data.MapEntry<?, ?>);
+    assertEquals(entry, decoded);
+
+    byte[] zero = {'H', 'T', 'A', '0', 38, 0, 0, 0, 0};
+    byte[] one = Arrays.copyOf(expectedBytes, 17);
+    one[8] = 1;
+    byte[] three = Arrays.copyOf(expectedBytes, expectedBytes.length + 1);
+    three[8] = 3;
+    for (byte[] malformed : List.of(zero, one, three)) {
+      HaraException error = assertThrows(HaraException.class, () -> HtaValueCodec.decode(malformed));
+      assertTrue(error.getMessage().startsWith("hta/value-malformed: map entry"));
+    }
+  }
+
+  @Test
   public void mapEncodingIsCanonical() {
     Map<Object, Object> left = new LinkedHashMap<>();
     left.put(Keyword.create("b"), 2L);
@@ -251,6 +276,14 @@ public class HtaValueCodecTest {
       throw new AssertionError("Expected registry vector: " + value);
     }
     return values;
+  }
+
+  private static byte[] bytes(ILinearType values) {
+    byte[] output = new byte[Math.toIntExact(values.count())];
+    for (int index = 0; index < values.count(); index++) {
+      output[index] = ((Number) values.nth(index)).byteValue();
+    }
+    return output;
   }
 
 }

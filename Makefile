@@ -32,6 +32,10 @@ HARA_SPECS_REGISTRY ?= $(abspath ../hara-specs-registry)
   test-rust-java-parity-native \
   test-rust-java-parity-halc \
   test-rust-java-parity-hta \
+  test-language-core-parity \
+  test-language-core-parity-rust \
+  test-language-core-parity-java \
+  test-language-core-parity-browser \
   help
 
 all: build
@@ -200,6 +204,39 @@ test-rust-java-parity-hta: check-rust-java-parity-specs
 	  -Dtest=HtaValueCodecTest#registryGoldenVectorMatchesJavaEncoding \
 	  test --file "$(TRUFFLE_POM)"
 
+# The language-core gate deliberately runs local Rust, JVM, and browser
+# adapters without loading the CLI bundle. Add one completed language slice at
+# a time; MapEntry is the first such slice.
+test-language-core-parity: check-rust-java-parity-specs
+	@$(MAKE) --no-print-directory \
+	  HARA_SPECS_REGISTRY="$(HARA_SPECS_REGISTRY)" \
+	  test-language-core-parity-rust
+	@$(MAKE) --no-print-directory \
+	  HARA_SPECS_REGISTRY="$(HARA_SPECS_REGISTRY)" \
+	  test-language-core-parity-java
+	@$(MAKE) --no-print-directory \
+	  HARA_SPECS_REGISTRY="$(HARA_SPECS_REGISTRY)" \
+	  test-language-core-parity-browser
+
+test-language-core-parity-rust: check-rust-java-parity-specs
+	HARA_SPECS_REGISTRY="$(HARA_SPECS_REGISTRY)" \
+	  $(CARGO) test --locked --manifest-path "$(RUST_MANIFEST)" -p hara-runtime \
+	  specs_owned_map_entry_calibration_agrees_in_evaluator_and_bytecode --lib -- --nocapture
+	HARA_SPECS_REGISTRY="$(HARA_SPECS_REGISTRY)" \
+	  $(CARGO) test --locked --manifest-path "$(RUST_MANIFEST)" --test hta_portable \
+	  registry_map_entry_matches_rust_encoding_and_rejects_wrong_arity -- --nocapture
+
+test-language-core-parity-java: check-rust-java-parity-specs
+	$(MVN) -B -Ptruffle,conformance \
+	  -Dhara.specs.registry="$(HARA_SPECS_REGISTRY)" \
+	  -Dtest=HtaValueCodecTest#registryMapEntryMatchesJavaEncodingAndRejectsWrongArity,FoundationRuntimeCorpusTest#specsOwnedMapEntryCalibrationPassesOnTheJvm,hara.truffle.bytecode.HbcCodecTest#mapEntryConstantsSurviveHbcDecodeAndExecution \
+	  test --file "$(TRUFFLE_POM)"
+
+test-language-core-parity-browser: check-rust-java-parity-specs
+	npm --prefix core/rust/web run test:hta
+	npm --prefix core/rust/web run build:browser:wasm
+	cd core/rust/web && npx playwright test foundation-behavioral-conformance.spec.js --grep 'MapEntry calibration' --reporter=line
+
 help:
 	@printf '%s\n' \
 	  'make install            Build and install the Rust CLI as hara' \
@@ -214,6 +251,8 @@ help:
 	  '                        Run Rust-Java protocol, native, HALC, and HTA parity' \
 	  'make test-hara-native-interpreter-parity' \
 	  '                        Run the complete native and interpreter Hara library suites' \
+	  'make test-language-core-parity' \
+	  '                        Run the local Rust, JVM, and browser MapEntry parity gate' \
 	  '' \
 	  'Variables: PREFIX, DESTDIR, BINDIR, DATADIR, HARA_DATADIR, HARA_LITE_DATADIR,' \
 	  '           HARA_SPECS_REGISTRY'

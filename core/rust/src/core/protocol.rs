@@ -438,6 +438,30 @@ fn pair_parts(value: &Value) -> Option<(Value, Value)> {
     }
 }
 
+/// Map construction accepts the conventional two-item vector syntax without
+/// conflating that structural convenience with the dedicated `IPair`/MapEntry
+/// representation.  `pair?` and `IPair` remain MapEntry-only.
+fn map_conj_parts(value: &Value) -> Option<(Value, Value)> {
+    if let Some(parts) = pair_parts(value) {
+        return Some(parts);
+    }
+    match value {
+        Value::Tuple(values) if values.len() == 2 => {
+            Some((
+                values.get(0).expect("two-item tuple").clone(),
+                values.get(1).expect("two-item tuple").clone(),
+            ))
+        }
+        Value::Vector(values) if values.len() == 2 => {
+            Some((
+                values.get(0).expect("two-item vector").clone(),
+                values.get(1).expect("two-item vector").clone(),
+            ))
+        }
+        _ => None,
+    }
+}
+
 fn pair_value(key: Value, value: Value) -> Value {
     Value::MapEntry(Box::new(PMapEntry::new(key, value)))
 }
@@ -1720,22 +1744,22 @@ fn protocol_conj(arguments: &[Value]) -> Result<Value, String> {
                     values.push_last(item.clone());
                 }
                 MutableCollection::Map(values) => {
-                    let (key, value) = pair_parts(item)
+                    let (key, value) = map_conj_parts(item)
                         .ok_or_else(|| "IConj/conj map expects a two-element entry".to_string())?;
                     values.assoc(key, value);
                 }
                 MutableCollection::OrderedMap(values) => {
-                    let (key, value) = pair_parts(item)
+                    let (key, value) = map_conj_parts(item)
                         .ok_or_else(|| "IConj/conj map expects a two-element entry".to_string())?;
                     values.assoc(key, value);
                 }
                 MutableCollection::SortedMap(values) => {
-                    let (key, value) = pair_parts(item)
+                    let (key, value) = map_conj_parts(item)
                         .ok_or_else(|| "IConj/conj map expects a two-element entry".to_string())?;
                     values.assoc(key, value);
                 }
                 MutableCollection::Trie(values) => {
-                    let (key, value) = pair_parts(item)
+                    let (key, value) = map_conj_parts(item)
                         .ok_or_else(|| "IConj/conj trie expects a two-element entry".to_string())?;
                     values.assoc(marker_key(&key, "trie")?, value);
                 }
@@ -1783,7 +1807,7 @@ fn protocol_conj(arguments: &[Value]) -> Result<Value, String> {
         | Value::SortedMap(_)
         | Value::Trie(_)
         | Value::PriorityMap(_)) => {
-            let (entry_key, entry_value) = pair_parts(item)
+            let (entry_key, entry_value) = map_conj_parts(item)
                 .ok_or_else(|| "IConj/conj map expects a two-element entry".to_string())?;
             map_assoc_value(value, entry_key, entry_value)
         }
