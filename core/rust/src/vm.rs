@@ -148,7 +148,8 @@ pub use compiler::{
     compile_form_with_config_allow_unbound_globals, compile_halc_module, compile_source,
     compile_source_with, compile_source_with_allow_unbound_globals, compile_source_with_config,
     compile_source_with_config_allow_unbound_globals,
-    compile_spanned_form_with_config_allow_unbound_globals, source_namespace_config,
+    compile_spanned_form_with_config_allow_unbound_globals,
+    compile_spanned_forms_with_config_allow_unbound_globals, source_namespace_config,
     source_uses_dynamic_evaluation,
 };
 pub use disassemble::disassemble;

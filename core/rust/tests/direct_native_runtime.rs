@@ -2,7 +2,9 @@
 
 use hara_wasm::direct_native::NativeEngine;
 use hara_wasm::native_cli::RuntimeBroker;
+use hara_wasm::project;
 use hara_wasm::Runtime;
+use std::path::PathBuf;
 
 fn enable_native(runtime: &mut Runtime) {
     runtime
@@ -271,19 +273,25 @@ fn direct_native_evaluates_dynamic_runtime_forms_without_falling_back() {
 }
 
 #[test]
-fn direct_native_macroexpansion_preserves_macro_validation_errors() {
-    let mut runtime = Runtime::new();
-    enable_native(&mut runtime);
+fn direct_native_eval_native_batches_macroexpansion_validation() {
+    let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
+    let project = project::read(&project_root).expect("core project must load");
+    let catalog = project::source_catalog(&project).expect("core source catalog must load");
+    let mut runtime = Runtime::core();
+    runtime.register_source_catalog(&catalog);
     runtime
-        .eval_native("(ns example.direct-macro (:require [std.lib.collection :as collection]))")
-        .expect("collection namespace must load");
+        .bootstrap_source_foundation()
+        .expect("source Foundation must bootstrap");
+    enable_native(&mut runtime);
     let source =
-        "[(try (do (macroexpand (quote (collection/select {:a 1} :a))) false) (catch Throwable error true))
+        "(ns example.direct-macro (:require [std.lib.collection :as collection]))
+         [(try (do (macroexpand (quote (collection/select {:a 1} :a))) false) (catch Throwable error true))
           (try (do (macroexpand (quote (collection/select {} [:walk]))) false) (catch Throwable error true))
           (try (do (macroexpand (quote (collection/transform {} [:walk :a] inc))) false) (catch Throwable error true))
           (try (do (macroexpand (quote (collection/select {} [1.5]))) false) (catch Throwable error true))]";
-    let result = runtime.eval_direct_native(source);
+    let result = runtime.eval_native(source);
     assert_eq!(result.unwrap(), "[true true true true]");
+    assert_eq!(runtime.native_execution_telemetry().invocations, 1);
 }
 
 #[test]

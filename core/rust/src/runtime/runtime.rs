@@ -359,6 +359,13 @@ impl Runtime {
         self.product_cache.borrow_mut().clear();
         self.refresh_qualified_bindings();
         let forms = kernel::read_forms(source).map_err(|error| error.to_string())?;
+        #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+        if self.execution_backend == "direct-native" && !traced {
+            let result = self.eval_direct_native_forms(forms)?;
+            self.save_namespace();
+            self.refresh_qualified_bindings();
+            return Ok(result);
+        }
         let mut result = core::Value::Nil;
         for form in forms {
             let site = core::ExceptionSite {
@@ -372,6 +379,66 @@ impl Runtime {
         self.save_namespace();
         self.refresh_qualified_bindings();
         Ok(result)
+    }
+
+    #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+    fn eval_direct_native_forms(
+        &mut self,
+        forms: Vec<kernel::SpannedForm>,
+    ) -> Result<core::Value, String> {
+        let mut result = core::Value::Nil;
+        let mut ordinary_forms = Vec::new();
+        for form in forms {
+            if !is_interpreter_management_form(&form.form) {
+                ordinary_forms.push(form);
+                continue;
+            }
+            if !ordinary_forms.is_empty() {
+                self.eval_direct_native_batch(&ordinary_forms)?;
+                ordinary_forms.clear();
+            }
+            let site = core::ExceptionSite {
+                namespace: Some(self.namespace_registry.current().name().as_str().to_owned()),
+                resource: None,
+                line: form.span.start.line,
+                column: form.span.start.column,
+            };
+            result = self.eval_direct_native_management_form(form, site)?;
+        }
+        if !ordinary_forms.is_empty() {
+            result = self.eval_direct_native_batch(&ordinary_forms)?;
+        }
+        Ok(result)
+    }
+
+    #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+    fn eval_direct_native_batch(
+        &mut self,
+        forms: &[kernel::SpannedForm],
+    ) -> Result<core::Value, String> {
+        if forms.is_empty() {
+            return Ok(core::Value::Nil);
+        }
+        self.compile_spanned_forms_for_direct_native(forms)
+            .and_then(|program| self.execute_compiled_direct_native(program))
+            .map(|report| report.value)
+    }
+
+    /// Namespace declarations and mutation forms are the direct-native
+    /// evaluator's explicit interpreter seam. Their source dependencies must
+    /// establish macro registrations before the following ordinary batch is
+    /// compiled. The backend selection is restored before any ordinary form
+    /// can run, so it never creates an evaluator fallback for user code.
+    #[cfg(all(feature = "direct-native", not(target_arch = "wasm32")))]
+    fn eval_direct_native_management_form(
+        &mut self,
+        form: kernel::SpannedForm,
+        site: core::ExceptionSite,
+    ) -> Result<core::Value, String> {
+        let backend = std::mem::replace(&mut self.execution_backend, "interpreter".into());
+        let result = core::with_exception_site(site, || self.eval_forms(vec![form], false));
+        self.execution_backend = backend;
+        result
     }
 
     fn eval_transfer_text(&mut self, source: &str) -> Result<String, String> {
@@ -680,7 +747,7 @@ impl Runtime {
             }
             if !is_interpreter_management_form(&form) {
                 return self
-                    .compile_spanned_form_for_direct_native(&source_form)
+                    .compile_spanned_forms_for_direct_native(std::slice::from_ref(&source_form))
                     .and_then(|program| self.execute_compiled_direct_native(program))
                     .map(|report| report.value);
             }

@@ -180,15 +180,27 @@ pub fn compile_form_with_config_allow_unbound_globals(
     compile_spanned_form_with_config_allow_unbound_globals(form, registry, config)
 }
 
-/// Compiles an already-read source form without discarding its parser span.
+/// Compiles already-read source forms without discarding their parser spans.
 /// Runtime entry points use this boundary so direct-native execution reports
-/// the source location of nested exception creation and throw instructions.
+/// the source location of nested exception creation and throw instructions
+/// while preserving one program for each contiguous ordinary-form batch.
+pub fn compile_spanned_forms_with_config_allow_unbound_globals(
+    forms: &[SpannedForm],
+    registry: &crate::kernel::NamespaceRegistry<crate::core::Value>,
+    config: crate::kernel::GeneratedNamespaceConfig,
+) -> Result<Program, CompileError> {
+    compile_spanned_forms_with_config_options(forms, registry, config, false, true)
+}
+
+/// Compiles an already-read source form without discarding its parser span.
+/// Prefer [`compile_spanned_forms_with_config_allow_unbound_globals`] when a
+/// runtime entry point has more than one contiguous ordinary source form.
 pub fn compile_spanned_form_with_config_allow_unbound_globals(
     form: SpannedForm,
     registry: &crate::kernel::NamespaceRegistry<crate::core::Value>,
     config: crate::kernel::GeneratedNamespaceConfig,
 ) -> Result<Program, CompileError> {
-    compile_spanned_forms_with_config_options(&[form], registry, config, false, true)
+    compile_spanned_forms_with_config_allow_unbound_globals(&[form], registry, config)
 }
 
 /// Reports whether source contains a language-level dynamic evaluation
