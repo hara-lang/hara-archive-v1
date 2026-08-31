@@ -1,0 +1,34 @@
+;; ============================================================================
+;; tool.vm.provider — source-owned adapter for the native VM instrument.
+;; ============================================================================
+(ns tool.vm.provider)
+
+(defn ^{:public true} provider
+  "Returns the direct native VM instrumentation descriptor."
+  []
+  (std.native.Instrument/provider))
+
+(defn ^{:public true} validate
+  "Authenticates and validates one HALC or HBC artifact."
+  [format bytes]
+  (std.native.Instrument/validate format bytes))
+
+(defn ^{:public true} inspect
+  "Returns metadata derived from one validated HALC or HBC artifact."
+  [format bytes]
+  (std.native.Instrument/inspect format bytes))
+
+(defn ^{:public true} disassemble
+  "Returns deterministic diagnostics for one HBC artifact."
+  [bytes]
+  (std.native.Instrument/disassemble bytes))
+
+(defn ^{:public true} transform
+  "Transforms a HAL, HALC, or HBC input on a supported native edge."
+  [from to input options]
+  (std.native.Instrument/transform from to input options))
+
+(defn ^{:public true} execute
+  "Authenticates, validates, and executes one HALC or HBC artifact."
+  [format bytes options]
+  (std.native.Instrument/execute format bytes options))

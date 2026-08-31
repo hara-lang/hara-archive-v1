@@ -1,0 +1,90 @@
+(ns tool.vm.provider-test
+  (:require [tool.vm.provider]))
+
+^{:refer tool.vm.provider/provider}
+(Test/check
+ [{:name "forwards the native instrumentation descriptor"
+   :test (fn []
+           (= (std.native.Instrument/provider)
+              (tool.vm.provider/provider)))
+   :expected true}])
+
+^{:refer tool.vm.provider/validate}
+(Test/check
+ [{:name "preserves native validation failures"
+   :test (fn []
+           (= (try
+                (std.native.Instrument/validate :halc (std.native.Bytes/new))
+                nil
+                (catch Throwable error
+                  (ex-message error)))
+              (try
+                (tool.vm.provider/validate :halc (std.native.Bytes/new))
+                nil
+                (catch Throwable error
+                  (ex-message error)))))
+   :expected true}])
+
+^{:refer tool.vm.provider/inspect}
+(Test/check
+ [{:name "preserves native inspection failures"
+   :test (fn []
+           (= (try
+                (std.native.Instrument/inspect :halc (std.native.Bytes/new))
+                nil
+                (catch Throwable error
+                  (ex-message error)))
+              (try
+                (tool.vm.provider/inspect :halc (std.native.Bytes/new))
+                nil
+                (catch Throwable error
+                  (ex-message error)))))
+   :expected true}])
+
+^{:refer tool.vm.provider/disassemble}
+(Test/check
+ [{:name "preserves native diagnostic failures"
+   :test (fn []
+           (= (try
+                (std.native.Instrument/disassemble (std.native.Bytes/new))
+                nil
+                (catch Throwable error
+                  (ex-message error)))
+              (try
+                (tool.vm.provider/disassemble (std.native.Bytes/new))
+                nil
+                (catch Throwable error
+                  (ex-message error)))))
+   :expected true}])
+
+^{:refer tool.vm.provider/transform}
+(Test/check
+ [{:name "preserves unsupported native-edge failures"
+   :test (fn []
+           (= (try
+                (std.native.Instrument/transform :hbc :halc "" {})
+                nil
+                (catch Throwable error
+                  (ex-message error)))
+              (try
+                (tool.vm.provider/transform :hbc :halc "" {})
+                nil
+                (catch Throwable error
+                  (ex-message error)))))
+   :expected true}])
+
+^{:refer tool.vm.provider/execute}
+(Test/check
+ [{:name "preserves native execution failures"
+   :test (fn []
+           (= (try
+                (std.native.Instrument/execute :hbc (std.native.Bytes/new) {})
+                nil
+                (catch Throwable error
+                  (ex-message error)))
+              (try
+                (tool.vm.provider/execute :hbc (std.native.Bytes/new) {})
+                nil
+                (catch Throwable error
+                  (ex-message error)))))
+   :expected true}])
