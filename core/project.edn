@@ -1,14 +1,23 @@
 {:hara/type :project
  :hara/version "1.0.0"
- :project/id hara.lang
+ :project/id hara/archive-v1
  :project/version "0.1.0"
  :project/source-paths ["lib/src" "lib/src-lang"]
  :project/test-paths ["lib/test" "lib/test-lang" "rust/web"]
  :project/extension-paths []
  :project/package {:profile "config/packages.edn"}
+ :project/dependencies {"hara:hara/foundation" {:version "^0.1.0"}}
  :project/main std.foundation
  :project/inrepl-capabilities #{:inrepl/loopback}
  :project/capabilities
  #{:studio/node-send
    :files/local-read
-   :files/local-write}}
+   :files/local-write}
+ :project/runtime-profiles
+ {:rust {:runtime/source-excludes ["lib/src/std/foundation.hal"
+                                   "lib/src/std/foundation"
+                                   "lib/src/std/block.hal"
+                                   "lib/src/std/block"
+                                   "lib/src/std/config.hal"
+                                   "lib/src/std/config"
+                                   "lib/src/std/lib"]}}}
